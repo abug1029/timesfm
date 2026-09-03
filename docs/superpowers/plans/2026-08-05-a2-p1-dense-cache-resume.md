@@ -1,0 +1,506 @@
+# A2-P1 Dense Matrix 缓存断点恢复实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 为 A2-P1 dense matrix 生成过程增加逐 bar 断点续算能力，使 26h 全量运行在暂停/重启/崩溃时最多损失当前品种剩余时间，而非全部重来。
+
+**Architecture:** 将 `build_dense_feature_matrix()` 拆为三级缓存（market.parquet + tsfm.jsonl + dense_matrix.parquet）。TimesFM 特征（71min 瓶颈）逐 bar 原子追加到 `tsfm.jsonl`，崩溃后读已有 bars 只重算未完成的。
+
+**Tech Stack:** Python 3.10, pandas, lightgbm, TimesFM 2.5
+
+**Spec:** `docs/superpowers/specs/2026-08-05-a2-p1-dense-cache-resume-design.md`
+
+## Global Constraints
+
+- **逐 bar 原子追加**: 每个 eval bar 的 3 维 TimesFM 特征计算完成立即 `flush()` 写盘到 `tsfm.jsonl`
+- **断点续算**: 重启时读 `tsfm.jsonl` 提取已完成 `bar_idx`，只计算未完成的
+- **缓存优先级**: dense_matrix.parquet > market.parquet + tsfm.jsonl
+- **数值一致性**: 断点续算与全量计算结果一致
+- **Python 环境**: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python`
+- **主仓库**: `D:\FlyBuddy\fm_a`
+- **保持不变**: 12 维特征池、step=24、Gate、JSONL eval 断点、品种进程隔离
+
+---
+
+## File Structure
+
+| 文件 | 职责 | 操作 |
+|------|------|------|
+| `cascade/lgbm_features.py` | 特征工程 + 三级缓存 | Modify |
+| `scripts/a2_p1_worker.py` | Worker 传入缓存路径 | Modify |
+| `scripts/a2_p1_orchestrator.py` | `-u` 无缓冲 + timeout 5400 | Modify |
+| `tests/test_a2_p1_runtime.py` | 缓存断点测试 | Modify |
+
+---
+
+### Task 1: compute_timesfm_features_batch 断点续算
+
+**Files:**
+- Modify: `cascade/lgbm_features.py` — `compute_timesfm_features_batch()` 加 `resume_path` 参数
+- Test: `tests/test_a2_p1_runtime.py` 新增测试
+
+**Interfaces:**
+- Consumes: 现有 `compute_timesfm_features_batch()` 签名
+- Produces: 新增参数 `resume_path: str | None = None`；返回值不变（DataFrame 3 维特征，index=bar_idx）
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+def test_compute_timesfm_resume_path():
+    """验证 compute_timesfm_features_batch 支持 resume_path 断点续算"""
+    import inspect
+    from cascade.lgbm_features import compute_timesfm_features_batch
+    source = inspect.getsource(compute_timesfm_features_batch)
+    assert "resume_path" in source, "必须支持 resume_path 参数"
+    # 必须逐 bar 原子追加 (json.dumps + flush)
+    assert "json.dumps" in source, "必须写 JSON 行"
+    assert "flush" in source, "必须 flush 立即写盘"
+```
+
+- [ ] **Step 2: 运行测试验证失败**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_compute_timesfm_resume_path -v
+```
+
+Expected: FAIL — `AssertionError: 必须支持 resume_path 参数`
+
+- [ ] **Step 3: 实现断点续算**
+
+读 `cascade/lgbm_features.py` 的 `compute_timesfm_features_batch()`（约 line 100-169），重写为：
+
+```python
+def compute_timesfm_features_batch(
+    symbol, store, df_1h, bar_indices, shared_hourly, shared_daily,
+    batch_size: int = 128, resume_path: str | None = None,
+) -> pd.DataFrame:
+    """... 原有 docstring ..."""
+    import json
+    closes_all = df_1h["close_price"].values.astype(float)
+    CONTEXT = 480
+    HORIZON = 24
+
+    # ① 读已完成的 bars (断点续算)
+    done = {}
+    if resume_path and os.path.exists(resume_path):
+        with open(resume_path, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    rec = json.loads(line)
+                    done[int(rec["bar_idx"])] = rec
+
+    # ② 只计算未完成的 bars
+    pending = [t for t in bar_indices if t not in done]
+
+    # ③ 对每个 pending bar 计算 3 维特征, 完成后立即原子追加
+    records = []
+    for t in pending:
+        ctx = closes_all[max(0, t - CONTEXT + 1) : t + 1]
+        rec = {"bar_idx": t}
+        if len(ctx) < 48:
+            rec["timesfm_pure_pred"] = None
+            rec["timesfm_confidence"] = None
+        else:
+            t0_close = float(ctx[-1])
+            try:
+                point, quant = shared_hourly._fallback_predict(ctx, horizon=HORIZON)
+                pred_t24 = float(point[-1])
+                if quant.ndim == 2 and quant.shape[0] >= HORIZON:
+                    p10 = float(quant[-1, 1])
+                    p90 = float(quant[-1, 9])
+                else:
+                    p10 = p90 = pred_t24
+                rec["timesfm_pure_pred"] = (pred_t24 / t0_close - 1) if t0_close != 0 else None
+                rec["timesfm_confidence"] = (p90 - p10) / t0_close if t0_close != 0 else None
+            except Exception:
+                rec["timesfm_pure_pred"] = None
+                rec["timesfm_confidence"] = None
+
+        # horizon_slope: DailyModel 日线预测
+        t_dt = pd.Timestamp(df_1h["dt"].iloc[t])
+        cutoff = t_dt.strftime("%Y-%m-%d")
+        try:
+            if hasattr(store, "cutoff_date"):
+                from data.data_store import BacktestDataStore
+                with BacktestDataStore(symbol, cutoff) as s:
+                    daily_result = shared_daily.predict(symbol, s)
+            else:
+                daily_result = shared_daily.predict(symbol, store)
+            rec["horizon_slope"] = float(daily_result.horizon_slope)
+        except Exception:
+            rec["horizon_slope"] = None
+
+        records.append(rec)
+        # ④ 每完成一个 bar 立即原子追加 + flush (崩溃不丢)
+        if resume_path:
+            with open(resume_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+                f.flush()
+
+    # ⑤ 合并已完成 + 新计算的 (O(N) 字典映射, 防 IndexError + 防呆兜底)
+    all_recs = {}
+    records_dict = {r["bar_idx"]: r for r in records}  # 提前转为字典
+    for t in bar_indices:
+        if t in done:
+            all_recs[t] = done[t]
+        elif t in records_dict:
+            all_recs[t] = records_dict[t]
+        else:
+            # 防呆兜底: 既不在 done 也不在 records 中 (异常情况)
+            all_recs[t] = {"timesfm_pure_pred": np.nan, "timesfm_confidence": np.nan, "horizon_slope": np.nan}
+    # 用 None → np.nan
+    for t in all_recs:
+        for k in ["timesfm_pure_pred", "timesfm_confidence", "horizon_slope"]:
+            all_recs[t][k] = np.nan if all_recs[t][k] is None else all_recs[t][k]
+
+    df = pd.DataFrame.from_dict(all_recs, orient="index")
+    df = df.reindex(bar_indices)
+    return df[["timesfm_pure_pred", "timesfm_confidence", "horizon_slope"]]
+```
+
+**注意**:
+- 顶部确认已 `import os`（Task 1 已加过，若无则加）
+- 保留原有 `batch_size` 参数（不改变 batching 行为，仅保持签名兼容）
+
+- [ ] **Step 4: 运行测试验证通过**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_compute_timesfm_resume_path -v
+```
+
+Expected: PASS
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add cascade/lgbm_features.py tests/test_a2_p1_runtime.py
+git commit -m "feat(a2-p1): compute_timesfm_features_batch 断点续算 (逐 bar 原子追加到 tsfm.jsonl)"
+```
+
+---
+
+### Task 2: build_dense_feature_matrix 三级缓存
+
+**Files:**
+- Modify: `cascade/lgbm_features.py` — `build_dense_feature_matrix()` 拆分 market/tsfm 缓存
+- Test: `tests/test_a2_p1_runtime.py` 新增测试
+
+**Interfaces:**
+- Consumes: `compute_timesfm_features_batch()`（Task 1）
+- Produces: 新增参数 `market_cache_path: str | None = None`、`tsfm_resume_path: str | None = None`；返回值不变
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+def test_build_dense_market_cache():
+    """验证 build_dense_feature_matrix 支持 market_cache_path / tsfm_resume_path"""
+    import inspect
+    from cascade.lgbm_features import build_dense_feature_matrix
+    source = inspect.getsource(build_dense_feature_matrix)
+    assert "market_cache_path" in source, "必须支持 market_cache_path 参数"
+    assert "tsfm_resume_path" in source, "必须支持 tsfm_resume_path 参数"
+```
+
+- [ ] **Step 2: 运行测试验证失败**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_market_cache -v
+```
+
+Expected: FAIL — `AssertionError: 必须支持 market_cache_path 参数`
+
+- [ ] **Step 3: 实现三级缓存**
+
+读 `build_dense_feature_matrix()`（约 line 179-256），修改为：
+
+```python
+def build_dense_feature_matrix(
+    symbol, store, dense_step: int = 24, shared_hourly=None, shared_daily=None,
+    vol_filter=None, cache_path: str | None = None,
+    market_cache_path: str | None = None, tsfm_resume_path: str | None = None,
+) -> pd.DataFrame:
+    """... 原有 docstring ..."""
+    import pathlib
+    # 完整缓存存在 → 直接读
+    if cache_path and pathlib.Path(cache_path).exists():
+        return pd.read_parquet(cache_path)
+
+    df_1h = store.get_main_contract_1h(limit=100000)
+    df_daily = store.get_main_continuous(limit=100000) if hasattr(store, "get_main_continuous") else pd.DataFrame()
+    closes = df_1h["close_price"].values.astype(float)
+    HORIZON = 24
+    CONTEXT = 480
+
+    valid = list(range(CONTEXT, len(closes) - HORIZON, dense_step))
+    if not valid:
+        return pd.DataFrame(columns=FEATURE_COLUMNS + ["Y", "weight", "bar_idx", "cutoff"])
+
+    if vol_filter is None and VolRiskFilter is not None:
+        try:
+            vol_filter = VolRiskFilter.bind_for_symbol(symbol, mode="r0")
+        except Exception:
+            vol_filter = None
+
+    # ① 9 维市场特征: 有缓存则读, 无则算后原子写
+    if market_cache_path and pathlib.Path(market_cache_path).exists():
+        market_df = pd.read_parquet(market_cache_path)
+        if "bar_idx" not in market_df.index.names:
+            market_df = market_df.set_index("bar_idx")
+    else:
+        market_rows = []
+        for t in valid:
+            feats = extract_market_features_at_bar(df_1h, df_daily, t, symbol, vol_filter)
+            feats["bar_idx"] = t
+            feats["cutoff"] = str(pd.Timestamp(df_1h["dt"].iloc[t]).strftime("%Y-%m-%d %H:%M"))
+            market_rows.append(feats)
+        market_df = pd.DataFrame(market_rows).set_index("bar_idx")
+        if market_cache_path:
+            pathlib.Path(market_cache_path).parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = str(market_cache_path) + ".tmp"
+            market_df.to_parquet(tmp_path)
+            os.replace(tmp_path, str(market_cache_path))
+
+    # ② 3 维 TimesFM 特征 (传 resume_path 支持断点续算)
+    if shared_hourly is not None and shared_daily is not None:
+        tsfm_df = compute_timesfm_features_batch(
+            symbol, store, df_1h, valid, shared_hourly, shared_daily,
+            resume_path=tsfm_resume_path,
+        )
+        tsfm_df = tsfm_df.set_index(tsfm_df.index)
+    else:
+        tsfm_df = pd.DataFrame(
+            {c: [np.nan] * len(valid) for c in ["timesfm_pure_pred", "timesfm_confidence", "horizon_slope"]},
+            index=valid,
+        )
+
+    mat = market_df.join(tsfm_df, how="left")
+
+    mat["Y"] = [(closes[t + HORIZON] - closes[t]) / closes[t] if closes[t] != 0 else np.nan
+                for t in valid]
+    mat["weight"] = np.abs(mat["Y"]) * 10000.0
+    mat = mat.reset_index(names=["bar_idx"])
+    if "bar_idx" not in mat.columns:
+        mat["bar_idx"] = valid
+
+    if cache_path:
+        pathlib.Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = str(cache_path) + ".tmp"
+        mat.to_parquet(tmp_path)
+        os.replace(tmp_path, str(cache_path))
+    return mat
+```
+
+**注意**: 原 `tsfm_df = tsfm_df.set_index(tsfm_df.index)` 在 Task 1 后 tsfm_df 的 index 已是 bar_idx，可保留或改为 `tsfm_df.index = tsfm_df.index`。若 Task 1 返回的 tsfm_df index 已是 bar_idx 且与 `valid` 对齐，join 即可。
+
+- [ ] **Step 4: 运行测试验证通过**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_market_cache -v
+```
+
+Expected: PASS
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add cascade/lgbm_features.py tests/test_a2_p1_runtime.py
+git commit -m "feat(a2-p1): build_dense_feature_matrix 三级缓存 (market.parquet + tsfm.jsonl + dense_matrix.parquet)"
+```
+
+---
+
+### Task 3: Worker 传入缓存路径
+
+**Files:**
+- Modify: `scripts/a2_p1_worker.py` — 调用 `build_dense_feature_matrix` 时传入 `market_cache_path`/`tsfm_resume_path`
+- Test: `tests/test_a2_p1_runtime.py` 新增测试
+
+**Interfaces:**
+- Consumes: `build_dense_feature_matrix()`（Task 2）
+- Produces: Worker 运行时自动生成/读取三级缓存
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+def test_worker_passes_cache_paths():
+    """验证 Worker 传入 market_cache_path / tsfm_resume_path"""
+    worker_src = pathlib.Path("scripts/a2_p1_worker.py").read_text(encoding="utf-8")
+    assert "market_cache_path" in worker_src, "Worker 必须传入 market_cache_path"
+    assert "tsfm_resume_path" in worker_src, "Worker 必须传入 tsfm_resume_path"
+```
+
+- [ ] **Step 2: 运行测试验证失败**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_worker_passes_cache_paths -v
+```
+
+Expected: FAIL — `AssertionError: Worker 必须传入 market_cache_path`
+
+- [ ] **Step 3: 修改 Worker**
+
+读 `scripts/a2_p1_worker.py` 的 `run_worker()`（约 line 137-172），修改：
+
+```python
+    # 三级缓存路径
+    cache_path = f"reports/a2_p1_features/{symbol_lower}_dense_matrix.parquet"
+    market_cache_path = f"reports/a2_p1_features/{symbol_lower}_market.parquet"
+    tsfm_resume_path = f"reports/a2_p1_features/{symbol_lower}_tsfm.jsonl"
+    pathlib.Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
+```
+
+```python
+    # Step 4: 构建 dense matrix (三级缓存 + 断点续算)
+    print(f"[Worker {symbol_upper}] building dense matrix...", flush=True)
+    with DataStore(symbol_lower) as store:
+        mat = build_dense_feature_matrix(
+            symbol_lower, store, dense_step=dense_step,
+            shared_hourly=hourly, shared_daily=daily, cache_path=cache_path,
+            market_cache_path=market_cache_path, tsfm_resume_path=tsfm_resume_path,
+        )
+```
+
+- [ ] **Step 4: 运行测试验证通过**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_worker_passes_cache_paths -v
+```
+
+Expected: PASS
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add scripts/a2_p1_worker.py tests/test_a2_p1_runtime.py
+git commit -m "feat(a2-p1): Worker 传入三级缓存路径 (market + tsfm 断点)"
+```
+
+---
+
+### Task 4: Orchestrator -u + timeout 5400
+
+**Files:**
+- Modify: `scripts/a2_p1_orchestrator.py` — 启动 Worker 加 `-u`；`timeout` 3600→5400
+- Test: `tests/test_a2_p1_runtime.py` 新增测试
+
+**Interfaces:**
+- Consumes: 无
+- Produces: Worker 输出实时可见；单品种冷启动（~78min）不超时
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+def test_orchestrator_unbuffered_and_timeout():
+    """验证 Orchestrator 用 -u 无缓冲 + timeout 5400"""
+    orch_src = pathlib.Path("scripts/a2_p1_orchestrator.py").read_text(encoding="utf-8")
+    assert "-u" in orch_src or "unbuffered" in orch_src.lower(), "必须用 -u 无缓冲模式"
+    assert "5400" in orch_src, "timeout 必须为 5400s (90min, 覆盖冷启动)"
+```
+
+- [ ] **Step 2: 运行测试验证失败**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_orchestrator_unbuffered_and_timeout -v
+```
+
+Expected: FAIL — `AssertionError: 必须用 -u 无缓冲模式`
+
+- [ ] **Step 3: 修改 Orchestrator**
+
+读 `scripts/a2_p1_orchestrator.py` 的 `run_orchestrator()`（约 line 58-63），修改：
+
+```python
+        result = subprocess.run(
+            [python, "-u", str(worker_script), sym_lower],  # -u 无缓冲, 实时日志
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            cwd=pathlib.Path(__file__).parent.parent,
+            timeout=5400,  # 90 分钟, 覆盖冷启动 ~78min
+        )
+```
+
+**注意**: `python` 来自 `sys.executable`，`-u` 参数在其后、脚本前。
+
+- [ ] **Step 4: 运行测试验证通过**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_orchestrator_unbuffered_and_timeout -v
+```
+
+Expected: PASS
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add scripts/a2_p1_orchestrator.py tests/test_a2_p1_runtime.py
+git commit -m "fix(a2-p1): Orchestrator -u 无缓冲 + timeout 5400 (覆盖冷启动 78min)"
+```
+
+---
+
+### Task 5: 集成测试 + 断点验证
+
+- [ ] **Step 1: 运行全部单测**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py -v
+```
+
+Expected: 全部 PASS（含既有 6 个 + 新增 4 个 = 10 个）
+
+- [ ] **Step 2: 验证 dry-run 不写缓存**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python scripts/a2_p1_worker.py ss --dry-run
+# 检查 reports/a2_p1_features/ 下无新增文件
+```
+
+Expected: dry-run 只打印 pending bars，不生成任何缓存文件
+
+- [ ] **Step 3: 断点续算验证（关键）**
+
+用短数据集模拟（或用真实 SS，运行 ~1min 后手动 kill）：
+
+```bash
+# 启动 Worker (后台)
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -u scripts/a2_p1_worker.py ss > reports/a2_p1_logs/ss_test.log 2>&1 &
+# 等待 ~60s (让 TimesFM 计算 ~5 个 bars)
+# kill 进程 (验证断点)
+# 重启 Worker
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -u scripts/a2_p1_worker.py ss > reports/a2_p1_logs/ss_test2.log 2>&1 &
+```
+
+预期:
+- 第一次运行: tsfm.jsonl 有 ~5 行（被 kill 前写入的）
+- 第二次运行: `[Worker SS] loading from tsfm cache: 5 done`，只计算剩余 ~391 bars
+- 最终 tsfm.jsonl 有 396 行，无重复
+
+**验证方法**: 直接看 `reports/a2_p1_logs/ss_test.log` 是否有 "loading from tsfm cache" 或等价输出。
+
+- [ ] **Step 4: 清理测试产物**
+
+```bash
+# 移除测试产生的 tsfm.jsonl (避免影响正式运行)
+rm -f reports/a2_p1_features/ss_tsfm.jsonl
+```
+
+- [ ] **Step 5: 最终提交**
+
+```bash
+git add -A
+git commit -m "test(a2-p1): 缓存断点集成测试 (断点续算 + dry-run 不写缓存)"
+```
+
+---
+
+## Self-Review Checklist
+
+- [x] **Spec coverage**: 三级缓存、逐 bar 原子追加、断点续算、Orchestrator -u + timeout 均有对应 Task
+- [x] **Placeholder scan**: 无 TBD/TODO，所有 steps 包含完整代码
+- [x] **Type consistency**: `resume_path`/`market_cache_path`/`tsfm_resume_path` 在 Task 1-3 命名一致
+- [x] **Scope**: 不做 batching、不并行、不改特征池（Spec 第 9 节）
+- [x] **附带修复**: `-u` 无缓冲（Task 4）、timeout 5400（Task 4）
+
+---
+
+**Plan 完成，保存到 `docs/superpowers/plans/2026-08-05-a2-p1-dense-cache-resume.md`。**

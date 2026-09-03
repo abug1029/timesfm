@@ -1,0 +1,10 @@
+# timesFM_fu 关键依赖锁版（2026-09-01 Linux 迁移时固化）
+# 说明：
+# - pandas 必须 <3：cascade/（禁改路径）使用了已移除的 'H' 频率别名
+# - pyarrow：LGBM parquet 缓存必需
+# - torch：本机无 GPU，安装 CPU 版（pip install torch --index-url https://download.pytorch.org/whl/cpu）
+timesfm>=3.0.0
+torch>=2.0
+pandas>=2.0,<3
+pyarrow
+numpy<3

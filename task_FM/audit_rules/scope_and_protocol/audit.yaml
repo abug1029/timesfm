@@ -1,0 +1,32 @@
+schema_version: 1
+name: fm_scope_and_protocol
+kind: task_audit
+version: 1.0.0
+protocol_version: 2
+stability: frozen
+mode: declarative
+description: FM_a 红线与证据规则
+compatibility: {praxist_core: ">=0.3.0,<1.0"}
+dependencies: []
+capabilities: [audit.scope_boundary]
+audit:
+  checks:
+    - id: immutable_boundary
+      severity: blocking
+      criteria:
+        - Researchers may edit only candidate JSON files under scripts/praxist_ws/ and reports/praxist/.
+        - Evaluator, cascade/, data/, config/prediction_scheme.py, db/ are immutable.
+    - id: pre_registered_gate
+      severity: blocking
+      criteria:
+        - GREEN requires full walk-forward with n>=350, IC>=0.05, EV>0 after slippage.
+        - Diagnostic results (max_points<=6) can never satisfy the mature gate.
+    - id: single_ev_predicate
+      severity: blocking
+      criteria:
+        - ev_after_slippage is the only primary metric; diagnostics never rank.
+    - id: result_ownership
+      severity: blocking
+      criteria:
+        - Every scheduled evaluator command must write one evaluation_summary.json under the peer-owned output dir.
+

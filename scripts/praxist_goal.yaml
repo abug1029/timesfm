@@ -1,0 +1,17 @@
+goal:
+  success_condition:
+    - "len(symbols_hit) >= 1"
+    - "min(pass_variant_pf_ratios) > 1.05"
+    - "len(families_hit) >= 1"
+  budgets:
+    max_cycles: 3
+    cpu_hours: 12
+    token_budget_m: 40
+    deadline: "2026-09-30"
+  cadence:
+    survivors_per_cycle: 2
+    aligned_max_points: 400
+    run_budget_hours: 2.0
+    quota_window_hours: 5.0
+    quota_margin_min: 30
+    # slow_loop_window 已废弃: harvest 后立即慢环, 抽干后才下一轮快环

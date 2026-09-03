@@ -1,0 +1,482 @@
+# 单协变量穷举回测 实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 对 10 个协变量 × 20 品种进行单独测试 (111 次), 确定每个协变量的独立预测价值.
+
+**Architecture:** 每个协变量在所有品种上单独运行完整 396pt walk-forward 回测 (`monthly_backtest.py --combo "<单协变量>"`), 与已固化方案的 baseline 对比 PF/EV/MaxDD. 分 3 批次串行执行, 每批次 37 次回测 (~9h). 遵循 long-task-sop: nohup + JSONL 进度 + Highlander.
+
+**Tech Stack:** Python + TimesFM 2.5 (CPU), Git Bash, monthly_backtest.py
+
+**Spec:** 本轮分析结论 (2026-08-18 单协变量覆盖分析)
+
+## Global Constraints
+
+- **完整回测**: 必须 396pt walk-forward, 禁止 3pt/7pt scan (2026-08-03 用户指令)
+- **编码**: 所有脚本 `export PYTHONIOENCODING=utf-8`
+- **Shell**: Git Bash only (不混用 PowerShell)
+- **SOP**: 长时任务遵循 `docs/long-task-sop.md` (nohup + JSONL + Highlander)
+- **审批**: 启动回测前须通知用户并获批准 (2026-08-05 用户指令)
+- **路径**: FM_ROOT = `D:/FlyBuddy/FM_a`
+
+## 当前单协变量覆盖矩阵
+
+| 协变量 | 已单独测试品种 | 未测试品种 | 空白数 | 被固化方案使用次数 |
+|:-------|:-------------|:----------|:-----:|:----------------:|
+| ha_body | CJ FG FU LH SP | SS UR MA AO SR JD RB EG BU CF I JM | 15 | 10 |
+| calendar_cyclical | AO SR | 其余 18 品种 | 18 | 5 |
+| rsi_state | — | 全部 20 品种 | 20 | 3 |
+| oi | — | 全部 20 品种 | 20 | 3 |
+| reversal_shadow | SS | 其余 19 品种 | 19 | 2 |
+| hourly_slope | AO | 其余 19 品种 | 19 | 2 |
+| ao_accel | — | 全部 20 品种 | 20 | 1 |
+| bb_squeeze | — | 全部 20 品种 | 20 | 0 |
+| vor | — | 全部 20 品种 | 20 | 0 |
+| sar_dist | SR | — | **已判死刑, 跳过** | 0 |
+
+**总计: 111 次新测试** (sar_dist 已排除, ccl/basis_momentum 本轮不测)
+
+## 裁决标准 (统一 v2)
+
+| 判定 | 条件 |
+|:----:|:-----|
+| GREEN-EV | PF 相对 baseline ≥+10% AND 绝对 PF≥1.0 AND EV>0 |
+| GREEN-MAXDD | MaxDD 绝对改善 ≥15% AND PF 不退化 >5% AND EV≥baseline×0.98 |
+| PASS | DirAcc 提升 ≥3pp AND PF≥0.95 (参考, 不固化) |
+| FAIL | 不满足上述任一条件 |
+
+**关键输出**: 每个品种 × 单协变量 → PF / EV / MaxDD → 判定
+
+---
+
+### Task 1: CLI 验证 — 单协变量 --combo 冒烟测试
+
+**Files:**
+- 无新建文件
+- 验证: `scripts/monthly_backtest.py --combo` 对单协变量的支持
+
+**Interfaces:**
+- 输入: `--combo "calendar_cyclical"` (单协变量, 无逗号)
+- 预期输出: 回测正常运行, 日志显示 `[cov=calendar_cyclical]`
+
+- [ ] **Step 1: 确认 --combo 单值解析**
+
+验证 `monthly_backtest.py` 第 628-635 行:
+```bash
+cd D:/FlyBuddy/FM_a
+source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+# 检查 --combo 解析逻辑
+grep -n 'combo' scripts/monthly_backtest.py | head -20
+```
+预期: 看到 `effective_combo = cov_combo` 和逗号分割逻辑. 单值 "calendar_cyclical" 应产生 `["calendar_cyclical"]`.
+
+- [ ] **Step 2: 运行单次冒烟测试 (SS, calendar_cyclical)**
+
+```bash
+cd D:/FlyBuddy/FM_a
+source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+python scripts/monthly_backtest.py ss --combo "calendar_cyclical" 2>&1 | tail -20
+```
+预期: 输出包含 `396pts DirAcc=...% WR=...%` 和 `[cov=calendar_cyclical]`.
+
+- [ ] **Step 3: 记录冒烟测试指标**
+
+将 SS calendar_cyclical 的 PF / EV / MaxDD 记录下来, 作为后续对比参考.
+若冒烟失败, 停止并报告 CLI 不兼容单协变量.
+
+---
+
+### Task 2: 创建批次 F1 脚本 — calendar_cyclical × 18 + rsi_state × 20 = 38 tests
+
+**Files:**
+- Create: `scripts/batch_f1_single_cov.sh`
+- Create: `reports/data_ops/batch_f1_progress.jsonl` (运行时生成)
+- Create: `reports/data_ops/batch_f1.log` (运行时生成)
+
+**Interfaces:**
+- 输入: 品种列表 + 协变量组合 (硬编码在脚本中)
+- 输出: JSONL 进度文件 + full log, 供 Task 5 汇总
+
+- [ ] **Step 1: 编写 batch_f1_single_cov.sh**
+
+```bash
+#!/bin/bash
+# 批次 F1 — 单协变量穷举: calendar_cyclical × 18 + rsi_state × 20 = 38 tests
+set -euo pipefail
+export PYTHONIOENCODING=utf-8
+export PYTHONWARNINGS=ignore
+
+cd D:/FlyBuddy/FM_a
+source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+
+JSONL="reports/data_ops/batch_f1_progress.jsonl"
+LOG="reports/data_ops/batch_f1.log"
+: > "$LOG"
+
+run_one() {
+  local sym="$1" combo="$2" label="$3"
+  if [ -f "$JSONL" ] && grep -q "\"label\": \"$label\"" "$JSONL" 2>/dev/null; then
+    echo "[SKIP] $label already done" | tee -a "$LOG"
+    return 0
+  fi
+  echo "[START] $label: $sym --combo '$combo'" | tee -a "$LOG"
+  if python scripts/monthly_backtest.py "$sym" --combo "$combo" >> "$LOG" 2>&1; then
+    metric=$(grep -oE '[0-9]+pts DirAcc=.*WR=[0-9]+' "$LOG" | tail -1 || echo "unknown")
+    echo "{\"label\": \"$label\", \"symbol\": \"$sym\", \"combo\": \"$combo\", \"metric\": \"$metric\"}" >> "$JSONL"
+    echo "[DONE] $label: $metric" | tee -a "$LOG"
+  else
+    local rc=$?
+    echo "[FAIL] $label exit=$rc" | tee -a "$LOG"
+  fi
+  sleep 8
+}
+
+echo "=== batch_f1 START $(date -Iseconds) ===" >> "$LOG"
+
+# calendar_cyclical × 18 品种 (AO/SR 已有)
+for sym in ss cj fg fu lh ma rb eg bu cf i jm jd ao sp ta ur sh; do
+  run_one "$sym" "calendar_cyclical" "F1-cal-$sym"
+done
+
+# rsi_state × 20 品种 (从未单独测试)
+for sym in ss sr cj fg fu lh ma rb eg bu cf i jm jd ao sp ta ur sh; do
+  run_one "$sym" "rsi_state" "F1-rsi-$sym"
+done
+
+echo "=== batch_f1 DONE $(date -Iseconds) ===" | tee -a "$LOG"
+```
+
+- [ ] **Step 2: 验证脚本语法**
+
+```bash
+cd D:/FlyBuddy/FM_a
+bash -n scripts/batch_f1_single_cov.sh && echo "syntax OK"
+```
+预期: `syntax OK`
+
+- [ ] **Step 3: 数据新鲜度预检**
+
+```bash
+cd D:/FlyBuddy/FM_a
+source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+python -c "
+import sqlite3, os
+syms = 'ss sr cj fg fu lh ma rb eg bu cf i jm jd ao sp ta ur sh'.split()
+stale = []
+for s in syms:
+    db = f'db/futures_{s}.db'
+    if not os.path.exists(db):
+        stale.append((s, 'NO_DB'))
+        continue
+    con = sqlite3.connect(db)
+    r = con.execute('SELECT MAX(dt) FROM kline_1d').fetchone()
+    r2 = con.execute('SELECT MAX(dt) FROM kline_1h').fetchone()
+    con.close()
+    if not r or not r[0]:
+        stale.append((s, 'NO_1D'))
+    elif not r2 or not r2[0]:
+        stale.append((s, 'NO_1H'))
+if stale:
+    for s, reason in stale:
+        print(f'STALE: {s} — {reason}')
+else:
+    print(f'ALL {len(syms)} varieties OK (1d + 1h data present)')
+"
+```
+预期: 全部 OK. 如有 STALE, 先采集数据再继续.
+
+- [ ] **Step 4: 提交脚本**
+
+```bash
+git add scripts/batch_f1_single_cov.sh
+git commit -m "feat: batch_f1 single covariate exhaustive (calendar×18 + rsi_state×20)"
+```
+
+---
+
+### Task 3: 创建批次 F2 脚本 — oi × 20 + reversal_shadow × 19 = 39 tests
+
+**Files:**
+- Create: `scripts/batch_f2_single_cov.sh`
+
+**Interfaces:**
+- 同 Task 2 模式
+
+- [ ] **Step 1: 编写 batch_f2_single_cov.sh**
+
+```bash
+#!/bin/bash
+# 批次 F2 — 单协变量穷举: oi × 20 + reversal_shadow × 19 = 39 tests
+set -euo pipefail
+export PYTHONIOENCODING=utf-8
+export PYTHONWARNINGS=ignore
+
+cd D:/FlyBuddy/FM_a
+source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+
+JSONL="reports/data_ops/batch_f2_progress.jsonl"
+LOG="reports/data_ops/batch_f2.log"
+: > "$LOG"
+
+run_one() {
+  local sym="$1" combo="$2" label="$3"
+  if [ -f "$JSONL" ] && grep -q "\"label\": \"$label\"" "$JSONL" 2>/dev/null; then
+    echo "[SKIP] $label already done" | tee -a "$LOG"
+    return 0
+  fi
+  echo "[START] $label: $sym --combo '$combo'" | tee -a "$LOG"
+  if python scripts/monthly_backtest.py "$sym" --combo "$combo" >> "$LOG" 2>&1; then
+    metric=$(grep -oE '[0-9]+pts DirAcc=.*WR=[0-9]+' "$LOG" | tail -1 || echo "unknown")
+    echo "{\"label\": \"$label\", \"symbol\": \"$sym\", \"combo\": \"$combo\", \"metric\": \"$metric\"}" >> "$JSONL"
+    echo "[DONE] $label: $metric" | tee -a "$LOG"
+  else
+    local rc=$?
+    echo "[FAIL] $label exit=$rc" | tee -a "$LOG"
+  fi
+  sleep 8
+}
+
+echo "=== batch_f2 START $(date -Iseconds) ===" >> "$LOG"
+
+# oi × 20 品种 (从未单独测试)
+for sym in ss sr cj fg fu lh ma rb eg bu cf i jm jd ao sp ta ur sh; do
+  run_one "$sym" "oi" "F2-oi-$sym"
+done
+
+# reversal_shadow × 19 品种 (SS 已有)
+for sym in sr cj fg fu lh ma rb eg bu cf i jm jd ao sp ta ur sh; do
+  run_one "$sym" "reversal_shadow" "F2-rev-$sym"
+done
+
+echo "=== batch_f2 DONE $(date -Iseconds) ===" | tee -a "$LOG"
+```
+
+- [ ] **Step 2: 验证并提交**
+
+```bash
+bash -n scripts/batch_f2_single_cov.sh && echo "syntax OK"
+git add scripts/batch_f2_single_cov.sh
+git commit -m "feat: batch_f2 single covariate exhaustive (oi×20 + reversal_shadow×19)"
+```
+
+---
+
+### Task 4: 创建批次 F3 脚本 — hourly_slope × 19 + ha_body × 15 = 34 tests
+
+**Files:**
+- Create: `scripts/batch_f3_single_cov.sh`
+
+- [ ] **Step 1: 编写 batch_f3_single_cov.sh**
+
+```bash
+#!/bin/bash
+# 批次 F3 — 单协变量穷举: hourly_slope × 19 + ha_body × 15 = 34 tests
+set -euo pipefail
+export PYTHONIOENCODING=utf-8
+export PYTHONWARNINGS=ignore
+
+cd D:/FlyBuddy/FM_a
+source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+
+JSONL="reports/data_ops/batch_f3_progress.jsonl"
+LOG="reports/data_ops/batch_f3.log"
+: > "$LOG"
+
+run_one() {
+  local sym="$1" combo="$2" label="$3"
+  if [ -f "$JSONL" ] && grep -q "\"label\": \"$label\"" "$JSONL" 2>/dev/null; then
+    echo "[SKIP] $label already done" | tee -a "$LOG"
+    return 0
+  fi
+  echo "[START] $label: $sym --combo '$combo'" | tee -a "$LOG"
+  if python scripts/monthly_backtest.py "$sym" --combo "$combo" >> "$LOG" 2>&1; then
+    metric=$(grep -oE '[0-9]+pts DirAcc=.*WR=[0-9]+' "$LOG" | tail -1 || echo "unknown")
+    echo "{\"label\": \"$label\", \"symbol\": \"$sym\", \"combo\": \"$combo\", \"metric\": \"$metric\"}" >> "$JSONL"
+    echo "[DONE] $label: $metric" | tee -a "$LOG"
+  else
+    local rc=$?
+    echo "[FAIL] $label exit=$rc" | tee -a "$LOG"
+  fi
+  sleep 8
+}
+
+echo "=== batch_f3 START $(date -Iseconds) ===" >> "$LOG"
+
+# hourly_slope × 19 品种 (AO 已有)
+for sym in ss sr cj fg fu lh ma rb eg bu cf i jm jd sp ta ur sh; do
+  run_one "$sym" "hourly_slope" "F3-hs-$sym"
+done
+
+# ha_body × 15 品种 (CJ/FG/FU/LH/SP 已有)
+for sym in ss sr ma rb eg bu cf i jm jd ao ta ur sh; do
+  run_one "$sym" "ha_body" "F3-hb-$sym"
+done
+
+echo "=== batch_f3 DONE $(date -Iseconds) ===" | tee -a "$LOG"
+```
+
+- [ ] **Step 2: 验证并提交**
+
+```bash
+bash -n scripts/batch_f3_single_cov.sh && echo "syntax OK"
+git add scripts/batch_f3_single_cov.sh
+git commit -m "feat: batch_f3 single covariate exhaustive (hourly_slope×19 + ha_body×15)"
+```
+
+---
+
+### Task 5: 执行 F1 批次 — 38 tests, ~9.5h CPU
+
+**Files:**
+- 使用: `scripts/batch_f1_single_cov.sh` (Task 2 创建)
+- 生成: `reports/data_ops/batch_f1_progress.jsonl`, `reports/data_ops/batch_f1.log`
+
+**Interfaces:**
+- 输出: JSONL 进度 + full log, 供 Task 8 汇总
+
+- [ ] **Step 1: 通知用户并获批准**
+
+向用户确认:
+- 38 次回测, 预计 ~9.5h CPU
+- 将使用 nohup 后台执行
+- 可中途通过 `_kill_cov_gap.ps1` 终止
+
+- [ ] **Step 2: Highlander 检查**
+
+```bash
+# 确认没有已有回测在运行
+ps aux | grep monthly_backtest | grep -v grep || echo "no existing backtest running"
+```
+
+- [ ] **Step 3: 启动 nohup 执行**
+
+```bash
+cd D:/FlyBuddy/FM_a
+export PYTHONIOENCODING=utf-8
+nohup bash scripts/batch_f1_single_cov.sh > reports/data_ops/batch_f1_nohup.out 2>&1 &
+echo $! > reports/data_ops/batch_f1.pid
+```
+
+- [ ] **Step 4: 定期巡检**
+
+```bash
+# 检查进度
+wc -l reports/data_ops/batch_f1_progress.jsonl  # 应达 38 行
+tail -5 reports/data_ops/batch_f1.log            # 最新状态
+```
+
+- [ ] **Step 5: 确认全部完成**
+
+```bash
+wc -l reports/data_ops/batch_f1_progress.jsonl
+# 预期: 38 (calendar×18 + rsi_state×20)
+tail -3 reports/data_ops/batch_f1.log
+# 预期: "=== batch_f1 DONE ... ==="
+```
+
+---
+
+### Task 6: 执行 F2 批次 — 39 tests, ~10h CPU
+
+**Files:**
+- 使用: `scripts/batch_f2_single_cov.sh` (Task 3 创建)
+- 生成: `reports/data_ops/batch_f2_progress.jsonl`, `reports/data_ops/batch_f2.log`
+
+- [ ] **Step 1: 通知用户并获批准**
+- [ ] **Step 2: Highlander 检查**
+- [ ] **Step 3: 启动 nohup**
+- [ ] **Step 4: 定期巡检 (应达 39 行)**
+- [ ] **Step 5: 确认完成**
+
+---
+
+### Task 7: 执行 F3 批次 — 34 tests, ~8.5h CPU
+
+**Files:**
+- 使用: `scripts/batch_f3_single_cov.sh` (Task 4 创建)
+- 生成: `reports/data_ops/batch_f3_progress.jsonl`, `reports/data_ops/batch_f3.log`
+
+- [ ] **Step 1: 通知用户并获批准**
+- [ ] **Step 2: Highlander 检查**
+- [ ] **Step 3: 启动 nohup**
+- [ ] **Step 4: 定期巡检 (应达 34 行)**
+- [ ] **Step 5: 确认完成**
+
+---
+
+### Task 8: 汇总结果 + 裁决报告 + Registry 更新
+
+**Files:**
+- 输入: 3 个 JSONL 进度文件 + 3 个 full log
+- Create: `reports/research/20260818_single_cov_exhaustive_verdict.md`
+- Modify: `docs/backtest_registry.md` (追加 111 条记录)
+
+- [ ] **Step 1: 从 3 个 JSONL + log 提取全部 111 条指标**
+
+解析每个 log 中的最终结果行, 提取:
+- 品种, 单协变量, n (pts), DirAcc, WR, PF, EV, MaxDD
+
+- [ ] **Step 2: 对比已固化方案 baseline**
+
+从 backtest_registry.md 提取每个品种的 baseline PF/EV/MaxDD, 计算相对变化.
+
+- [ ] **Step 3: 按协变量聚合分析**
+
+对每个协变量:
+- 20 品种中有多少 PF≥1.0 (独立可用)?
+- 有多少 EV>0?
+- 最高/最低 PF 品种?
+- 是否发现新品种的最优单协变量?
+
+- [ ] **Step 4: 撰写裁决报告**
+
+报告结构:
+1. 全量结果表 (111 行)
+2. 按协变量聚合统计
+3. 与已固化方案对比
+4. 关键发现 (哪些单协变量意外好/差)
+5. 固化建议 (是否需要调整已固化方案)
+6. 协变量独立价值排名
+
+- [ ] **Step 5: 更新 backtest_registry.md**
+
+追加 111 条新记录, 按品种分节, 阶段标记为 "Phase 11 (单协变量穷举)".
+
+- [ ] **Step 6: 提交最终报告**
+
+```bash
+git add reports/research/20260818_single_cov_exhaustive_verdict.md
+git add docs/backtest_registry.md
+git commit -m "feat: Phase 11 单协变量穷举裁决 (111 tests, 10 covariates)"
+```
+
+---
+
+## 执行时间线
+
+| 阶段 | 内容 | 测试数 | CPU 时间 | 状态 |
+|:----:|:-----|:-----:|:-------:|:----:|
+| Task 1 | CLI 冒烟 | 1 | ~15min | 待执行 |
+| Task 2-4 | 脚本创建 | — | ~10min | 待执行 |
+| Task 5 | F1: calendar+rsi_state | 38 | ~9.5h | 待执行 |
+| Task 6 | F2: oi+reversal_shadow | 39 | ~10h | 待执行 |
+| Task 7 | F3: hourly_slope+ha_body | 34 | ~8.5h | 待执行 |
+| Task 8 | 裁决报告 | — | ~30min | 待执行 |
+| **总计** | | **112** | **~28.5h** | |
+
+## 跳过的测试
+
+| 协变量 | 原因 |
+|:-------|:-----|
+| sar_dist | 已在协变量空白补测中全面 FAIL (6 次 0 PASS), 已判死刑 |
+| bb_squeeze | Phase 9 组合测试全 FAIL (AO/JD/MA), 单独预期也差 |
+| vor | 同上, Phase 9 全 FAIL |
+| basis_momentum | 仅部分品种可用 (需 basis 数据), 留待专项 |
+| ccl / ccl_pct | 已废弃 |
+| pca_momentum | 已废弃 |
+
+## 风险
+
+1. **数据过时**: 如某品种数据不新鲜, 回测可能失败. 需 Step 3 预检覆盖.
+2. **CPU 耗时**: 28h CPU 时间, 需分 3 晚运行. 每批次需用户确认启动.
+3. **磁盘空间**: 111 次 WF 回测, 每次 ~5-10MB log, 共 ~1GB. 可接受.

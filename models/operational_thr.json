@@ -1,0 +1,7 @@
+{
+  "_comment": "业务操作阈值 (Operational Thresholds)。与 IS calibrated_thr 分离。CLI --thr/--thr-chem/--thr-agri 优先于此文件。",
+  "_source": "R1 thr grid + human approval 2026-07-25",
+  "energy_chem": 0.65,
+  "agri": 0.45,
+  "black_metals": 0.55
+}

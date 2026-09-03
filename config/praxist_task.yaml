@@ -1,0 +1,26 @@
+# PRAXIST 任务包契约 (P0a, 2026-09-01) — 预注册: 评估口径先于任何实验锁定
+# 依据: docs/praxist_integration_plan.md §2; B1/Phase13/15 教训 (诊断 PF 不作数)
+objective:
+  primary: ev_after_slippage          # 主指标: 扣滑点 EV
+  secondary: profit_factor
+  green_requires_full_walkforward: true
+
+constraints:
+  min_samples: 350
+  min_ic: 0.05
+  multiple_comparison: bonferroni
+  maxdd_caliber: cumprod_clamp        # cascade/evaluation_metrics.py 2026-08-21 修复后口径
+
+baseline_provenance: reports/backtest_registry.md
+
+evidence_maturity:
+  - stage: diagnostic                 # 诊断级: 短窗口, 只产 incubator 证据
+    gate: []
+  - stage: full_walkforward           # 只有全量 WF 过硬门才可成为 Gem 候选
+    gate: ["n>=350", "ic>=0.05", "ev>0"]
+
+generation_close_policy: sealed       # 代际关闭后晚到结果不重写裁决
+
+write_paths:                          # peers 唯一可写区 (红线外不得触碰)
+  - scripts/praxist_ws
+  - reports/praxist

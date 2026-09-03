@@ -1,0 +1,339 @@
+"""
+批量协变量优化测试脚本 (v3 — 独立进程 + 24h MAE 多点评估)
+
+对每个品种测试所有可用协变量，在最近 N 个已知实际值的评估点上
+计算 24h 全段 MAE，按平均 MAE 排序找最优配置。
+
+v3 改进: 每品种独立子进程运行，避免长时间单进程导致的状态污染/内存泄漏。
+v2 缺陷: 单进程跑 19 品种时，后面的品种出现 MAE=999% 的伪失败。
+v1 缺陷: 只看 T+1 bias，高频噪音协变量占优，宏观趋势协变量被淘汰。
+"""
+
+import sys
+sys.path.insert(0, '.')
+
+import argparse
+import json
+import os
+import subprocess
+import tempfile
+import numpy as np
+from pathlib import Path
+
+# 需要测试的品种 (全部 20 品种)
+DEFAULT_TEST_SYMBOLS = [
+    'ss', 'rb', 'fu', 'bu', 'ao', 'sp',       # 上期所
+    'i', 'jm', 'm', 'p', 'eg', 'jd', 'lh',     # 大商所
+    'cf', 'sr', 'ta', 'ma', 'fg', 'ur', 'cj',  # 郑商所
+]
+
+# 可用协变量类型 (16 种单协变量)
+# 2026-07-28: 补全 quant-trading 5 协变量 (ha_body/reversal_shadow/bb_squeeze/ao_accel/sar_dist)
+# 之前扫描脚本缺这 5 种，导致 P1/P2 候选协变量根本测不到
+COVARIATE_TYPES = [
+    # ── 老协变量 (11 种) ──
+    'ccl', 'oi', 'rsi_slope', 'hourly_slope', 'rsi_state',
+    'pca_momentum', 'hurst', 'gated_slope', 'regime_gated',
+    'basis_momentum', 'vor',
+    # ── quant-trading 协变量 (5 种, 2026-07-18 引入) ──
+    'ha_body',           # Heikin-Ashi 平滑方向动量 (SP/JM/RB/BU/P/CF/LH/TA)
+    'reversal_shadow',   # K线反转影线压力 (SS/FG)
+    'reversal_shadow_gated_02',  # Phase 5: 影线门控 0.2 ATR
+    'reversal_shadow_gated_03',  # Phase 5: 影线门控 0.3 ATR
+    'reversal_shadow_gated_05',  # Phase 5: 影线门控 0.5 ATR
+    'bb_squeeze',        # 布林带收缩→扩张突破 (FU/EG/CJ)
+    'ao_accel',          # Awesome Oscillator 加速度 (UR)
+    'sar_dist',          # Parabolic SAR 趋势距离
+    # ── Phase 4 日历周期 (2026-07-29) ──
+    'calendar_cyclical',
+    # ── Phase 8 跨品种 crack spread (2026-07-31) ──
+    'crack_spread_slope', 'crack_spread_level', 'crack_spread_zscore',
+]
+
+# 组合模式 (7 种 + Phase 10 新增 6 种 = 13 种)
+# 2026-07-28: 补全现有固化品种使用的 combo (I/FU/SR) + P1 候选 combo (ha_body+oi)
+# 2026-08-03: Phase 10 JD/I/P 精细 scan 新增 6 组合 (原 9 候选去重后 6 个, ['ha_body','oi'] 已存在)
+COMBO_MODES = [
+    # ── 老组合 (4 种) ──
+    ['oi', 'hurst'],
+    ['rsi_state', 'oi'],
+    ['hourly_slope', 'oi'],
+    ['pca_momentum', 'hurst'],
+    # ── 新组合 (3 种, 复刻已固化方案 + P1 候选) ──
+    ['ha_body', 'oi'],              # P1 候选: MA/JD 复刻 I/RB 资金流补充
+    ['rsi_state', 'oi', 'ha_body'],     # 复刻 I 铁矿石现有固化 combo
+    ['rsi_state', 'oi', 'bb_squeeze'],  # 复刻 FU 燃料油现有固化 combo
+    # ── Phase 10 JD/I/P 精细 scan (6 种, 2026-08-03) ──
+    ['rsi_state', 'calendar_cyclical'],          # JD-A: 蛋鸡季节性 (去 oi 加 calendar)
+    ['rsi_state', 'oi', 'reversal_shadow'],      # JD-B: 正交三角
+    ['calendar_cyclical', 'oi'],                 # JD-C: 季节+资金流 (弃 rsi)
+    ['ha_body', 'calendar_cyclical'],            # I-A / P-C: 黑色系/农产品季节性
+    ['ha_body', 'bb_squeeze'],                   # I-C: 波动率门控 (铁矿波动大)
+    ['ha_body', 'reversal_shadow', 'oi'],        # P-A: 动量+影线+资金流
+]
+
+# 评估参数
+NUM_EVAL_POINTS = 7   # 评估点数 (7pt 更可靠，3pt 过拟合风险高)
+EVAL_SPACING = 24     # 评估点间距 (bars), 与 horizon 等长确保独立
+HORIZON = 24          # 预测时域
+
+
+def significance_label(baseline_mae: float, best_mae: float, threshold: float = 0.03) -> str:
+    """裁决标签: best 相对 baseline 的 MAE 下降率是否超阈值 (默认 3%)。
+
+    裁决仍按 MAE 排序 (best = 最小 MAE); 本函数仅在输出加标签,不改变 sort。
+    下降率 = (baseline_mae - best_mae) / baseline_mae (防除零, baseline<=0 直接判 '无显著改善')。
+    """
+    if baseline_mae is None or baseline_mae <= 0:
+        return f"无显著改善(<{int(threshold*100)}%)"
+    rel_drop = (baseline_mae - best_mae) / baseline_mae
+    if rel_drop >= threshold:
+        return "显著改善"
+    return f"无显著改善(<{int(threshold*100)}%)"
+
+
+def get_eval_points(symbol: str, num_points: int = NUM_EVAL_POINTS,
+                    spacing: int = EVAL_SPACING, horizon: int = HORIZON):
+    """获取最近 N 个已知实际值的评估点
+
+    每个评估点需要 context + horizon 的 1H 数据，以及 horizon 根未来实际价格。
+    从最新数据往前取，间距 = spacing (确保独立性)。
+
+    Returns:
+        list of (eval_idx, actual_24h, base_price)
+        - eval_idx: 评估点在 1H 数组中的索引
+        - actual_24h: 未来 24h 实际价格数组 shape=(horizon,)
+        - base_price: 评估点价格 (用于归一化)
+    """
+    from data.data_store import DataStore
+    store = DataStore(symbol)
+    all_1h = store.get_main_contract_1h(limit=99999)
+    store.close()
+
+    if all_1h.empty:
+        return [], None
+
+    total = len(all_1h)
+    # 从倒数第 (horizon + spacing * k) 处取评估点
+    # 确保每个评估点后面都有至少 horizon 根 bar 用于比较
+    eval_points = []
+    for k in range(num_points):
+        idx = total - horizon - spacing * k - 1
+        if idx < 480:  # context 最少 480
+            break
+        base_price = float(all_1h['close_price'].iloc[idx])
+        actual_24h = all_1h['close_price'].iloc[idx+1:idx+1+horizon].values.astype(np.float64)
+        if len(actual_24h) == horizon:
+            eval_points.append((idx, actual_24h, base_price))
+
+    return eval_points, all_1h
+
+
+def scan_single_variety(symbol: str, num_points: int = NUM_EVAL_POINTS):
+    """扫描单品种的所有协变量配置 (在独立进程中运行)"""
+    from data.data_store import DataStore
+    from cascade.daily_model import DailyModel
+    from cascade.hourly_model import HourlyModel
+
+    print(f'\n--- {symbol.upper()} ---')
+
+    # 获取评估点
+    eval_points, _ = get_eval_points(symbol, num_points=num_points)
+    if not eval_points:
+        print(f'  SKIP: 数据不足 (需 480+{HORIZON}+{num_points*EVAL_SPACING} bars)')
+        return None
+
+    n_pts = len(eval_points)
+    print(f'  评估点: {n_pts} 个')
+    for k, (ei, _, bp) in enumerate(eval_points):
+        print(f'    #{k+1}: idx={ei}, base={bp:.0f}')
+
+    # 加载模型 (每品种独立加载，避免状态污染)
+    daily_model = DailyModel()
+    hourly_model = HourlyModel(shared_model=daily_model.model)
+
+    # 构建所有待测协变量配置
+    configs = []
+    for cov_type in COVARIATE_TYPES:
+        configs.append(('single', cov_type, cov_type))
+    for combo in COMBO_MODES:
+        name = '+'.join(combo)
+        configs.append(('combo', combo, name))
+
+    # 对每种配置，在 N 个评估点上计算 24h MAE
+    results = []
+    for mode, cov_spec, cov_name in configs:
+        mae_list = []
+        dir_hits = 0
+        for eval_idx, actual_24h, base_price in eval_points:
+            try:
+                with DataStore(symbol) as store:
+                    # 标记为回测模式，跳过时效性检查 (评估点是历史的，不能用当前墙钟时间判断)
+                    store.cutoff_date = "9999-12-31"
+                    daily_result = daily_model.predict(symbol, store)
+                    if mode == 'single':
+                        hr = hourly_model.predict(
+                            symbol, store, daily_result, horizon=HORIZON,
+                            visualize=False, covariate_type=cov_spec,
+                            verbose=False
+                        )
+                    else:
+                        hr = hourly_model.predict(
+                            symbol, store, daily_result, horizon=HORIZON,
+                            visualize=False, covariate_types=cov_spec,
+                            verbose=False
+                        )
+                    pred = hr.point_forecast
+                    # 24h MAE (归一化到 %)
+                    mae = float(np.mean(np.abs(pred - actual_24h)) / base_price * 100)
+                    mae_list.append(mae)
+                    # T+24 方向准确率
+                    pred_dir = np.sign(pred[-1] - base_price)
+                    real_dir = np.sign(actual_24h[-1] - base_price)
+                    if pred_dir == real_dir:
+                        dir_hits += 1
+            except Exception as e:
+                mae_list.append(999.0)
+                print(f'  [WARN] {cov_name} at idx={eval_idx}: {e}')
+
+        if mae_list:
+            avg_mae = float(np.mean(mae_list))
+            dir_acc = dir_hits / n_pts
+        else:
+            avg_mae = 999.0
+            dir_acc = 0.0
+
+        results.append((cov_name, avg_mae, dir_acc, n_pts))
+
+    # 按平均 24h MAE 排序 (裁决锚点 — 不改 sort 逻辑)
+    results.sort(key=lambda x: x[1])
+    best = results[0]
+    second = results[1] if len(results) > 1 else ('N/A', 999, 0, 0)
+
+    # 显著性门槛: 与当前固化方案的 MAE 相对下降率 (3% 才算显著改善)
+    baseline_mae = None
+    try:
+        from config.prediction_scheme import get_scheme
+        _scheme = get_scheme(symbol)
+        if _scheme is not None:
+            _cov = _scheme.covariate_type
+            for _name, _mae, _, _ in results:
+                if _name == _cov:
+                    baseline_mae = _mae
+                    break
+    except Exception:
+        baseline_mae = None  # 无固化方案 → 不判定 (退化)
+    label = significance_label(baseline_mae, best[1], 0.03) if baseline_mae is not None else "无固化基线"
+
+    print(f'  最优: {best[0]:20s}  MAE={best[1]:.2f}%  DirAcc(展示)={best[2]:.0%}  [{label}]')
+    print('    * 裁决锚点: 24h MAE 相对下降率 vs 当前固化方案 (DirAcc 仅展示,不参与裁决)')
+
+    # 打印 TOP 5
+    print(f'  TOP 5:')
+    for i, (name, avg_mae, dir_acc, _) in enumerate(results[:5]):
+        print(f'    #{i+1} {name:20s}: MAE={avg_mae:.2f}%  DirAcc(展示)={dir_acc:.0%}')
+
+    return {
+        'results': results,
+        'best': best,
+        'n_eval_points': n_pts,
+        'baseline_mae': baseline_mae,
+        'label': label,
+    }
+
+
+def run_isolated(symbol: str, num_points: int, result_file: str):
+    """在独立子进程中运行单品种扫描"""
+    # 路径转正斜杠 + 转义单引号，避免 Windows 路径和特殊字符注入
+    safe_path = result_file.replace('\\', '/').replace("'", "\\'")
+    safe_symbol = repr(symbol)
+    script = f"""
+import sys, json
+sys.path.insert(0, '.')
+from scripts.covariate_scan import scan_single_variety
+result = scan_single_variety({safe_symbol}, num_points={num_points})
+if result is not None:
+    # Convert tuples to lists for JSON serialization
+    result['results'] = [list(r) for r in result['results']]
+    result['best'] = list(result['best'])
+    with open('{safe_path}', 'w') as f:
+        json.dump(result, f)
+"""
+    try:
+        proc = subprocess.run(
+            [sys.executable, '-c', script],
+            capture_output=False,
+            timeout=1800,  # 30 min per variety (CJ/TA 数据加载慢)
+        )
+        return proc.returncode == 0
+    except subprocess.TimeoutExpired:
+        print(f'  TIMEOUT: {symbol.upper()} exceeded 600s')
+        return False
+
+
+def main():
+    parser = argparse.ArgumentParser(description='批量协变量优化测试 v3 (独立进程)')
+    parser.add_argument('symbols', nargs='*', help='品种代码 (默认: 所有品种)')
+    parser.add_argument('--points', type=int, default=NUM_EVAL_POINTS,
+                        help=f'评估点数 (默认: {NUM_EVAL_POINTS})')
+    args = parser.parse_args()
+
+    test_symbols = args.symbols if args.symbols else DEFAULT_TEST_SYMBOLS
+
+    print('=' * 80)
+    print('批量协变量优化测试 v3 — 独立进程 + 24h MAE 多点评估')
+    print(f'品种数: {len(test_symbols)}, 评估点数: {args.points}, '
+          f'间距: {EVAL_SPACING} bars, 时域: {HORIZON}h')
+    print('=' * 80)
+
+    all_results = {}
+    tmpdir = tempfile.mkdtemp(prefix='covscan_')
+
+    try:
+        for idx, symbol in enumerate(test_symbols):
+            print(f'\n[{idx+1}/{len(test_symbols)}] {symbol.upper()} (独立进程)')
+            result_file = os.path.join(tmpdir, f'{symbol}.json')
+
+            success = run_isolated(symbol, args.points, result_file)
+
+            if success and os.path.exists(result_file):
+                with open(result_file) as f:
+                    data = json.load(f)
+                # Convert lists back to tuples
+                data['results'] = [tuple(r) for r in data['results']]
+                data['best'] = tuple(data['best'])
+                all_results[symbol] = data
+            else:
+                print(f'  FAILED (exit code or no result file)')
+
+        # 汇总报告
+        print('\n' + '=' * 80)
+        print('[3/3] 汇总报告')
+        print('=' * 80)
+        print('  裁决锚点: 24h MAE 相对下降率 vs 当前固化方案 (DirAcc 仅展示,不参与裁决) | 阈值 3%')
+        print(f'\n{"品种":>4s} | {"最优协变量":>20s} | {"24h MAE":>8s} | {"DirAcc(展示)":>14s} | {"次优":>20s} | {"次优 MAE":>8s}')
+        print('-' * 100)
+
+        summary = []
+        for symbol in test_symbols:
+            if symbol not in all_results:
+                continue
+            r = all_results[symbol]
+            best = r['best']
+            second = r['results'][1] if len(r['results']) > 1 else ('N/A', 999, 0, 0)
+            lbl = r.get('label', '无固化基线')
+            print(f'{symbol.upper():>4s} | {best[0]:>20s} | {best[1]:>7.2f}% | {best[2]:>13.0%} | {second[0]:>20s} | {second[1]:>7.2f}%')
+            summary.append((symbol, best[0], best[1], best[2], lbl))
+
+        print('\n\n推荐配置更新 (按 24h MAE 最优):')
+        for symbol, cov, mae, da, lbl in summary:
+            print(f'  "{symbol}": covariate_type="{cov}",  # 24h MAE={mae:.2f}% DirAcc(展示)={da:.0%} [{lbl}]')
+    finally:
+        # 确保临时文件始终被清理
+        for f in os.listdir(tmpdir):
+            os.remove(os.path.join(tmpdir, f))
+        os.rmdir(tmpdir)
+
+
+if __name__ == '__main__':
+    main()

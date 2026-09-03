@@ -1,0 +1,809 @@
+# Phase 9 有毒品种专攻 (AO+JD) Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 为 AO(氧化铝) 和 JD(鸡蛋) 寻找替代 ha_body 的协变量配置，通过完整 walk-forward 回测 + v2 裁决确认最优配置。
+
+**Architecture:** 新建 runner 脚本 (`toxic_variety_runner.py`)，复用 `monthly_backtest.run_symbol_backtest` + `summarize` 做 396pt walk-forward，单模型加载，JSONL 断点续跑，结果追加。跑完后用 v2 verdict 逻辑裁决。
+
+**Tech Stack:** Python, TimesFM 2.5, numpy, torch, existing `cascade/` models + `scripts/monthly_backtest.py`
+
+## Global Constraints
+
+- 单模型加载，避免每候选重启（省 ~60s/候选）
+- JSONL 原子追加，断点续跑（按 (sym, label) 去重跳过）
+- `cov_override` 用于单协变量模式，`cov_combo` 用于组合模式
+- 回测参数：`clip_gap=None, cache_interval=10`
+- 路径：`os.chdir(FM_ROOT)`，`sys.path.insert(0, FM_ROOT)`
+- Windows UTF-8 stdout/stderr reconfigure
+- v2 裁决复用 `phase4d_parse_results.verdict()` 逻辑
+
+---
+
+### Task 1: 创建 toxic_variety_runner.py 运行器
+
+**Files:**
+- Create: `scripts/toxic_variety_runner.py`
+
+**Purpose:** AO+JD 候选回测队列运行器。单模型加载，顺序执行，JSONL 结果追加，断点续跑。
+
+**Interfaces:**
+- Imports: `scripts.monthly_backtest.run_symbol_backtest`, `scripts.monthly_backtest.summarize`
+- Imports: `cascade.daily_model.DailyModel`, `cascade.hourly_model.HourlyModel`
+- Outputs: `reports/toxic_variety_results.jsonl` (每行: {sym, label, mode, covs, ts, status, n, dir_acc, dir12_acc, mape, ev_ratio, profit_factor, max_dd, win_rate, decay, elapsed})
+- Log: `reports/toxic_variety.log`
+
+**CLI:**
+```
+python scripts/toxic_variety_runner.py              # 全跑
+python scripts/toxic_variety_runner.py --sym ao     # 仅 AO
+python scripts/toxic_variety_runner.py --sym jd     # 仅 JD
+python scripts/toxic_variety_runner.py --dry-run    # 仅打印作业清单
+```
+
+- [ ] **Step 1: 编写运行器脚本**
+
+```python
+#!/usr/bin/env python3
+"""
+toxic_variety_runner.py — AO 氧化铝 + JD 鸡蛋 有毒品种协变量替代验证
+
+单次加载 TimesFM, 顺序跑 baseline + 候选, 396pt walk-forward 回测,
+结果追加 JSONL, 断点续跑 (按 (sym,label) 去重)。
+
+用法:
+  python scripts/toxic_variety_runner.py
+  python scripts/toxic_variety_runner.py --sym ao
+  python scripts/toxic_variety_runner.py --sym jd
+  python scripts/toxic_variety_runner.py --dry-run
+"""
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import os
+import sys
+import time
+from datetime import datetime
+
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FM_ROOT = os.path.dirname(SCRIPT_DIR)
+sys.path.insert(0, FM_ROOT)
+os.chdir(FM_ROOT)
+
+import torch  # noqa: E402
+from scripts.monthly_backtest import run_symbol_backtest, summarize  # noqa: E402
+
+RESULTS_JSONL = os.path.join(FM_ROOT, "reports", "toxic_variety_results.jsonl")
+LOG_PATH = os.path.join(FM_ROOT, "reports", "toxic_variety.log")
+
+
+def _job(sym, label, mode, covs):
+    return {"sym": sym, "label": label, "mode": mode, "covs": covs}
+
+
+def build_jobs():
+    """返回按品种排序的作业清单。每品种 baseline 在前 (同窗口 A/B 基准)。"""
+    jobs = []
+
+    # ═══ AO 氧化铝 (current: hourly_slope, DirAcc 56.0%) ═══
+    s = "ao"
+    jobs += [
+        _job(s, "baseline", "baseline", None),                          # hourly_slope (scheme)
+        _job(s, "ha_body", "single", "ha_body"),                        # Phase 9 已失败 (对照)
+        _job(s, "ao_accel", "single", "ao_accel"),                      # 对 UR 有效 (70%)
+        _job(s, "vor", "single", "vor"),                                # 波动率比率
+        _job(s, "bb_squeeze", "single", "bb_squeeze"),                  # 布林带突破
+        _job(s, "reversal_shadow", "single", "reversal_shadow"),        # 影线反转
+        _job(s, "calendar_cyclical", "single", "calendar_cyclical"),    # 日历周期
+        _job(s, "hourly_slope+oi", "combo", ["hourly_slope", "oi"]),
+        _job(s, "hourly_slope+calendar", "combo", ["hourly_slope", "calendar_cyclical"]),
+        _job(s, "hourly_slope+reversal_shadow", "combo", ["hourly_slope", "reversal_shadow"]),
+    ]
+
+    # ═══ JD 鸡蛋 (current: rsi_state+oi, DirAcc 52.0%) ═══
+    s = "jd"
+    jobs += [
+        _job(s, "baseline", "baseline", None),                          # rsi_state+oi (scheme)
+        _job(s, "calendar_cyclical", "single", "calendar_cyclical"),    # 季节性
+        _job(s, "gated_slope", "single", "gated_slope"),                # Phase 4d-2 旧配置
+        _job(s, "calendar_cyclical+gated_slope", "combo", ["calendar_cyclical", "gated_slope"]),
+        _job(s, "ao_accel", "single", "ao_accel"),
+        _job(s, "bb_squeeze", "single", "bb_squeeze"),
+        _job(s, "reversal_shadow", "single", "reversal_shadow"),
+        _job(s, "hourly_slope+oi", "combo", ["hourly_slope", "oi"]),
+        _job(s, "rsi_state+oi+calendar", "combo", ["rsi_state", "oi", "calendar_cyclical"]),
+    ]
+
+    return jobs
+
+
+def load_completed():
+    done = set()
+    if not os.path.exists(RESULTS_JSONL):
+        return done
+    with open(RESULTS_JSONL, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                if rec.get("status") == "OK":
+                    done.add((rec["sym"], rec["label"]))
+            except (json.JSONDecodeError, KeyError):
+                continue
+    return done
+
+
+def append_result(rec):
+    os.makedirs(os.path.dirname(RESULTS_JSONL), exist_ok=True)
+    with open(RESULTS_JSONL, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        f.flush()
+
+
+def log(msg):
+    line = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
+    print(line, flush=True)
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def run_job(job, daily_model, hourly_model):
+    sym = job["sym"]
+    mode = job["mode"]
+    covs = job["covs"]
+    cov_override = None
+    cov_combo = None
+    if mode == "single":
+        cov_override = covs
+    elif mode == "combo":
+        cov_combo = covs
+
+    t0 = time.time()
+    data = run_symbol_backtest(
+        sym, daily_model, hourly_model,
+        cov_override=cov_override, cov_combo=cov_combo,
+        clip_gap=None, cache_interval=10,
+    )
+    elapsed = time.time() - t0
+    if data is None:
+        return {"status": "SKIP", "elapsed": round(elapsed, 1)}
+    s = summarize(data)
+    if s is None:
+        return {"status": "FAIL", "elapsed": round(elapsed, 1)}
+    return {
+        "status": "OK",
+        "n": s["n"],
+        "dir_acc": round(s["dir_acc"], 4),
+        "dir12_acc": round(s.get("dir12_acc", 0), 4),
+        "mape": round(s["mape"], 2),
+        "ev_ratio": round(s["ev_ratio"], 4),
+        "profit_factor": round(s["profit_factor"], 4),
+        "max_dd": round(s["max_dd"], 4),
+        "win_rate": round(s["win_rate"], 4),
+        "decay": round(s["decay"], 2),
+        "elapsed": round(elapsed, 1),
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser(description="AO+JD 有毒品种协变量替代验证")
+    ap.add_argument("--sym", choices=["ao", "jd"], help="仅跑指定品种")
+    ap.add_argument("--dry-run", action="store_true", help="仅打印作业清单")
+    args = ap.parse_args()
+
+    all_jobs = build_jobs()
+    if args.sym:
+        all_jobs = [j for j in all_jobs if j["sym"] == args.sym]
+
+    if args.dry_run:
+        print(f"# 作业清单: {len(all_jobs)} 条")
+        cur_sym = None
+        for j in all_jobs:
+            if j["sym"] != cur_sym:
+                cur_sym = j["sym"]
+                print(f"\n## {cur_sym.upper()}")
+            cov_disp = j["covs"] if isinstance(j["covs"], str) else (
+                "+".join(j["covs"]) if isinstance(j["covs"], list) else "(scheme baseline)")
+            print(f"  - {j['label']:36} [{j['mode']}] {cov_disp}")
+        print(f"\n总计 {len(all_jobs)} 作业, 预估 ~{len(all_jobs)*18//60}h (18min/作业)")
+        return
+
+    completed = load_completed()
+    pending = [j for j in all_jobs if (j["sym"], j["label"]) not in completed]
+
+    log("=" * 70)
+    log("AO+JD 有毒品种协变量替代验证 队列启动")
+    log(f"总作业: {len(all_jobs)} | 已完成: {len(completed)} | 待跑: {len(pending)}")
+    log(f"预估: ~{len(pending)*18//60}h (18min/作业, 顺序执行)")
+    log("=" * 70)
+
+    if not pending:
+        log("全部作业已完成。")
+        return
+
+    log("[模型] 加载 TimesFM 2.5 ...")
+    t0 = time.time()
+    torch.set_float32_matmul_precision("high")
+    from cascade.daily_model import DailyModel
+    from cascade.hourly_model import HourlyModel
+    daily_model = DailyModel()
+    hourly_model = HourlyModel(shared_model=daily_model.model)
+    log(f"[模型] 加载完成 ({time.time()-t0:.0f}s)")
+
+    for i, job in enumerate(pending, 1):
+        sym = job["sym"]
+        label = job["label"]
+        cov_disp = job["covs"] if isinstance(job["covs"], str) else (
+            "+".join(job["covs"]) if isinstance(job["covs"], list) else "baseline")
+        log(f"[{i}/{len(pending)}] {sym.upper()} {label} [{cov_disp}] ...")
+
+        try:
+            res = run_job(job, daily_model, hourly_model)
+        except Exception as e:
+            res = {"status": "ERROR", "error": str(e), "elapsed": 0}
+
+        rec = {
+            "sym": sym,
+            "label": label,
+            "mode": job["mode"],
+            "covs": cov_disp,
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            **res,
+        }
+        append_result(rec)
+
+        if res.get("status") == "OK":
+            log(f"  -> OK  n={res['n']} DirAcc={res['dir_acc']:.1%} MAPE={res['mape']:.2f}% "
+                f"EV={res['ev_ratio']:+.3f} PF={res['profit_factor']:.2f} "
+                f"MaxDD={res['max_dd']:.2%} WR={res['win_rate']:.0%} ({res['elapsed']:.0f}s)")
+        else:
+            log(f"  -> {res.get('status')} {res.get('error','')}")
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    log("=" * 70)
+    log(f"队列完成。结果: {RESULTS_JSONL}")
+    log("=" * 70)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Step 2: 验证脚本可导入（语法检查）**
+
+Run: `python -c "import py_compile; py_compile.compile('scripts/toxic_variety_runner.py', doraise=True)"`
+Expected: 无报错
+
+- [ ] **Step 3: dry-run 验证作业清单**
+
+Run: `python scripts/toxic_variety_runner.py --dry-run`
+Expected: 打印 19 条作业清单（AO 10 + JD 9）
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add scripts/toxic_variety_runner.py
+git commit -m "feat: toxic variety runner (AO+JD 协变量替代验证队列)
+
+- AO 10候选 + JD 9候选, 单模型加载, JSONL断点续跑
+- 支持 --sym ao/jd --dry-run
+- 复用 monthly_backtest.run_symbol_backtest + summarize
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+---
+
+### Task 2: 运行 AO 候选回测（10 条作业）
+
+**Files:**
+- Input: `scripts/toxic_variety_runner.py`
+- Output: `reports/toxic_variety_results.jsonl` (AO 部分)
+- Log: `reports/toxic_variety.log`
+
+**Note:** 长时操作，用 nohup 脱机执行。每候选约 15-20 分钟，总计 ~3 小时。
+
+- [ ] **Step 1: 创建 nohup 启动脚本**
+
+Create: `scripts/run_toxic_ao.ps1`
+```powershell
+$FM_ROOT = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$env:PYTHONIOENCODING = "utf-8"
+$env:PYTHONUNBUFFERED = "1"
+$job = Start-Process -FilePath "python" `
+    -ArgumentList "scripts\toxic_variety_runner.py", "--sym", "ao" `
+    -WorkingDirectory $FM_ROOT `
+    -NoNewWindow -RedirectStandardOutput "reports\toxic_variety_ao_stdout.log" `
+    -RedirectStandardError "reports\toxic_variety_ao_stderr.log" -PassThru
+"AO 回测已启动, PID: $($job.Id)"
+$job.Id | Out-File -FilePath "reports\.toxic_ao.pid" -NoNewline
+```
+
+- [ ] **Step 2: 启动 AO 回测**
+
+Run: `pwsh scripts/run_toxic_ao.ps1`
+Expected: 打印 PID，后台运行
+
+- [ ] **Step 3: 验证进程在跑**
+
+Run: `Get-Process -Id (Get-Content reports\.toxic_ao.pid)`
+Expected: 进程存在
+
+- [ ] **Step 4: 等待完成后检查 JSONL**
+
+完成后（通过日志或 PID 消失判断）:
+```bash
+# 检查 AO 结果行数
+findstr /c:"ao" reports/toxic_variety_results.jsonl | find /c /v ""
+```
+Expected: 10 条（或跳过/失败的记录）
+
+---
+
+### Task 3: 运行 JD 候选回测（9 条作业）
+
+**Files:**
+- Input: `scripts/toxic_variety_runner.py`
+- Output: `reports/toxic_variety_results.jsonl` (JD 部分，追加)
+- Log: `reports/toxic_variety.log`
+
+- [ ] **Step 1: 创建 nohup 启动脚本**
+
+Create: `scripts/run_toxic_jd.ps1`
+```powershell
+$FM_ROOT = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$env:PYTHONUNBUFFERED = "1"
+$job = Start-Process -FilePath "python" `
+    -ArgumentList "scripts\toxic_variety_runner.py", "--sym", "jd" `
+    -WorkingDirectory $FM_ROOT `
+    -NoNewWindow -RedirectStandardOutput "reports\toxic_variety_jd_stdout.log" `
+    -RedirectStandardError "reports\toxic_variety_jd_stderr.log" -PassThru
+"JD 回测已启动, PID: $($job.Id)"
+$job.Id | Out-File -FilePath "reports\.toxic_jd.pid" -NoNewline
+```
+
+- [ ] **Step 2: 启动 JD 回测**
+
+Run: `pwsh scripts/run_toxic_jd.ps1`
+Expected: 打印 PID，后台运行
+
+- [ ] **Step 3: 完成后检查 JSONL**
+
+```bash
+# 检查 JD 结果行数
+findstr /c:"jd" reports/toxic_variety_results.jsonl | find /c /v ""
+```
+Expected: 9 条（或跳过/失败的记录）
+
+---
+
+### Task 4: v2 裁决 + 结果分析
+
+**Files:**
+- Create: `scripts/toxic_variety_verdict.py`
+- Input: `reports/toxic_variety_results.jsonl`
+- Output: 控制台输出 + `reports/research/20260804_phase9_toxic_variety_study.md`
+
+**Purpose:** 读取 JSONL 结果，对每个品种应用 v2 裁决，输出对比表 + PASS/FAIL 判定 + 最终建议。
+
+- [ ] **Step 1: 编写裁决脚本**
+
+```python
+#!/usr/bin/env python3
+"""
+toxic_variety_verdict.py — 读取 toxic_variety_results.jsonl, 应用 v2 裁决,
+输出 AO/JD 候选对比表 + 最优配置建议 + 实证报告 Markdown.
+"""
+import json
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FM_ROOT = os.path.dirname(SCRIPT_DIR)
+sys.path.insert(0, FM_ROOT)
+os.chdir(FM_ROOT)
+
+# 复用 phase4d 的 v2 verdict 逻辑
+from scripts.phase4d_parse_results import verdict as v2_verdict
+
+RESULTS_JSONL = os.path.join(FM_ROOT, "reports", "toxic_variety_results.jsonl")
+REPORT_PATH = os.path.join(FM_ROOT, "reports", "research",
+                           "20260804_phase9_toxic_variety_study.md")
+
+
+def load_results():
+    """按品种分组加载 JSONL 结果."""
+    results = {}
+    if not os.path.exists(RESULTS_JSONL):
+        print(f"JSONL not found: {RESULTS_JSONL}")
+        return results
+    with open(RESULTS_JSONL, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                if rec.get("status") == "OK":
+                    results.setdefault(rec["sym"], {})[rec["label"]] = rec
+            except (json.JSONDecodeError, KeyError):
+                continue
+    return results
+
+
+def metrics_for_verdict(r):
+    """将 runner 结果转为 verdict 需要的格式."""
+    return {
+        "n": r["n"],
+        "diracc": int(r["dir_acc"] * 100),  # verdict expects int %
+        "mape": r["mape"],
+        "ev": r["ev_ratio"],
+        "pf": r["profit_factor"],
+        "maxdd": r["max_dd"],  # already negative
+        "wr": int(r["win_rate"] * 100),
+    }
+
+
+def print_table(sym, rows):
+    """打印品种候选对比表."""
+    print(f"\n{'='*100}")
+    print(f"  {sym.upper()} 氧化铝" if sym == "ao" else f"  {sym.upper()} 鸡蛋")
+    print(f"{'='*100}")
+    print(f"{'候选':36} {'DirAcc':>7} {'MAPE%':>7} {'EV':>8} {'PF':>6} "
+          f"{'MaxDD%':>8} {'WR':>4} {'n':>5} {'Verdict':<18}")
+    print("-" * 100)
+
+    baseline = rows.get("baseline")
+    if not baseline:
+        print("  [基线缺失, 无法裁决]")
+        return None
+
+    base_m = metrics_for_verdict(baseline)
+    best_label = "baseline"
+    best_m = base_m
+
+    for label, r in rows.items():
+        m = metrics_for_verdict(r)
+        if label == "baseline":
+            v_status, v_tag, v_reasons = ("BASELINE", "", [])
+        else:
+            v_status, v_tag, v_reasons = v2_verdict(base_m, m)
+
+        verdict_str = f"{v_status}"
+        if v_tag:
+            verdict_str += f"[{v_tag}]"
+
+        print(f"{label:36} {m['diracc']:>5}% {m['mape']:>6.2f} "
+              f"{m['ev']:>+8.3f} {m['pf']:>6.2f} {m['maxdd']:>7.2f} "
+              f"{m['wr']:>3}% {m['n']:>5} {verdict_str:<18}")
+
+        # Track best PASS candidate
+        if v_status in ("PASS", "GREEN-EV", "GREEN-MAXDD"):
+            # Compare: prefer higher PF, DirAcc as tiebreaker
+            best_m_cur = metrics_for_verdict(rows[best_label]) if best_label != "baseline" else base_m
+            if m["pf"] > best_m_cur["pf"] or (abs(m["pf"] - best_m_cur["pf"]) < 0.01 and m["diracc"] > best_m_cur["diracc"]):
+                best_label = label
+                best_m = m
+
+    if baseline:
+        bm = metrics_for_verdict(baseline)
+        print(f"\n基线: hourly_slope (AO) / rsi_state+oi (JD) | "
+              f"DirAcc={bm['diracc']}% PF={bm['pf']:.2f} EV={bm['ev']:+.3f}")
+
+    return best_label, best_m
+
+
+def generate_report(ao_rows, jd_rows, ao_best, jd_best):
+    """生成 Markdown 实证报告."""
+    os.makedirs(os.path.dirname(REPORT_PATH), exist_ok=True)
+
+    lines = [
+        f"# Phase 9 有毒品种专攻 — AO 氧化铝 + JD 鸡蛋 实证报告",
+        f"",
+        f"**日期**: {datetime.now().strftime('%Y-%m-%d')}",
+        f"**前置**: Phase 9 全量实证 (73 作业, 15 品种)",
+        f"**方法**: 完整 walk-forward 回测 (396pt), v2 裁决",
+        f"",
+        f"---",
+        f"",
+        f"## 一、问题回顾",
+        f"",
+        f"ha_body 对 AO/JD 有毒:",
+        f"- AO: ha_body → EV 转负 (-0.054), MaxDD 翻倍 (-57.92%)",
+        f"- JD: ha_body → -3pp DirAcc, EV 转负",
+        f"",
+        f"## 二、AO 氧化铝 回测结果",
+        f"",
+        f"| 候选 | DirAcc | MAPE% | EV | PF | MaxDD% | n | Verdict |",
+        f"|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---|",
+    ]
+
+    baseline = ao_rows.get("baseline")
+    if baseline:
+        bm = metrics_for_verdict(baseline)
+        lines.append(f"| **baseline (hourly_slope)** | {bm['diracc']}% | "
+                     f"{bm['mape']:.2f}% | {bm['ev']:+.3f} | {bm['pf']:.2f} | "
+                     f"{bm['maxdd']:.2f}% | {bm['n']} | BASELINE |")
+
+    for label, r in sorted(ao_rows.items()):
+        if label == "baseline":
+            continue
+        m = metrics_for_verdict(r)
+        v_status, v_tag, _ = v2_verdict(metrics_for_verdict(baseline), m)
+        v_str = f"{v_status}[{v_tag}]" if v_tag else v_status
+        lines.append(f"| {label} | {m['diracc']}% | {m['mape']:.2f}% | "
+                     f"{m['ev']:+.3f} | {m['pf']:.2f} | {m['maxdd']:.2f}% | "
+                     f"{m['n']} | {v_str} |")
+
+    ao_pass = ao_best[0] if ao_best[0] != "baseline" else None
+    lines += [
+        f"",
+        f"### AO 结论",
+        f"",
+    ]
+    if ao_pass:
+        lines.append(f"- **PASS**: {ao_pass} 为最优候选")
+        lines.append(f"- 建议: 更新 prediction_scheme.py AO 协变量为 `{ao_pass}`")
+    else:
+        lines.append(f"- **全 FAIL**: 无候选通过 v2 裁决")
+        lines.append(f"- 建议: 维持 hourly_slope, 当前已最优")
+        lines.append(f"- 原因: 品种可预测性差, 需模型层突破 (#8)")
+
+    lines += [
+        f"",
+        f"---",
+        f"",
+        f"## 三、JD 鸡蛋 回测结果",
+        f"",
+        f"| 候选 | DirAcc | MAPE% | EV | PF | MaxDD% | n | Verdict |",
+        f"|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---|",
+    ]
+
+    baseline_jd = jd_rows.get("baseline")
+    if baseline_jd:
+        bm = metrics_for_verdict(baseline_jd)
+        lines.append(f"| **baseline (rsi_state+oi)** | {bm['diracc']}% | "
+                     f"{bm['mape']:.2f}% | {bm['ev']:+.3f} | {bm['pf']:.2f} | "
+                     f"{bm['maxdd']:.2f}% | {bm['n']} | BASELINE |")
+
+    for label, r in sorted(jd_rows.items()):
+        if label == "baseline":
+            continue
+        m = metrics_for_verdict(r)
+        v_status, v_tag, _ = v2_verdict(metrics_for_verdict(baseline_jd), m)
+        v_str = f"{v_status}[{v_tag}]" if v_tag else v_status
+        lines.append(f"| {label} | {m['diracc']}% | {m['mape']:.2f}% | "
+                     f"{m['ev']:+.3f} | {m['pf']:.2f} | {m['maxdd']:.2f}% | "
+                     f"{m['n']} | {v_str} |")
+
+    jd_pass = jd_best[0] if jd_best[0] != "baseline" else None
+    lines += [
+        f"",
+        f"### JD 结论",
+        f"",
+    ]
+    if jd_pass:
+        lines.append(f"- **PASS**: {jd_pass} 为最优候选")
+        lines.append(f"- 建议: 更新 prediction_scheme.py JD 协变量为 `{jd_pass}`")
+    else:
+        lines.append(f"- **全 FAIL**: 无候选通过 v2 裁决")
+        lines.append(f"- 建议: 维持 rsi_state+oi, 当前已最优")
+        lines.append(f"- 原因: 品种可预测性差, 需模型层突破 (#8)")
+
+    lines += [
+        f"",
+        f"---",
+        f"",
+        f"## 四、综合结论",
+        f"",
+    ]
+
+    if ao_pass and jd_pass:
+        lines.append(f"- AO 和 JD 均找到 PASS 候选, 将更新 prediction_scheme.py")
+        lines.append(f"- AO -> `{ao_pass}`, JD -> `{jd_pass}`")
+    elif ao_pass or jd_pass:
+        winner = "AO" if ao_pass else "JD"
+        lines.append(f"- 仅 {winner} 找到 PASS 候选, 将更新对应品种配置")
+        lines.append(f"- 另一品种维持当前配置")
+    else:
+        lines.append(f"- AO 和 JD 全部候选 FAIL, 当前配置已最优")
+        lines.append(f"- 两品种均受限于可预测性上限 (~52-56% DirAcc)")
+        lines.append(f"- 突破需模型层改进 (#8: ML 残差堆叠) 或动态 Regime 路由 (#10)")
+
+    lines += [
+        f"",
+        f"---",
+        f"",
+        f"## 五、关联",
+        f"",
+        f"- `config/prediction_scheme.py` — 若 PASS 则更新",
+        f"- `config/knowledge_base.json` — 方案更新后重建",
+        f"- `STATE.md` — 更新 P2 #9 状态",
+        f"- `LOOP.md` — 更新策略变更日志",
+        f"- `docs/superpowers/specs/2026-08-04-phase9-toxic-variety-design.md` — 设计文档",
+    ]
+
+    with open(REPORT_PATH, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+    print(f"\n报告已写入: {REPORT_PATH}")
+
+
+def main():
+    results = load_results()
+    if not results:
+        print("无结果数据, 请先跑 toxic_variety_runner.py")
+        return
+
+    print("Phase 9 有毒品种专攻 — v2 裁决")
+
+    ao_rows = results.get("ao", {})
+    jd_rows = results.get("jd", {})
+
+    ao_best = print_table("ao", ao_rows)
+    jd_best = print_table("jd", jd_rows)
+
+    generate_report(ao_rows, jd_rows, ao_best or ("baseline", None),
+                    jd_best or ("baseline", None))
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Step 2: 验证脚本可导入**
+
+Run: `python -c "import py_compile; py_compile.compile('scripts/toxic_variety_verdict.py', doraise=True)"`
+Expected: 无报错
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/toxic_variety_verdict.py
+git commit -m "feat: toxic variety verdict 脚本 (v2 裁决 + 报告生成)
+
+- 读取 toxic_variety_results.jsonl
+- 复用 phase4d_parse_results.verdict() 做 v2 判定
+- 输出 Markdown 实证报告
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+---
+
+### Task 5: 结果驱动更新（条件执行）
+
+**Files:**
+- Modify: `config/prediction_scheme.py`（仅当有 PASS 候选）
+- Run: `scripts/build_knowledge_base.py`（仅当 scheme 变更）
+- Modify: `STATE.md`（总是更新）
+- Modify: `LOOP.md`（总是更新）
+
+**Trigger:** 仅在 Task 4 裁决后有 PASS 候选时执行此任务。若全部 FAIL，仅更新 STATE.md / LOOP.md 记录结论。
+
+#### 分支 A: 有 PASS 候选
+
+- [ ] **Step 1: 更新 prediction_scheme.py**
+
+根据 verdict 结果修改对应品种配置（示例，实际值来自 verdict）：
+```python
+# AO 若 ao_accel PASS:
+"ao": VarietyScheme(
+    ...
+    covariate_type="ao_accel",
+    dir_acc=0.XXX,  # 新回测值
+    ...
+)
+```
+
+- [ ] **Step 2: 验证导入 + 测试**
+
+Run: `python -c "from config.prediction_scheme import SCHEMES; print('OK')"`
+Run: `python -m pytest tests/test_prediction_scheme_phase9.py tests/test_kb_schemes_consistency.py tests/test_ha_body_toxic_blacklist.py -v`
+
+- [ ] **Step 3: 重建 KB**
+
+Run: `python scripts/build_knowledge_base.py`
+
+- [ ] **Step 4: 运行回归测试**
+
+Run: `python -m pytest tests/ -v --tb=short 2>&1 | tail -20`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add config/prediction_scheme.py config/knowledge_base.json STATE.md LOOP.md reports/
+git commit -m "feat: Phase 9 有毒品种专攻 — 更新 AO/JD 协变量配置
+
+- AO: hourly_slope -> <new_cov> (v2 PASS, DirAcc XX%, PF X.XX)
+- JD: rsi_state+oi -> <new_cov> (v2 PASS, DirAcc XX%, PF X.XX)
+- 重建 knowledge_base.json
+- 回归测试全绿
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+#### 分支 B: 全部 FAIL
+
+- [ ] **Step 1: 仅更新 STATE.md + LOOP.md**
+
+在 STATE.md P2 部分标记 #9 完成，结论为"当前已最优"。
+在 LOOP.md 追加变更记录。
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add STATE.md LOOP.md reports/research/20260804_phase9_toxic_variety_study.md
+git commit -m "docs: Phase 9 有毒品种专攻结论 — AO/JD 全 FAIL, 当前已最优
+
+- AO 10候选 + JD 9候选 完整 walk-forward 回测, 均 v2 FAIL
+- 结论: 维持 hourly_slope (AO) + rsi_state+oi (JD)
+- 突破需模型层改进 (#8) 或动态 Regime 路由 (#10)
+- 实证报告: reports/research/20260804_phase9_toxic_variety_study.md
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+---
+
+### Task 6: 最终验证
+
+**Files:**
+- All modified files from Task 5
+
+- [ ] **Step 1: 全量测试**
+
+Run: `python -m pytest tests/ -v --tb=short 2>&1 | tail -30`
+Expected: 全部 PASS（排除已知 test_scan_significance 4 error，因 covariate_scan.py 已删除）
+
+- [ ] **Step 2: 验证方案可导入**
+
+Run: `python -c "from config.prediction_scheme import SCHEMES; print(f'{len(SCHEMES)} schemes loaded')"`
+Expected: 20 schemes loaded
+
+- [ ] **Step 3: 验证 KB 一致性**
+
+Run: `python -m pytest tests/test_kb_schemes_consistency.py -v`
+Expected: 全部 PASS
+
+- [ ] **Step 4: 确认实证报告存在**
+
+Run: `test -f reports/research/20260804_phase9_toxic_variety_study.md && echo "EXISTS" || echo "MISSING"`
+Expected: EXISTS
+
+## Self-Review
+
+**1. Spec coverage:**
+- ✅ 候选列表: AO 10个 + JD 9个（与设计文档一致）
+- ✅ 方法: 纯 walk-forward 回测，不用 scan 快筛
+- ✅ 判定: v2 裁决（R1-R4 + 常规）
+- ✅ 产出: JSONL + 实证报告 + scheme 更新（若 PASS）+ STATE/LOOP 更新
+- ✅ 排除 CF（Phase 9 已确认最优）
+
+**2. Placeholder scan:** 无 TBD/TODO，所有代码完整
+
+**3. Type consistency:** verdict 函数接受的格式（n/diracc/mape/ev/pf/maxdd/wr）与 summarize 输出和 metrics_for_verdict 转换一致
+
+**4. Task 边界:** 每个任务有独立测试周期，可被审核者单独拒绝
+
+**Spec written and committed to** `docs/superpowers/specs/2026-08-04-phase9-toxic-variety-design.md`. **Implementation plan written to** `docs/superpowers/plans/2026-08-04-toxic-variety-plan.md`.
+
+Plan complete. 两个执行选项：
+
+**1. Subagent-Driven (recommended)** — 每个任务 dispatch 一个 subagent，任务间 review，快速迭代
+
+**2. Inline Execution** — 在当前 session 中用 executing-plans 批量执行，带检查点
+
+Which approach?

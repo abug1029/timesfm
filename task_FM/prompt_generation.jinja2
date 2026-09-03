@@ -1,0 +1,62 @@
+{# Per-generation directive block #}
+# Generation {{ gen_id | default(0) }} directive
+
+## Your role this generation
+{% if research_agenda and research_agenda.peer_contracts %}
+{% set contract = research_agenda.peer_contracts.get(peer_id, {}) %}
+Role: {{ contract.get("role", "unassigned - follow peer_generalist defaults") }}
+{% if contract.get("target_hypothesis") %}Target hypothesis: {{ contract.target_hypothesis }}{% endif %}
+{% if research_agenda.mainline_observation %}Mainline observation: {{ research_agenda.mainline_observation }}{% endif %}
+{% else %}
+No agenda available (generation 0 or PI panel skipped). Follow peer_generalist
+defaults: propose 2-4 diagnostic candidates across DISTINCT covariate families.
+{% endif %}
+
+## Cross-peer hypotheses
+{% if research_agenda and research_agenda.cross_peer_hypotheses %}
+{% for h in research_agenda.cross_peer_hypotheses %}
+- [{{ h.get("id", "?") }}] {{ h.get("claim", "") }}
+  minimal_test: {{ h.get("minimal_test", "diagnostic p3/p6") }} | kill: {{ h.get("kill_condition", "-") }} | promote: {{ h.get("promote_condition", "aligned gate") }}
+{% endfor %}
+{% else %}
+None yet - you are generating the first generation of hypotheses. Publish yours
+via share_finding (finding_type=hypothesis) with mechanism, kill and promote
+conditions attached.
+{% endif %}
+
+## Frontier state (parent-eligible entries)
+{% if frontier_summary %}
+{% for f in frontier_summary[:6] %}
+- {{ f.get("variant_id", f.get("variant_name", "?")) }}: {{ f.get("ev_after_slippage", "?") }}
+{% endfor %}
+{% else %}
+Empty frontier - be the first to feed it via the aligned stage.
+{% endif %}
+
+## Exploration hint
+{{ variant_hint | default("no hint this generation - stay orthogonal") }}
+
+## Role execution guidance
+- exploit: take the best diagnostic survivors and push them through aligned
+  (max_points 350..500). Confirm or kill with the pre-registered gate.
+- falsifier: do NOT chase the leaderboard. Design the ablation that would
+  DISPROVE the most load-bearing mechanism claim (e.g. run the candidate
+  WITHOUT the covariate as a control variant, same window). Publish
+  finding_type=challenge via share_finding if the control matches the
+  treatment.
+- bridge: combine two non-redundant covariate families on one symbol (e.g.
+  CCL positioning x rsi_state) and ablate each component explicitly.
+- anti_mainline: your candidates are FORBIDDEN from using the dominant
+  families (see anti_mainline contract above if present, else the families
+  already on the frontier). Cover the neglected families: oi, ccl,
+  basis_momentum, volume-related, calendar_cyclical.
+
+## End-of-generation checklist
+1. Every candidate passed to the evaluator inline via --candidate <(echo '...')
+   or written under the run_dir peer workspace. Do NOT use scripts/praxist_ws/
+   (blocked by delete guard).
+2. Every evaluation written to the canonical tree
+   {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/<variant_id>/<stage>/
+3. Every hypothesis/insight/challenge published via share_finding with
+   metrics and links. Result findings flow from evaluation summaries.
+4. Done means: evidence landed in the canonical tree, not in your workspace.

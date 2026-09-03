@@ -1,0 +1,212 @@
+"""AkShare 期货数据获取"""
+
+import warnings
+import pandas as pd
+from typing import Optional
+
+
+def _suppress_progress():
+    """抑制 AkShare 的进度条"""
+    warnings.filterwarnings("ignore", category=UserWarning)
+    import os
+    os.environ["TQDM_DISABLE"] = "1"
+
+
+class AkShareFetcher:
+    """AkShare 期货数据获取器"""
+
+    def __init__(self):
+        _suppress_progress()
+        import akshare as ak
+        self.ak = ak
+
+    # ── 日线行情 ─────────────────────────────────────
+
+    def get_daily_kline(self, contract_code: str) -> pd.DataFrame:
+        """
+        获取单个合约日线数据
+
+        Args:
+            contract_code: AkShare 格式，如 "RB2509" 或 "rb2509"
+
+        Returns:
+            DataFrame[date, open, high, low, close, volume, open_interest]
+            失败返回空 DataFrame
+        """
+        symbol = contract_code.upper()
+        try:
+            df = self.ak.futures_zh_daily_sina(symbol=symbol)
+            if df is None or df.empty:
+                return pd.DataFrame()
+
+            df = self._standardize_columns(df)
+            df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+            return df
+
+        except Exception as e:
+            print(f"  [WARN] 获取 {symbol} 日线失败: {e}")
+            return pd.DataFrame()
+
+    def get_main_continuous(self, product: str) -> pd.DataFrame:
+        """
+        获取主力连续合约日线
+
+        Args:
+            product: 品种代码，如 "cf"、"rb"
+
+        Returns:
+            DataFrame，包含主力连续的价格序列
+        """
+        symbol = f"{product.upper()}0"
+        try:
+            df = self.ak.futures_zh_daily_sina(symbol=symbol)
+            if df is None or df.empty:
+                return pd.DataFrame()
+
+            df = self._standardize_columns(df)
+            df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+            return df
+
+        except Exception as e:
+            print(f"  [WARN] 获取 {product} 主力连续日线失败: {e}")
+            return pd.DataFrame()
+
+    def get_minute_kline(self, contract_code: str, period: str = "60") -> pd.DataFrame:
+        """
+        获取分钟/小时K线
+
+        Args:
+            contract_code: 合约代码，如 "CF2509"
+            period: "1"/"5"/"15"/"30"/"60" (分钟)
+
+        Returns:
+            DataFrame[datetime, open, high, low, close, volume, open_interest]
+            最多返回 1023 条
+        """
+        symbol = contract_code.upper()
+        try:
+            df = self.ak.futures_zh_minute_sina(symbol=symbol, period=period)
+            if df is None or df.empty:
+                return pd.DataFrame()
+
+            col_map = {
+                "datetime": "date", "hold": "open_interest",
+            }
+            df = df.rename(columns=col_map)
+            for col in ["date", "open", "high", "low", "close", "volume", "open_interest"]:
+                if col not in df.columns:
+                    df[col] = None
+
+            df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d %H:%M")
+            return df[["date", "open", "high", "low", "close", "volume", "open_interest"]].copy()
+
+        except Exception as e:
+            print(f"  [WARN] 获取 {symbol} {period}分钟K线失败: {e}")
+            return pd.DataFrame()
+
+    # ── 实时行情 ─────────────────────────────────────
+
+    def get_realtime_quotes(self) -> pd.DataFrame:
+        """
+        获取全品种实时行情
+
+        Returns:
+            DataFrame 包含所有活跃合约的实时行情
+        """
+        try:
+            df = self.ak.futures_zh_realtime()
+            if df is None or df.empty:
+                return pd.DataFrame()
+            return df
+        except Exception as e:
+            print(f"  [WARN] 获取实时行情失败: {e}")
+            return pd.DataFrame()
+
+    def get_all_main_symbols(self) -> pd.DataFrame:
+        """
+        获取所有品种的主力合约代码
+
+        Returns:
+            DataFrame[symbol, exchange, name]
+            symbol 格式: "CF0", "RB0" 等
+        """
+        try:
+            df = self.ak.futures_display_main_sina()
+            if df is None or df.empty:
+                return pd.DataFrame()
+            return df
+        except Exception as e:
+            print(f"  [WARN] 获取主力合约列表失败: {e}")
+            return pd.DataFrame()
+
+    # ── 基本面数据 ───────────────────────────────────
+
+    def get_inventory(self, product: str) -> pd.DataFrame:
+        """获取交易所库存数据"""
+        try:
+            from .config import get_name
+            name = get_name(product)
+            df = self.ak.futures_inventory_em(symbol=name)
+            if df is None or df.empty:
+                return pd.DataFrame()
+            return df
+        except Exception as e:
+            print(f"  [WARN] 获取 {product} 库存数据失败: {e}")
+            return pd.DataFrame()
+
+    def get_basis(self, product: str) -> pd.DataFrame:
+        """获取期现基差数据"""
+        try:
+            from .config import get_name
+            name = get_name(product)
+            df = self.ak.futures_spot_price_daily(symbol=name)
+            if df is None or df.empty:
+                return pd.DataFrame()
+            return df
+        except Exception as e:
+            print(f"  [WARN] 获取 {product} 基差数据失败: {e}")
+            return pd.DataFrame()
+
+    def get_position_rank(self, product: str, contract: str,
+                          direction: str = "多单持仓") -> pd.DataFrame:
+        """
+        获取持仓排名
+
+        Args:
+            contract: 合约代码，如 "CF2509"
+            direction: "多单持仓" / "空单持仓" / "成交持仓"
+        """
+        try:
+            df = self.ak.futures_hold_pos_sina(
+                symbol=direction,
+                contract=contract.upper(),
+            )
+            if df is None or df.empty:
+                return pd.DataFrame()
+            return df
+        except Exception as e:
+            print(f"  [WARN] 获取 {contract} 持仓排名失败: {e}")
+            return pd.DataFrame()
+
+    # ── 内部方法 ─────────────────────────────────────
+
+    @staticmethod
+    def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+        """统一列名为英文"""
+        col_map = {
+            "日期": "date", "date": "date",
+            "开盘价": "open", "open": "open",
+            "最高价": "high", "high": "high",
+            "最低价": "low", "low": "low",
+            "收盘价": "close", "close": "close",
+            "成交量": "volume", "volume": "volume",
+            "持仓量": "open_interest", "hold": "open_interest",
+            "open_interest": "open_interest",
+            "结算价": "settle", "settle": "settle",
+        }
+        df = df.rename(columns={c: col_map.get(c, c) for c in df.columns})
+        # 确保核心列存在
+        for col in ["date", "open", "high", "low", "close", "volume", "open_interest"]:
+            if col not in df.columns:
+                df[col] = None
+        return df[["date", "open", "high", "low", "close", "volume", "open_interest", "settle"]].copy()

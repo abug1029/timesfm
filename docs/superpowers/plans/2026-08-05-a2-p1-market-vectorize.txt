@@ -1,0 +1,348 @@
+# A2-P1 Market 特征向量化优化实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 将 market 特征计算从 O(N²)（逐 bar 全量重算）优化为 O(N)（安全特征预计算 + 危险特征保留切片），单品种 market 30min -> ~2min，解除全量运行 timeout 阻断。
+
+**Architecture:** 混合策略--`hurst`/`hourly_slope`/`rsi_state`/`oi_pct_change`/`daily_slope` 预计算全序列后按索引 O(1) 取值；`pca_momentum`（StandardScaler+PCA 全局 fitting 泄漏）和 `vol_prob`（模型）保留 `closes[:t+1]` 切片计算防穿越。
+
+**Tech Stack:** Python 3.10, numpy, pandas, scikit-learn
+
+**Spec:** `docs/superpowers/specs/2026-08-05-a2-p1-market-vectorize-design.md`
+
+## Global Constraints
+
+- **PCA 防穿越**: `pca_momentum` 必须用 `closes[:t+1]` 切片，禁止预计算（StandardScaler+PCA 全局 fitting 会泄漏未来数据）
+- **数值等价**: 安全特征预计算 `[t]` 必须严格等于切片 `func(closes[:t+1])[-1]`
+- **向后兼容**: `precomputed=None` 时行为与原版完全一致（Copilot 等调用方不受影响）
+- **Python 环境**: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python`
+- **主仓库**: `D:\FlyBuddy\fm_a`
+- **保持不变**: tsfm 断点机制、12 维特征池、step=24、Gate
+
+---
+
+## File Structure
+
+| 文件 | 职责 | 操作 |
+|------|------|------|
+| `cascade/lgbm_features.py` | `extract_market_features_at_bar` 加 precomputed 参数 + `build_dense_feature_matrix` 预计算 | Modify |
+| `tests/test_a2_p1_runtime.py` | 数值一致性 + 性能测试 | Modify |
+
+---
+
+### Task 1: extract_market_features_at_bar 加 precomputed 参数
+
+**Files:**
+- Modify: `cascade/lgbm_features.py` - `extract_market_features_at_bar()`
+- Test: `tests/test_a2_p1_runtime.py`
+
+**Interfaces:**
+- Consumes: 现有 `calc_rolling_hurst`/`calc_hourly_slope`/`calc_rsi_state`/`calc_oi_pct_change`/`_daily_slope_at`
+- Produces: 新增 `precomputed: dict | None = None` 参数；安全特征优先取预计算值
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+def test_extract_features_precomputed_param():
+    """验证 extract_market_features_at_bar 支持 precomputed 参数"""
+    import inspect
+    from cascade.lgbm_features import extract_market_features_at_bar
+    source = inspect.getsource(extract_market_features_at_bar)
+    assert "precomputed" in source, "必须支持 precomputed 参数"
+    # 安全特征按索引取值
+    assert 'precomputed["hurst"]' in source or "precomputed.get(\"hurst\")" in source
+    # pca_momentum 不进 precomputed (仍切片)
+    assert "calc_pca_momentum(closes" in source, "pca_momentum 必须仍用切片 closes"
+```
+
+- [ ] **Step 2: 运行测试验证失败**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_extract_features_precomputed_param -v
+```
+
+Expected: FAIL
+
+- [ ] **Step 3: 实现 precomputed 参数**
+
+读 `cascade/lgbm_features.py` 的 `extract_market_features_at_bar()`（约 line 38-95），修改：
+
+```python
+def extract_market_features_at_bar(
+    df_1h: pd.DataFrame,
+    df_daily: pd.DataFrame,
+    t_idx: int,
+    symbol: str,
+    vol_filter=None,
+    precomputed: dict | None = None,
+) -> Dict[str, float]:
+    """
+    在 1H bar t_idx 处抽取 9 维市场特征 (无 TimesFM 依赖)。
+    所有计算仅用 df_1h[:t_idx+1] 与 df_daily[<=t_dt], 防穿越。
+
+    precomputed: 可选。含预计算的全序列安全特征 (hurst/hourly_slope/rsi_state/
+                 oi_pct_change/daily_slope)。提供时按索引 O(1) 取值;
+                 未提供时回退切片计算 (向后兼容)。
+                 pca_momentum/vol_prob 始终切片 (防穿越/涉及模型)。
+    """
+    closes = df_1h["close_price"].values.astype(float)[: t_idx + 1]
+    t_dt = pd.Timestamp(df_1h["dt"].iloc[t_idx])
+
+    pc = precomputed or {}
+
+    # 1. daily_slope (安全: 纯滚动)
+    if "daily_slope" in pc:
+        daily_slope = float(pc["daily_slope"][t_idx])
+    else:
+        daily_slope = _daily_slope_at(df_daily, t_dt)
+
+    # 2. hourly_slope (安全: window=24 滚动)
+    if "hourly_slope" in pc:
+        hourly_slope = float(pc["hourly_slope"][t_idx])
+    else:
+        hourly_slope = float(calc_hourly_slope(closes, window=24).iloc[-1])
+
+    # 3. pca_momentum (危险: StandardScaler+PCA 全局 fitting, 必须切片)
+    pca_momentum = float(calc_pca_momentum(closes, periods=[5, 9, 14, 21], squash=True)[-1])
+
+    # 4. rsi_state (安全: 固定阈值离散化)
+    if "rsi_state" in pc:
+        rsi_state = float(pc["rsi_state"][t_idx])
+    else:
+        rsi_state = float(calc_rsi_state(closes, rsi_period=14)[-1])
+
+    # 5. oi_pct_change (安全: diff/shift 固定 clip)
+    if "oi_pct_change" in pc:
+        oi_val = float(pc["oi_pct_change"][t_idx])
+    elif "open_interest" in df_1h.columns and df_1h["open_interest"].notna().any():
+        oi_pct = calc_oi_pct_change(df_1h["open_interest"].iloc[: t_idx + 1])
+        oi_val = float(oi_pct.iloc[-1])
+    else:
+        oi_val = 0.0
+
+    # 6. hurst (安全: 纯滚动窗口 DFA; 瓶颈特征, 必须预计算)
+    if "hurst" in pc:
+        hurst = float(pc["hurst"][t_idx])
+    else:
+        hurst = float(calc_rolling_hurst(closes, window=120, step=6)[-1])
+
+    # 7. vol_prob (保守: VolRiskFilter 涉及模型, 不预计算)
+    if vol_filter is not None:
+        try:
+            decision = vol_filter.evaluate(df_1h.iloc[: t_idx + 1])
+            vol_prob = float(decision.vol_prob)
+        except Exception:
+            vol_prob = float("nan")
+    else:
+        vol_prob = float("nan")
+
+    return {
+        "daily_slope": daily_slope,
+        "hourly_slope": hourly_slope,
+        "pca_momentum": pca_momentum,
+        "rsi_state": rsi_state,
+        "oi_pct_change": oi_val,
+        "hurst": hurst,
+        "vol_prob": vol_prob,
+        "hour_of_day": int(t_dt.hour),
+        "day_of_week": int(t_dt.dayofweek),
+    }
+```
+
+- [ ] **Step 4: 运行测试验证通过**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_extract_features_precomputed_param -v
+```
+
+Expected: PASS
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add cascade/lgbm_features.py tests/test_a2_p1_runtime.py
+git commit -m "feat(a2-p1): extract_market_features_at_bar 加 precomputed 参数 (安全特征 O(1) 取值, PCA 仍切片防穿越)"
+```
+
+---
+
+### Task 2: build_dense_feature_matrix 预计算安全特征
+
+**Files:**
+- Modify: `cascade/lgbm_features.py` - `build_dense_feature_matrix()` 的 market 循环
+- Test: `tests/test_a2_p1_runtime.py`
+
+**Interfaces:**
+- Consumes: `extract_market_features_at_bar()`（Task 1）
+- Produces: market 循环前预计算 5 个安全特征全序列，传入 extract
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+def test_build_dense_precomputes_safe_features():
+    """验证 build_dense_feature_matrix 预计算安全特征"""
+    import inspect
+    from cascade.lgbm_features import build_dense_feature_matrix
+    source = inspect.getsource(build_dense_feature_matrix)
+    assert "precomputed" in source, "必须构建 precomputed 字典"
+    assert "calc_rolling_hurst(closes" in source or "calc_rolling_hurst(full" in source, "必须预计算 hurst"
+    assert "precomputed=precomputed" in source, "必须传 precomputed 给 extract"
+```
+
+- [ ] **Step 2: 运行测试验证失败**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_precomputes_safe_features -v
+```
+
+Expected: FAIL
+
+- [ ] **Step 3: 实现预计算**
+
+读 `build_dense_feature_matrix()` 的 market 循环段（约 line 268-285，Task 2 缓存版后的 `market_rows` 循环），在循环**前**插入预计算，循环内传 `precomputed`：
+
+```python
+    # 预计算安全特征全序列 (O(N), hurst 瓶颈一次性算完)
+    closes_full = df_1h["close_price"].values.astype(float)
+    precomputed = {
+        "hurst": calc_rolling_hurst(closes_full, window=120, step=6),
+        "hourly_slope": calc_hourly_slope(closes_full, window=24),
+        "rsi_state": calc_rsi_state(closes_full, rsi_period=14),
+    }
+    if "open_interest" in df_1h.columns and df_1h["open_interest"].notna().any():
+        precomputed["oi_pct_change"] = calc_oi_pct_change(df_1h["open_interest"])
+    # daily_slope: 逐 t 预计算 (每个 O(lookback), lookback=5 极小)
+    precomputed["daily_slope"] = np.array([
+        _daily_slope_at(df_daily, pd.Timestamp(df_1h["dt"].iloc[t])) for t in valid
+    ])
+
+    market_rows = []
+    for t in valid:
+        feats = extract_market_features_at_bar(
+            df_1h, df_daily, t, symbol, vol_filter, precomputed=precomputed
+        )
+        feats["bar_idx"] = t
+        feats["cutoff"] = str(pd.Timestamp(df_1h["dt"].iloc[t]).strftime("%Y-%m-%d %H:%M"))
+        market_rows.append(feats)
+    market_df = pd.DataFrame(market_rows).set_index("bar_idx")
+```
+
+**注意**:
+- 预计算用 `closes_full`（全量），安全特征纯滚动，`[t]` 严格等价切片
+- `pca_momentum`/`vol_prob` 不进 precomputed，extract 内部仍切片
+- 保留 market_cache_path 逻辑（预计算后仍原子写 market.parquet）
+- `calc_hourly_slope` 返回 pd.Series，`[t_idx]` 取值；若返回 np.ndarray 则直接索引。测试时确认类型
+
+- [ ] **Step 4: 运行测试验证通过**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_precomputes_safe_features -v
+```
+
+Expected: PASS
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add cascade/lgbm_features.py tests/test_a2_p1_runtime.py
+git commit -m "feat(a2-p1): build_dense_feature_matrix 预计算安全特征 (hurst 瓶颈 O(N²)->O(N))"
+```
+
+---
+
+### Task 3: 数值一致性 + 性能验证
+
+**Files:**
+- Test: `tests/test_a2_p1_runtime.py`
+
+- [ ] **Step 1: 写数值一致性测试**
+
+```python
+def test_precomputed_equals_slice_numeric():
+    """验证预计算模式与切片模式数值一致 (安全特征)"""
+    import numpy as np
+    from data.data_store import DataStore
+    from cascade.lgbm_features import (
+        extract_market_features_at_bar, calc_rolling_hurst,
+        calc_hourly_slope, calc_rsi_state, calc_oi_pct_change,
+    )
+
+    with DataStore("ss") as store:
+        df_1h = store.get_main_contract_1h(limit=2000)  # 小样本加速
+        df_daily = store.get_main_continuous(limit=100000) if hasattr(store, "get_main_continuous") else pd.DataFrame()
+
+    closes_full = df_1h["close_price"].values.astype(float)
+    precomputed = {
+        "hurst": calc_rolling_hurst(closes_full, window=120, step=6),
+        "hourly_slope": calc_hourly_slope(closes_full, window=24),
+        "rsi_state": calc_rsi_state(closes_full, rsi_period=14),
+    }
+    if "open_interest" in df_1h.columns:
+        precomputed["oi_pct_change"] = calc_oi_pct_change(df_1h["open_interest"])
+
+    # 抽样 5 个 bar 验证
+    for t in [480, 600, 800, 1000, 1200]:
+        f_pre = extract_market_features_at_bar(df_1h, df_daily, t, "ss", precomputed=precomputed)
+        f_slice = extract_market_features_at_bar(df_1h, df_daily, t, "ss", precomputed=None)
+        # 安全特征必须一致
+        for k in ["hurst", "hourly_slope", "rsi_state"]:
+            assert abs(f_pre[k] - f_slice[k]) < 1e-9, f"t={t} {k}: pre={f_pre[k]} slice={f_slice[k]}"
+        # pca_momentum 必须一致 (都用切片, 不进 precomputed)
+        assert abs(f_pre["pca_momentum"] - f_slice["pca_momentum"]) < 1e-9
+```
+
+- [ ] **Step 2: 运行数值一致性测试**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_precomputed_equals_slice_numeric -v
+```
+
+Expected: PASS（安全特征预计算 == 切片）
+
+- [ ] **Step 3: 性能验证（RB market < 3min）**
+
+```bash
+# 删除 RB 旧缓存, 计时 market 阶段
+rm -f reports/a2_p1_features/rb_market.parquet reports/a2_p1_features/rb_dense_matrix.parquet
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -c "
+import time
+from data.data_store import DataStore
+from cascade.lgbm_features import build_dense_feature_matrix
+t0 = time.time()
+with DataStore('rb') as store:
+    mat = build_dense_feature_matrix('rb', store, market_cache_path='reports/a2_p1_features/rb_market.parquet')
+print(f'RB market build: {time.time()-t0:.1f}s, rows={len(mat)}')
+" 2>&1 | tail -3
+```
+
+Expected: < 180s（3min），rows=396
+
+- [ ] **Step 4: 运行全部测试**
+
+```bash
+D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py -v
+```
+
+Expected: 全部 PASS
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add tests/test_a2_p1_runtime.py
+git commit -m "test(a2-p1): 数值一致性 + 性能验证 (预计算==切片, RB market<3min)"
+```
+
+---
+
+## Self-Review Checklist
+
+- [x] **Spec coverage**: 混合策略（安全预计算 + PCA 切片）、接口、验收均有 Task
+- [x] **Placeholder scan**: 无 TBD/TODO，所有 steps 含完整代码
+- [x] **防穿越**: pca_momentum 始终切片（Task 1 测试断言 `calc_pca_momentum(closes` 在源码）
+- [x] **数值等价**: Task 3 显式验证预计算 == 切片
+- [x] **向后兼容**: `precomputed=None` 回退切片（Task 1 逻辑）
+- [x] **Scope**: 不改 pca 内部、不预计算 vol_prob、不改 tsfm 断点
+
+---
+
+**Plan 完成。** Task 1-3 完成后，market 瓶颈解除，可进入 tsfm 断点验证 + 全量运行（需用户批准）。

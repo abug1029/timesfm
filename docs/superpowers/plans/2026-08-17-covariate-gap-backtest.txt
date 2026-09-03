@@ -1,0 +1,308 @@
+# 协变量空白补测 Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 对 20 品种中测试不足/从未测试的协变量×品种组合进行系统性补测，填补 141 次回测中的空白区域，寻找可改善 PF/DirAcc 的新组合。
+
+**Architecture:** 基于 `scripts/monthly_backtest.py` 的 `--combo` / `--cov-override` CLI 接口，按优先级分批执行完整 396pt walk-forward 回测。每批次用 nohup 脱机运行 + JSONL 断点，结果写 `reports/monthly_backtest/` 并更新 `docs/backtest_registry.md`。
+
+**Tech Stack:** Python + TimesFM 2.5 (CPU-only) + SQLite + JSONL checkpoint
+
+**Spec:** 本次分析的梳理结果（上一轮对话的"协变量穷举历史总梳理"）
+
+## Global Constraints
+
+- **回测前先获用户批准**（2026-08-05 用户指令）
+- CPU-only 环境，单品种 396pt ≈ 30-60 分钟
+- 长时任务用 nohup + JSONL 断点续跑（SOP: `long-task-sop-windows.md`）
+- `PYTHONIOENCODING=utf-8` 防 GBK 崩溃
+- 禁止用 3pt/7pt scan 代替完整 WF 回测（2026-08-03 用户指令）
+- 单写入者约定：同一 JSONL 同时只允许一个进程追加
+- 评估口径：v2 verdict（PF +10% 或 MaxDD 改善 + EV 不恶化）
+
+---
+
+## 批次总览
+
+| 批次 | 品种 | 协变量组合 | 目标 | 预估耗时 |
+|:----:|------|-----------|------|----------|
+| A | SS | `reversal_shadow` | 固化方案 v2 验证 | ~40min |
+| A | UR | `ao_accel+oi` | 组合增强 | ~50min |
+| A | UR | `ao_accel+reversal_shadow` | 组合增强 | ~50min |
+| B | SS | `rsi_state+sar_dist` | sar_dist 首测+SS补测 | ~40min |
+| B | SR | `rsi_state+sar_dist` | sar_dist 首测+SR补测 | ~50min |
+| B | JD | `rsi_state+sar_dist` | sar_dist 首测（rsi_state 体系） | ~50min |
+| C | RB | `ha_body+sar_dist` | ha_body 正交增强 | ~50min |
+| C | FU | `ha_body+sar_dist` | ha_body 正交增强 | ~50min |
+| C | FG | `ha_body+sar_dist` | ha_body 正交增强 | ~50min |
+| D | SP | `ha_body` | SP 补测（当前 ha_body+calendar 需确认 ha_body 单独是否更好） | ~40min |
+| D | SP | `rsi_state+oi` | SP 正交方案替代 | ~40min |
+| D | MA | `sar_dist+hourly_slope` | MA 新组合 | ~50min |
+| E | SS | `reversal_shadow+calendar` | 影线+季节性 | ~40min |
+| E | UR | `hourly_slope+reversal_shadow` | AO 测试 FAIL 但 UR 未测 | ~50min |
+| E | TA | `ha_body+ao_accel` | TA 补测（PF=0.99 边界） | ~50min |
+
+**总计: 15 次回测，预估 12-14 小时（可分批运行）**
+
+---
+
+### Task 1: 批次 A — SS 固化验证 + UR 组合增强
+
+**Files:**
+- 产出: `reports/monthly_backtest/20260817_*/monthly_report.md`
+- 产出: `reports/data_ops/20260817_batch_a.jsonl` (checkpoint)
+- 修改: `docs/backtest_registry.md` (追加记录)
+
+**前置条件:**
+- 用户批准本批次
+- 数据新鲜度: `python -m data.cli status ss ur` 确认无 stale
+
+- [ ] **Step 1: 数据新鲜度预检**
+
+```bash
+source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+cd D:/FlyBuddy/FM_a
+python -m data.cli status ss ur
+```
+
+预期: 两个品种数据均无 stale 警告。若有 stale，先 `python scripts/collect_1h.py ss ur`。
+
+- [ ] **Step 2: 运行 SS reversal_shadow 验证回测**
+
+```bash
+cd D:/FlyBuddy/FM_a
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py ss --combo "reversal_shadow" > reports/data_ops/20260817_ss_revshadow.log 2>&1 &
+```
+
+预期: 生成 JSONL checkpoint，396pt 完成后输出 DirAcc/PF/EV/MaxDD。
+当前 SS 固化方案 = `reversal_shadow`，此回测验证该方案在新口径下的 v2 verdict。
+
+- [ ] **Step 3: 运行 UR ao_accel+oi 回测**
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py ur --combo "ao_accel,oi" > reports/data_ops/20260817_ur_aoaccel_oi.log 2>&1 &
+```
+
+- [ ] **Step 4: 运行 UR ao_accel+reversal_shadow 回测**
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py ur --combo "ao_accel,reversal_shadow" > reports/data_ops/20260817_ur_aoaccel_rev.log 2>&1 &
+```
+
+注意: Step 3 和 Step 4 串行（单写入者约定），Step 3 完成后再启动 Step 4。
+
+- [ ] **Step 5: 收集结果 + 更新 backtest_registry**
+
+从各 log 中提取 DirAcc / PF / EV / MaxDD / n，追加到 `docs/backtest_registry.md` 对应品种节。
+判定 v2 verdict（PASS / FAIL）。
+
+---
+
+### Task 2: 批次 B — sar_dist 首次全品种扫描（rsi_state 体系）
+
+**Files:**
+- 产出: `reports/data_ops/20260817_batch_b_*.log`
+- 修改: `docs/backtest_registry.md`
+
+**背景:** sar_dist (Parabolic SAR 趋势距离) 从未被回测过。理论上与 rsi_state 正交（RSI 基于价格位置，SAR 基于趋势结构）。选择 rsi_state 体系的品种：SR（rsi_state+oi+calendar）、JD（rsi_state+oi）。
+
+- [ ] **Step 1: SS rsi_state+sar_dist**
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py ss --combo "rsi_state,sar_dist" > reports/data_ops/20260817_ss_rsi_sar.log 2>&1 &
+```
+
+- [ ] **Step 2: SR rsi_state+sar_dist**
+
+Step 1 完成后启动。
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py sr --combo "rsi_state,sar_dist" > reports/data_ops/20260817_sr_rsi_sar.log 2>&1 &
+```
+
+- [ ] **Step 3: JD rsi_state+sar_dist**
+
+Step 2 完成后启动。
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py jd --combo "rsi_state,sar_dist" > reports/data_ops/20260817_jd_rsi_sar.log 2>&1 &
+```
+
+- [ ] **Step 4: 收集结果 + 更新 backtest_registry**
+
+如果任一品种 PASS（PF +10% 或 MaxDD 改善 + EV 不恶化），进入 Task 5 的固化流程。
+
+---
+
+### Task 3: 批次 C — ha_body + sar_dist 正交增强
+
+**Files:**
+- 产出: `reports/data_ops/20260817_batch_c_*.log`
+- 修改: `docs/backtest_registry.md`
+
+**背景:** RB/FU/FG 都固化为 ha_body 单独，PF 在 1.00 边界。sar_dist 提供趋势距离信息，与 ha_body 的方向动量正交。注意: AO 的 `ha_body+hourly_slope` 在 Phase 9 测试 FAIL，但 sar_dist 是不同维度。
+
+- [ ] **Step 1: RB ha_body+sar_dist**
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py rb --combo "ha_body,sar_dist" > reports/data_ops/20260817_rb_ha_sar.log 2>&1 &
+```
+
+- [ ] **Step 2: FU ha_body+sar_dist**
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py fu --combo "ha_body,sar_dist" > reports/data_ops/20260817_fu_ha_sar.log 2>&1 &
+```
+
+- [ ] **Step 3: FG ha_body+sar_dist**
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py fg --combo "ha_body,sar_dist" > reports/data_ops/20260817_fg_ha_sar.log 2>&1 &
+```
+
+- [ ] **Step 4: 收集结果 + 更新 backtest_registry**
+
+---
+
+### Task 4: 批次 D — 测试不足品种补测
+
+**Files:**
+- 产出: `reports/data_ops/20260817_batch_d_*.log`
+- 修改: `docs/backtest_registry.md`
+
+- [ ] **Step 1: SP ha_body（单独测试）**
+
+SP 当前固化 ha_body+calendar，但 ha_body 单独从未测试过。对比确认 calendar 是否真的有帮助。
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py sp --combo "ha_body" > reports/data_ops/20260817_sp_ha.log 2>&1 &
+```
+
+- [ ] **Step 2: SP rsi_state+oi**
+
+SP 从未尝试 rsi_state 体系。rsi_state+oi 在 JD 有效，SR 也用了 rsi_state+oi+calendar。
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py sp --combo "rsi_state,oi" > reports/data_ops/20260817_sp_rsi_oi.log 2>&1 &
+```
+
+- [ ] **Step 3: MA sar_dist+hourly_slope**
+
+MA 当前 hourly_slope+oi（PF=0.71 低）。sar_dist 提供趋势结构信息，与 hourly_slope 的价格斜率正交。
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py ma --combo "sar_dist,hourly_slope" > reports/data_ops/20260817_ma_sar_hslope.log 2>&1 &
+```
+
+- [ ] **Step 4: 收集结果 + 更新 backtest_registry**
+
+---
+
+### Task 5: 批次 E — 补充探索
+
+**Files:**
+- 产出: `reports/data_ops/20260817_batch_e_*.log`
+- 修改: `docs/backtest_registry.md`
+
+- [ ] **Step 1: SS reversal_shadow+calendar**
+
+SS 当前 reversal_shadow 单独。calendar_cyclical 在 M/SP/CF/SR 中均有效。测试加 calendar 能否改善。
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py ss --combo "reversal_shadow,calendar_cyclical" > reports/data_ops/20260817_ss_rev_cal.log 2>&1 &
+```
+
+- [ ] **Step 2: UR hourly_slope+reversal_shadow**
+
+AO 的 `hourly_slope+reversal_shadow` 在 Phase 9 FAIL。但 UR 不同于 AO（UR 用 ao_accel 体系），测试此组合在 UR 的表现。
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py ur --combo "hourly_slope,reversal_shadow" > reports/data_ops/20260817_ur_hslope_rev.log 2>&1 &
+```
+
+- [ ] **Step 3: TA ha_body+ao_accel**
+
+TA 当前 ha_body（PF=0.99 边界）。ao_accel 在 UR 有效（动量拐点），与 ha_body（方向动量）正交。
+
+```bash
+set PYTHONIOENCODING=utf-8
+nohup python scripts/monthly_backtest.py ta --combo "ha_body,ao_accel" > reports/data_ops/20260817_ta_ha_aoaccel.log 2>&1 &
+```
+
+- [ ] **Step 4: 收集结果 + 更新 backtest_registry**
+
+---
+
+### Task 6: 综合裁决
+
+**Files:**
+- 产出: `reports/research/20260817_covariate_gap_verdict.md`
+- 修改: `config/prediction_scheme.py`（仅当 PASS 时）
+- 修改: `docs/backtest_registry.md`
+
+- [ ] **Step 1: 汇总所有批次结果**
+
+从 backtest_registry.md 提取所有新增记录，按品种整理对比表。
+
+- [ ] **Step 2: v2 verdict 判定**
+
+对每个测试组合执行 v2 判定:
+- **GREEN-EV**: PF ≥ 1.0 且 EV > 0 → 候选固化
+- **GREEN-MAXDD**: PF < 1.0 但 MaxDD 显著改善 + EV 不恶化 → 条件候选
+- **FAIL**: 无显著改善或退化
+
+- [ ] **Step 3: 撰写裁决报告**
+
+写 `reports/research/20260817_covariate_gap_verdict.md`，包含:
+- 15 次回测的完整结果表
+- sar_dist 首次评估结论
+- 每个 PASS 品种的固化建议
+- 下一个优化方向的建议
+
+- [ ] **Step 4: 固化 PASS 品种（如有）**
+
+更新 `config/prediction_scheme.py` 中对应品种的 `covariate_type` / `covariate_types`。
+仅固化 v2 GREEN-EV 的品种。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add docs/backtest_registry.md reports/research/20260817_covariate_gap_verdict.md config/prediction_scheme.py
+git commit -m "feat(covariate-gap): 协变量空白补测 15 次回测 + 裁决"
+```
+
+---
+
+## 执行节奏建议
+
+| 阶段 | 批次 | 预估耗时 | 建议 |
+|------|------|----------|------|
+| 第 1 天 | A (3 回测) | ~2.5h | 先跑 SS 验证 + UR 增强 |
+| 第 1 天夜间 | B (3 回测) | ~2.5h | nohup 脱机，次日收结果 |
+| 第 2 天 | C (3 回测) | ~2.5h | sar_dist 在 ha_body 体系的表现 |
+| 第 2 天夜间 | D (3 回测) | ~2h | 补测不足品种 |
+| 第 3 天 | E (3 回测) | ~2.5h | 补充探索 |
+| 第 3 天 | Task 6 裁决 | ~30min | 汇总+固化 |
+
+**总计约 3 天可完成全部 15 次回测 + 裁决。**
+
+## 风险与备选
+
+1. **sar_dist 全 FAIL**: 说明 Parabolic SAR 对期货 1H 预测无价值，从候选池永久移除。这是有价值的负结论。
+2. **SS reversal_shadow 验证 FAIL**: 当前固化方案在新口径下不达标，需要回到 Task B 的 rsi_state+sar_dist 或其他组合。
+3. **CPU 时间不足**: 可先跑批次 A+B（6 回测，~5h），根据 sar_dist 首测结果决定是否继续批次 C。
+4. **数据 stale**: 任何品种数据过期会阻断回测，预检时一并补采。

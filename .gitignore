@@ -1,0 +1,56 @@
+# 凭证
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# 数据库（太大，不适合 git）
+db/*.db
+db/*.db-shm
+db/*.db-wal
+
+# TimesFM 子仓库（独立 git 仓库，不作为子模块）
+timesfm/
+
+# TimesFM 模型缓存
+timesfm_cache/
+
+# OMC 内部状态
+.omc/
+.superpowers/
+.claude/
+.agents/
+
+# Praxist 运行产物（太大，可从 praxist 重新生成）
+task_FM/experiments/
+task_FM/scripts/praxist_ws/
+
+# 模型权重（pkl 太大）
+models/*.pkl
+
+# pytest
+.pytest_cache/
+
+# 预测报告（按需取消注释以提交）
+reports/
+
+# 数据缓存
+data/cache/
+
+# 其他运行时状态
+task_state.json
+ralph/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,125 @@
+schema_version: 1
+task_id: fm_covariate_search_toy
+task_name: "FM_a covariate search task package"
+description_file: description.md
+capabilities:
+  - task.classical_control
+  - task.multi_metric_pareto
+
+research_direction: |
+  Search covariate candidates on the frozen FM_a 1H cascade backtest pipeline.
+  Candidates are JSON files {symbol, cov_override, max_points, stage} written under
+  scripts/praxist_ws/. symbol limited to 2-star symbols (m/ss/sr/cj/jd/lh/eg/rb);
+  cov_override limited to the pre-registered list (config/praxist_task.yaml).
+  diagnostic stage max_points 1..6; aligned stage 350..500.
+  Forbidden: editing evaluator/model code, writing outside allowed roots,
+  retraining models, look-ahead bias. Evaluator caliber owned by FM_a
+  (config/praxist_task.yaml). PRIMARY = ev_after_slippage (net of slippage).
+  GREEN requires full walk-forward + hard gate (n>=350, IC>=0.05, correction).
+
+prompt_layout:
+  base_template: prompt_base.jinja2
+  generation_template: prompt_generation.jinja2
+
+evaluation:
+  primary_metric: ev_after_slippage
+  direction: maximize
+  aux_metrics: [pf, maxdd, n, dir_acc, gate_pass]
+  seeds: [20260901]
+  maturity_policy:
+    min_effort_ratio: 0.85
+    min_coverage_ratio: 0.85
+    require_ratio_gate: true
+    complete_stage_labels: [complete, aligned]
+    preliminary_stage_labels: [diagnostic]
+  launch_guard:
+    enabled: true
+    safety_factor: 1.5
+  staged_protocols:
+    diagnostic:
+      launch_allowed: true
+      ranking_allowed: false
+      mature_allowed: false
+      parent_allowed: false
+      close_allowed: false
+    aligned:
+      launch_allowed: true
+      ranking_allowed: true
+      mature_allowed: true
+      parent_allowed: true
+      close_allowed: false
+    complete:
+      launch_allowed: true
+      ranking_allowed: true
+      mature_allowed: true
+      parent_allowed: true
+      close_allowed: true
+  diversity_dimensions:
+    - name: intent
+      description: "explore / exploit / falsify / diagnose"
+  must_explore_axes:
+    - name: covariate_family
+      description: "each generation must cover at least one covariate family orthogonal to current best (QD gate)"
+
+compute_budget:
+  max_parallel_runs_per_peer: 1
+
+task_entrypoints:
+  evaluation:
+    command: evaluations/fm_eval/run.py
+    output_policy: "scheduled commands use --output-dir and write one peer-owned evaluation_summary.json under results/gen_<N>/<peer_id>/<variant_id>/<mode>; task-root cwd is mandatory"
+
+runtime_outputs:
+  root: .
+  gitignored: true
+  policy: "Evaluation outputs go to results/gen_<N>/<peer_id>/<variant_id>/<stage>/ under the run dir. Do NOT write to scripts/praxist_ws/ (blocked by delete guard)."
+
+runtime_environment:
+  cwd: task_project
+  venv: ../.venv
+  python: ../.venv/bin/python
+  require_paths: true
+  env:
+    CUDA_VISIBLE_DEVICES: ""
+    ANTHROPIC_BASE_URL: "https://ark.cn-beijing.volces.com/api/coding"
+    ANTHROPIC_API_KEY: "059eea0b-8ddd-4bc9-a6af-c62a48ab5de0"
+  protected_child_paths: [evaluations, roles, audit_rules]
+  writable_roots: []
+
+generation_policy:
+  max_generations: 3
+  cohort_size: 4
+  per_generation_hours: 1.5
+  promote_top_k: 2
+  promote_criterion: multi_metric_frontier_lanes
+
+synthesis_trigger:
+  min_findings: 4
+  min_contributing_peers: 2
+  min_interval_minutes: 30
+  max_interval_minutes: 60
+
+gems:
+  enabled: true
+  min_mature_eval_units: 1
+  evidence_stage_min_units: {aligned: 1, complete: 1}
+
+agent:
+  reasoning_effort: max
+
+baselines: []
+
+praxist_plugins:
+  task_ref: task:fm_covariate_search_toy
+  workflow:
+    stage: workflow_stage:research_loop
+  panel:
+    topology: panel_topology:legacy_multi_pi_two_round
+    roles:
+      - task_role:peer_generalist
+  audit_rules:
+    - task_audit:scope_and_protocol
+  evaluations:
+    - task_evaluation:fm_eval
+  tools: []
+  graph_maintainers: []
