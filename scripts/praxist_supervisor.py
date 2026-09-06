@@ -157,12 +157,43 @@ def _praxist_env(route: str | None = None, st=None):
     return env
 
 
+def _failover_model_name() -> str:
+    return _env_first("FAILOVER_MODEL", "ANTHROPIC_FAILOVER_MODEL") or "qwen3.7-plus"
+
+
+def _recorded_run_model(run_dir) -> str | None:
+    """Read canonical --model from an existing run's startup_config.json."""
+    if not run_dir:
+        return None
+    p = os.path.join(str(run_dir), "startup_config.json")
+    try:
+        data = json.loads(open(p, encoding="utf-8").read())
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+    args = data.get("canonical_args") if isinstance(data, dict) else None
+    if not isinstance(args, dict):
+        return None
+    model = str(args.get("model") or "").strip()
+    return model or None
+
+
+def _failover_can_resume_same_run(run_dir) -> bool:
+    """Praxist resume rejects model identity changes.
+
+    Only resume the same run_dir on failover when it already started with the
+    failover model id. Otherwise start a fresh run (DashScope qwen ≠ Ark claude).
+    """
+    recorded = _recorded_run_model(run_dir)
+    if not recorded:
+        return False
+    return recorded == _failover_model_name()
+
+
 def _model_argv(route: str | None = None, st=None) -> list:
     """--model override for start/resume (primary: claude-opus-4-7; failover: qwen3.7-plus)."""
     route = (route or _llm_provider(st)).strip().lower()
     if route == "failover":
-        model = _env_first("FAILOVER_MODEL", "ANTHROPIC_FAILOVER_MODEL") or "qwen3.7-plus"
-        return ["--model", model]
+        return ["--model", _failover_model_name()]
     model = _env_first("PRIMARY_MODEL") or "claude-opus-4-7"
     return ["--model", model]
 
@@ -547,21 +578,31 @@ def decide_fast_loop(goal, dry_run=False, now=None):
         run_dir = (meta or {}).get("run_dir") or st.get("last_run_dir")
         if provider_now == "primary" and failover_ok and run_dir:
             stop_argv = ["stop", str(run_id)] if run_id else None
-            resume_argv = _resume_argv(run_dir, "failover")
+            can_resume = _failover_can_resume_same_run(run_dir)
+            continue_argv = (
+                _resume_argv(run_dir, "failover") if can_resume else _start_argv("failover")
+            )
+            continue_action = "run_resumed" if can_resume else "run_started"
+            reason = (
+                "Ark/primary 429; DashScope failover resume (same model id)"
+                if can_resume
+                else "Ark/primary 429; DashScope failover FRESH start "
+                     "(Praxist resume forbids model change claude→qwen)"
+            )
             actions.append({
                 "action": "run_failover_llm",
-                "reason": "Ark/primary 429; switch to FAILOVER (DashScope) and resume (not wait_quota)",
-                "refs": [run_id, run_dir, "failover"],
+                "reason": reason,
+                "refs": [run_id, run_dir, "failover", "resume" if can_resume else "start"],
                 "argv": stop_argv,
-                "resume_argv": resume_argv,
+                "resume_argv": continue_argv if can_resume else None,
+                "start_argv": None if can_resume else continue_argv,
                 "llm_provider": "failover",
             })
-            # Always surface planned resume in dry-run too
             actions.append({
-                "action": "run_resumed",
-                "reason": "failover resume after 429 stop",
+                "action": continue_action,
+                "reason": reason,
                 "refs": [run_dir, "failover"],
-                "argv": resume_argv,
+                "argv": continue_argv,
                 "llm_provider": "failover",
             })
             if not dry_run:
@@ -574,17 +615,39 @@ def decide_fast_loop(goal, dry_run=False, now=None):
                     "phase": "fast",
                     **_provider_state("failover"),
                 })
-                r = _praxist(resume_argv, env=_praxist_env("failover"))
+                r = _praxist(continue_argv, env=_praxist_env("failover"))
+                if r.get("ok") and not can_resume:
+                    # Capture new run_dir/id from start JSON when available
+                    try:
+                        js = json.loads(r.get("stdout") or "{}")
+                        upd = {}
+                        if isinstance(js, dict):
+                            if js.get("run_dir"):
+                                upd["last_run_dir"] = js["run_dir"]
+                            if js.get("run_id"):
+                                upd["last_run_id"] = js["run_id"]
+                        if upd:
+                            _merge_save(upd)
+                    except json.JSONDecodeError:
+                        pass
                 if not r.get("ok"):
                     actions.append({
                         "action": "run_paused_429",
-                        "reason": "failover resume failed; wait Ark reset",
+                        "reason": "failover continue failed; wait Ark reset",
                         "refs": [run_id, run_dir, (r.get("stderr") or "")[:200]],
                         "sleep_s": sleep_s,
                     })
                     _merge_save({"paused_429": True, **_provider_state("failover")})
             return actions
-        # Already on failover (or no failover) → classic pause/wait
+        # Already on failover: Ark quota_gate must NOT stop a live DashScope run.
+        if provider_now == "failover":
+            actions.append({
+                "action": "noop",
+                "reason": "Ark quota banned but llm_provider=failover; keep live DashScope run",
+                "refs": [run_id, run_dir],
+            })
+            return actions
+        # No failover configured → classic pause/wait for Ark reset
         actions.append({
             "action": "run_paused_429",
             "reason": "quota banned; stop then wait reset",
@@ -612,10 +675,17 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             if failover_ok or provider_now == "failover":
                 # Stay on failover for THIS run (no thrash to primary mid-run)
                 if provider_now == "failover" or (failover_ok and not ok):
-                    _plan_resume(
-                        rd, "failover",
-                        "paused_429; resume via DashScope failover (not wait_quota)",
-                    )
+                    if _failover_can_resume_same_run(rd):
+                        _plan_resume(
+                            rd, "failover",
+                            "paused_429; resume via DashScope failover (same model id)",
+                        )
+                    else:
+                        _plan_start(
+                            "failover",
+                            "paused_429; FRESH DashScope start "
+                            "(resume identity forbids model/task drift)",
+                        )
                     return actions
                 if ok:
                     # Quota ok but we never failed over — resume primary
@@ -642,10 +712,14 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             rd = st.get("last_run_dir") or st.get("last_run_id")
             if not dry_run:
                 _merge_save({"phase": "fast", **_provider_state("failover")})
-            if rd and not active:
-                _plan_resume(rd, "failover", "wait_quota bypassed; failover resume")
+            if rd and not active and _failover_can_resume_same_run(rd):
+                _plan_resume(rd, "failover", "wait_quota bypassed; failover resume (same model)")
             elif not active:
-                _plan_start("failover", "wait_quota bypassed; failover start")
+                _plan_start(
+                    "failover",
+                    "wait_quota bypassed; failover start "
+                    "(fresh run when model differs or no resumable dir)",
+                )
             return actions
         if not ok:
             actions.append({

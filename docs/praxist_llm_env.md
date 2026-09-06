@@ -67,6 +67,26 @@ set +a
 - **接线优先序**：supervisor start/resume **argv `--model <name>`**（明确覆盖）→ 同时设 env `PRAXIST_MODEL`（praxist CLI 也会读）→ 不改 `task.yaml`
 - **BASE_URL**：勿在 `task_FM/task.yaml` `runtime_environment.env` 写死；由 process env + `scripts/praxist_llm_env_hook.py`（`.pth` 安装）让 `anthropic_messages` 透传 `ANTHROPIC_BASE_URL`。重装 praxist 后跑 `scripts/install_praxist_llm_env_hook.py`。
 
+
+### Praxist model_provider compatibility (DashScope)
+
+Praxist `model_provider:anthropic_messages` validates `--model` against
+`compatible_model_patterns` in its plugin manifest (default: only `claude-*`).
+That is why failover with `FAILOVER_MODEL=qwen3.7-plus` failed:
+
+`startup failed: model 'qwen3.7-plus' is not compatible with model_provider:anthropic_messages`
+
+**Keep** `model_provider:anthropic_messages` (required by `agent_runtime:claude_sdk`).
+**Keep** DashScope Anthropic endpoint + model id `qwen3.7-plus` (Coding Plan allowlist).
+**Fix** by widening patterns via `scripts/install_praxist_llm_env_hook.py`
+(patches site-packages `anthropic_messages/plugin.yaml` to also allow
+`qwen*`, `kimi-*`, `glm-*`, `MiniMax-*`). Re-run the installer after any praxist reinstall.
+
+**Resume identity:** Praxist refuses `resume` when `--model` changes
+(e.g. `claude-opus-4-7` → `qwen3.7-plus`) or when task_project / task.yaml
+hashes drift. Supervisor failover therefore **starts a fresh run** on DashScope
+unless the existing run already used the failover model id.
+
 密钥勿写入 yaml / 报告 / commit / chat。
 
 ## 待用户确认

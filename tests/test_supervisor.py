@@ -240,7 +240,8 @@ def test_429_stop_via_main_once_then_resume(tmp_path, monkeypatch):
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(json.dumps({
         "cycles_done": 0, "last_run_id": "runX", "last_run_dir": "/tmp/runX",
-        "last_harvested_run_id": None, "paused_429": False,
+        # Already harvested so pause→resume path is not mixed with harvest_empty cycle++
+        "last_harvested_run_id": "runX", "paused_429": False,
     }), encoding="utf-8")
     goal = _goal_yaml(tmp_path)
     (tmp_path / "task_FM").mkdir()
@@ -523,11 +524,12 @@ def test_429_failover_resume_not_wait_quota(tmp_path, monkeypatch):
     actions = sup.decide_fast_loop(goal, dry_run=True, now=now)
     names = [a["action"] for a in actions]
     assert "wait_quota" not in names, names
-    assert "run_resumed" in names, names
-    resumed = next(a for a in actions if a["action"] == "run_resumed")
-    assert resumed.get("llm_provider") == "failover"
-    assert "--model" in resumed["argv"]
-    assert "qwen3.7-plus" in resumed["argv"]
+    # Primary run model was claude; Praxist forbids model change on resume → fresh start
+    assert "run_started" in names, names
+    started = next(a for a in actions if a["action"] == "run_started")
+    assert started.get("llm_provider") == "failover"
+    assert "--model" in started["argv"]
+    assert "qwen3.7-plus" in started["argv"]
 
 
 def test_active_429_plans_failover_llm(tmp_path, monkeypatch):
@@ -555,10 +557,11 @@ def test_active_429_plans_failover_llm(tmp_path, monkeypatch):
     actions = sup.decide_fast_loop(goal, dry_run=True, now=now)
     names = [a["action"] for a in actions]
     assert names[0] == "run_failover_llm"
-    assert "run_resumed" in names
+    assert "run_started" in names  # model differs from primary run → fresh start
     assert "wait_quota" not in names
     fo = actions[0]
-    assert fo.get("resume_argv") and "qwen3.7-plus" in fo["resume_argv"]
+    assert fo.get("start_argv") and "qwen3.7-plus" in fo["start_argv"]
+    assert fo.get("resume_argv") is None
     assert fo.get("llm_provider") == "failover"
 
 
@@ -673,12 +676,137 @@ def test_429_triggers_failover_not_wait_quota(tmp_path, monkeypatch):
     # live path
     actions2 = sup.decide_fast_loop(goal, dry_run=False, now=now)
     assert any(c["args"][:1] == ["stop"] for c in calls)
-    assert any(c["args"][:1] == ["resume"] and "--model" in c["args"] for c in calls)
-    resume = next(c for c in calls if c["args"][:1] == ["resume"])
-    assert resume["args"][resume["args"].index("--model") + 1] == "qwen3.7-plus"
-    assert resume["base"].endswith("/apps/anthropic")
-    assert resume["model"] == "qwen3.7-plus"
+    # Primary run has no matching failover model → FRESH start (not resume+qwen)
+    assert any(c["args"][:1] == ["start"] and "qwen3.7-plus" in c["args"] for c in calls)
+    assert not any(c["args"][:1] == ["resume"] for c in calls)
+    start = next(c for c in calls if c["args"][:1] == ["start"])
+    assert start["base"].endswith("/apps/anthropic")
+    assert start["model"] == "qwen3.7-plus"
     st = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     assert st["llm_provider"] == "failover"
     assert st["llm_route"] == "failover"
     assert st.get("paused_429") is False
+
+
+def test_failover_can_resume_same_run_identity(tmp_path):
+    """Resume only when recorded startup model already equals failover model."""
+    run = tmp_path / "run_claude"
+    run.mkdir()
+    (run / "startup_config.json").write_text(json.dumps({
+        "canonical_args": {"model": "claude-opus-4-7"},
+    }), encoding="utf-8")
+    assert sup._failover_can_resume_same_run(str(run)) is False
+    assert sup._failover_can_resume_same_run(str(tmp_path / "missing")) is False
+
+    run_q = tmp_path / "run_qwen"
+    run_q.mkdir()
+    (run_q / "startup_config.json").write_text(json.dumps({
+        "canonical_args": {"model": "qwen3.7-plus"},
+    }), encoding="utf-8")
+    assert sup._failover_can_resume_same_run(str(run_q)) is True
+
+
+def test_active_429_resumes_when_run_already_failover_model(tmp_path, monkeypatch):
+    """If the live run already used qwen, failover may resume same run_dir."""
+    _set_failover_env(monkeypatch)
+    run = tmp_path / "runQ"
+    run.mkdir()
+    (run / "startup_config.json").write_text(json.dumps({
+        "canonical_args": {"model": "qwen3.7-plus"},
+    }), encoding="utf-8")
+    monkeypatch.setattr(sup, "_praxist", lambda *a, **k: {"ok": True, "stdout": ""})
+    monkeypatch.setattr(sup, "_run_active", lambda: True)
+    monkeypatch.setattr(
+        sup, "_active_run_meta",
+        lambda: {"run_id": "runQ", "run_dir": str(run), "state": "running"},
+    )
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "state.json").write_text(json.dumps({
+        "cycles_done": 0, "last_run_id": "runQ", "last_run_dir": str(run),
+        "paused_429": False, "phase": "fast", "llm_provider": "primary",
+    }), encoding="utf-8")
+    tz = timezone(timedelta(hours=8))
+    monkeypatch.setattr(
+        sup, "_latest_429_reset",
+        lambda: datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz),
+    )
+    goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
+                        "quota_margin_min": 30}}
+    now = datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)
+    actions = sup.decide_fast_loop(goal, dry_run=True, now=now)
+    fo = next(a for a in actions if a["action"] == "run_failover_llm")
+    assert fo.get("resume_argv") and "qwen3.7-plus" in fo["resume_argv"]
+    assert fo.get("start_argv") is None
+    assert "run_resumed" in [a["action"] for a in actions]
+
+
+def test_paused_429_fresh_start_on_identity_wall(tmp_path, monkeypatch):
+    """paused_429 + claude run_dir → fresh start, not resume with qwen."""
+    _set_failover_env(monkeypatch)
+    run = tmp_path / "runC"
+    run.mkdir()
+    (run / "startup_config.json").write_text(json.dumps({
+        "canonical_args": {"model": "claude-opus-4-7"},
+    }), encoding="utf-8")
+    monkeypatch.setattr(sup, "_praxist", lambda *a, **k: {"ok": True, "stdout": ""})
+    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "state.json").write_text(json.dumps({
+        "cycles_done": 0, "last_run_id": "runC", "last_run_dir": str(run),
+        "paused_429": True, "phase": "fast", "llm_provider": "failover",
+    }), encoding="utf-8")
+    tz = timezone(timedelta(hours=8))
+    monkeypatch.setattr(
+        sup, "_latest_429_reset",
+        lambda: datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz),
+    )
+    goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
+                        "quota_margin_min": 30}}
+    now = datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)
+    actions = sup.decide_fast_loop(goal, dry_run=True, now=now)
+    names = [a["action"] for a in actions]
+    assert "run_started" in names
+    assert "run_resumed" not in names
+    assert "wait_quota" not in names
+
+
+def test_active_failover_run_not_stopped_by_ark_quota(tmp_path, monkeypatch):
+    """Live DashScope run must survive Ark quota_gate=False."""
+    _set_failover_env(monkeypatch)
+    stops = []
+
+    def fake_praxist(args, **k):
+        if args and args[0] == "stop":
+            stops.append(list(args))
+        return {"ok": True, "stdout": ""}
+
+    monkeypatch.setattr(sup, "_praxist", fake_praxist)
+    monkeypatch.setattr(sup, "_run_active", lambda: True)
+    monkeypatch.setattr(
+        sup, "_active_run_meta",
+        lambda: {"run_id": "runF", "run_dir": "/tmp/runF", "state": "running"},
+    )
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "state.json").write_text(json.dumps({
+        "cycles_done": 0, "last_run_id": "runF", "last_run_dir": "/tmp/runF",
+        "paused_429": False, "phase": "fast",
+        "llm_provider": "failover", "llm_route": "failover",
+    }), encoding="utf-8")
+    tz = timezone(timedelta(hours=8))
+    monkeypatch.setattr(
+        sup, "_latest_429_reset",
+        lambda: datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz),
+    )
+    goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
+                        "quota_margin_min": 30}}
+    now = datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)
+    actions = sup.decide_fast_loop(goal, dry_run=False, now=now)
+    assert stops == []
+    assert "run_paused_429" not in [a["action"] for a in actions]
+    assert any(a["action"] == "noop" for a in actions)
+    st = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+    assert st.get("paused_429") is False
+
