@@ -85,11 +85,21 @@ to the orchestrator and count as lost evidence.
 
 
 ## Memory hygiene (host hard caps)
-- Host has ~15 GiB RAM / 0 Swap. Production max concurrent TimesFM/fm_eval = **2**.
-- Cap is enforced by `mem_guard` flock + `protected_pids` hook (not by yaml `max_concurrent_evals` — ComputeBudget silently drops that field).
-- Up to 2 concurrent evals is OK (flock=2); do NOT exceed 2. If MemAvailable < 2 GiB, wait or skip — never pile on more TimesFM loads. Runtime RSS shed TERMs offenders >~3.5 GiB RSS.
+- Host has ~15 GiB RAM / 0 Swap. Control-plane hard cap: concurrent TimesFM loads = **1** (approved safe start; do NOT run 2 unless 总管 re-approves).
+- Cap is enforced by `mem_guard` flock + `protected_pids` hook (not by yaml `max_concurrent_evals` — ComputeBudget silently drops that field). Watch also TERMs excess loads.
+- If MemAvailable < 2.5 GiB, wait or skip — never pile on more TimesFM loads. Runtime RSS shed TERMs offenders >~3.5 GiB RSS.
 - Do NOT rely on tight RLIMIT_AS (conflicts with TimesFM safetensors mmap). Prefer flock + MemAvailable + RSS shed / cgroup memory.max.
-- Evidence: N=4 parallel peaked ≈8.5 GiB RSS and forced shed (see docs/host_environment_assessment.md §4b / hard caps). e2e round complete (fast+harvest+slow).
+- Evidence: N=4 parallel peaked ≈8.5 GiB RSS and forced shed (see docs/host_environment_assessment.md §4b / hard caps).
+
+## Eval launch protocol (MANDATORY — no bypass)
+- ALL TimesFM / fm_eval work MUST go through:
+  `/workspace/repos/timesfm-abug1029/.venv/bin/python evaluations/fm_eval/run.py ...`
+  (normally via peer Bash so `protected_pids` + mem_guard hook can gate the launch).
+- **FORBIDDEN** (will be TERM'd and logged):
+  - `python -c` / `python3 -c` that imports or calls `do_evaluate`, HourlyModel, DailyModel, timesfm, or otherwise loads TimesFM weights
+  - Any attempt to "bypass protected_pids" / "bypass mem_guard" / "bypass the guard"
+  - Inline scripts that load the model outside `evaluations/fm_eval/run.py`
+- One eval at a time host-wide. If a launch is refused or an eval is already running, wait — do not open a second load.
 
 ## Domain guidance
 - Mechanism first: never run a candidate you cannot articulate a mechanism for.

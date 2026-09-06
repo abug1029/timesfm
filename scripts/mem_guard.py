@@ -4,9 +4,9 @@
 Policy (2026-09-04 总管): do NOT use tight RLIMIT_AS as the primary hard cap —
 TimesFM safetensors mmap needs VAS ≫ RSS. Prefer:
 
-1) Global flock concurrency semaphore ≤2 + refuse start if MemAvailable < 2GiB
+1) Global flock concurrency semaphore ≤1 + refuse start if MemAvailable < 2.5GiB
 2) RSS monitor shed: TERM if single matching process RSS > ~3.5GiB
-   OR MemAvailable < 2GiB (log → data/cache/capacity_actions.log)
+   OR MemAvailable < 2.5GiB (log → data/cache/capacity_actions.log)
 3) If cgroup used: prefer memory.max / memory.high (physical), not RLIMIT_AS alone
 
 RLIMIT_AS remains available but is **optional / OFF by default**.
@@ -40,8 +40,8 @@ from typing import Iterable, Optional
 FM_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_LOCK = os.path.join(FM_ROOT, "data", "cache", "eval_slots.lock")
 DEFAULT_ACTION_LOG = os.path.join(FM_ROOT, "data", "cache", "capacity_actions.log")
-DEFAULT_MAX_SLOTS = 2
-MIN_AVAIL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB
+DEFAULT_MAX_SLOTS = 1
+MIN_AVAIL_BYTES = int(2.5 * 1024 * 1024 * 1024)  # 2.5 GiB (control-plane refuse)
 RSS_LIMIT_BYTES = int(3.5 * 1024 * 1024 * 1024)  # ~3.5 GiB
 # Kept for callers that explicitly opt in; NOT applied by default.
 RLIMIT_AS_BYTES = 3500 * 1024 * 1024  # ~3.5 GiB (optional only)
@@ -53,6 +53,13 @@ DEFAULT_CMD_PATTERNS = (
     "aligned_slow_loop",
     "eval_wrapper",
     "HourlyModel",
+    "DailyModel",
+    "do_evaluate",
+    "cascade_predict",
+    "monthly_backtest",
+    # inline python -c bypass of protected_pids (peer Bash)
+    "from evaluations",
+    "import timesfm",
 )
 _CMD_RE = re.compile("|".join(re.escape(p) for p in DEFAULT_CMD_PATTERNS))
 
@@ -132,7 +139,7 @@ class EvalSlot:
         if avail < self.min_avail_bytes:
             msg = (
                 f"mem_guard: MemAvailable={avail} < {self.min_avail_bytes} "
-                f"(refuse acquire; need >=2GiB)"
+                f"(refuse acquire; need >=2.5GiB)"
             )
             log_capacity_action(msg)
             raise SystemExit(msg)
@@ -245,7 +252,7 @@ def apply_mem_guard(
     """Acquire 1 slot (+ optional RLIMIT_AS). Used by aligned_slow_loop at entry.
 
     Default: flock + MemAvailable only (apply_limit=False). Raises SystemExit
-    if MemAvailable < 2GiB or all slots busy.
+    if MemAvailable < 2.5GiB or all slots busy.
     """
     global _HELD_SLOT
     if rlimit_as is None:
@@ -287,6 +294,56 @@ def _cmdline_of(pid: int) -> str:
         return ""
 
 
+def is_timesfm_eval_cmdline(cmd: str) -> bool:
+    """True for run.py / model loads / inline python -c TimesFM evals.
+
+    Peers have bypassed protected_pids via `.venv/bin/python -c "...do_evaluate..."`.
+    Those must count toward the global hard cap even when flock never saw them.
+    """
+    if not cmd:
+        return False
+    # Must be a python worker (not bash/node that merely mentions patterns in a script)
+    head = cmd.lstrip()
+    is_python = (
+        "python" in head.split(" ", 1)[0]
+        or "/python " in head[:80]
+        or "/python3 " in head[:80]
+        or head.startswith("python ")
+        or head.startswith("python3 ")
+    )
+    if not is_python:
+        return False
+    # skip launch wrappers / orchestrator (count the child python instead)
+    if "protected_pids" in cmd and "launch" in cmd:
+        return False
+    if "praxist_supervisor" in cmd or "praxist.run run" in cmd:
+        return False
+    if "praxist_mem_guard" in cmd or "install_praxist_mem_guard" in cmd:
+        return False
+    if "timesfm_hardcap_daemon" in cmd or "hardcap_daemon" in cmd:
+        return False
+    lower = cmd.lower()
+    for pat in DEFAULT_CMD_PATTERNS:
+        if pat.lower() in lower:
+            return True
+    # python -c with heavy markers (truncated cmdline still often keeps these)
+    if " -c " in cmd or ' -c"' in cmd or " -c'" in cmd:
+        if any(
+            k in lower
+            for k in (
+                "do_evaluate",
+                "hourlymodel",
+                "dailymodel",
+                "fm_eval",
+                "from evaluations",
+                "import timesfm",
+                "timesfm.",
+            )
+        ):
+            return True
+    return False
+
+
 def matching_eval_pids(
     patterns: Iterable[str] = DEFAULT_CMD_PATTERNS,
     extra_pids: Optional[Iterable[int]] = None,
@@ -304,7 +361,21 @@ def matching_eval_pids(
             continue
         pid = int(name)
         cmd = _cmdline_of(pid)
-        if not cmd or not pat.search(cmd):
+        if not cmd:
+            continue
+        # Launch wrappers are never eval loads (count the child python instead).
+        if "protected_pids" in cmd and "launch" in cmd:
+            continue
+        if "timesfm_hardcap_daemon" in cmd or "hardcap_daemon" in cmd:
+            continue
+        # Prefer is_timesfm_eval_cmdline (python-only). Fallback regex only for
+        # python workers so bash/node shells that embed pattern text in scripts
+        # are never counted as eval loads.
+        if is_timesfm_eval_cmdline(cmd):
+            pass
+        elif ("python" in cmd.split(" ", 1)[0] or "/python" in cmd[:100]) and pat.search(cmd):
+            pass
+        else:
             continue
         rss = process_rss_bytes(pid)
         if rss is None:
@@ -334,7 +405,7 @@ def rss_shed_once(
 
     TERM matching processes when:
       - that process RSS > rss_limit_bytes (~3.5GiB), OR
-      - MemAvailable < min_avail_bytes (2GiB) — shed highest-RSS offenders
+      - MemAvailable < min_avail_bytes (2.5GiB) — shed highest-RSS offenders
         until available recovers or no candidates left (newest/highest first).
 
     Returns list of action dicts. Does not raise.
