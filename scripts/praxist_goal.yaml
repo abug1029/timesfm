@@ -1,17 +1,27 @@
+# Praxist goal — tuned for Grok Bot host (2026-09-04)
+# Host: 8×Xeon, 15GiB RAM, 0 Swap, no GPU (see docs/host_environment_assessment.md)
+# Policy: one full pipeline test cycle; N≤2 concurrent TimesFM loads (mem_guard flock).
+# Success conditions unchanged (economic gates). Budgets/cadence reduced for this box.
 goal:
   success_condition:
     - "len(symbols_hit) >= 1"
     - "min(pass_variant_pf_ratios) > 1.05"
     - "len(families_hit) >= 1"
   budgets:
-    max_cycles: 3
-    cpu_hours: 12
-    token_budget_m: 40
-    deadline: "2026-09-30"
+    # One full cycle (fast → harvest → slow drain) is the e2e test unit.
+    max_cycles: 1
+    # Serial WF on CPU: keep headroom under 15GiB; stop before thrashing.
+    cpu_hours: 8
+    # Smaller than production 40M — enough for one fast run on Volcengine Ark.
+    token_budget_m: 15
+    deadline: "2026-09-06"
   cadence:
-    survivors_per_cycle: 2
-    aligned_max_points: 400
-    run_budget_hours: 2.0
+    # One survivor → one aligned job; avoids queue pile-up on this box.
+    survivors_per_cycle: 1
+    # Floor of pre-registered hard gate n>=350 (was 400); still gate-valid, shorter wall.
+    aligned_max_points: 350
+    # Fit inside 5h quota window with margin; peers burn tokens, eval is local CPU.
+    run_budget_hours: 1.5
     quota_window_hours: 5.0
     quota_margin_min: 30
-    # slow_loop_window 已废弃: harvest 后立即慢环, 抽干后才下一轮快环
+    # slow_loop_window deprecated: harvest then slow immediately; drain before next fast

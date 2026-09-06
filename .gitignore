@@ -10,6 +10,8 @@ __pycache__/
 *.egg-info/
 
 # 数据库（太大，不适合 git）
+# SSOT 软链整目录（指向 timesFM_fu/db）
+/db
 db/*.db
 db/*.db-shm
 db/*.db-wal
@@ -54,3 +56,19 @@ ralph/
 # OS
 .DS_Store
 Thumbs.db
+.env.praxist
+.praxist-venv/
+models/timesfm-*/
+
+# Praxist report dumps (md + pdf) — keep on disk, do not commit
+task_FM/docs/praxist_reports/20260904_*
+task_FM/docs/praxist_reports/*.pdf
+
+# Aligned verdict registry (runtime / slow-loop writable)
+task_FM/config/aligned_verdicts.jsonl
+
+# mem_guard install artifacts inside venv (venv dir already ignored; belt+suspenders)
+**/.praxist-venv/**/zz_fm_mem_guard*
+**/.praxist-venv/**/*.pth
+**/zz_fm_mem_guard.pth
+**/zz_fm_mem_guard_loader.py

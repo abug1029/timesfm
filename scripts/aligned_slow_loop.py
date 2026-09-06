@@ -101,12 +101,24 @@ def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path):
     v["checkpoint_path"] = cp
     v["slow_loop_pid"] = os.getpid()
     v["git_rev"] = _git_rev()
+    os.makedirs(os.path.dirname(registry_path) or ".", exist_ok=True)
     with open(registry_path, "a", encoding="utf-8") as f:
         rl.append_verdict(f, v)
     _record_elapsed(row["variant_id"], elapsed_s)
     return v
 
 def main(argv=None):
+    # Host mem guards (2026-09-04 policy): flock max 2 + MemAvailable>=2GiB.
+    # RLIMIT_AS is OFF by default — TimesFM safetensors mmap needs VAS≫RSS.
+    # Optional light RSS self-check between candidates (cheap).
+    try:
+        from mem_guard import apply_mem_guard, check_and_shed, self_rss_ok
+        apply_mem_guard(apply_limit=False)
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"mem_guard import/apply failed: {e}", flush=True)
+        return 2
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--queue", default=os.path.join(FM_ROOT, "data", "cache", "aligned_pending.jsonl"))
@@ -130,6 +142,14 @@ def main(argv=None):
             if row is None:
                 print("queue empty; done")
                 return 0
+            # Cheap RSS hygiene between candidates (no tight RLIMIT_AS).
+            try:
+                check_and_shed()
+                if not self_rss_ok():
+                    print("mem_guard: self RSS over ~3.5GiB; exiting for shed", flush=True)
+                    return 1
+            except Exception as _e:
+                print(f"mem_guard shed/self-check: {_e}", flush=True)
             try:
                 verdict = run_aligned_candidate(row, args.daily_cache_dir,
                                                 args.checkpoint_dir, args.registry)

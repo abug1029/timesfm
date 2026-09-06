@@ -1,18 +1,25 @@
 # PRAXIST 三环运维手册
 
+> 宿主硬件与容量结论见 [`host_environment_assessment.md`](./host_environment_assessment.md)。勿沿用旧 `/root/timesFM_fu`、Windows `D:/FlyBuddy` 或 1.9GB RAM 假设。
+
 监督环（0 token）按 `scripts/praxist_goal.yaml` 编排快环（praxist）与慢环（aligned）。三环以 append-only 文件为总线。
 
 | 项 | 值 |
 |----|-----|
-| 项目根 | `/root/timesFM_fu`（在此目录启动） |
+| 项目根 | `/workspace/repos/timesfm-abug1029`（FM_a / PRAXIST；预测岗 timesFM_fu 另路径） |
 | Python | `.venv/bin/python` |
-| praxist | `/root/.praxist-venv/bin/praxist`（下文 `praxist`） |
+| praxist | `/home/box/.praxist-venv/bin/praxist`（下文 `praxist`；`PRAXIST_BIN` 可覆盖；回退 repo `.praxist-venv`） |
 | Goal | `scripts/praxist_goal.yaml` |
 | 监督状态 | `data/cache/supervisor_state.json` |
 | 监督锁 | `data/cache/supervisor.lock` |
 | 决策日志 | `.omc/supervisor_decisions.jsonl` |
 | Known verdicts | `task_FM/known_verdicts.inc.md`（`prompt_base.jinja2` `{% include %}`） |
 | Verdict 注册表 | `task_FM/config/aligned_verdicts.jsonl`（仅慢环可写） |
+
+**TimesFM 权重 / RAM：** 预测岗用自己的权重；PRAXIST 用本仓 `models/timesfm-2.5-200m-pytorch/`（`TIMESFM_MODEL_PATH` / `.env.praxist`）。**15GB RAM / 无 GPU：磁盘可并存独立权重。旧「评估必须串行 / 禁止与预测岗同时常驻第二份」红线已于 2026-09-04（约 09:23 CST）解除（容量试跑阶段）——并行 peer eval / 多份 TimesFM 共载 OK，同时计量 RSS/OOM；多副本仍可能 OOM。** 详见 `models/README_TIMESFM.md` 与 `docs/host_environment_assessment.md` §3。
+
+
+**内存硬顶（2026-09-04 总管 retune）：** 不以紧 `RLIMIT_AS` 为主（TimesFM safetensors mmap 冲突）。主路径：① 全局 flock ≤**2** + `MemAvailable < 2GiB` 拒启；② RSS shed（单进程 RSS>~3.5GiB 或 avail<2GiB → TERM，日志 `data/cache/capacity_actions.log`）；③ cgroup 时优先 `memory.max`/`memory.high`。强制挂钩：`scripts/praxist_mem_guard_hook.py` patch `protected_pids.launch_command`（`.pth` 安装见 `scripts/install_praxist_mem_guard_hook.py`），peer Bash/batch_runner/fm_eval 不靠 prompt。§4b 证据：N=4 ≈**8.53 GiB** 不可持续；N=2 舒适。e2e round complete（fast+harvest+slow）。详见 `docs/host_environment_assessment.md` Hard caps。
 
 **cycle 定义：** 一次已结束的 praxist run + harvest +（若有幸存者）慢环抽干队列。`harvest_empty` 也计 1 cycle。`phase=slow` 时禁止 `start` 下一轮快环。`phase` 见 `data/cache/supervisor_state.json`，取值 `{fast, slow, wait_quota}`。**不是** 300s poll tick。
 
@@ -21,7 +28,7 @@
 ## 启动 / 停止
 
 ```bash
-cd /root/timesFM_fu
+cd /workspace/repos/timesfm-abug1029
 
 # 启动监督环（后台）
 nohup .venv/bin/python scripts/praxist_supervisor.py \
@@ -152,6 +159,8 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 
 - `scripts/praxist_supervisor.py` — 监督环
 - `scripts/aligned_slow_loop.py` — 慢环
+- `scripts/mem_guard.py` — 全局 flock≤2 + MemAvailable 门 + RSS shed（RLIMIT_AS 默认 OFF）
+- `scripts/praxist_mem_guard_hook.py` / `install_praxist_mem_guard_hook.py` — protected_pids 强制挂钩
 - `scripts/registry_lib.py` — 队列 / verdict / snapshot
 - `scripts/goal_dsl.py` — success_condition 求值
 - `docs/superpowers/plans/2026-09-02-praxist-three-loop.md` — 实施计划（Spec 绑定解释优先于过时 spec 句）

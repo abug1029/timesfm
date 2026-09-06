@@ -24,6 +24,25 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 - 模型路径锚定 `data.config.FM_ROOT`，不依赖进程 cwd
 - 幽灵 K 线：`data.future_bar_guard.run_guard` 为唯一批量入口（`daily_update` 末尾调用）
 
+
+## TimesFM 权重隔离（预测岗 vs PRAXIST）
+
+| 用途 | 仓库 / 进程 | 权重路径 |
+|------|-------------|----------|
+| 预测岗 | `timesFM_fu` | 其自身路径或该进程的 HF cache；**勿与 PRAXIST 共用 runtime 加载路径** |
+| PRAXIST / FM_a cascade 慢路径 | `timesfm-abug1029`（本仓） | **本地目录** `/workspace/repos/timesfm-abug1029/models/timesfm-2.5-200m-pytorch` |
+
+- 环境变量（优先）：`FM_TIMESFM_MODEL_PATH`（兼容 `TIMESFM_MODEL_PATH` / `TIMESFM_WEIGHTS_DIR`）
+- 解析入口：`data.config.get_timesfm_model_path()`；cascade `DailyModel`/`HourlyModel` 经此加载
+- HF hub id `google/timesfm-2.5-200m-pytorch` 仅作缺本地权重时的最后回退；PRAXIST 正式跑应保证本地目录已填充
+- 权重目录 gitignore：`models/timesfm-*/`；填充方式：从 HF cache snapshot **复制**（非 runtime 直连共享 cache）或 `huggingface-cli download --local-dir`
+
+## PRAXIST 运行环境（box）
+
+- praxist venv：`/home/box/.praxist-venv`（回退：本仓 `.praxist-venv`）；监督环 `scripts/praxist_supervisor.py` 自动解析，可用 `PRAXIST_BIN` 覆盖
+- LLM：启动前 `set -a; source .env.praxist; set +a`（文件 gitignored）。`task_FM/task.yaml` 内 **不要** 放明文 API key
+- 所需环境变量见 `docs/praxist_llm_env.md`
+
 ## 分层文档 (deepinit 2026-08-08)
 
 | 目录 | 文档 |
@@ -65,7 +84,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 ## 目录结构
 
 ```
-D:\FlyBuddy\FM_a\
+/workspace/repos/timesfm-abug1029/
 ├── data/             # 期货数据管理系统
 │   ├── config.py               # 品种/交易所 + FM_ROOT/resolve_under_root
 │   ├── trading_calendar.py     # 会话感知交易日标签（夜盘/周末）
@@ -135,25 +154,22 @@ D:\FlyBuddy\FM_a\
 
 ## 环境配置
 
+> 宿主评估见 `docs/host_environment_assessment.md`（2026-09-04：8 核 / 15GiB / 无 GPU）。下列 Windows 路径已废弃。
+
 **必需：**
 ```bash
-# TqSdk 凭证 (已配置在 .env)
-TQSDK_ACCOUNT=your_account
-TQSDK_PASSWORD=your_password
-
-# 激活环境 (共享底座)
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
-cd D:/FlyBuddy/FM_a
+cd /workspace/repos/timesfm-abug1029
+source .venv/bin/activate
+# TqSdk: .env → symlink timesFM_fu/.env（勿把密钥写入可提交文件）
 ```
 
-**数据库位置：** `db/futures_<symbol>.db` (SQLite，每品种独立)
+**数据库位置：** `db/` → symlink → `/workspace/repos/timesFM_fu/db`（行情岗维护，每品种 `futures_<symbol>.db`）
 
 ## 快速使用
 
 ```bash
 # 激活环境 (共享底座)
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
-cd D:/FlyBuddy/FM_a
+cd /workspace/repos/timesfm-abug1029 && source .venv/bin/activate
 
 # 采集数据
 python -m data.cli collect cf          # 棉花

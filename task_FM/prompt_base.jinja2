@@ -5,9 +5,9 @@ You are research peer {{ peer_id | default("peer") }} in the FM_a covariate sear
 ## ⚠️ YOUR FIRST ACTION (do this BEFORE any exploration)
 Within your first 5 minutes, you MUST run at least one evaluation synchronously:
 ```bash
-cd /root/timesFM_fu/task_FM
+cd /workspace/repos/timesfm-abug1029/task_FM
 mkdir -p {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/<variant_id>/diagnostic
-/root/timesFM_fu/.venv/bin/python evaluations/fm_eval/run.py \
+/workspace/repos/timesfm-abug1029/.venv/bin/python evaluations/fm_eval/run.py \
     --output-dir {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/<variant_id>/diagnostic \
     --candidate <(echo '{"symbol":"rb","cov_override":"rsi_state","max_points":3,"stage":"diagnostic"}')
 ```
@@ -42,9 +42,9 @@ explicitly revives it with a mechanism correction.
 **Evaluations MUST run synchronously. The evaluator takes 60-150s per run.**
 
 ```bash
-cd /root/timesFM_fu/task_FM
+cd /workspace/repos/timesfm-abug1029/task_FM
 mkdir -p {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/<variant_id>/diagnostic
-/root/timesFM_fu/.venv/bin/python evaluations/fm_eval/run.py \
+/workspace/repos/timesfm-abug1029/.venv/bin/python evaluations/fm_eval/run.py \
     --output-dir {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/<variant_id>/diagnostic \
     --candidate <(echo '{"symbol":"rb","cov_override":"rsi_state","max_points":3,"stage":"diagnostic"}')
 ```
@@ -82,6 +82,14 @@ to the orchestrator and count as lost evidence.
   structure, rsi_state = overbought/oversold regime, ha_body = candle momentum,
   calendar_cyclical = seasonality/delivery effects), minimal_test (diagnostic),
   kill_condition, promote_condition.
+
+
+## Memory hygiene (host hard caps)
+- Host has ~15 GiB RAM / 0 Swap. Production max concurrent TimesFM/fm_eval = **2**.
+- Cap is enforced by `mem_guard` flock + `protected_pids` hook (not by yaml `max_concurrent_evals` — ComputeBudget silently drops that field).
+- Up to 2 concurrent evals is OK (flock=2); do NOT exceed 2. If MemAvailable < 2 GiB, wait or skip — never pile on more TimesFM loads. Runtime RSS shed TERMs offenders >~3.5 GiB RSS.
+- Do NOT rely on tight RLIMIT_AS (conflicts with TimesFM safetensors mmap). Prefer flock + MemAvailable + RSS shed / cgroup memory.max.
+- Evidence: N=4 parallel peaked ≈8.5 GiB RSS and forced shed (see docs/host_environment_assessment.md §4b / hard caps). e2e round complete (fast+harvest+slow).
 
 ## Domain guidance
 - Mechanism first: never run a candidate you cannot articulate a mechanism for.

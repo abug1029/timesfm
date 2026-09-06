@@ -63,6 +63,7 @@ evaluation:
 
 compute_budget:
   max_parallel_runs_per_peer: 1
+  max_concurrent_evals: 2
 
 task_entrypoints:
   evaluation:
@@ -82,7 +83,8 @@ runtime_environment:
   env:
     CUDA_VISIBLE_DEVICES: ""
     ANTHROPIC_BASE_URL: "https://ark.cn-beijing.volces.com/api/coding"
-    ANTHROPIC_API_KEY: "059eea0b-8ddd-4bc9-a6af-c62a48ab5de0"
+    # ANTHROPIC_API_KEY intentionally omitted: empty string overwrites process env in praxist _task_runtime_env
+    # Provide via repo-root .env.praxist (gitignored); do not commit secrets
   protected_child_paths: [evaluations, roles, audit_rules]
   writable_roots: []
 
