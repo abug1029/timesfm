@@ -10,7 +10,19 @@ sys.path.insert(0, FM_ROOT)
 import registry_lib as rl
 from goal_dsl import evaluate_goal
 
-PRAXIST = "/root/.praxist-venv/bin/praxist"
+def _resolve_praxist_bin() -> str:
+    """Prefer box-local praxist venv; allow PRAXIST_BIN override."""
+    candidates = [
+        os.environ.get("PRAXIST_BIN"),
+        os.path.join(FM_ROOT, ".praxist-venv", "bin", "praxist"),  # prefer repo venv
+        "/home/box/.praxist-venv/bin/praxist",
+    ]
+    for c in candidates:
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return "/home/box/.praxist-venv/bin/praxist"
+
+PRAXIST = _resolve_praxist_bin()
 QUEUE = os.path.join(FM_ROOT, "data", "cache", "aligned_pending.jsonl")
 INPROGRESS = os.path.join(FM_ROOT, "data", "cache", "aligned_pending.inprogress.jsonl")
 REGISTRY = os.path.join(FM_ROOT, "task_FM", "config", "aligned_verdicts.jsonl")
@@ -40,7 +52,8 @@ def parse_429_reset(log_text):
 def load_state():
     if not os.path.exists(STATE_PATH):
         st = {"cycles_done": 0, "last_run_dir": None, "last_run_id": None,
-              "last_harvested_run_id": None, "paused_429": False, "phase": "fast"}
+              "last_harvested_run_id": None, "paused_429": False, "phase": "fast",
+              "llm_provider": "primary", "llm_route": "primary"}
     else:
         try:
             st = json.load(open(STATE_PATH, encoding="utf-8"))
@@ -59,16 +72,105 @@ def load_goal(path):
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)["goal"]
 
-def _praxist_env():
+def _env_first(*names):
+    """First non-empty env value among names (never log/echo secrets)."""
+    for n in names:
+        v = (os.environ.get(n) or "").strip()
+        if v:
+            return v
+    return None
+
+
+def _failover_configured() -> bool:
+    """DashScope (or other) Anthropic-compatible failover ready?
+
+    Accepts both FAILOVER_* and ANTHROPIC_FAILOVER_* names (launchers source .env.praxist).
+    """
+    base = _env_first("FAILOVER_ANTHROPIC_BASE_URL", "ANTHROPIC_FAILOVER_BASE_URL")
+    key = _env_first(
+        "FAILOVER_ANTHROPIC_API_KEY",
+        "ANTHROPIC_FAILOVER_API_KEY",
+        "FAILOVER_ANTHROPIC_AUTH_TOKEN",
+    )
+    return bool(base and key)
+
+
+def _llm_provider(st=None) -> str:
+    """Canonical state key is llm_provider; llm_route kept as read fallback."""
+    st = st if st is not None else load_state()
+    route = (st.get("llm_provider") or st.get("llm_route") or "primary")
+    route = str(route).strip().lower()
+    return route if route in ("primary", "failover") else "primary"
+
+
+# Back-compat alias used by older call sites / docs
+def _llm_route(st=None) -> str:
+    return _llm_provider(st)
+
+
+def _praxist_env(route: str | None = None, st=None):
+    """Build env for praxist child. Selects primary vs failover from state/route.
+
+    Primary (default): Volcengine Ark via ANTHROPIC_* or PRIMARY_*.
+    Failover: DashScope coding Anthropic endpoint via FAILOVER_* / ANTHROPIC_FAILOVER_*.
+    """
     env = dict(os.environ)
-    key = os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get("ANTHROPIC_API_KEY")
+    route = (route or _llm_provider(st)).strip().lower()
+    if route == "failover" and _failover_configured():
+        base = _env_first("FAILOVER_ANTHROPIC_BASE_URL", "ANTHROPIC_FAILOVER_BASE_URL")
+        key = _env_first(
+            "FAILOVER_ANTHROPIC_API_KEY",
+            "ANTHROPIC_FAILOVER_API_KEY",
+            "FAILOVER_ANTHROPIC_AUTH_TOKEN",
+        )
+        if base:
+            env["ANTHROPIC_BASE_URL"] = base
+        if key:
+            env["ANTHROPIC_API_KEY"] = key
+            env["ANTHROPIC_AUTH_TOKEN"] = key
+        model = _env_first("FAILOVER_MODEL", "ANTHROPIC_FAILOVER_MODEL") or "qwen3.7-plus"
+        env["PRAXIST_FAILOVER_MODEL"] = model
+        env["PRAXIST_MODEL"] = model  # praxist start resolves --model from PRAXIST_MODEL
+        env["MODEL"] = model
+    else:
+        # Restore primary Ark endpoint/key when explicitly on primary.
+        p_base = _env_first("PRIMARY_ANTHROPIC_BASE_URL", "ANTHROPIC_BASE_URL")
+        p_key = _env_first(
+            "PRIMARY_ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+        )
+        if p_base:
+            env["ANTHROPIC_BASE_URL"] = p_base
+        if p_key:
+            env["ANTHROPIC_API_KEY"] = p_key
+        model = _env_first("PRIMARY_MODEL") or "claude-opus-4-7"
+        env["PRAXIST_MODEL"] = model
+        env["MODEL"] = model
+    # Always normalize AUTH_TOKEN → API_KEY for praxist
+    key = env.get("ANTHROPIC_AUTH_TOKEN") or env.get("ANTHROPIC_API_KEY")
     if key:
         env["ANTHROPIC_API_KEY"] = key
-    # Volcengine relay needs VOLCENGINE_API_KEY
     volc_key = os.environ.get("VOLCENGINE_API_KEY")
     if volc_key:
         env["VOLCENGINE_API_KEY"] = volc_key
     return env
+
+
+def _model_argv(route: str | None = None, st=None) -> list:
+    """--model override for start/resume (primary: claude-opus-4-7; failover: qwen3.7-plus)."""
+    route = (route or _llm_provider(st)).strip().lower()
+    if route == "failover":
+        model = _env_first("FAILOVER_MODEL", "ANTHROPIC_FAILOVER_MODEL") or "qwen3.7-plus"
+        return ["--model", model]
+    model = _env_first("PRIMARY_MODEL") or "claude-opus-4-7"
+    return ["--model", model]
+
+
+def _provider_state(provider: str) -> dict:
+    """Persist both llm_provider (canonical) and llm_route (compat)."""
+    return {"llm_provider": provider, "llm_route": provider}
+
 
 def _praxist(args, env=None):
     r = subprocess.run([PRAXIST, *args], capture_output=True, text=True, env=env)
@@ -142,6 +244,12 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     }
 
 def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=400):
+    """Pick up to top_k diagnostic survivors, preferring symbol×cov diversity.
+
+    Ranking is still by diagnostic EV, but we fill seats in passes:
+      1) unique symbols (avoid 3× same symbol)
+      2) remaining by EV (different cov on a seen symbol is OK)
+    """
     out = []
     seen = set()
     passing_ids = {v["variant_id"] for v in rl.pass_variants(snapshot or {})}
@@ -176,9 +284,27 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
                         "enqueued_at": _now_iso(), "src_run": os.path.basename(run_dir),
                         "_ev": ev})
     out.sort(key=lambda r: -r["_ev"])
+    selected = []
+    used_symbols = set()
     for r in out:
+        if len(selected) >= int(top_k):
+            break
+        if r["symbol"] in used_symbols:
+            continue
+        selected.append(r)
+        used_symbols.add(r["symbol"])
+    if len(selected) < int(top_k):
+        selected_ids = {r["variant_id"] for r in selected}
+        for r in out:
+            if len(selected) >= int(top_k):
+                break
+            if r["variant_id"] in selected_ids:
+                continue
+            selected.append(r)
+            selected_ids.add(r["variant_id"])
+    for r in selected:
         r.pop("_ev", None)
-    return out[:top_k]
+    return selected
 
 def materialize_known_verdicts(snapshot, dest_path):
     lines = ["## Known aligned verdicts (supervisor snapshot)",
@@ -295,13 +421,20 @@ def _slow_drain_complete():
     return (not _queue_busy()) and (not _slow_loop_alive())
 
 def ensure_phase(st):
-    """Fill st['phase'] for legacy state. Does not write disk."""
-    if st.get("phase") in PHASES:
-        return st
+    """Fill st['phase']. Queued/running aligned always wins (local CPU drain).
+
+    wait_quota / paused_429 / failover must NOT block already-enqueued slow work.
+    """
     if _queue_busy() or _slow_loop_alive():
         st["phase"] = "slow"
-    elif st.get("paused_429") and not _run_active():
-        st["phase"] = "wait_quota"
+        return st
+    if st.get("phase") in PHASES:
+        return st
+    if st.get("paused_429") and not _run_active():
+        if _failover_configured() or _llm_provider(st) == "failover":
+            st["phase"] = "fast"
+        else:
+            st["phase"] = "wait_quota"
     else:
         st["phase"] = "fast"
     return st
@@ -336,77 +469,224 @@ def _merge_save(updates):
     return fresh
 
 def decide_fast_loop(goal, dry_run=False, now=None):
-    """纯决策: 返回 actions 列表 [{action, reason, refs, argv?}]. dry_run 不调用 praxist。"""
+    """纯决策: 返回 actions 列表 [{action, reason, refs, argv?}]. dry_run 不调用 praxist。
+
+    429 path: if FAILOVER_*/ANTHROPIC_FAILOVER_* configured, set llm_provider=failover,
+    overlay BASE_URL+KEY+MODEL into env, and resume/start — do not wait_quota-only for Ark.
+    Revert to primary only on the next NEW run_started when Ark quota is ok (no mid-run thrash).
+    """
     actions = []
     ok, sleep_s = quota_gate(goal, now=now)
     active = _run_active()
     meta = _active_run_meta() if active else None
     st = ensure_phase(load_state())
+    failover_ok = _failover_configured()
+    provider_now = _llm_provider(st)
+
+    def _resume_argv(rd, provider):
+        return [
+            "resume", rd, "--daemonize", "--json",
+            "--model-provider", "model_provider:anthropic_messages",
+            *_model_argv(provider),
+        ]
+
+    def _start_argv(provider):
+        return [
+            "start", "--task-path", os.path.join(FM_ROOT, "task_FM"),
+            "--daemonize", "--json",
+            "--model-provider", "model_provider:anthropic_messages",
+            *_model_argv(provider),
+        ]
+
+    def _plan_resume(rd, provider, reason):
+        argv = _resume_argv(rd, provider)
+        actions.append({
+            "action": "run_resumed",
+            "reason": reason,
+            "refs": [rd, provider],
+            "argv": argv,
+            "llm_provider": provider,
+        })
+        if not dry_run:
+            r = _praxist(argv, env=_praxist_env(provider))
+            if r.get("ok"):
+                upd = {"paused_429": False, "phase": "fast", **_provider_state(provider)}
+                _merge_save(upd)
+            return r
+        return None
+
+    def _plan_start(provider, reason):
+        argv = _start_argv(provider)
+        actions.append({
+            "action": "run_started",
+            "reason": reason,
+            "refs": [provider],
+            "argv": argv,
+            "llm_provider": provider,
+        })
+        if not dry_run:
+            r = _praxist(argv, env=_praxist_env(provider))
+            if r.get("ok"):
+                updates = {"paused_429": False, "phase": "fast", **_provider_state(provider)}
+                try:
+                    js = json.loads(r["stdout"] or "{}")
+                    if isinstance(js, dict):
+                        if js.get("run_dir"):
+                            updates["last_run_dir"] = js["run_dir"]
+                        if js.get("run_id"):
+                            updates["last_run_id"] = js["run_id"]
+                except json.JSONDecodeError:
+                    pass
+                _merge_save(updates)
+            return r
+        return None
+
+    # --- Active run + Ark quota banned ---
     if active and not ok:
         run_id = (meta or {}).get("run_id") or st.get("last_run_id")
         run_dir = (meta or {}).get("run_dir") or st.get("last_run_dir")
-        actions.append({"action": "run_paused_429", "reason": "quota banned; stop then wait reset",
-                        "refs": [run_id, run_dir], "argv": ["stop", str(run_id)] if run_id else None,
-                        "sleep_s": sleep_s})
+        if provider_now == "primary" and failover_ok and run_dir:
+            stop_argv = ["stop", str(run_id)] if run_id else None
+            resume_argv = _resume_argv(run_dir, "failover")
+            actions.append({
+                "action": "run_failover_llm",
+                "reason": "Ark/primary 429; switch to FAILOVER (DashScope) and resume (not wait_quota)",
+                "refs": [run_id, run_dir, "failover"],
+                "argv": stop_argv,
+                "resume_argv": resume_argv,
+                "llm_provider": "failover",
+            })
+            # Always surface planned resume in dry-run too
+            actions.append({
+                "action": "run_resumed",
+                "reason": "failover resume after 429 stop",
+                "refs": [run_dir, "failover"],
+                "argv": resume_argv,
+                "llm_provider": "failover",
+            })
+            if not dry_run:
+                if run_id:
+                    _praxist(["stop", str(run_id)])
+                _merge_save({
+                    "paused_429": False,
+                    "last_run_dir": run_dir,
+                    "last_run_id": run_id,
+                    "phase": "fast",
+                    **_provider_state("failover"),
+                })
+                r = _praxist(resume_argv, env=_praxist_env("failover"))
+                if not r.get("ok"):
+                    actions.append({
+                        "action": "run_paused_429",
+                        "reason": "failover resume failed; wait Ark reset",
+                        "refs": [run_id, run_dir, (r.get("stderr") or "")[:200]],
+                        "sleep_s": sleep_s,
+                    })
+                    _merge_save({"paused_429": True, **_provider_state("failover")})
+            return actions
+        # Already on failover (or no failover) → classic pause/wait
+        actions.append({
+            "action": "run_paused_429",
+            "reason": "quota banned; stop then wait reset",
+            "refs": [run_id, run_dir, provider_now],
+            "argv": ["stop", str(run_id)] if run_id else None,
+            "sleep_s": sleep_s,
+        })
         if not dry_run and run_id:
             r = _praxist(["stop", str(run_id)])
             if r.get("ok"):
-                _merge_save({"paused_429": True, "last_run_dir": run_dir, "last_run_id": run_id})
+                _merge_save({
+                    "paused_429": True,
+                    "last_run_dir": run_dir,
+                    "last_run_id": run_id,
+                })
         return actions
+
     if st.get("phase") == "slow":
         return actions
+
+    # --- paused_429: prefer failover resume over wait_quota ---
     if st.get("paused_429"):
         rd = st.get("last_run_dir") or st.get("last_run_id")
-        if (not active) and ok and rd:
-            actions.append({"action": "run_resumed", "reason": "quota window ok; resume same run_dir",
-                            "refs": [rd],
-                            "argv": ["resume", rd, "--daemonize", "--json"]})
+        if not active and rd:
+            if failover_ok or provider_now == "failover":
+                # Stay on failover for THIS run (no thrash to primary mid-run)
+                if provider_now == "failover" or (failover_ok and not ok):
+                    _plan_resume(
+                        rd, "failover",
+                        "paused_429; resume via DashScope failover (not wait_quota)",
+                    )
+                    return actions
+                if ok:
+                    # Quota ok but we never failed over — resume primary
+                    _plan_resume(rd, "primary", "quota window ok; resume same run_dir on primary")
+                    return actions
+            if ok:
+                _plan_resume(rd, "primary", "quota window ok; resume same run_dir on primary")
+                return actions
+        if not ok:
+            if failover_ok and not rd and not active:
+                _plan_start("failover", "paused_429 no run_dir; failover start not wait_quota")
+                return actions
+            actions.append({
+                "action": "wait_quota",
+                "reason": "quota window insufficient",
+                "refs": [],
+                "sleep_s": sleep_s,
+            })
+        return actions
+
+    # --- wait_quota phase: bypass with failover when configured ---
+    if st.get("phase") == "wait_quota":
+        if not ok and failover_ok:
+            rd = st.get("last_run_dir") or st.get("last_run_id")
             if not dry_run:
-                r = _praxist(["resume", rd, "--daemonize", "--json"], env=_praxist_env())
-                if r.get("ok"):
-                    _merge_save({"paused_429": False})
+                _merge_save({"phase": "fast", **_provider_state("failover")})
+            if rd and not active:
+                _plan_resume(rd, "failover", "wait_quota bypassed; failover resume")
+            elif not active:
+                _plan_start("failover", "wait_quota bypassed; failover start")
             return actions
         if not ok:
-            actions.append({"action": "wait_quota", "reason": "quota window insufficient",
-                            "refs": [], "sleep_s": sleep_s})
-        return actions
-    if st.get("phase") == "wait_quota":
-        if not ok:
-            actions.append({"action": "wait_quota", "reason": "quota window insufficient",
-                            "refs": [], "sleep_s": sleep_s})
+            actions.append({
+                "action": "wait_quota",
+                "reason": "quota window insufficient",
+                "refs": [],
+                "sleep_s": sleep_s,
+            })
             return actions
         if not dry_run:
             _merge_save({"phase": "fast"})
         st = dict(st)
         st["phase"] = "fast"
-    if (not active) and ok:
+
+    # --- New start ---
+    # Ark ok → primary (and leave failover only on NEW run_started).
+    # Ark blocked + failover → start on failover (not wait_quota-only).
+    if not active:
         last = st.get("last_run_id")
         harvested_already = (not last) or st.get("last_harvested_run_id") == last
         if harvested_already and st.get("phase") != "slow":
-            actions.append({"action": "run_started", "reason": "window ok, no active run",
-                            "refs": [],
-                            "argv": ["start", "--task-path", os.path.join(FM_ROOT, "task_FM"),
-                                     "--daemonize", "--json"]})
-            if not dry_run:
-                r = _praxist(["start", "--task-path", os.path.join(FM_ROOT, "task_FM"),
-                              "--daemonize", "--json"], env=_praxist_env())
-                if r.get("ok"):
-                    updates = {"paused_429": False}
-                    try:
-                        js = json.loads(r["stdout"] or "{}")
-                        if isinstance(js, dict):
-                            if js.get("run_dir"):
-                                updates["last_run_dir"] = js["run_dir"]
-                            if js.get("run_id"):
-                                updates["last_run_id"] = js["run_id"]
-                    except json.JSONDecodeError:
-                        pass
-                    _merge_save(updates)
-        return actions
+            if ok:
+                # Optional: Ark quota ok again → force primary on NEW run
+                provider = "primary"
+                reason = "window ok, no active run"
+                if provider_now == "failover":
+                    reason = "ark quota ok; new run_started on primary (left failover)"
+                _plan_start(provider, reason)
+                return actions
+            if failover_ok:
+                _plan_start("failover", "ark quota insufficient; start on failover")
+                return actions
     if not ok:
-        actions.append({"action": "wait_quota", "reason": "quota window insufficient",
-                        "refs": [], "sleep_s": sleep_s})
+        actions.append({
+            "action": "wait_quota",
+            "reason": "quota window insufficient",
+            "refs": [],
+            "sleep_s": sleep_s,
+        })
     return actions
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
@@ -444,10 +724,14 @@ def _harvest_rows(goal):
     return rows, dead, existing
 
 def _maybe_harvest(st, goal, log):
-    """Harvest a finished unpaused run. Returns True if a cycle was counted."""
+    """Harvest a finished run into aligned queue.
+
+    paused_429 / wait_quota / failover do NOT block harvest: survivors are local
+    CPU work and should keep draining.
+    """
     last = st.get("last_run_id")
     harvested_already = bool(last) and st.get("last_harvested_run_id") == last
-    if _run_active() or st.get("paused_429") or not last or harvested_already:
+    if _run_active() or not last or harvested_already:
         return False
     rows, dead, existing = _harvest_rows(goal)
     if rows:
@@ -455,6 +739,11 @@ def _maybe_harvest(st, goal, log):
         _log_decision(log, "harvested", f"enqueued {n}",
                       [r["variant_id"] for r in rows])
         _merge_save({"last_harvested_run_id": last, "phase": "slow"})
+        try:
+            from praxist_assets_archive import archive_fast_harvest
+            archive_fast_harvest(last, rows, load_state())
+        except Exception as e:
+            _log_decision(log, "assets_archive_error", f"harvest: {e}")
     else:
         _log_decision(log, "harvest_empty",
                       "finished run produced 0 diagnostic survivors "
@@ -499,6 +788,11 @@ def _maybe_finish_slow(goal, log):
     save_state(fresh)
     _log_decision(log, "slow_drain_complete",
                   "queue empty, slow idle, cycle+1 phase={0}".format(fresh["phase"]))
+    try:
+        from praxist_assets_archive import archive_slow_cycle
+        archive_slow_cycle(fresh, goal)
+    except Exception as e:
+        _log_decision(log, "assets_archive_error", f"slow: {e}")
     return True
 
 def _main_locked(args):
@@ -552,10 +846,14 @@ def _main_locked(args):
         st = ensure_phase(load_state())
         _merge_save({"phase": st["phase"]})
         st = load_state()
-        if st.get("phase") == "fast":
+        # Harvest finished runs even during paused_429 / wait_quota.
+        if not _run_active():
             _maybe_harvest(st, goal, log)
         st = load_state()
-        if st.get("phase") == "slow":
+        # Local aligned drain is never blocked by LLM pause/failover.
+        if st.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
+            if st.get("phase") != "slow":
+                _merge_save({"phase": "slow"})
             _maybe_start_slow_loop(goal, log)
             _maybe_finish_slow(goal, log)
         planned = decide_fast_loop(goal, dry_run=False)

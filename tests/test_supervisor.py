@@ -15,6 +15,27 @@ def _patch_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(sup, "REPORT_DIR", str(tmp_path / "reports"))
     monkeypatch.setattr(sup, "STATE_MD", str(tmp_path / "STATE.md"))
 
+
+def _clear_failover_env(monkeypatch):
+    """Existing 429 tests assume no DashScope failover."""
+    for k in (
+        "FAILOVER_ANTHROPIC_BASE_URL", "FAILOVER_ANTHROPIC_API_KEY",
+        "FAILOVER_ANTHROPIC_AUTH_TOKEN", "FAILOVER_MODEL",
+        "ANTHROPIC_FAILOVER_BASE_URL", "ANTHROPIC_FAILOVER_API_KEY",
+        "ANTHROPIC_FAILOVER_MODEL",
+    ):
+        monkeypatch.delenv(k, raising=False)
+
+
+def _set_failover_env(monkeypatch):
+    """Dummy failover config for unit tests (fake values, never real secrets)."""
+    monkeypatch.setenv("FAILOVER_ANTHROPIC_BASE_URL", "https://example.test/failover")
+    monkeypatch.setenv("FAILOVER_ANTHROPIC_API_KEY", "test-failover-key")
+    monkeypatch.setenv("FAILOVER_MODEL", "qwen3.7-plus")
+    monkeypatch.setenv("PRIMARY_MODEL", "claude-opus-4-7")
+    monkeypatch.setenv("PRIMARY_ANTHROPIC_BASE_URL", "https://example.test/primary")
+    monkeypatch.setenv("PRIMARY_ANTHROPIC_API_KEY", "test-primary-key")
+
 def test_parse_429_reset():
     log = "... 429 ... It will reset at 2026-09-02 11:26:27 +0800 CST ..."
     dt = sup.parse_429_reset(log)
@@ -166,6 +187,7 @@ def test_cycles_increment_only_after_harvest(tmp_path, monkeypatch):
     assert st.get("cycles_done", 0) == 0  # 活 run 不加 cycle
 
 def test_429_stop_then_resume(tmp_path, monkeypatch):
+    _clear_failover_env(monkeypatch)
     calls = []
     def fake_praxist(args, **k):
         calls.append(list(args))
@@ -204,6 +226,7 @@ def _goal_yaml(tmp_path, max_cycles=10):
     return goal
 
 def test_429_stop_via_main_once_then_resume(tmp_path, monkeypatch):
+    _clear_failover_env(monkeypatch)
     calls = []
     def fake_praxist(args, **k):
         calls.append(list(args))
@@ -379,6 +402,7 @@ def test_slow_starts_outside_clock_window(tmp_path, monkeypatch):
 
 
 def test_ensure_phase_migrates_legacy_state(tmp_path, monkeypatch):
+    _clear_failover_env(monkeypatch)
     _patch_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     monkeypatch.setattr(sup, "_run_active", lambda: False)
@@ -466,3 +490,195 @@ def test_materialize_known_verdicts(tmp_path):
     text = dest.read_text(encoding="utf-8")
     assert "m_ccl" in text and "gate_pass=True" in text
     assert "m_oi" in text and "gate_pass=False" in text
+
+
+def test_429_failover_resume_not_wait_quota(tmp_path, monkeypatch):
+    """paused_429 + Ark banned + failover configured → failover resume, not wait_quota."""
+    _set_failover_env(monkeypatch)
+    calls = []
+    envs = []
+
+    def fake_praxist(args, **k):
+        calls.append(list(args))
+        envs.append(k.get("env"))
+        return {"ok": True, "stdout": ""}
+
+    monkeypatch.setattr(sup, "_praxist", fake_praxist)
+    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "state.json").write_text(
+        __import__("json").dumps({
+            "cycles_done": 0, "last_run_id": "runX", "last_run_dir": "/tmp/runX",
+            "paused_429": True, "phase": "wait_quota", "llm_provider": "primary",
+        }),
+        encoding="utf-8",
+    )
+    tz = __import__("datetime").timezone(__import__("datetime").timedelta(hours=8))
+    reset = __import__("datetime").datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz)
+    monkeypatch.setattr(sup, "_latest_429_reset", lambda: reset)
+    goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
+                        "quota_margin_min": 30}}
+    now = __import__("datetime").datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)  # before reset
+    actions = sup.decide_fast_loop(goal, dry_run=True, now=now)
+    names = [a["action"] for a in actions]
+    assert "wait_quota" not in names, names
+    assert "run_resumed" in names, names
+    resumed = next(a for a in actions if a["action"] == "run_resumed")
+    assert resumed.get("llm_provider") == "failover"
+    assert "--model" in resumed["argv"]
+    assert "qwen3.7-plus" in resumed["argv"]
+
+
+def test_active_429_plans_failover_llm(tmp_path, monkeypatch):
+    """Active + quota banned + failover → run_failover_llm + planned resume argv."""
+    _set_failover_env(monkeypatch)
+    monkeypatch.setattr(sup, "_praxist", lambda *a, **k: {"ok": True, "stdout": ""})
+    monkeypatch.setattr(sup, "_run_active", lambda: True)
+    monkeypatch.setattr(sup, "_active_run_meta",
+                        lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "state.json").write_text(
+        __import__("json").dumps({
+            "cycles_done": 0, "last_run_id": "runX", "last_run_dir": "/tmp/runX",
+            "paused_429": False, "phase": "fast", "llm_provider": "primary",
+        }),
+        encoding="utf-8",
+    )
+    tz = __import__("datetime").timezone(__import__("datetime").timedelta(hours=8))
+    reset = __import__("datetime").datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz)
+    monkeypatch.setattr(sup, "_latest_429_reset", lambda: reset)
+    goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
+                        "quota_margin_min": 30}}
+    now = __import__("datetime").datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)
+    actions = sup.decide_fast_loop(goal, dry_run=True, now=now)
+    names = [a["action"] for a in actions]
+    assert names[0] == "run_failover_llm"
+    assert "run_resumed" in names
+    assert "wait_quota" not in names
+    fo = actions[0]
+    assert fo.get("resume_argv") and "qwen3.7-plus" in fo["resume_argv"]
+    assert fo.get("llm_provider") == "failover"
+
+
+def test_praxist_env_selects_failover(monkeypatch):
+    _set_failover_env(monkeypatch)
+    env = sup._praxist_env("failover")
+    assert env["ANTHROPIC_BASE_URL"] == "https://example.test/failover"
+    assert env["ANTHROPIC_API_KEY"] == "test-failover-key"
+    env_p = sup._praxist_env("primary")
+    assert env_p["ANTHROPIC_BASE_URL"] == "https://example.test/primary"
+
+
+def test_new_run_started_reverts_to_primary(tmp_path, monkeypatch):
+    """When Ark ok, NEW run_started leaves failover → primary (no mid-run thrash)."""
+    _set_failover_env(monkeypatch)
+    calls = []
+
+    def fake_praxist(args, **k):
+        calls.append(list(args))
+        return {"ok": True, "stdout": __import__("json").dumps(
+            {"run_id": "runY", "run_dir": "/tmp/runY"})}
+
+    monkeypatch.setattr(sup, "_praxist", fake_praxist)
+    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "state.json").write_text(
+        __import__("json").dumps({
+            "cycles_done": 1, "last_run_id": "runX", "last_run_dir": "/tmp/runX",
+            "last_harvested_run_id": "runX", "paused_429": False, "phase": "fast",
+            "llm_provider": "failover", "llm_route": "failover",
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "task_FM").mkdir()
+    goal = _goal_yaml(tmp_path)
+    rc = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
+    assert rc == 0
+    st = __import__("json").loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+    assert st.get("llm_provider") == "primary"
+    start = next(c for c in calls if c and c[0] == "start")
+    assert "claude-opus-4-7" in start
+
+
+
+def test_failover_env_switch_and_model_argv(monkeypatch):
+    monkeypatch.setenv("PRIMARY_ANTHROPIC_BASE_URL", "https://ark.example/api/coding")
+    monkeypatch.setenv("PRIMARY_ANTHROPIC_API_KEY", "ark-key-xxx")
+    monkeypatch.setenv("PRIMARY_MODEL", "claude-opus-4-7")
+    monkeypatch.setenv("FAILOVER_ANTHROPIC_BASE_URL", "https://coding.dashscope.aliyuncs.com/apps/anthropic")
+    monkeypatch.setenv("FAILOVER_ANTHROPIC_API_KEY", "ds-key-xxx")
+    monkeypatch.setenv("FAILOVER_MODEL", "qwen3.7-plus")
+    # also accept ANTHROPIC_FAILOVER_* alone
+    assert sup._failover_configured() is True
+    env_f = sup._praxist_env("failover")
+    assert env_f["ANTHROPIC_BASE_URL"].endswith("/apps/anthropic")
+    assert env_f["ANTHROPIC_API_KEY"] == "ds-key-xxx"
+    assert env_f["PRAXIST_MODEL"] == "qwen3.7-plus"
+    assert "ds-key-xxx" not in str(sup._model_argv("failover"))  # argv has model only
+    assert sup._model_argv("failover") == ["--model", "qwen3.7-plus"]
+    env_p = sup._praxist_env("primary")
+    assert env_p["ANTHROPIC_BASE_URL"].startswith("https://ark.example")
+    assert env_p["PRAXIST_MODEL"] == "claude-opus-4-7"
+    assert sup._model_argv("primary") == ["--model", "claude-opus-4-7"]
+
+
+def test_anthropic_failover_alias_names(monkeypatch):
+    import os as _os
+    for k in list(_os.environ.keys()):
+        if "FAILOVER" in k or k.startswith("PRIMARY_"):
+            monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("ANTHROPIC_FAILOVER_BASE_URL", "https://coding.dashscope.aliyuncs.com/apps/anthropic")
+    monkeypatch.setenv("ANTHROPIC_FAILOVER_API_KEY", "alias-key")
+    monkeypatch.setenv("ANTHROPIC_FAILOVER_MODEL", "qwen3.7-plus")
+    assert sup._failover_configured() is True
+    env = sup._praxist_env("failover")
+    assert env["ANTHROPIC_API_KEY"] == "alias-key"
+    assert env["PRAXIST_MODEL"] == "qwen3.7-plus"
+
+
+def test_429_triggers_failover_not_wait_quota(tmp_path, monkeypatch):
+    calls = []
+    def fake_praxist(args, env=None, **k):
+        calls.append({"args": list(args), "base": (env or {}).get("ANTHROPIC_BASE_URL"),
+                      "model": (env or {}).get("PRAXIST_MODEL")})
+        return {"ok": True, "stdout": "{}", "stderr": ""}
+    monkeypatch.setattr(sup, "_praxist", fake_praxist)
+    monkeypatch.setattr(sup, "_run_active", lambda: True)
+    monkeypatch.setattr(sup, "_active_run_meta",
+                        lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setenv("FAILOVER_ANTHROPIC_BASE_URL", "https://coding.dashscope.aliyuncs.com/apps/anthropic")
+    monkeypatch.setenv("FAILOVER_ANTHROPIC_API_KEY", "ds-key")
+    monkeypatch.setenv("FAILOVER_MODEL", "qwen3.7-plus")
+    monkeypatch.setenv("PRIMARY_ANTHROPIC_BASE_URL", "https://ark.example/api/coding")
+    monkeypatch.setenv("PRIMARY_ANTHROPIC_API_KEY", "ark-key")
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "state.json").write_text(json.dumps({
+        "cycles_done": 0, "last_run_id": "runX", "last_run_dir": "/tmp/runX",
+        "paused_429": False, "phase": "fast", "llm_provider": "primary", "llm_route": "primary",
+    }), encoding="utf-8")
+    tz = timezone(timedelta(hours=8))
+    reset = datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz)
+    monkeypatch.setattr(sup, "_latest_429_reset", lambda: reset)
+    goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0, "quota_margin_min": 30}}
+    now = datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)
+    actions = sup.decide_fast_loop(goal, dry_run=True, now=now)
+    names = [a["action"] for a in actions]
+    assert "run_failover_llm" in names
+    assert "wait_quota" not in names
+    # live path
+    actions2 = sup.decide_fast_loop(goal, dry_run=False, now=now)
+    assert any(c["args"][:1] == ["stop"] for c in calls)
+    assert any(c["args"][:1] == ["resume"] and "--model" in c["args"] for c in calls)
+    resume = next(c for c in calls if c["args"][:1] == ["resume"])
+    assert resume["args"][resume["args"].index("--model") + 1] == "qwen3.7-plus"
+    assert resume["base"].endswith("/apps/anthropic")
+    assert resume["model"] == "qwen3.7-plus"
+    st = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+    assert st["llm_provider"] == "failover"
+    assert st["llm_route"] == "failover"
+    assert st.get("paused_429") is False

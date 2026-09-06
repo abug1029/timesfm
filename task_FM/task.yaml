@@ -63,7 +63,7 @@ evaluation:
 
 compute_budget:
   max_parallel_runs_per_peer: 1
-  max_concurrent_evals: 2
+  max_concurrent_evals: 1
 
 task_entrypoints:
   evaluation:
@@ -82,15 +82,17 @@ runtime_environment:
   require_paths: true
   env:
     CUDA_VISIBLE_DEVICES: ""
-    ANTHROPIC_BASE_URL: "https://ark.cn-beijing.volces.com/api/coding"
-    # ANTHROPIC_API_KEY intentionally omitted: empty string overwrites process env in praxist _task_runtime_env
-    # Provide via repo-root .env.praxist (gitignored); do not commit secrets
+    # ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY come from process env (.env.praxist).
+    # Do NOT hardcode BASE_URL here: praxist task_runtime_env would overwrite
+    # supervisor 429 failover overlays (Ark → DashScope). Hook
+    # scripts/praxist_llm_env_hook.py makes anthropic_messages honor process BASE_URL.
+    # ANTHROPIC_API_KEY intentionally omitted: empty string overwrites process env.
   protected_child_paths: [evaluations, roles, audit_rules]
   writable_roots: []
 
 generation_policy:
   max_generations: 3
-  cohort_size: 4
+  cohort_size: 2
   per_generation_hours: 1.5
   promote_top_k: 2
   promote_criterion: multi_metric_frontier_lanes
@@ -98,8 +100,8 @@ generation_policy:
 synthesis_trigger:
   min_findings: 4
   min_contributing_peers: 2
-  min_interval_minutes: 30
-  max_interval_minutes: 60
+  min_interval_minutes: 25
+  max_interval_minutes: 45
 
 gems:
   enabled: true
