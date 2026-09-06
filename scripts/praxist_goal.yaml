@@ -1,27 +1,22 @@
-# Praxist goal — tuned for Grok Bot host (2026-09-04)
+# Praxist goal — controlled long-run proposal (2026-09-06)
 # Host: 8×Xeon, 15GiB RAM, 0 Swap, no GPU (see docs/host_environment_assessment.md)
-# Policy: one full pipeline test cycle; N≤2 concurrent TimesFM loads (mem_guard flock).
-# Success conditions unchanged (economic gates). Budgets/cadence reduced for this box.
+# Policy: control-plane gated; N≤1–2 TimesFM (see docs/superpowers/specs/praxist_control_plane.md).
+# APPROVED 稳妥启动 2026-09-06：eval硬顶=1 cohort=2。
 goal:
   success_condition:
     - "len(symbols_hit) >= 1"
     - "min(pass_variant_pf_ratios) > 1.05"
     - "len(families_hit) >= 1"
   budgets:
-    # One full cycle (fast → harvest → slow drain) is the e2e test unit.
-    max_cycles: 1
-    # Serial WF on CPU: keep headroom under 15GiB; stop before thrashing.
+    # Controlled: 3 cycles first (was 5); reopen to 5 only after stable control-plane run.
+    max_cycles: 3
     cpu_hours: 8
-    # Smaller than production 40M — enough for one fast run on Volcengine Ark.
-    token_budget_m: 15
-    deadline: "2026-09-06"
+    # ~2.7M+/cycle observed; 3 cycles → 20M headroom.
+    token_budget_m: 20
+    deadline: "2026-09-13"
   cadence:
-    # One survivor → one aligned job; avoids queue pile-up on this box.
-    survivors_per_cycle: 1
-    # Floor of pre-registered hard gate n>=350 (was 400); still gate-valid, shorter wall.
-    aligned_max_points: 350
-    # Fit inside 5h quota window with margin; peers burn tokens, eval is local CPU.
+    survivors_per_cycle: 3  # 慢环加压 2026-09-06：每周期最多 3 survivors
+    aligned_max_points: 600  # 慢环加压：aligned 深度 600
     run_budget_hours: 1.5
     quota_window_hours: 5.0
     quota_margin_min: 30
-    # slow_loop_window deprecated: harvest then slow immediately; drain before next fast

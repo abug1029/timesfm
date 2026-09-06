@@ -44,11 +44,13 @@
 
 | 信号 | 动作 |
 |------|------|
-| 单次 429 / rate limit | 记 `rate429.log`；确认 supervisor `paused_429` / `run_paused_429`；立刻报总管 |
+| 单次 429 / rate limit | 记 `rate429.log`；确认 supervisor `paused_429` / `run_paused_429` / `run_failover_llm`；立刻报总管 |
 | **连续 429**：同窗口 **≥3 次 / 15min** 或 **paused_429 持续 ≥20min** | **提案降档**（须总管批后改配置）：`cohort_size` 4→**2** 或 2→**1**；或 `min_interval_minutes` +15（上限 45） |
-| 配额窗不足 | 跟现有 `wait_quota`；禁止强行 start |
+| Ark 配额窗不足且 **已配置** `FAILOVER_*` | supervisor：`llm_provider=failover`，DashScope `resume`/`start`（`--model qwen3.7-plus`）；**不是**只 `wait_quota` |
+| Ark 配额窗不足且 **无** failover | 跟现有 `wait_quota`；禁止强行 start |
+| 切回 primary | 仅下一次 **新** `run_started` 且 Ark window ok；禁止 mid-run thrash |
 
-本机默认 **cohort_size=2**（见 §5），降低并发打 Ark 的尖峰。
+本机默认 **cohort_size=2**（见 §5），降低并发打 Ark 的尖峰。详见 `docs/praxist_llm_env.md` §429 Failover。
 
 ---
 
@@ -114,12 +116,12 @@
 | `deadline` | **2026-09-13** |
 | `token_budget_m` | **20**（3 cycle × ~2.7–5M 留余量；原 25） |
 | `cpu_hours` | **8** |
-| `survivors_per_cycle` | **1** |
-| `aligned_max_points` | **350** |
+| `survivors_per_cycle` | **3**（慢环加压，已批） |
+| `aligned_max_points` | **600**（慢环加压，已批） |
 | `run_budget_hours` | **1.5** |
 | success_condition | 不变 |
 
-审核通过后落盘 yaml；未通过前可保持文件为提案值或旧值——以总管批注为准。
+已批准稳妥启动 + 慢环加压（survivors=3 / aligned=600）；以 `scripts/praxist_goal.yaml` 与本节一致为准。
 
 ---
 
@@ -155,4 +157,33 @@
 |------|------|
 | 2026-09-06 | 初稿：自 9-6 长跑熔断/空转/contributing 污染教训 |
 | 2026-09-06 | **稳妥启动批准**：cohort=2，fm_eval 硬顶=1，goal max_cycles=3/token=20M |
+| 2026-09-06 | **慢环加压**：survivors=3 / aligned=600；quota 不挡 slow；`/workspace/shared/praxist_assets` 归档 |
 | 2026-09-06 | **inline bypass**：peer `python -c`/do_evaluate 计入 eval 槽；matcher 扩 DailyModel/do_evaluate；硬顶仍=1 |
+
+## LLM 429 Failover（2026-09-06）
+- 主用：Volcengine Ark（`PRIMARY_*` / `ANTHROPIC_*`）
+- 备用：DashScope Anthropic 兼容（`FAILOVER_*` / `ANTHROPIC_FAILOVER_*`，model=`qwen3.7-plus`）
+- 触发：active run + quota_gate 失败且 `llm_provider=primary` + failover 已配置 → `run_failover_llm`（stop→overlay env→resume）；paused/wait_quota 亦优先 failover，不只 `wait_quota`
+- state：`llm_provider`（兼写 `llm_route`）
+- 切回 primary：仅下一次 **新** `run_started` 且 Ark window ok（禁止 mid-run thrash）
+- 模型接线：`--model` argv + `PRAXIST_MODEL`（非 task.yaml）
+- BASE_URL 透传：`scripts/praxist_llm_env_hook.py`（task.yaml 勿写死 BASE_URL）
+- 回 Ark：下一轮新 `run_started` 默认 primary；或手动 state `llm_provider=primary`
+- failover 仍失败：`paused_429` 等 Ark reset
+
+## 慢环加压（2026-09-06 批准）
+
+目标：每个快环结束后，慢环抽更多、更深的 aligned survivors，且 **不因 LLM 429 / wait_quota / failover 卡住本地 CPU 抽干**。
+
+| 项 | 值 | 说明 |
+|----|----|------|
+| `survivors_per_cycle` | **3** | harvest 每周期最多入队 3 个 |
+| `aligned_max_points` | **600** | aligned 回测深度（原 350） |
+| harvest 选人 | symbol×cov 多样性 | 先占不同品种，再按 EV 补齐；禁止 3 个同品种挤满 |
+| wait_quota / paused_429 / failover | **不阻塞** 已入队 aligned | `ensure_phase`：queue/slow 存活 → 强制 `phase=slow`；harvest 不再因 paused_429 跳过 |
+| TimesFM eval 硬顶 | **仍=1** | 慢环与快环共用 flock；禁止双 TimesFM |
+
+### 资产归档
+
+快环 harvest / 慢环 drain 完成后，自动 append 到 `/workspace/shared/praxist_assets/`（`manifest.jsonl` + `timeline.md`）。恢复见该目录 `RECOVERY.md`。权重不进资产。
+
