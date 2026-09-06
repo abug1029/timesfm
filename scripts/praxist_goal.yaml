@@ -1,7 +1,7 @@
 # Praxist goal — controlled long-run proposal (2026-09-06)
 # Host: 8×Xeon, 15GiB RAM, 0 Swap, no GPU (see docs/host_environment_assessment.md)
 # Policy: control-plane gated; N≤1–2 TimesFM (see docs/superpowers/specs/praxist_control_plane.md).
-# APPROVED 稳妥启动 2026-09-06：eval硬顶=1 cohort=2。
+# APPROVED 稳妥启动 2026-09-06：eval硬顶=1 cohort=2；2026-09-07 max_cycles 3→8 用户批续跑自转。
 goal:
   success_condition:
     - "len(symbols_hit) >= 1"
@@ -9,7 +9,7 @@ goal:
     - "len(families_hit) >= 1"
   budgets:
     # Controlled: 3 cycles first (was 5); reopen to 5 only after stable control-plane run.
-    max_cycles: 3
+    max_cycles: 8  # user批续跑 2026-09-07：cycles_done=3 后抬到 8
     cpu_hours: 8
     # ~2.7M+/cycle observed; 3 cycles → 20M headroom.
     token_budget_m: 30  # raised 2026-09-06 after failover burn ~22M

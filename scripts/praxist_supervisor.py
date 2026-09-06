@@ -158,6 +158,11 @@ def _praxist_env(route: str | None = None, st=None):
     volc_key = os.environ.get("VOLCENGINE_API_KEY")
     if volc_key:
         env["VOLCENGINE_API_KEY"] = volc_key
+    # Sticky RUN_DIR from old shells/.env.praxist makes `praxist start`
+    # try to reuse a finished non-empty dir (e.g. 11-57 SHUTDOWN). Drop it
+    # so default/fresh starts allocate a new experiments/run_<ts>_… path.
+    for sticky in ("RUN_DIR", "RUN", "RUNDIR", "PRAXIST_RUN_DIR"):
+        env.pop(sticky, None)
     return env
 
 
@@ -526,8 +531,15 @@ def decide_fast_loop(goal, dry_run=False, now=None):
         ]
 
     def _start_argv(provider):
+        import datetime as _dt
+        tag = "failover_qwen" if provider == "failover" else "primary"
+        ts = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+        run_dir = os.path.join(
+            FM_ROOT, "task_FM", "experiments", f"run_{ts}_{tag}_task_FM",
+        )
         return [
             "start", "--task-path", os.path.join(FM_ROOT, "task_FM"),
+            "--run-dir", run_dir,
             "--daemonize", "--json",
             "--model-provider", "model_provider:anthropic_messages",
             *_model_argv(provider),
