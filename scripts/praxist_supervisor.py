@@ -137,20 +137,24 @@ def _praxist_env(route: str | None = None, st=None):
         p_base = _env_first("PRIMARY_ANTHROPIC_BASE_URL", "ANTHROPIC_BASE_URL")
         p_key = _env_first(
             "PRIMARY_ANTHROPIC_API_KEY",
-            "ANTHROPIC_AUTH_TOKEN",
             "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
         )
         if p_base:
             env["ANTHROPIC_BASE_URL"] = p_base
         if p_key:
             env["ANTHROPIC_API_KEY"] = p_key
+            env["ANTHROPIC_AUTH_TOKEN"] = p_key
         model = _env_first("PRIMARY_MODEL") or "claude-opus-4-7"
         env["PRAXIST_MODEL"] = model
         env["MODEL"] = model
-    # Always normalize AUTH_TOKEN → API_KEY for praxist
-    key = env.get("ANTHROPIC_AUTH_TOKEN") or env.get("ANTHROPIC_API_KEY")
+    # Claude Code prefers ANTHROPIC_AUTH_TOKEN over API_KEY. After route overlay,
+    # force both to the SAME selected key so a stale primary AUTH_TOKEN cannot
+    # ride into a DashScope failover process (401 invalid access token).
+    key = env.get("ANTHROPIC_API_KEY") or env.get("ANTHROPIC_AUTH_TOKEN")
     if key:
         env["ANTHROPIC_API_KEY"] = key
+        env["ANTHROPIC_AUTH_TOKEN"] = key
     volc_key = os.environ.get("VOLCENGINE_API_KEY")
     if volc_key:
         env["VOLCENGINE_API_KEY"] = volc_key

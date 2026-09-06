@@ -810,3 +810,22 @@ def test_active_failover_run_not_stopped_by_ark_quota(tmp_path, monkeypatch):
     st = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     assert st.get("paused_429") is False
 
+
+def test_failover_env_auth_token_matches_api_key(monkeypatch):
+    """Stale primary AUTH_TOKEN must not survive failover overlay."""
+    monkeypatch.setenv("PRIMARY_ANTHROPIC_BASE_URL", "https://ark.example/api/coding")
+    monkeypatch.setenv("PRIMARY_ANTHROPIC_API_KEY", "ark-primary-key")
+    monkeypatch.setenv("PRIMARY_MODEL", "claude-opus-4-7")
+    monkeypatch.setenv("FAILOVER_ANTHROPIC_BASE_URL", "https://coding.dashscope.aliyuncs.com/apps/anthropic")
+    monkeypatch.setenv("FAILOVER_ANTHROPIC_API_KEY", "sk-failover-key")
+    monkeypatch.setenv("FAILOVER_MODEL", "qwen3.7-plus")
+    # Poison process env the way a sourced .env.praxist leaves it
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "ark-primary-key")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "ark-primary-key")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://ark.example/api/coding")
+    env = sup._praxist_env("failover")
+    assert env["ANTHROPIC_API_KEY"] == "sk-failover-key"
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "sk-failover-key"
+    assert env["ANTHROPIC_AUTH_TOKEN"] != "ark-primary-key"
+    assert "dashscope" in env["ANTHROPIC_BASE_URL"]
+
