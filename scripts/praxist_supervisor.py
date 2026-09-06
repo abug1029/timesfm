@@ -915,11 +915,34 @@ def _main_locked(args):
             print(json.dumps(rec, ensure_ascii=False))
             return 0
         if budget_hit:
-            rec = _log_decision(log, "budget_exhausted",
-                                f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend} tok_unknown={tok_unknown}")
-            write_stop_report("budget_exhausted", snap, [rec["reason"]], rec["reason"])
-            print(json.dumps(rec, ensure_ascii=False))
-            return 0
+            # Drain finished-run harvest + local slow queue BEFORE exiting on budget.
+            st_pre = load_state()
+            if not _run_active():
+                _maybe_harvest(st_pre, goal, log)
+            st_pre = load_state()
+            if st_pre.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
+                if st_pre.get("phase") != "slow":
+                    _merge_save({"phase": "slow"})
+                _maybe_start_slow_loop(goal, log)
+                # One-shot drain wait is not appropriate here; leave slow running and
+                # only exit once queue is empty. If still draining, keep process alive.
+                if not _slow_drain_complete():
+                    _log_decision(
+                        log, "budget_hit_drain_slow",
+                        f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend}; "
+                        "defer exit until aligned queue drains",
+                    )
+                    # Fall through to slow-handling path below instead of return.
+                    budget_hit = False
+                    # Skip success/budget returns by jumping to phase handling
+                else:
+                    _maybe_finish_slow(goal, log)
+            if budget_hit:
+                rec = _log_decision(log, "budget_exhausted",
+                                    f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend} tok_unknown={tok_unknown}")
+                write_stop_report("budget_exhausted", snap, [rec["reason"]], rec["reason"])
+                print(json.dumps(rec, ensure_ascii=False))
+                return 0
 
         st = ensure_phase(load_state())
         _merge_save({"phase": st["phase"]})

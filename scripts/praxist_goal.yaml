@@ -12,7 +12,7 @@ goal:
     max_cycles: 3
     cpu_hours: 8
     # ~2.7M+/cycle observed; 3 cycles → 20M headroom.
-    token_budget_m: 20
+    token_budget_m: 30  # raised 2026-09-06 after failover burn ~22M
     deadline: "2026-09-13"
   cadence:
     survivors_per_cycle: 3  # 慢环加压 2026-09-06：每周期最多 3 survivors

@@ -114,7 +114,7 @@
 |------|------|
 | `max_cycles` | **3**（先受控；原 5 偏猛） |
 | `deadline` | **2026-09-13** |
-| `token_budget_m` | **20**（3 cycle × ~2.7–5M 留余量；原 25） |
+| `token_budget_m` | **30**（failover 烧 ~22M 后抬；deadline 仍 2026-09-13） |
 | `cpu_hours` | **8** |
 | `survivors_per_cycle` | **3**（慢环加压，已批） |
 | `aligned_max_points` | **600**（慢环加压，已批） |
@@ -157,6 +157,7 @@
 |------|------|
 | 2026-09-06 | 初稿：自 9-6 长跑熔断/空转/contributing 污染教训 |
 | 2026-09-06 | **稳妥启动批准**：cohort=2，fm_eval 硬顶=1，goal max_cycles=3/token=20M |
+| 2026-09-06 | token_budget_m **20→30**（failover 烧 ~22M 后；deadline 仍 2026-09-13）；budget_hit 先 harvest/slow 再 exit |
 | 2026-09-06 | **慢环加压**：survivors=3 / aligned=600；quota 不挡 slow；`/workspace/shared/praxist_assets` 归档 |
 | 2026-09-06 | **inline bypass**：peer `python -c`/do_evaluate 计入 eval 槽；matcher 扩 DailyModel/do_evaluate；硬顶仍=1 |
 
