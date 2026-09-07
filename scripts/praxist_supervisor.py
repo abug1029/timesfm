@@ -974,6 +974,25 @@ def _main_locked(args):
             print(json.dumps(a, ensure_ascii=False, default=str))
             _log_decision(log, a["action"], a.get("reason", ""), a.get("refs") or [])
 
+        # Session unstick (ops nudge / optional disk backfill). Safe no-op when healthy.
+        try:
+            from praxist_session_unstick import detect_and_act as _session_unstick
+            _u = _session_unstick(dry_run=False, force=False)
+            if _u.get("action") not in (None, "noop") or _u.get("escalate"):
+                _log_decision(
+                    log,
+                    "session_unstick_escalate" if _u.get("escalate") else "session_unstick",
+                    _u.get("reason") or _u.get("action") or "",
+                    [str(_u.get("run_dir") or ""), str(_u.get("nudge") or ""),
+                     str(_u.get("backfill") or "")],
+                )
+                print(json.dumps({"action": "session_unstick", **{k: _u.get(k) for k in
+                      ("action", "reason", "escalate", "claude", "mem_gib", "nudge",
+                       "backfill", "missing_peers", "synth")}},
+                                 ensure_ascii=False, default=str))
+        except Exception as e:
+            _log_decision(log, "session_unstick_error", str(e))
+
         if one_shot:
             return 0
         sleep_s = POLL_S

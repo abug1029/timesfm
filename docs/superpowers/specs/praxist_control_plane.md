@@ -60,7 +60,7 @@
 
 | 条件 | 动作 |
 |------|------|
-| 任一 peer session 因 `terminal_background_only` / eval failed 关闭后，**5 min 内无** `next-session` | **总管级告警**；FM研允许在 MemAvailable≥3GiB 时写 **ops nudge** `shared_findings/*_ops_nudge_wake_peers.json` 唤醒（仅此解卡手段，须记日志） |
+| 任一 peer session 因 `terminal_background_only` / eval failed 关闭后，**5 min 内无** `next-session` | **自动解卡**（`scripts/praxist_session_unstick.py`，supervisor 每 poll 兼跑）：Mem≥3GiB 写 ops nudge；缺 canonical peer 时可从磁盘 `evaluation_summary` 回填 1 条（非新 eval）。同 run/gen ≤1/20min；**二次 stuck 才报总管**。禁止清 SHUTDOWN / 抬 eval / 杀整仓 |
 | 唤醒后 **10 min** 仍 0 claude | 升级总管：停跑或批准更深干预（禁止私自整轮狂杀再启除非授权） |
 | 禁止 | 干等 `max_interval_minutes=60` cap 才发现空转 |
 
@@ -157,6 +157,7 @@
 |------|------|
 | 2026-09-06 | 初稿：自 9-6 长跑熔断/空转/contributing 污染教训 |
 | 2026-09-06 | **稳妥启动批准**：cohort=2，fm_eval 硬顶=1，goal max_cycles=3/token=20M |
+| 2026-09-07 | **自动 session 解卡**：`praxist_session_unstick.py` + supervisor poll；nudge/回填；限频 20min；二次 escalate |
 | 2026-09-07 | 用户批续跑：max_cycles **3→8**；快环启停自转（harvest→slow→下一快环），异常仍报总管 |
 | 2026-09-06 | token_budget_m **20→30**（failover 烧 ~22M 后；deadline 仍 2026-09-13）；budget_hit 先 harvest/slow 再 exit |
 | 2026-09-06 | **慢环加压**：survivors=3 / aligned=600；quota 不挡 slow；`/workspace/shared/praxist_assets` 归档 |
