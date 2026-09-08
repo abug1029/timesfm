@@ -14,64 +14,7 @@ FM_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
 VALID_COVARIATES = {
     "rsi_state", "rsi_slope", "hourly_slope", "oi", "ccl", "basis_momentum",
     "ha_body", "calendar_cyclical", "reversal_shadow", "rsi6", "rsi12", "rsi24",
-    # Plan B: features.py dispatch 支持但原 VALID_COVARIATES 缺失
-    "pca_momentum", "hurst", "gated_slope", "regime_gated",
-    "vor",
-    "ao_accel", "bb_squeeze",
-    "reversal_shadow_gated_02", "reversal_shadow_gated_03", "reversal_shadow_gated_05",
-    "sar_dist",
-    "crack_spread_slope", "crack_spread_level", "crack_spread_zscore",
-    "nvi", "qstick", "vwap_deviation", "stddev",
 }
-
-# Plan C: 动态协变量发现 (模块加载时执行一次)
-_DYNAMIC_DISCOVERY_ERROR = None
-
-try:
-    def _discover_covariates_from_features():
-        import ast
-        features_path = os.path.join(FM_ROOT, "cascade", "features.py")
-        if not os.path.exists(features_path):
-            return set()
-        with open(features_path, "r", encoding="utf-8") as f:
-            source = f.read()
-        tree = ast.parse(source, filename="features.py")
-        covariates = set()
-        _EXCLUDE = {"slope_only", "none", "baseline", "slope", "level", "zscore", "decay"}
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.If, ast.IfExp)):
-                continue
-            test = node.test
-            if isinstance(test, ast.Compare):
-                if isinstance(test.ops[0], ast.Eq):
-                    cmp = test.comparators[0]
-                    if isinstance(cmp, ast.Constant) and isinstance(cmp.value, str):
-                        val = cmp.value
-                        if val not in _EXCLUDE:
-                            covariates.add(val)
-                elif isinstance(test.ops[0], ast.In):
-                    cmp = test.comparators[0]
-                    if isinstance(cmp, (ast.List, ast.Tuple, ast.Set)):
-                        for elt in cmp.elts:
-                            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                                val = elt.value
-                                if val not in _EXCLUDE:
-                                    covariates.add(val)
-        return covariates
-
-    _discovered = _discover_covariates_from_features()
-    if _discovered:
-        # 二次过滤: 排除 mode 参数 (可能是 mode 参数而非 covariate_type)
-        _valid_discovered = {v for v in _discovered if len(v) >= 3 and v not in {"slope", "level", "zscore", "decay"}}
-        _missing_in_static = _valid_discovered - VALID_COVARIATES
-        VALID_COVARIATES |= _valid_discovered
-except Exception:
-    _DYNAMIC_DISCOVERY_ERROR = "dynamic discovery failed"
-
-# 清理临时命名
-for _n in ["_discover_covariates_from_features", "_discovered", "_missing_in_static"]:
-    globals().pop(_n, None)
-
 
 # P2 试运行范围: 信用>=2星品种 (loop-constraints 允许, 数据质量已核)
 ALLOWED_SYMBOLS = {"ao", "bu", "cf", "fg", "fu", "i", "jm", "ma", "p", "sh", "sp", "ta", "ur", "m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"}

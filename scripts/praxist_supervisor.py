@@ -38,6 +38,7 @@ _EVENT_LOCK = threading.Lock()
 _SHUTDOWN_REQUESTED = False
 _RUN_ID = uuid.uuid4().hex[:12]
 _START_TIME = time.time()
+_STOP_EMITTED = False
 POLL_S = 300
 PHASES = ("fast", "slow", "wait_quota")
 
@@ -49,6 +50,11 @@ INCUMBENT_PF = {sym: float(rec["historical_pf"])
 
 def _now_iso():
     return datetime.now().isoformat()
+
+def _mark_stop_emitted():
+    global _STOP_EMITTED
+    _STOP_EMITTED = True
+
 
 # ── Event monitoring system ──────────────────────────────────
 
@@ -79,6 +85,7 @@ def _emit_event(level, event, data=None, **extra):
     except OSError as e:
         print(f"[EVENT_FALLBACK] {line}", file=sys.stderr)
     if event == "supervisor_stopped":
+        _mark_stop_emitted()
         _write_stop_json(rec)
 
 
@@ -123,6 +130,9 @@ def _signal_handler(signum, frame):
 
 def _atexit_handler():
     """Emit stop event on any exit path not already handled."""
+    global _STOP_EMITTED
+    if _STOP_EMITTED:
+        return
     if os.path.exists(STOP_REPORT_JSON):
         try:
             existing = json.load(open(STOP_REPORT_JSON, encoding="utf-8"))
@@ -1036,6 +1046,7 @@ def _main_locked(args):
             planned = decide_fast_loop(goal, dry_run=True)
             for a in planned:
                 print(json.dumps(a, ensure_ascii=False, default=str))
+            _mark_stop_emitted()
             return 0
 
         materialize_known_verdicts(snap["variants"], VERDICTS_INC)
@@ -1123,6 +1134,7 @@ def _main_locked(args):
             _log_decision(log, "session_unstick_error", str(e))
 
         if one_shot:
+            _mark_stop_emitted()
             return 0
         sleep_s = POLL_S
         for a in planned:

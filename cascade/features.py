@@ -1048,15 +1048,18 @@ def build_covariate_matrix(
         last_valid = float(h_slope.iloc[-1]) if len(h_slope) > 0 else 0.0
         covariate_full = np.concatenate([h_slope.values, np.full(horizon, last_valid)])
         covariate_name = "hourly_slope"
-    elif covariate_type == "rsi_state":
+    elif covariate_type in ("rsi_state", "rsi6", "rsi12", "rsi24"):
         # 日线 RSI 离散状态降维 (-2~+2) + 向均值衰减
-        # 使用日线收盘价计算 RSI(14)，再 forward-fill 到 1H 时间轴
+        # 使用日线收盘价计算 RSI，再 forward-fill 到 1H 时间轴
+        # rsi_state=RSI(14), rsi6=RSI(6), rsi12=RSI(12), rsi24=RSI(24)
+        _rsi_period_map = {"rsi_state": 14, "rsi6": 6, "rsi12": 12, "rsi24": 24}
+        _rsi_period = _rsi_period_map[covariate_type]
         hist_daily = np.array(historical_daily_closes, dtype=float)
         pred_daily = np.array(predicted_daily_closes, dtype=float)
         full_daily = np.concatenate([hist_daily, pred_daily])
 
         # 计算全序列日线 RSI 状态
-        daily_states = calc_rsi_state(full_daily, rsi_period=14)
+        daily_states = calc_rsi_state(full_daily, rsi_period=_rsi_period)
         n_hist = len(hist_daily)
         hist_states = daily_states[:n_hist]
         pred_states = daily_states[n_hist:]
@@ -1089,7 +1092,7 @@ def build_covariate_matrix(
         last_ctx_state = float(context_states[-1]) if len(context_states) > 0 else 0.0
         horizon_states = _generate_rsi_state_horizon(last_ctx_state, horizon, decay_step=2)
         covariate_full = np.concatenate([context_states, horizon_states])
-        covariate_name = "rsi_state"
+        covariate_name = covariate_type
     elif covariate_type == "pca_momentum":
         # 多周期 RSI → PCA 复合动量 (一维)
         hourly_closes = df_1h["close_price"].values.astype(float)
