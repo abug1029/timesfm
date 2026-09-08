@@ -4,7 +4,12 @@ import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 import numpy as np
 import pandas as pd
-import lightgbm as lgb
+try:
+    import lightgbm as lgb
+    HAS_LIGHTGBM = True
+except ImportError:
+    lgb = None
+    HAS_LIGHTGBM = False
 from sklearn.model_selection import TimeSeriesSplit
 
 FEATURE_COLS = [

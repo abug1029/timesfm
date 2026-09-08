@@ -1,7 +1,9 @@
+import pytest
 import numpy as np
 import pandas as pd
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+lgb = pytest.importorskip("lightgbm")
 from scripts.a2_p1_lgbm_baseline import train_lgbm_walkforward
 
 def _synth_matrix(n=400):
@@ -76,7 +78,6 @@ def test_evaluate_gate_no_go():
     verdict = evaluate_gate(lgbm_pred, pure_pred, scheme_pred, actual, base, atr, tick_size=1.0)
     assert verdict["gate"] == "NO-GO"
 
-import pytest
 @pytest.mark.slow
 def test_smoke_ss_end_to_end():
     """端到端: ss 品种, --max-points 100, 验证落盘 + 报告生成 + LGBM 训练数据充足"""
