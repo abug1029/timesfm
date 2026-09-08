@@ -114,7 +114,7 @@
 |------|------|
 | `max_cycles` | **8**（2026-09-07 用户批续跑；cycles_done 已 3） |
 | `deadline` | **2026-09-13** |
-| `token_budget_m` | **50**（2026-09-08 总管批；spend~46；deadline 仍 2026-09-13） |
+| `token_budget_m` | **80**（2026-09-08 总管批；spend~46 相对 50 过紧；deadline 仍 2026-09-13） |
 | `cpu_hours` | **8** |
 | `survivors_per_cycle` | **3**（慢环加压，已批） |
 | `aligned_max_points` | **600**（慢环加压，已批） |
@@ -157,6 +157,7 @@
 |------|------|
 | 2026-09-06 | 初稿：自 9-6 长跑熔断/空转/contributing 污染教训 |
 | 2026-09-06 | **稳妥启动批准**：cohort=2，fm_eval 硬顶=1，goal max_cycles=3/token=20M |
+| 2026-09-08 | token_budget_m **50→80**（spend~46 相对 50 过紧）；deadline 仍 2026-09-13 |
 | 2026-09-08 | token_budget_m **30→50**；budget_hit 若 run 仍活则 `budget_hit_wait_run`（先等结束再 harvest/slow/exit） |
 | 2026-09-07 | **自动 session 解卡**：`praxist_session_unstick.py` + supervisor poll；nudge/回填；限频 20min；二次 escalate |
 | 2026-09-07 | 用户批续跑：max_cycles **3→8**；快环启停自转（harvest→slow→下一快环），异常仍报总管 |
