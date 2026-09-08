@@ -886,11 +886,14 @@ def _maybe_finish_slow(goal, log):
     return True
 
 def _main_locked(args):
-    goal = load_goal(args.goal)
     log = os.path.join(FM_ROOT, ".omc", "supervisor_decisions.jsonl")
-    max_cycles = args.max_cycles or goal["budgets"]["max_cycles"]
     one_shot = args.dry_run or args.once
     while True:
+        # Reload goal every poll so hot token_budget_m / max_cycles edits apply
+        # without restart (2026-09-08: stale 50 in-memory while disk was 80 → false
+        # budget_exhausted at tok_m=52.516).
+        goal = load_goal(args.goal)
+        max_cycles = args.max_cycles or goal["budgets"]["max_cycles"]
         st = load_state()
         cycles = int(st.get("cycles_done") or 0)
         cpu_h = _read_cpu_hours()
@@ -899,7 +902,8 @@ def _main_locked(args):
         snap = build_snapshot(REGISTRY, cycles, cpu_h, tok_spend)
         ok, why = evaluate_goal(goal["success_condition"], snap)
         b = goal["budgets"]
-        tok_hit = (not tok_unknown) and tok_spend >= b.get("token_budget_m", 80)
+        tok_budget = b.get("token_budget_m", 80)
+        tok_hit = (not tok_unknown) and tok_spend >= tok_budget
         budget_hit = (cycles >= max_cycles or cpu_h >= b.get("cpu_hours", 60)
                       or tok_hit or _deadline_passed(b))
 
@@ -933,7 +937,8 @@ def _main_locked(args):
             if _run_active():
                 _log_decision(
                     log, "budget_hit_wait_run",
-                    f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend}; "
+                    f"cycles={cycles}/{max_cycles} cpu_h={cpu_h} "
+                    f"tok_m={tok_spend}/{tok_budget}; "
                     "defer exit until active run ends then harvest/slow",
                 )
                 budget_hit = False
@@ -958,7 +963,9 @@ def _main_locked(args):
                         _maybe_finish_slow(goal, log)
                 if budget_hit:
                     rec = _log_decision(log, "budget_exhausted",
-                                        f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend} tok_unknown={tok_unknown}")
+                                        f"cycles={cycles}/{max_cycles} cpu_h={cpu_h} "
+                                        f"tok_m={tok_spend}/{tok_budget} tok_unknown={tok_unknown} "
+                                        f"tok_hit={tok_hit}")
                     write_stop_report("budget_exhausted", snap, [rec["reason"]], rec["reason"])
                     print(json.dumps(rec, ensure_ascii=False))
                     return 0

@@ -114,7 +114,7 @@
 |------|------|
 | `max_cycles` | **8**（2026-09-07 用户批续跑；cycles_done 已 3） |
 | `deadline` | **2026-09-13** |
-| `token_budget_m` | **80**（2026-09-08 总管批；spend~46 相对 50 过紧；deadline 仍 2026-09-13） |
+| `token_budget_m` | **120**（2026-09-08 总管批；防热更未热加载误杀；deadline 仍 2026-09-13） |
 | `cpu_hours` | **8** |
 | `survivors_per_cycle` | **3**（慢环加压，已批） |
 | `aligned_max_points` | **600**（慢环加压，已批） |
@@ -159,6 +159,7 @@
 | 2026-09-06 | **稳妥启动批准**：cohort=2，fm_eval 硬顶=1，goal max_cycles=3/token=20M |
 | 2026-09-08 | **/tmp 旁路降级**：matcher 覆盖 `standalone_eval`/`run_eval_v*`/`/tmp/*eval*`；禁 peer 自写 /tmp 评测；硬顶仍≤1 |
 | 2026-09-08 | **inline bypass 降级**：matcher 计 HourlyModel/`python -c`/monthly_backtest；`run.py` 无 `FM_EVAL_SLOT_HELD` 时自挂 flock；cgroup≥0.90 拒启+hardcap TERM；硬顶仍≤1 禁抬 2 |
+| 2026-09-08 | token_budget_m **80→120**；supervisor **每 poll 重载 goal**（修热更 50→80 后内存仍 50 导致 tok=52.5 误杀） |
 | 2026-09-08 | token_budget_m **50→80**（spend~46 相对 50 过紧）；deadline 仍 2026-09-13 |
 | 2026-09-08 | token_budget_m **30→50**；budget_hit 若 run 仍活则 `budget_hit_wait_run`（先等结束再 harvest/slow/exit） |
 | 2026-09-07 | **自动 session 解卡**：`praxist_session_unstick.py` + supervisor poll；nudge/回填；限频 20min；二次 escalate |
