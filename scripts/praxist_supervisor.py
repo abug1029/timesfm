@@ -118,8 +118,8 @@ def _write_heartbeat():
         with open(HEARTBEAT_PATH, "w") as f:
             f.write(json.dumps({"ts": _now_iso(), "run_id": _RUN_ID,
                                 "pid": os.getpid()}))
-    except OSError:
-        pass
+    except OSError as e:
+        print(f"[WARN] Failed to write heartbeat: {e}", file=sys.stderr)
 
 
 def _signal_handler(signum, frame):
@@ -368,6 +368,8 @@ def quota_gate(goal, now=None):
     now = now or datetime.now(reset.tzinfo)
     if now.tzinfo is None and reset.tzinfo is not None:
         now = now.replace(tzinfo=reset.tzinfo)
+    elif now.tzinfo is not None and reset.tzinfo is None:
+        reset = reset.replace(tzinfo=now.tzinfo)
     if now < reset:
         return False, max(1, int((reset - now).total_seconds()))
     win = timedelta(hours=win_h)
@@ -608,8 +610,8 @@ def write_stop_report(kind, snap, why, budgets_line):
     try:
         with open(STATE_MD, "a", encoding="utf-8") as f:
             f.write("\n## Supervisor {0} ({1})\n\nSee {2}\n".format(kind, ts, path))
-    except OSError:
-        pass
+    except OSError as e:
+        print(f"[WARN] Failed to write state file: {e}", file=sys.stderr)
     return path
 
 def _merge_save(updates):
@@ -1097,8 +1099,7 @@ def _main_locked(args):
                 return 0
 
         st = ensure_phase(load_state())
-        _merge_save({"phase": st["phase"]})
-        st = load_state()
+        st = _merge_save({"phase": st["phase"]})
         # Harvest finished runs even during paused_429 / wait_quota.
         if not _run_active():
             _maybe_harvest(st, goal, log)
