@@ -30,7 +30,7 @@
 
 - `scripts/mem_guard.py`：flock≤配置槽、MemAvailable 拒启、RSS shed  
 - `scripts/praxist_mem_guard_hook.py` + `zz_fm_mem_guard.pth`：强制 `protected_pids.launch_command`  
-- 计数真实 eval：**仅**匹配 `.venv/bin/python evaluations/fm_eval/run.py`（禁止把 bash/`protected_pids launch` cmdline 算进去）
+- 计数真实 eval：`fm_eval/run.py` **以及** inline `python -c` / `HourlyModel` / `DailyModel` / `monthly_backtest` / `do_evaluate`（禁止把 bash/`protected_pids launch` cmdline 算进去）；硬顶仍=1，>1 时 TERM **最新** inline 优先
 
 默认硬顶（本机）：
 
@@ -157,6 +157,7 @@
 |------|------|
 | 2026-09-06 | 初稿：自 9-6 长跑熔断/空转/contributing 污染教训 |
 | 2026-09-06 | **稳妥启动批准**：cohort=2，fm_eval 硬顶=1，goal max_cycles=3/token=20M |
+| 2026-09-08 | **inline bypass 降级**：matcher 计 HourlyModel/`python -c`/monthly_backtest；`run.py` 无 `FM_EVAL_SLOT_HELD` 时自挂 flock；cgroup≥0.90 拒启+hardcap TERM；硬顶仍≤1 禁抬 2 |
 | 2026-09-08 | token_budget_m **50→80**（spend~46 相对 50 过紧）；deadline 仍 2026-09-13 |
 | 2026-09-08 | token_budget_m **30→50**；budget_hit 若 run 仍活则 `budget_hit_wait_run`（先等结束再 harvest/slow/exit） |
 | 2026-09-07 | **自动 session 解卡**：`praxist_session_unstick.py` + supervisor poll；nudge/回填；限频 20min；二次 escalate |

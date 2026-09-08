@@ -22,8 +22,9 @@ cd /workspace/repos/timesfm-abug1029/task_FM
 - ❌ 在评估前预注册 finding（"HYPOTHESIS pre-registered"）
 - ❌ 写候选 JSON 到 `scripts/praxist_ws/`（被 delete guard 阻断）
 - ❌ 伪造指标
-- ❌ `python -c` / `python3 -c` 加载 TimesFM、调用 `do_evaluate` / HourlyModel / DailyModel（含任何“bypass protected_pids / mem_guard”写法）
-- ❌ 绕过 `evaluations/fm_eval/run.py` 的 inline 评测脚本
+- ❌ `python -c` / `python3 -c` 加载 TimesFM、调用 `do_evaluate` / `HourlyModel` / `DailyModel` / `monthly_backtest` / `run_symbol_backtest`（含任何“bypass protected_pids / mem_guard flock”写法）
+- ❌ 绕过 `evaluations/fm_eval/run.py` 的 inline 评测脚本；双路时 hardcap 会 TERM 最新一路
+- ❌ 在 flock 已占满时改用 inline 续跑（必须等槽；`EVAL_SLOT_FREE` 轮询可以）
 
 ## 候选 spec
 - symbol 限于 {m,ss,sr,cj,jd,lh,eg,rb}

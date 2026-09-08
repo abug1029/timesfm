@@ -42,6 +42,25 @@ DEFAULT_LOCK = os.path.join(FM_ROOT, "data", "cache", "eval_slots.lock")
 DEFAULT_ACTION_LOG = os.path.join(FM_ROOT, "data", "cache", "capacity_actions.log")
 DEFAULT_MAX_SLOTS = 1
 MIN_AVAIL_BYTES = int(2.5 * 1024 * 1024 * 1024)  # 2.5 GiB (control-plane refuse)
+CGROUP_REFUSE_RATIO = 0.90  # control-plane: stop new eval at/above this
+
+def cgroup_memory_ratio(
+    current_path: str = "/sys/fs/cgroup/memory.current",
+    max_path: str = "/sys/fs/cgroup/memory.max",
+) -> float | None:
+    """Return memory.current/memory.max, or None if unreadable/unlimited."""
+    try:
+        cur = int(open(current_path, encoding="utf-8").read().strip())
+        mx_raw = open(max_path, encoding="utf-8").read().strip()
+        if mx_raw in ("", "max"):
+            return None
+        mx = int(mx_raw)
+        if mx <= 0:
+            return None
+        return cur / mx
+    except (OSError, ValueError):
+        return None
+
 RSS_LIMIT_BYTES = int(3.5 * 1024 * 1024 * 1024)  # ~3.5 GiB
 # Kept for callers that explicitly opt in; NOT applied by default.
 RLIMIT_AS_BYTES = 3500 * 1024 * 1024  # ~3.5 GiB (optional only)
@@ -57,6 +76,7 @@ DEFAULT_CMD_PATTERNS = (
     "do_evaluate",
     "cascade_predict",
     "monthly_backtest",
+    "run_symbol_backtest",
     # inline python -c bypass of protected_pids (peer Bash)
     "from evaluations",
     "import timesfm",
@@ -135,6 +155,14 @@ class EvalSlot:
         self.slot = None
 
     def acquire(self, block: bool = False) -> "EvalSlot":
+        ratio = cgroup_memory_ratio()
+        if ratio is not None and ratio >= CGROUP_REFUSE_RATIO:
+            msg = (
+                f"mem_guard: cgroup_ratio={ratio:.3f} >= {CGROUP_REFUSE_RATIO} "
+                f"(refuse new eval)"
+            )
+            log_capacity_action(msg)
+            raise SystemExit(msg)
         avail = mem_available_bytes()
         if avail < self.min_avail_bytes:
             msg = (
@@ -334,6 +362,8 @@ def is_timesfm_eval_cmdline(cmd: str) -> bool:
                 "do_evaluate",
                 "hourlymodel",
                 "dailymodel",
+                "monthly_backtest",
+                "run_symbol_backtest",
                 "fm_eval",
                 "from evaluations",
                 "import timesfm",

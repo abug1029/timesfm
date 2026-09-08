@@ -3,6 +3,7 @@
 
 Hard cap=1. Prefer TERM newest inline/python -c / non-canonical; else newest run.py.
 Also soft-demote when MemAvailable < 2.5GiB if >1 load; force ≤1 if <2.2GiB.
+cgroup ratio ≥0.90 → TERM all matching evals (stop new via flock refuse).
 Does not clear SHUTDOWN. Logs to reports + capacity_actions.
 """
 from __future__ import annotations
@@ -18,11 +19,20 @@ INTERVAL = float(os.environ.get('FM_HARDCAP_INTERVAL', '3'))
 HARD_CAP = 1
 SOFT_MEM = 2.5 * 1024**3
 HARD_MEM = 2.2 * 1024**3
+CGROUP_STOP = 0.90
 
 def classify(cmd: str) -> str:
     if 'evaluations/fm_eval/run.py' in cmd or 'evaluations/fm_eval/run_eval.py' in cmd:
         return 'run.py'
-    if ' -c ' in cmd or 'do_evaluate' in cmd:
+    low = cmd.lower()
+    if (
+        ' -c ' in cmd or ' -c"' in cmd or " -c'" in cmd
+        or 'do_evaluate' in low
+        or 'hourlymodel' in low
+        or 'dailymodel' in low
+        or 'monthly_backtest' in low
+        or 'run_symbol_backtest' in low
+    ):
         return 'inline'
     return 'other'
 
@@ -49,13 +59,13 @@ def log(msg: str) -> None:
         pass
     mg.log_capacity_action(f'hardcap_daemon: {msg}')
 
-def demote(loads, reason: str):
+def demote(loads, reason: str, target_cap: int = HARD_CAP):
     # prefer kill inline/other newest, then newest run.py
     non = sorted([x for x in loads if x['kind'] != 'run.py'], key=lambda x: -x['start'])
     run = sorted([x for x in loads if x['kind'] == 'run.py'], key=lambda x: -x['start'])
     order = non + run
     killed = []
-    while len(loads) > HARD_CAP and order:
+    while len(loads) > target_cap and order:
         v = order.pop(0)
         try:
             os.kill(v['pid'], signal.SIGTERM)
@@ -76,7 +86,10 @@ def main():
         try:
             loads = list_loads()
             avail = mg.mem_available_bytes()
-            if len(loads) > HARD_CAP:
+            ratio = mg.cgroup_memory_ratio()
+            if ratio is not None and ratio >= CGROUP_STOP and loads:
+                demote(loads, f'cgroup>={CGROUP_STOP} ratio={ratio:.3f} n={len(loads)}', target_cap=0)
+            elif len(loads) > HARD_CAP:
                 demote(loads, f'cap>{HARD_CAP} n={len(loads)} avail={avail}')
             elif avail < HARD_MEM and len(loads) > 1:
                 demote(loads, f'mem<{HARD_MEM} n={len(loads)}')
