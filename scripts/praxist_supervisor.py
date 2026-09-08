@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """三环监督环: goal 判定 + 两环调度, 纯 Python 0 token"""
-import argparse, fcntl, glob, json, os, re, subprocess, sys, time
+import argparse, atexit, fcntl, glob, json, os, re, signal, subprocess, sys, threading, time, traceback, uuid
 from datetime import datetime, timedelta
 import yaml
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,6 +31,13 @@ LOCK_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor.lock")
 VERDICTS_INC = os.path.join(FM_ROOT, "task_FM", "known_verdicts.inc.md")
 REPORT_DIR = os.path.join(FM_ROOT, "docs", "superpowers", "reports")
 STATE_MD = os.path.join(FM_ROOT, "STATE.md")
+EVENTS_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_events.jsonl")
+HEARTBEAT_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_heartbeat")
+STOP_REPORT_JSON = os.path.join(FM_ROOT, "data", "cache", "stop_report.json")
+_EVENT_LOCK = threading.Lock()
+_SHUTDOWN_REQUESTED = False
+_RUN_ID = uuid.uuid4().hex[:12]
+_START_TIME = time.time()
 POLL_S = 300
 PHASES = ("fast", "slow", "wait_quota")
 
@@ -42,6 +49,99 @@ INCUMBENT_PF = {sym: float(rec["historical_pf"])
 
 def _now_iso():
     return datetime.now().isoformat()
+
+# ── Event monitoring system ──────────────────────────────────
+
+def _emit_event(level, event, data=None, **extra):
+    """Append a structured event to the events JSONL.
+
+    Thread-safe via _EVENT_LOCK. On write failure, falls back to stderr.
+    Never raises — monitoring must not crash the supervisor.
+    """
+    rec = {
+        "ts": _now_iso(),
+        "schema_version": 1,
+        "run_id": _RUN_ID,
+        "pid": os.getpid(),
+        "level": level,
+        "event": event,
+        "data": data or {},
+    }
+    rec.update(extra)
+    line = json.dumps(rec, ensure_ascii=False, default=str)
+    try:
+        os.makedirs(os.path.dirname(EVENTS_PATH), exist_ok=True)
+        with _EVENT_LOCK:
+            with open(EVENTS_PATH, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+    except OSError as e:
+        print(f"[EVENT_FALLBACK] {line}", file=sys.stderr)
+    if event == "supervisor_stopped":
+        _write_stop_json(rec)
+
+
+def _write_stop_json(event_rec):
+    """Write a timestamped stop report JSON (keeps history)."""
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(os.path.dirname(STOP_REPORT_JSON),
+                            f"stop_report_{ts}.json")
+        report = {
+            "ts": _now_iso(),
+            "run_id": _RUN_ID,
+            "pid": os.getpid(),
+            "uptime_s": round(time.time() - _START_TIME, 1),
+            "event": event_rec.get("event"),
+            "data": event_rec.get("data", {}),
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        with open(STOP_REPORT_JSON, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        print(f"[STOP_REPORT_ERROR] {e}", file=sys.stderr)
+
+
+def _write_heartbeat():
+    """Write heartbeat timestamp. Called each main loop iteration."""
+    try:
+        os.makedirs(os.path.dirname(HEARTBEAT_PATH), exist_ok=True)
+        with open(HEARTBEAT_PATH, "w") as f:
+            f.write(json.dumps({"ts": _now_iso(), "run_id": _RUN_ID,
+                                "pid": os.getpid()}))
+    except OSError:
+        pass
+
+
+def _signal_handler(signum, frame):
+    """Signal handler: set flag only, no I/O. Main loop detects and emits event."""
+    global _SHUTDOWN_REQUESTED
+    _SHUTDOWN_REQUESTED = True
+
+
+def _atexit_handler():
+    """Emit stop event on any exit path not already handled."""
+    if os.path.exists(STOP_REPORT_JSON):
+        try:
+            existing = json.load(open(STOP_REPORT_JSON, encoding="utf-8"))
+            if existing.get("run_id") == _RUN_ID:
+                return
+        except (OSError, json.JSONDecodeError):
+            pass
+    _emit_event("critical", "supervisor_stopped", {
+        "reason": "unexpected_exit",
+        "exit_code": getattr(sys, "exitcode", 1) if hasattr(sys, "exitcode") else 1,
+        "uptime_s": round(time.time() - _START_TIME, 1),
+    })
+
+
+# Register signal + atexit handlers
+signal.signal(signal.SIGTERM, _signal_handler)
+signal.signal(signal.SIGINT, _signal_handler)
+atexit.register(_atexit_handler)
+
 
 def parse_429_reset(log_text):
     m = re.search(r"reset at (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})", log_text)
@@ -575,6 +675,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             r = _praxist(argv, env=_praxist_env(provider))
             if r.get("ok"):
                 updates = {"paused_429": False, "phase": "fast", **_provider_state(provider)}
+                _emit_event("info", "run_started", {"provider": provider, "reason": reason})
                 try:
                     js = json.loads(r["stdout"] or "{}")
                     if isinstance(js, dict):
@@ -654,6 +755,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
                         "sleep_s": sleep_s,
                     })
                     _merge_save({"paused_429": True, **_provider_state("failover")})
+                _emit_event("action", "provider_switch", {"from": "primary", "to": "failover", "reason": "429_rate_limit"})
             return actions
         # Already on failover: Ark quota_gate must NOT stop a live DashScope run.
         if provider_now == "failover":
@@ -795,9 +897,17 @@ def main(argv=None):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         print("another supervisor holds the lock; exit")
+        _emit_event("info", "lock_contention", {"reason": "another supervisor holds the lock"})
         return 0
     try:
         return _main_locked(args)
+    except Exception as e:
+        _emit_event("critical", "error", {
+            "exception": str(e),
+            "traceback": traceback.format_exc()[-500:],
+            "uptime_s": round(time.time() - _START_TIME, 1),
+        })
+        raise
     finally:
         fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()
@@ -891,6 +1001,14 @@ def _main_locked(args):
     max_cycles = args.max_cycles or goal["budgets"]["max_cycles"]
     one_shot = args.dry_run or args.once
     while True:
+        _write_heartbeat()
+        if _SHUTDOWN_REQUESTED:
+            _emit_event("critical", "supervisor_stopped", {
+                "reason": "signal_received",
+                "exit_code": 0,
+                "uptime_s": round(time.time() - _START_TIME, 1),
+            })
+            return 0
         st = load_state()
         cycles = int(st.get("cycles_done") or 0)
         cpu_h = _read_cpu_hours()
@@ -924,6 +1042,11 @@ def _main_locked(args):
         if ok:
             rec = _log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
             write_stop_report("goal_reached", snap, why, rec["reason"])
+            _emit_event("critical", "goal_reached", {
+                "why": why, "cycles_done": cycles, "cpu_h": cpu_h, "tok_m": tok_spend,
+                "symbols_hit": sorted(snap.get("symbols_hit") or []),
+                "uptime_s": round(time.time() - _START_TIME, 1),
+            })
             print(json.dumps(rec, ensure_ascii=False))
             return 0
         if budget_hit:
@@ -935,6 +1058,7 @@ def _main_locked(args):
             if st_pre.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
                 if st_pre.get("phase") != "slow":
                     _merge_save({"phase": "slow"})
+                    _emit_event("action", "phase_change", {"from": "fast", "to": "slow"})
                 _maybe_start_slow_loop(goal, log)
                 # One-shot drain wait is not appropriate here; leave slow running and
                 # only exit once queue is empty. If still draining, keep process alive.
@@ -953,6 +1077,11 @@ def _main_locked(args):
                 rec = _log_decision(log, "budget_exhausted",
                                     f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend} tok_unknown={tok_unknown}")
                 write_stop_report("budget_exhausted", snap, [rec["reason"]], rec["reason"])
+                _emit_event("critical", "budget_exhausted", {
+                    "cycles": cycles, "cpu_h": cpu_h, "tok_m": tok_spend,
+                    "tok_unknown": tok_unknown,
+                    "uptime_s": round(time.time() - _START_TIME, 1),
+                })
                 print(json.dumps(rec, ensure_ascii=False))
                 return 0
 
