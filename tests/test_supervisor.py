@@ -85,6 +85,8 @@ def _eval_summary(symbol, cov, ev, n=6, pf=1.3, max_points=None):
 
 def test_harvest_survivors(tmp_path):
     run = tmp_path / "task_FM" / "experiments" / "run_2026-09-02_10-00-00_x"
+    # 保留的 harvest_survivors (回滚用) 读旧诊断产物 evaluation_summary.json;
+    # 新提案产物 proposals/*.json 由 harvest_proposals 收割, 见 test_harvest_proposals.py。
     d1 = run / "results" / "gen_0" / "p0" / "m_rsi_state_diagnostic_p6" / "diagnostic"
     d1.mkdir(parents=True)
     (d1 / "evaluation_summary.json").write_text(json.dumps(
@@ -281,10 +283,21 @@ def test_harvest_survivors_enter_slow_no_start_no_cycle(tmp_path, monkeypatch):
         "last_harvested_run_id": None, "paused_429": False,
     }), encoding="utf-8")
     run = tmp_path / "task_FM" / "experiments" / "run_2026-09-02_10-00-00_x"
-    d1 = run / "results" / "gen_0" / "p0" / "m_rsi_state_diagnostic_p6" / "diagnostic"
-    d1.mkdir(parents=True)
-    (d1 / "evaluation_summary.json").write_text(json.dumps(
-        _eval_summary("m", "rsi_state", ev=0.05, n=6, pf=1.3)))
+    # peer 已转型为假设作者: 主循环 _harvest_rows 走 harvest_proposals, 读 proposals/*.json
+    # (不再产 evaluation_summary.json)。造一份合格机制化提案触发入队 + 进 slow 相。
+    pdir = run / "results" / "gen_0" / "p0" / "proposals"
+    pdir.mkdir(parents=True)
+    (pdir / "m_rsi_state.json").write_text(json.dumps({
+        "schema": "fm.hypothesis_proposal.v1",
+        "proposal_id": "m_rsi_state",
+        "symbol": "m", "cov_override": "rsi_state",
+        "covariate_family": "oscillator",
+        "mechanism": "RSI(14) 超买超卖体制在豆粕主力合约上有明确的均值回归机制，极端读数后价格倾向回到波动中枢，持仓资金活跃放大反转有效性。",
+        "symbol_fit": "豆粕主力持仓资金活跃，RSI 反转信号在主力合约上有效性高。",
+        "predicted_direction": "oversold -> long revert",
+        "kill_condition": "aligned ev<0 或 ic<0.02",
+        "promote_condition": "gate_pass 且 PF>1.05 且 ev>0",
+    }), encoding="utf-8")
     goal = _goal_yaml(tmp_path)
     rc = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc == 0
@@ -426,7 +439,9 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup, "_praxist", lambda *a, **k: {"ok": True})
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: True)
+    # 无慢环在排空: budget_hit 当 tick 必须写 stop 报告。
+    # alive=True 会让 _slow_drain_complete() 为 False → 走 drain-defer 分支不退出。
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(sup, "_read_token_m", lambda: (21.0, False))
     (tmp_path / "state.json").write_text(json.dumps({

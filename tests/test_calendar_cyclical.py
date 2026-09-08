@@ -40,7 +40,7 @@ class TestCalendarCyclical(unittest.TestCase):
     def test_periodic_boundary_dec_jan(self):
         """12月31日 23:00 与 1月1日 00:00 的 DayOfYear 衔接平滑"""
         # 构造跨年边界数据
-        dts = pd.date_range("2024-12-31 22:00", periods=4, freq="H")
+        dts = pd.date_range("2024-12-31 22:00", periods=4, freq="h")
         df = pd.DataFrame({"dt": dts, "close_price": [1]*4})
         out = calc_calendar_cyclical(df, horizon=0)
         # 12/31 dayofyear=366 (闰年), 1/1 dayofyear=1
@@ -53,7 +53,7 @@ class TestCalendarCyclical(unittest.TestCase):
         horizon = 12
         out = calc_calendar_cyclical(self.df, horizon)
         last_ctx = self.df["dt"].iloc[-1]
-        future_dts = pd.date_range(last_ctx + pd.Timedelta(hours=1), periods=horizon, freq="H")
+        future_dts = pd.date_range(last_ctx + pd.Timedelta(hours=1), periods=horizon, freq="h")
         expected_doy = future_dts.dayofyear.values
         expected_month = future_dts.month.values
         # 取 horizon 部分 (最后 horizon 行)
