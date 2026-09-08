@@ -8,8 +8,9 @@
 import json
 import os
 
-FM_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+# evaluator.py 位于 <FM_ROOT>/task_FM/evaluations/fm_eval/，上溯 3 级到 FM_ROOT
+FM_ROOT = os.path.abspath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir, os.pardir))
 
 VALID_COVARIATES = {
     "rsi_state", "rsi_slope", "hourly_slope", "oi", "ccl", "basis_momentum",
@@ -73,6 +74,47 @@ for _n in ["_discover_covariates_from_features", "_discovered", "_missing_in_sta
     globals().pop(_n, None)
 
 
+# Plan D: 协变量策略池 (task_FM/config/covariate_pool.json)
+# 池是 peer 可提议协变量的单一事实源: status=active 可提议, archived 全局退役。
+# AST 发现只做并集(只会加), 归档必须在此显式差集, 否则删静态项无效。
+POOL_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_pool.json")
+ARCHIVED_COVARIATES = {}   # name -> archived_reason
+_POOL_ERROR = None
+
+
+def _load_covariate_pool():
+    """读 covariate_pool.json → (active_set, archived{name:reason}, err)。
+    fail-open: 文件缺失/解析失败返回 (None, {}, err)，调用方不做任何归档/收窄。"""
+    try:
+        with open(POOL_PATH, "r", encoding="utf-8") as f:
+            pool = json.load(f)
+        covs = pool.get("covariates", {})
+        active = {n for n, v in covs.items() if v.get("status") == "active"}
+        archived = {n: str(v.get("archived_reason", "已归档"))
+                    for n, v in covs.items() if v.get("status") == "archived"}
+        return active, archived, None
+    except Exception as e:
+        return None, {}, str(e)
+
+
+try:
+    _active_pool, ARCHIVED_COVARIATES, _pool_err = _load_covariate_pool()
+    if _active_pool is not None:
+        # active 池 ∩ 已实现分派(static∪AST)，再剔归档：
+        # 新 features.py 分支须先在池注册 active 才能被 peer 提议
+        VALID_COVARIATES &= _active_pool
+        VALID_COVARIATES -= set(ARCHIVED_COVARIATES)
+    elif _pool_err:
+        _POOL_ERROR = _pool_err
+        import sys
+        print("[WARN] covariate_pool.json 加载失败, fail-open 不收窄: %s" % _pool_err,
+              file=sys.stderr)
+except Exception as e:
+    _POOL_ERROR = "covariate pool apply failed: %s" % e
+    import sys
+    print("[WARN] 协变量池应用失败, fail-open: %s" % e, file=sys.stderr)
+
+
 # P2 试运行范围: 信用>=2星品种 (loop-constraints 允许, 数据质量已核)
 ALLOWED_SYMBOLS = {"ao", "bu", "cf", "fg", "fu", "i", "jm", "ma", "p", "sh", "sp", "ta", "ur", "m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"}
 
@@ -90,8 +132,11 @@ def validate_candidate(c):
         return False, "candidate must be a mapping"
     if str(c.get("symbol", "")).lower() not in ALLOWED_SYMBOLS:
         return False, "symbol 不在允许清单"
-    if c.get("cov_override") not in VALID_COVARIATES:
-        return False, "cov_override 不在预注册协变量清单"
+    cov = c.get("cov_override")
+    if cov in ARCHIVED_COVARIATES:
+        return False, "covariate 已归档(archived): %s — %s" % (cov, ARCHIVED_COVARIATES[cov])
+    if cov not in VALID_COVARIATES:
+        return False, "cov_override 不在预注册协变量清单(active 池)"
     stage = c.get("stage", DEFAULT_STAGE)
     if stage not in STAGE_POINTS:
         return False, f"stage 必须是 {'/'.join(STAGE_POINTS)}"

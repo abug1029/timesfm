@@ -1359,8 +1359,8 @@ def build_covariate_matrix(
         covariate_full = np.concatenate([ctx, _decay_fill(float(ctx[-1]), horizon)])
         covariate_name = "stddev"
 
-    else:
-        # CCL 变化率 (默认)
+    elif covariate_type == "ccl":
+        # CCL 仓差变化率 (此前为 else 默认，提为显式分支以便未知类型显式报错)
         if "ccl_value" in df_1h.columns and df_1h["ccl_value"].notna().any():
             ccl_pct = calc_ccl_pct(df_1h["ccl_value"], df_1h.get("open_interest"))
         elif "open_interest" in df_1h.columns:
@@ -1372,6 +1372,13 @@ def build_covariate_matrix(
             ccl_pct = pd.Series(np.zeros(len(df_1h)), index=df_1h.index)
         covariate_full = np.concatenate([ccl_pct.values, np.zeros(horizon)])
         covariate_name = "ccl_pct"
+
+    else:
+        # 未知协变量显式报错 (此前静默降级为 CCL，会产出错误结果而不报警)
+        raise ValueError(
+            f"build_covariate_matrix 不支持 covariate_type='{covariate_type}'；"
+            f"请在 features.py 注册分派，或在 covariate_pool.json 中归档。"
+        )
 
     assert len(covariate_full) == total_len
 
@@ -1452,6 +1459,14 @@ def build_combo_covariate_matrix(
             horizon_rsi = _generate_rsi_state_horizon(
                 float(ctx_rsi[-1]) if len(ctx_rsi) > 0 else 0.0, horizon, decay_step=2)
             result["rsi_state"] = np.concatenate([ctx_rsi, horizon_rsi])
+
+        elif cov_type in ("rsi6", "rsi12", "rsi24"):
+            # combo 路径补齐 (此前仅单路径 build_covariate_matrix 支持)
+            _rsi_p = {"rsi6": 6, "rsi12": 12, "rsi24": 24}[cov_type]
+            ctx_rsi = calc_rsi_state(hourly_closes, rsi_period=_rsi_p).astype(float)
+            horizon_rsi = _generate_rsi_state_horizon(
+                float(ctx_rsi[-1]) if len(ctx_rsi) > 0 else 0.0, horizon, decay_step=2)
+            result[cov_type] = np.concatenate([ctx_rsi, horizon_rsi])
 
         elif cov_type == "hurst":
             hurst = calc_rolling_hurst(hourly_closes, window=120, step=6)
@@ -1597,7 +1612,7 @@ def build_combo_covariate_matrix(
             result["stddev"] = np.concatenate([ctx, last_val * decay])
 
         else:
-            supported = ["oi", "rsi_state", "hurst", "hourly_slope", "rsi_slope",
+            supported = ["oi", "rsi_state", "rsi6", "rsi12", "rsi24", "hurst", "hourly_slope", "rsi_slope",
                          "pca_momentum", "ao_accel", "bb_squeeze", "ha_body",
                          "reversal_shadow", "reversal_shadow_gated_02",
                          "reversal_shadow_gated_03", "reversal_shadow_gated_05",
