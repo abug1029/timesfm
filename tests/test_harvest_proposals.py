@@ -122,3 +122,18 @@ def test_family_diversity_pass_one(tmproot):
     assert len({r["variant_id"] for r in rows}) == 2
     # Pass1 每族一个 → 选中集合必含 positioning 的 ss_oi
     assert "ss_oi" in {r["variant_id"] for r in rows}
+
+
+def test_new_covariate_dedup_across_harvests(tmproot):
+    """同一 new_cov 被后续 cycle 重扫 (harvest 每 cycle glob 所有 run) 只入 backlog 一次。"""
+    _make_run(tmproot, {"schema": "fm.hypothesis_proposal.v1", "symbol": "m",
+                        "cov_override": None,
+                        "new_covariate": {"name": "term_spread", "formula": "...",
+                                          "mechanism": LONGM, "family": "structure"}},
+              filename="new_cov_term_spread.json")
+    _harvest(tmproot)
+    rows2, stats2 = _harvest(tmproot)  # 第二 cycle 重扫同一 run
+    assert stats2["backlog"] == 0
+    assert "backlog_dup" in stats2["reject_reasons"]
+    recs = [json.loads(l) for l in open(S.BACKLOG_PATH, encoding="utf-8") if l.strip()]
+    assert [r["name"] for r in recs].count("term_spread") == 1

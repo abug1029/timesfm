@@ -143,9 +143,13 @@ def _atexit_handler():
                 return
         except (OSError, json.JSONDecodeError):
             pass
+    # atexit 兜底只在未覆盖的退出(未捕获异常等; CPython 此类退出码=1)触发。
+    # 干净退出(goal_reached/budget_exhausted/dry-run/one-shot/signal)已先 _mark_stop_emitted()。
+    # 历史 bug: getattr(sys,"exitcode",1) 中 sys.exitcode 并非标准属性, hasattr 恒 False,
+    # 导致任何干净退出在漏标时都被记 exit_code=1。
     _emit_event("critical", "supervisor_stopped", {
         "reason": "unexpected_exit",
-        "exit_code": getattr(sys, "exitcode", 1) if hasattr(sys, "exitcode") else 1,
+        "exit_code": 1,
         "uptime_s": round(time.time() - _START_TIME, 1),
     })
 
@@ -518,14 +522,31 @@ def _proposal_priority_score(prop, cov, symbol, snapshot):
     return score
 
 def _append_backlog(prop, src_path):
-    """新协变量想法追加到 backlog (宿主评审用)，不入 aligned 队列。"""
+    """新协变量想法追加到 backlog (宿主评审用)，不入 aligned 队列。
+
+    按 name 去重: harvest_proposals 每个 cycle 重扫所有 run, 同一 new_cov
+    proposal 会被反复看到; 已在 backlog 的同名想法不得重复追加。
+    返回 True=本次新增, False=同名已存在。
+    """
     os.makedirs(os.path.dirname(BACKLOG_PATH), exist_ok=True)
     nc = prop.get("new_covariate") or prop.get("new_cov") or {}
+    name = nc.get("name") or prop.get("cov_override")
+    existing = set()
+    if os.path.exists(BACKLOG_PATH):
+        try:
+            with open(BACKLOG_PATH, encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        existing.add(json.loads(line).get("name"))
+        except (OSError, json.JSONDecodeError):
+            pass
+    if name in existing:
+        return False
     rec = {"ts": _now_iso(), "src": src_path,
-           "name": nc.get("name") or prop.get("cov_override"),
-           "proposal": prop}
+           "name": name, "proposal": prop}
     with open(BACKLOG_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return True
 
 def harvest_proposals(root, snapshot, dead, existing, pool, top_k, aligned_max_points=400):
     """收割 peer 机制化假设 (results/**/proposals/*.json) → aligned 队列行。
@@ -563,7 +584,11 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k, aligned_max_p
             stats["seen"] += 1
             # 新协变量想法 → backlog
             if p.get("new_covariate") or p.get("new_cov"):
-                _append_backlog(p, sp); stats["backlog"] += 1; continue
+                if _append_backlog(p, sp):
+                    stats["backlog"] += 1
+                else:
+                    _reject("backlog_dup")
+                continue
             symbol = str(p.get("symbol") or "").lower().strip()
             cov = str(p.get("cov_override") or "").strip()
             mechanism = str(p.get("mechanism") or "").strip()
@@ -1239,6 +1264,8 @@ def _main_locked(args):
                 "symbols_hit": sorted(snap.get("symbols_hit") or []),
                 "uptime_s": round(time.time() - _START_TIME, 1),
             })
+            # 干净终止: 先标记, 否则 atexit 兜底会误报 supervisor_stopped/unexpected_exit。
+            _mark_stop_emitted()
             print(json.dumps(rec, ensure_ascii=False))
             return 0
         if budget_hit:
@@ -1274,6 +1301,8 @@ def _main_locked(args):
                     "tok_unknown": tok_unknown,
                     "uptime_s": round(time.time() - _START_TIME, 1),
                 })
+                # 干净终止: 先标记, 否则 atexit 兜底会误报 supervisor_stopped/unexpected_exit。
+                _mark_stop_emitted()
                 print(json.dumps(rec, ensure_ascii=False))
                 return 0
 

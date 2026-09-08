@@ -166,6 +166,34 @@ def test_dry_run_one_shot_no_sleep(tmp_path, monkeypatch):
     assert not (tmp_path / "pending.jsonl").exists()
     assert not (tmp_path / "STATE.md").exists()
 
+def test_goal_reached_marks_stop_emitted(tmp_path, monkeypatch):
+    """goal_reached 干净退出必须先 _mark_stop_emitted, 否则 atexit 兜底误报 unexpected_exit。"""
+    monkeypatch.setattr(sup, "_STOP_EMITTED", False)
+    monkeypatch.setattr(sup, "build_snapshot", lambda *a, **k: {
+        "symbols_hit": {"ss"}, "families_hit": {"volatility"},
+        "pass_variant_pf_ratios": [1.123], "variants": {}})
+    # 隔离生产 IO (MENU_INC/VERDICTS/报告/事件未被 _patch_paths 重定向)
+    monkeypatch.setattr(sup, "materialize_known_verdicts", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "write_stop_report", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "_emit_event", lambda *a, **k: None)
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "state.json").write_text(json.dumps({
+        "cycles_done": 5, "last_run_id": None, "paused_429": False}), encoding="utf-8")
+    goal = tmp_path / "goal.yaml"
+    goal.write_text(
+        "goal:\n"
+        "  success_condition: ['len(symbols_hit) >= 1',\n"
+        "                      'min(pass_variant_pf_ratios) > 1.05',\n"
+        "                      'len(families_hit) >= 1']\n"
+        "  budgets: {max_cycles: 10, cpu_hours: 60, token_budget_m: 80}\n"
+        "  cadence: {survivors_per_cycle: 2, aligned_max_points: 400,\n"
+        "            run_budget_hours: 2.0, quota_window_hours: 5.0, quota_margin_min: 30}\n",
+        encoding="utf-8")
+    rc = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
+    assert rc == 0
+    assert sup._STOP_EMITTED is True  # atexit 不会再发 supervisor_stopped/unexpected_exit
+
 def test_cycles_increment_only_after_harvest(tmp_path, monkeypatch):
     monkeypatch.setattr(sup.time, "sleep", lambda s: None)
     monkeypatch.setattr(sup, "_run_active", lambda: True)  # run 仍在
@@ -462,9 +490,11 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
     assert st["tokens_baseline_m"] == 21.0
     assert not list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
     monkeypatch.setattr(sup, "_read_token_m", lambda: (31.0, False))
+    monkeypatch.setattr(sup, "_STOP_EMITTED", False)
     rc2 = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc2 == 0
     assert list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
+    assert sup._STOP_EMITTED is True  # budget 干净退出同样不得触发 atexit unexpected_exit
     st2 = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     assert st2["tokens_baseline_m"] == 21.0
 
