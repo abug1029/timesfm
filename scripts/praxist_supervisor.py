@@ -927,34 +927,41 @@ def _main_locked(args):
             print(json.dumps(rec, ensure_ascii=False))
             return 0
         if budget_hit:
-            # Drain finished-run harvest + local slow queue BEFORE exiting on budget.
-            st_pre = load_state()
-            if not _run_active():
+            # If a fast run is still alive, do NOT exit — wait for it to finish so we
+            # can harvest→slow before any budget_exhausted return (2026-09-07 lesson:
+            # exited at tok>budget while failover run lived → missed harvest).
+            if _run_active():
+                _log_decision(
+                    log, "budget_hit_wait_run",
+                    f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend}; "
+                    "defer exit until active run ends then harvest/slow",
+                )
+                budget_hit = False
+            else:
+                # Drain finished-run harvest + local slow queue BEFORE exiting on budget.
+                st_pre = load_state()
                 _maybe_harvest(st_pre, goal, log)
-            st_pre = load_state()
-            if st_pre.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
-                if st_pre.get("phase") != "slow":
-                    _merge_save({"phase": "slow"})
-                _maybe_start_slow_loop(goal, log)
-                # One-shot drain wait is not appropriate here; leave slow running and
-                # only exit once queue is empty. If still draining, keep process alive.
-                if not _slow_drain_complete():
-                    _log_decision(
-                        log, "budget_hit_drain_slow",
-                        f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend}; "
-                        "defer exit until aligned queue drains",
-                    )
-                    # Fall through to slow-handling path below instead of return.
-                    budget_hit = False
-                    # Skip success/budget returns by jumping to phase handling
-                else:
-                    _maybe_finish_slow(goal, log)
-            if budget_hit:
-                rec = _log_decision(log, "budget_exhausted",
-                                    f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend} tok_unknown={tok_unknown}")
-                write_stop_report("budget_exhausted", snap, [rec["reason"]], rec["reason"])
-                print(json.dumps(rec, ensure_ascii=False))
-                return 0
+                st_pre = load_state()
+                if st_pre.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
+                    if st_pre.get("phase") != "slow":
+                        _merge_save({"phase": "slow"})
+                    _maybe_start_slow_loop(goal, log)
+                    # Leave slow running; only exit once queue is empty.
+                    if not _slow_drain_complete():
+                        _log_decision(
+                            log, "budget_hit_drain_slow",
+                            f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend}; "
+                            "defer exit until aligned queue drains",
+                        )
+                        budget_hit = False
+                    else:
+                        _maybe_finish_slow(goal, log)
+                if budget_hit:
+                    rec = _log_decision(log, "budget_exhausted",
+                                        f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend} tok_unknown={tok_unknown}")
+                    write_stop_report("budget_exhausted", snap, [rec["reason"]], rec["reason"])
+                    print(json.dumps(rec, ensure_ascii=False))
+                    return 0
 
         st = ensure_phase(load_state())
         _merge_save({"phase": st["phase"]})
