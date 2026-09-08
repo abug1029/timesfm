@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source .praxist-venv/bin/activate
 export PYTHONIOENCODING=utf-8
 
 REMAINING="ss sr sp fu m i rb bu sh p eg lh cj jd ta"

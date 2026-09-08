@@ -17,7 +17,7 @@
 - **后置采集铁律**：Phase 6 月度合约采集必须在 `_MAIN` 采集 commit() 之后，套严格 try/except，单合约异常不阻塞主力合约
 - **Fail-visibly**：Phase 6 backtest 历史区间 NaN>30% 显式 SKIP，不 zero-fill 蒙混指标
 - **Windows GBK 编码**：Python 脚本输出中文须显式 `encoding='utf-8'` 或 `PYTHONIOENCODING=utf-8`
-- **环境激活**：`source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate`，cwd=`D:/FlyBuddy/FM_a`
+- **环境激活**：`source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate`，cwd=`D:/FlyBuddy/FM_a`
 - **不动范围**：不实现 JD 日历特征（Phase 4）、不引入原油/PX 跨品种基差（未来 Phase）、不实现 Rollover 算法、不实现 LH 基本面（Phase 7）
 
 ---
@@ -120,7 +120,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate && python -m pytest tests/test_reversal_shadow_gated.py -v`
+Run: `source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate && python -m pytest tests/test_reversal_shadow_gated.py -v`
 Expected: FAIL（`test_independent_silencing_*` 与 `test_both_small_shadows_zeroed` 失败，因 `min_shadow_atr` 参数不存在）
 
 - [ ] **Step 3: 改 `calc_reversal_shadow_ratio` 加参数 + 独立静默**
@@ -209,7 +209,7 @@ Expected: 3 个测试 PASS
 - [ ] **Step 5: 跑 SS/FG/LH 零回归端到端验证**
 
 ```bash
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 python -c "
 import numpy as np, pandas as pd
 from data.data_store import DataStore
@@ -340,7 +340,7 @@ EOF
 - [ ] **Step 4: 冒烟验证 scan 能加载三档并跑 1 点**
 
 ```bash
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 python scripts/covariate_scan.py cj --points 1 2>&1 | grep -E "gated|最优|TOP"
 ```
 Expected: 输出含 `reversal_shadow_gated_02/_03/_05`（1 点 DirAcc=100% 不可信，仅工程可用性验证）
@@ -375,7 +375,7 @@ EOF
 - [ ] **Step 1: 跑 CJ 三档 scan 7 点**
 
 ```bash
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 cd D:/FlyBuddy/FM_a
 python scripts/covariate_scan.py cj --points 7 2>&1 | tee reports/covariate_scan/20260729_cj_gated_scan.txt
 ```
@@ -437,7 +437,7 @@ EOF
 若 Task 3 裁决有胜者（设为 `reversal_shadow_gated_XX`）：
 
 ```bash
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 cd D:/FlyBuddy/FM_a
 python scripts/monthly_backtest.py cj --cov-override reversal_shadow_gated_XX 2>&1 | tee reports/monthly_backtest/20260729_cj_gated_backtest.txt
 ```
@@ -683,7 +683,7 @@ if __name__ == "__main__":
 - [ ] **Step 3: 加载冒烟验证 `--with-basis` 参数可解析**
 
 ```bash
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 cd D:/FlyBuddy/FM_a
 python scripts/collect_1h.py --help 2>&1 | grep -A1 with-basis
 ```
@@ -722,7 +722,7 @@ EOF
 - [ ] **Step 1: 跑 TA 月度合约采集（真实 TqSdk 调用，可能耗时数分钟）**
 
 ```bash
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 cd D:/FlyBuddy/FM_a
 python scripts/collect_1h.py ta --with-basis ta 2>&1 | tee reports/covariate_scan/20260729_ta_basis_collect.log
 ```

@@ -90,7 +90,7 @@ def test_run_config_isolated_for_a2_p1_1():
 Run:
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py -q
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py -q
 ```
 
 Expected: `ModuleNotFoundError`，因为共享运行模块尚未建立。
@@ -162,7 +162,7 @@ Remove the duplicate `range(...)` expressions. The Worker and `build_dense_featu
 - [ ] **Step 5: Run focused tests**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
 ```
 
 Expected: all focused tests PASS.
@@ -223,7 +223,7 @@ def test_lock_is_exclusive(tmp_path):
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py::test_append_unique_record_does_not_duplicate_bar tests/test_a2_p1_integrity.py::test_lock_is_exclusive -q
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py::test_append_unique_record_does_not_duplicate_bar tests/test_a2_p1_integrity.py::test_lock_is_exclusive -q
 ```
 
 Expected: import or assertion failure before implementation.
@@ -247,7 +247,7 @@ Create `<logs_dir>/<run_id>.orchestrator.lock` before the symbol loop. If it alr
 - [ ] **Step 7: Run tests and existing runtime tests**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
 ```
 
 Expected: PASS; tests must assert the code no longer claims that append+flush alone is atomic.
@@ -349,7 +349,7 @@ Create a temporary report containing `OLD REPORT`, invoke the generator with a m
 - [ ] **Step 7: Run tests**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
 ```
 
 Expected: PASS.
@@ -398,7 +398,7 @@ def test_scheme_error_is_not_zero_prediction():
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py::test_stable_symbol_seed_is_repeatable tests/test_a2_p1_integrity.py::test_scheme_error_is_not_zero_prediction -q
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py::test_stable_symbol_seed_is_repeatable tests/test_a2_p1_integrity.py::test_scheme_error_is_not_zero_prediction -q
 ```
 
 Expected: failure because the current code uses Python `hash()` and converts Scheme exceptions to `0.0`.
@@ -437,8 +437,8 @@ Do not substitute `0.0`. The report validator must reject any symbol containing 
 - [ ] **Step 5: Run tests and compile**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m py_compile scripts/a2_p1_worker.py scripts/a2_p1_lgbm_baseline.py
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m py_compile scripts/a2_p1_worker.py scripts/a2_p1_lgbm_baseline.py
 ```
 
 Expected: PASS and no compile errors.
@@ -506,7 +506,7 @@ Wrap `subprocess.run` in `try/except subprocess.TimeoutExpired`. Record `TIMEOUT
 - [ ] **Step 6: Run focused tests**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
 ```
 
 Expected: PASS.
@@ -594,9 +594,9 @@ Implement `--canonicalize` only for a user-approved historical repair. It must:
 Add commands to `docs/runbook.md`:
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/a2_p1_restore_manifest.py --run-id a2-p1 --dry-run
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/a2_p1_restore_manifest.py --run-id a2-p1 --canonicalize
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/a2_p1_generate_report.py --run-id a2-p1
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/a2_p1_restore_manifest.py --run-id a2-p1 --dry-run
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/a2_p1_restore_manifest.py --run-id a2-p1 --canonicalize
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/a2_p1_generate_report.py --run-id a2-p1
 ```
 
 State clearly that the first two commands do not load TimesFM and that report generation is blocked until all 20 symbols validate.
@@ -631,8 +631,8 @@ The final docs must distinguish:
 - [ ] **Step 2: Run the complete local verification suite**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m py_compile scripts/a2_p1_runtime.py scripts/a2_p1_restore_manifest.py scripts/a2_p1_worker.py scripts/a2_p1_orchestrator.py scripts/a2_p1_generate_report.py scripts/a2_p1_lgbm_baseline.py cascade/lgbm_features.py
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m py_compile scripts/a2_p1_runtime.py scripts/a2_p1_restore_manifest.py scripts/a2_p1_worker.py scripts/a2_p1_orchestrator.py scripts/a2_p1_generate_report.py scripts/a2_p1_lgbm_baseline.py cascade/lgbm_features.py
 ```
 
 Expected: all tests pass and all listed files compile.
@@ -640,8 +640,8 @@ Expected: all tests pass and all listed files compile.
 - [ ] **Step 3: Run non-model disk integrity checks**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/a2_p1_restore_manifest.py --run-id a2-p1 --dry-run
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/a2_p1_generate_report.py --run-id a2-p1 --validate-only
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/a2_p1_restore_manifest.py --run-id a2-p1 --dry-run
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/a2_p1_generate_report.py --run-id a2-p1 --validate-only
 ```
 
 Expected: the dry-run prints 20 symbols, identifies the four backup sources and FU duplicates; `--validate-only` returns non-zero until the historical canonicalization step has been explicitly performed.

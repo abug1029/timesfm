@@ -129,7 +129,7 @@ class TestCalendarCyclical(unittest.TestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd D:/FlyBuddy/fm_a && source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate && python -m unittest tests.test_calendar_cyclical -v`
+Run: `cd D:/FlyBuddy/fm_a && source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate && python -m unittest tests.test_calendar_cyclical -v`
 Expected: FAIL (function not defined)
 
 - [ ] **Step 3: Write minimal implementation**
@@ -300,7 +300,7 @@ Expected: PASS
 
 ```bash
 cd D:/FlyBuddy/fm_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 python scripts/covariate_scan.py jd --points 3 2>&1 | tail -20
 # 期望: 输出含 calendar_cyclical 行,MAE/DirAcc 正常,无报错
 ```
@@ -328,7 +328,7 @@ git commit -m "feat(phase4): combo 注册 + scan 列表加入 calendar_cyclical"
 
 ```bash
 cd D:/FlyBuddy/fm_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 python -m unittest tests.test_calendar_cyclical tests.test_calendar_cyclical_combo tests.test_basis_oi_filter tests.test_scan_significance tests.test_future_bar_guard tests.test_vol_threshold_contract -v
 ```
 Expected: 全 PASS

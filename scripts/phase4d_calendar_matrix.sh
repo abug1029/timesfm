@@ -7,7 +7,7 @@ set -u
 
 cd "D:/FlyBuddy/fm_a" || { echo "cd failed"; exit 1; }
 # shellcheck disable=SC1091
-source "D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate" || { echo "venv failed"; exit 1; }
+source ".praxist-venv/bin/activate" || { echo "venv failed"; exit 1; }
 
 JSONL="reports/monthly_backtest/phase4d_incremental_results.jsonl"
 LOG="reports/monthly_backtest/phase4d_calendar_matrix.log"

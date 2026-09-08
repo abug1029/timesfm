@@ -159,7 +159,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 **必需：**
 ```bash
 cd /workspace/repos/timesfm-abug1029
-source .venv/bin/activate
+source .praxist-venv/bin/activate
 # TqSdk: .env → symlink timesFM_fu/.env（勿把密钥写入可提交文件）
 ```
 
@@ -169,7 +169,7 @@ source .venv/bin/activate
 
 ```bash
 # 激活环境 (共享底座)
-cd /workspace/repos/timesfm-abug1029 && source .venv/bin/activate
+cd /workspace/repos/timesfm-abug1029 && source .praxist-venv/bin/activate
 
 # 采集数据
 python -m data.cli collect cf          # 棉花

@@ -7,7 +7,7 @@ Within your first 5 minutes, you MUST run at least one evaluation synchronously:
 ```bash
 cd /workspace/repos/timesfm-abug1029/task_FM
 mkdir -p {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/<variant_id>/diagnostic
-/workspace/repos/timesfm-abug1029/.venv/bin/python evaluations/fm_eval/run.py \
+../.praxist-venv/bin/python evaluations/fm_eval/run.py \
     --output-dir {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/<variant_id>/diagnostic \
     --candidate <(echo '{"symbol":"rb","cov_override":"rsi_state","max_points":3,"stage":"diagnostic"}')
 ```
@@ -44,7 +44,7 @@ explicitly revives it with a mechanism correction.
 ```bash
 cd /workspace/repos/timesfm-abug1029/task_FM
 mkdir -p {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/<variant_id>/diagnostic
-/workspace/repos/timesfm-abug1029/.venv/bin/python evaluations/fm_eval/run.py \
+../.praxist-venv/bin/python evaluations/fm_eval/run.py \
     --output-dir {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/<variant_id>/diagnostic \
     --candidate <(echo '{"symbol":"rb","cov_override":"rsi_state","max_points":3,"stage":"diagnostic"}')
 ```
@@ -93,7 +93,7 @@ to the orchestrator and count as lost evidence.
 
 ## Eval launch protocol (MANDATORY — no bypass)
 - ALL TimesFM / fm_eval work MUST go through:
-  `/workspace/repos/timesfm-abug1029/.venv/bin/python evaluations/fm_eval/run.py ...`
+  `../.praxist-venv/bin/python evaluations/fm_eval/run.py ...`
   (normally via peer Bash so `protected_pids` + mem_guard hook can gate the launch).
 - **FORBIDDEN** (will be TERM'd and logged):
   - `python -c` / `python3 -c` that imports or calls `do_evaluate`, HourlyModel, DailyModel, timesfm, or otherwise loads TimesFM weights

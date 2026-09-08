@@ -124,7 +124,7 @@ def generate_report(results):
     report.append("## 1. 硬件环境\n")
     report.append("### 当前环境")
     report.append("- **操作系统**: Windows 10 (10.0.19045)")
-    report.append("- **Python**: 3.10.16")
+    report.append("- **Python: 3.11")
     report.append("- **PyTorch**: 2.11.0+cpu (CPU-only 版本)")
     report.append("- **CUDA**: 不可用")
     report.append("- **GPU**: 无")

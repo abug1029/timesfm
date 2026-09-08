@@ -112,7 +112,7 @@
 ```bash
 # 1. 确认 prediction_scheme.py 仍能 import (没改坏字典结构)
 cd D:/FlyBuddy/fm_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 python -c "from config.prediction_scheme import get_scheme, SCHEMES; s=get_scheme('ta'); assert s.covariate_type=='bb_squeeze', s; print('TA scheme OK:', s.covariate_type)"
 # 期望: TA scheme OK: bb_squeeze
 ```
@@ -318,7 +318,7 @@ checkpoint 写入需要该点的 `mae` 与 `dir_ok`。打开 line 169-175 区附
 
 ```bash
 cd D:/FlyBuddy/fm_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 # 短样本冒烟 (cf 历史数据足),只跑 5 点,cache 每 2 点清。预期: 短时间跑完退出 0
 python scripts/monthly_backtest.py cf --max-points 5 --cache-interval 2 2>&1 | tail -20
 # 期望: 看到 "[1/1] CF..." 跑完 5 个点 (而非全量 396 点),最终退出 0
@@ -486,7 +486,7 @@ if __name__ == "__main__":
 
 ```bash
 cd D:/FlyBuddy/fm_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 python -m unittest tests.test_basis_oi_filter -v
 ```
 Expected: FAIL (current `get_basis_1h` 无 OI 过滤,`basis` 全段非 NaN,断言"早期应为 NaN"失败)。
@@ -625,7 +625,7 @@ if __name__ == "__main__":
 
 ```bash
 cd D:/FlyBuddy/fm_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 python -m unittest tests.test_scan_significance -v
 ```
 Expected: FAIL (`ImportError: cannot import name 'significance_label' from 'scripts.covariate_scan'`)。
@@ -766,7 +766,7 @@ Expected: PASS (4 tests)。
 
 ```bash
 cd D:/FlyBuddy/fm_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 # 1 品种最小点数冒烟 (避免长时间跑模型)
 python scripts/covariate_scan.py ta --points 1 2>&1 | tail -25
 # 期望:

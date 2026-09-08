@@ -116,7 +116,7 @@ ALL20="ss sr cj fg fu lh ma rb eg bu cf i jm jd ao sp ta ur sh p"
 
 ```bash
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 export PYTHONIOENCODING=utf-8
 
 START=$(date +%s)
@@ -190,7 +190,7 @@ export PYTHONIOENCODING=utf-8
 export PYTHONWARNINGS=ignore
 
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 
 JSONL="reports/data_ops/batch_f1_progress.jsonl"
 LOG="reports/data_ops/batch_f1.log"
@@ -291,7 +291,7 @@ export PYTHONIOENCODING=utf-8
 export PYTHONWARNINGS=ignore
 
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 
 JSONL="reports/data_ops/batch_f2_progress.jsonl"
 LOG="reports/data_ops/batch_f2.log"
@@ -377,7 +377,7 @@ export PYTHONIOENCODING=utf-8
 export PYTHONWARNINGS=ignore
 
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 
 JSONL="reports/data_ops/batch_f3_progress.jsonl"
 LOG="reports/data_ops/batch_f3.log"
@@ -464,7 +464,7 @@ export PYTHONIOENCODING=utf-8
 export PYTHONWARNINGS=ignore
 
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 
 JSONL="reports/data_ops/batch_f4_progress.jsonl"
 LOG="reports/data_ops/batch_f4.log"
@@ -540,7 +540,7 @@ git commit -m "feat: batch_f4 single cov exhaustive (ao_accel×20 = 20)"
 
 ```bash
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 python -m data.cli status 2>&1 | grep -E 'STALE|ERROR|过期' || echo "ALL FRESH"
 ```
 
@@ -600,7 +600,7 @@ kill $(cat reports/data_ops/batch_f1.pid) 2>/dev/null
 
 ```bash
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 python -m data.cli status 2>&1 | grep -E 'STALE|ERROR|过期' || echo "ALL FRESH"
 
 # oi 覆盖率检查 (F2 特有)

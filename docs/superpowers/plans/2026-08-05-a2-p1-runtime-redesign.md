@@ -15,7 +15,7 @@
 - **JSONL 完整 payload**: 每行必须包含 `{bar_idx, pure_pred_move, scheme_pred_move, lgbm_pred_move, actual_move, base_price, atr}`，汇总脚本直接调用 `evaluate_gate()` 无需重算
 - **Parquet 原子写入**: `tmp_path = cache_path + ".tmp"` + `os.replace(tmp_path, cache_path)` 防 OOM 损坏
 - **Orchestrator 完成后自动调用报告生成**
-- **Python 环境**: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python`
+- **Python 环境**: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python`
 - **主仓库**: `D:\FlyBuddy\fm_a`（非 worktree）
 - **结果目录**: `reports/a2_p1_results/<symbol>.jsonl`（每品种独立）
 - **日志目录**: `reports/a2_p1_logs/<symbol>.log`（每品种独立）
@@ -71,7 +71,7 @@ def test_parquet_atomic_write():
 - [ ] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_parquet_atomic_write -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_parquet_atomic_write -v
 ```
 
 Expected: FAIL — `AssertionError: 必须使用 os.replace() 原子替换`
@@ -94,7 +94,7 @@ os.replace(tmp_path, str(cache_path))  # 原子替换
 - [ ] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_parquet_atomic_write -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_parquet_atomic_write -v
 ```
 
 Expected: PASS
@@ -149,7 +149,7 @@ def test_worker_jsonl_payload_schema():
 - [ ] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_worker_jsonl_payload_schema -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_worker_jsonl_payload_schema -v
 ```
 
 Expected: FAIL — `FileNotFoundError: scripts/a2_p1_worker.py` 或 `AssertionError`
@@ -381,7 +381,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_worker_jsonl_payload_schema -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_worker_jsonl_payload_schema -v
 ```
 
 Expected: PASS
@@ -389,7 +389,7 @@ Expected: PASS
 - [ ] **Step 5: 测试 dry-run 模式**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python scripts/a2_p1_worker.py ss --dry-run
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python scripts/a2_p1_worker.py ss --dry-run
 ```
 
 Expected: 打印 `[Worker SS] 0 done, ~396 pending, ~9996 total bars` + pending bars 列表
@@ -431,7 +431,7 @@ def test_orchestrator_skip_completed():
 - [ ] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_orchestrator_skip_completed -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_orchestrator_skip_completed -v
 ```
 
 Expected: FAIL
@@ -544,7 +544,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_orchestrator_skip_completed -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_orchestrator_skip_completed -v
 ```
 
 Expected: PASS
@@ -580,7 +580,7 @@ def test_status_script_exists():
 - [ ] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_status_script_exists -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_status_script_exists -v
 ```
 
 Expected: FAIL
@@ -679,7 +679,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_status_script_exists -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_status_script_exists -v
 ```
 
 Expected: PASS
@@ -716,7 +716,7 @@ def test_report_script_exists():
 - [x] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_report_script_exists -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_report_script_exists -v
 ```
 
 Expected: FAIL
@@ -832,7 +832,7 @@ if __name__ == "__main__":
 - [x] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_report_script_exists -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_report_script_exists -v
 ```
 
 Expected: PASS
@@ -881,7 +881,7 @@ def main():
 - [ ] **Step 2: 验证旧入口仍可运行**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python scripts/a2_p1_lgbm_baseline.py ss --dry-run 2>&1 | head -5
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python scripts/a2_p1_lgbm_baseline.py ss --dry-run 2>&1 | head -5
 ```
 
 Expected: 不报错（可能提示 `--dry-run` 不支持，因为 Orchestrator 没有 dry-run 参数；这是预期的，旧入口不支持 dry-run，用户应直接使用 Worker）
@@ -907,7 +907,7 @@ rm -f reports/a2_p1_results/*.jsonl
 - [ ] **Step 2: 测试单品种端到端**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python scripts/a2_p1_worker.py ss
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python scripts/a2_p1_worker.py ss
 ```
 
 Expected: 运行 ~5-10 分钟，产出 `reports/a2_p1_results/ss.jsonl`，~396 行
@@ -917,7 +917,7 @@ Expected: 运行 ~5-10 分钟，产出 `reports/a2_p1_results/ss.jsonl`，~396 �
 ```bash
 # 手动 kill worker (在运行到 ~100 行时)
 # 然后重启, 验证从 101 开始续跑
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python scripts/a2_p1_worker.py ss
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python scripts/a2_p1_worker.py ss
 ```
 
 Expected: 打印 `[Worker SS] 100 done, 296 pending`，从 101 开始
@@ -926,11 +926,11 @@ Expected: 打印 `[Worker SS] 100 done, 296 pending`，从 101 开始
 
 ```bash
 # 后台运行 (nohup)
-nohup D:/FlyBuddy/shared/timesfm/.venv/Scripts/python scripts/a2_p1_orchestrator.py \
+nohup D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python scripts/a2_p1_orchestrator.py \
     > reports/a2_p1_orchestrator.log 2>&1 &
 
 # 查看进度
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python scripts/a2_p1_status.py --watch
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python scripts/a2_p1_status.py --watch
 ```
 
 Expected: ~3 小时完成 20 品种，产出 `reports/research/2026-08-05_a2_p1_baseline_result.md`

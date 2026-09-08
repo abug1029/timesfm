@@ -8,7 +8,7 @@ export PYTHONIOENCODING=utf-8
 export PYTHONWARNINGS=ignore
 
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source .praxist-venv/bin/activate
 
 JSONL="reports/data_ops/batch_b_progress.jsonl"
 LOG="reports/data_ops/batch_b.log"

@@ -143,7 +143,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: 运行预检脚本**
 
 ```bash
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 cd D:/FlyBuddy/FM_a
 python scripts/p15_corr_precheck.py ss
 ```
@@ -677,7 +677,7 @@ git commit -m "feat(P15): add batch script for Phase 15a (6 varieties x 4 covari
 - [ ] **Step 2: 启动回测**
 
 ```bash
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 cd D:/FlyBuddy/FM_a
 export PYTHONIOENCODING=utf-8
 nohup bash scripts/batch_p15a_new_cov.sh > reports/data_ops/batch_p15a.log 2>&1 &

@@ -46,7 +46,7 @@
 2. **启动全量运行**:
    ```bash
    # 全 20 品种, ~50 eval points per variety (396 dense rows)
-   nohup D:/FlyBuddy/shared/timesfm/.venv/Scripts/python scripts/a2_p1_lgbm_baseline.py \
+   nohup D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python scripts/a2_p1_lgbm_baseline.py \
      ss rb i jm cf p m sp sr ao jd fu fg lh cj ur sh ma bu ta \
      --max-points 100 --dense-step 24 --refit-every 10 \
      > reports/a2_p1_full_run.log 2>&1 &

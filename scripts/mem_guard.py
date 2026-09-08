@@ -297,7 +297,7 @@ def _cmdline_of(pid: int) -> str:
 def is_timesfm_eval_cmdline(cmd: str) -> bool:
     """True for run.py / model loads / inline python -c TimesFM evals.
 
-    Peers have bypassed protected_pids via `.venv/bin/python -c "...do_evaluate..."`.
+    Peers have bypassed protected_pids via `.praxist-venv/bin/python -c "...do_evaluate..."`.
     Those must count toward the global hard cap even when flock never saw them.
     """
     if not cmd:

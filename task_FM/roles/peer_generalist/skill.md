@@ -7,7 +7,7 @@
 **评估必须同步运行，禁止 background + 重定向：**
 ```bash
 cd /workspace/repos/timesfm-abug1029/task_FM
-/workspace/repos/timesfm-abug1029/.venv/bin/python evaluations/fm_eval/run.py \
+../.praxist-venv/bin/python evaluations/fm_eval/run.py \
     --output-dir {{ results_dir }}/gen_{{ gen_id }}/{{ peer_id }}/<variant_id>/diagnostic \
     --candidate <(echo '{"symbol":"rb","cov_override":"rsi_state","max_points":3,"stage":"diagnostic"}')
 ```
@@ -39,6 +39,6 @@ cd /workspace/repos/timesfm-abug1029/task_FM
 ## 内存卫生 (host hard caps)
 - 宿主 ~15 GiB / 无 Swap；控制面硬顶 TimesFM 并发 = **1**（稳妥启动已批；未经总管再批禁止 2）。**由 mem_guard flock + protected_pids hook + watch TERM 强制**；yaml `max_concurrent_evals` 非 runtime 强制（ComputeBudget 会静默丢弃）。
 - `MemAvailable < 2.5GiB` 时等待/跳过，勿叠加加载。RSS>~3.5GiB 会被 runtime shed TERM。
-- **唯一合法评测入口**：`.venv/bin/python evaluations/fm_eval/run.py`（走 protected_pids/hook）。禁止 `python -c` 绕过。
+- **唯一合法评测入口**：`../.praxist-venv/bin/python evaluations/fm_eval/run.py`（走 protected_pids/hook）。禁止 `python -c` 绕过。
 - 勿依赖紧 RLIMIT_AS（与 TimesFM safetensors mmap 冲突）；主路径 flock + MemAvailable + RSS shed。
 - 证据：N=4 并行峰值约 8.5 GiB RSS，触发安全 shed（见 `docs/host_environment_assessment.md` §4b）。

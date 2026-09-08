@@ -7,7 +7,7 @@
 | 项 | 值 |
 |----|-----|
 | 项目根 | `/workspace/repos/timesfm-abug1029`（FM_a / PRAXIST；预测岗 timesFM_fu 另路径） |
-| Python | `.venv/bin/python` |
+| Python | `.praxist-venv/bin/python` |
 | praxist | `/home/box/.praxist-venv/bin/praxist`（下文 `praxist`；`PRAXIST_BIN` 可覆盖；回退 repo `.praxist-venv`） |
 | Goal | `scripts/praxist_goal.yaml` |
 | 监督状态 | `data/cache/supervisor_state.json` |
@@ -31,15 +31,15 @@
 cd /workspace/repos/timesfm-abug1029
 
 # 启动监督环（后台）
-nohup .venv/bin/python scripts/praxist_supervisor.py \
+nohup .praxist-venv/bin/python scripts/praxist_supervisor.py \
   > data/cache/supervisor.out 2>&1 &
 
 # 干跑：一轮打印 action JSON 后立即退出
 # 不 sleep、不起 praxist/慢环、不写队列、不加 cycle、不 materialize known_verdicts
-.venv/bin/python scripts/praxist_supervisor.py --dry-run
+.praxist-venv/bin/python scripts/praxist_supervisor.py --dry-run
 
 # 单步：允许真启进程 / harvest / 启慢环，仍不 sleep，一轮后退出
-.venv/bin/python scripts/praxist_supervisor.py --once
+.praxist-venv/bin/python scripts/praxist_supervisor.py --once
 
 # 停止监督环
 kill <supervisor_pid>
@@ -89,10 +89,10 @@ praxist stop <run_id>
 
 ```bash
 # 手动单候选（启动时先 queue_recover，再 claim → 评估 → ack）
-.venv/bin/python scripts/aligned_slow_loop.py --once
+.praxist-venv/bin/python scripts/aligned_slow_loop.py --once
 
 # 清空队列前持续跑
-.venv/bin/python scripts/aligned_slow_loop.py
+.praxist-venv/bin/python scripts/aligned_slow_loop.py
 
 # 监控
 tail -f data/cache/slow_loop.out

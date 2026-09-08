@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - 禁改: cascade/, data/config.py, config/prediction_scheme.py, task_FM/evaluations/fm_eval/evaluator.py 的既有契约 (只可加不改), praxist 核心 (site-packages)
-- venv: 所有测试/实现用 /root/timesFM_fu/.venv/bin/python; praxist 命令用 /root/.praxist-venv/bin/praxist
+- venv: 所有测试/实现用 /root/timesFM_fu/.praxist-venv/bin/python; praxist 命令用 /root/.praxist-venv/bin/praxist
 - 测试: pytest tests/ 全绿是每个任务的完成条件 (当前基线 531 passed)
 - 本仓库无 git: 每个 Task 以追加 ultragoal 台账 checkpoint 替代 commit:
   cat >> /root/timesFM_fu/.omc/ultragoal/20260901-praxist/ledger.jsonl
@@ -120,7 +120,7 @@ def test_roundtrip_dates_tz_naive(tmp_path):
 ```
 
 - [ ] Step 2: 运行确认失败
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_daily_pred_cache.py -v -m "not slow"
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_daily_pred_cache.py -v -m "not slow"
 Expected: FAIL with ImportError (_daily_cache_path not defined)
 
 - [ ] Step 3: 实现 (monthly_backtest.py 模块级, run_symbol_backtest 之前)
@@ -240,7 +240,7 @@ def _daily_predict_cached(daily_model, symbol, cutoff, context_days, horizon_day
 (cutoff 在循环内已定义为 bar_ts.strftime("%Y-%m-%d %H:%M:%S"); 每个点已 `bt_store = BacktestDataStore(symbol, cutoff)`)
 
 - [ ] Step 5: 跑测试确认通过 (排除 slow)
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_daily_pred_cache.py -v -m "not slow"
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_daily_pred_cache.py -v -m "not slow"
 Expected: 3 PASS
 
 - [ ] Step 6: A/B 逐位验证 (slow, 真模型; 每 cutoff 独立 store; 测 miss + HIT + live)
@@ -281,11 +281,11 @@ def test_ab_bitexact(tmp_path, monkeypatch):
                 store.close()
 ```
 
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_daily_pred_cache.py::test_ab_bitexact -v
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_daily_pred_cache.py::test_ab_bitexact -v
 Expected: PASS
 
 - [ ] Step 7: 全量回归 + 台账 checkpoint
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/ -q -m "not slow"
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/ -q -m "not slow"
 Expected: 全绿 (531 + 新增)
 台账:
 ```
@@ -408,7 +408,7 @@ def test_tolerates_partial_line(tmp_path):
 ```
 
 - [ ] Step 2: 运行确认失败
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_verdict_registry.py -v
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_verdict_registry.py -v
 Expected: FAIL ImportError
 
 - [ ] Step 3: 实现 scripts/registry_lib.py
@@ -557,11 +557,11 @@ def in_flight_ids(pending_path, inprogress_path):
 ```
 
 - [ ] Step 4: 跑测试确认通过
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_verdict_registry.py -v
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_verdict_registry.py -v
 Expected: 5 PASS
 
 - [ ] Step 5: 全量回归 + 台账 checkpoint (story: P2)
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/ -q -m "not slow"
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/ -q -m "not slow"
 Expected: 全绿
 
 ---
@@ -833,15 +833,15 @@ if __name__ == "__main__":
 ```
 
 - [ ] Step 4: 单元测试 (排除 slow)
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_aligned_slow_loop.py -v -m "not slow"
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_aligned_slow_loop.py -v -m "not slow"
 Expected: 3 PASS
 
 - [ ] Step 5: 真实数据集成
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_aligned_slow_loop.py -m slow -v
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_aligned_slow_loop.py -m slow -v
 Expected: 1 PASS
 
 - [ ] Step 6: 全量回归 + 台账 checkpoint (story: P3)
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/ -q -m "not slow"
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/ -q -m "not slow"
 
 ---
 
@@ -897,7 +897,7 @@ def test_injection_rejected():
 ```
 
 - [ ] Step 2: 运行确认失败 (ImportError)
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_goal_dsl.py -v
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_goal_dsl.py -v
 Expected: FAIL ImportError
 
 - [ ] Step 3: 实现 scripts/goal_dsl.py
@@ -977,7 +977,7 @@ def evaluate_goal(conditions, snapshot):
 ```
 
 - [ ] Step 4: 跑测试确认通过
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_goal_dsl.py -v
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_goal_dsl.py -v
 Expected: 5 PASS
 
 - [ ] Step 5: 全量回归 + 台账 checkpoint (story: P4)
@@ -1631,7 +1631,7 @@ cycle 计数 (与上面 `_main_locked` 一致, 不要改成 sleep tick):
 - `praxist resume` 真实 CLI (已核): `praxist resume <run_id_or_run_dir> --daemonize --json` (位置参数 `target`, 不是 `--run-dir`)。`praxist stop <run_id>`。
 
 - [ ] Step 4: 跑测试确认通过
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_supervisor.py -v
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_supervisor.py -v
 Expected: 8 PASS (parse_429, quota_gate, harvest, snapshot, dry_run, cycles, 429 resume, materialize)
 
 - [ ] Step 5: 全量回归 + 台账 checkpoint (story: P5)
@@ -1667,7 +1667,7 @@ def test_templates_render_known_verdicts(tmp_path):
 ```
 
 - [ ] Step 2: 跑测试确认失败
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/test_praxist_evidence_ladder.py::test_templates_render_known_verdicts -v
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/test_praxist_evidence_ladder.py::test_templates_render_known_verdicts -v
 Expected: FAIL
 
 - [ ] Step 3: prompt_base.jinja2 文件末尾追加
@@ -1721,7 +1721,7 @@ max_cycles: 3 现在表示 3 次已完成 praxist run, 不是 15 分钟。e2e �
 ```
 
 - [ ] Step 7: 跑测试 + 全量回归 + 台账 checkpoint (story: P6)
-Run: cd /root/timesFM_fu && .venv/bin/python -m pytest tests/ -q -m "not slow"
+Run: cd /root/timesFM_fu && .praxist-venv/bin/python -m pytest tests/ -q -m "not slow"
 Expected: 全绿
 
 ---
@@ -1735,8 +1735,8 @@ Expected: 全绿
 
 ```
 ## 启动/停止
-- 启动监督环: nohup .venv/bin/python scripts/praxist_supervisor.py > data/cache/supervisor.out 2>&1 &
-- 干跑: .venv/bin/python scripts/praxist_supervisor.py --dry-run
+- 启动监督环: nohup .praxist-venv/bin/python scripts/praxist_supervisor.py > data/cache/supervisor.out 2>&1 &
+- 干跑: .praxist-venv/bin/python scripts/praxist_supervisor.py --dry-run
   (一轮打印 action JSON, 不 sleep, 不起 run/慢环, 不加 cycle)
 - 单步: --once (允许真启进程, 仍不 sleep)
 - 停止: kill <pid>; flock 在进程死后释放; 队列 inprogress 由慢环下次 queue_recover 回收
@@ -1748,7 +1748,7 @@ Expected: 全绿
 - 禁止 429 后 start 新 run
 
 ## 慢环
-- 手动单候选: .venv/bin/python scripts/aligned_slow_loop.py --once
+- 手动单候选: .praxist-venv/bin/python scripts/aligned_slow_loop.py --once
 - 监控: tail -f data/cache/slow_loop.out
 - 队列: data/cache/aligned_pending.jsonl
 - 进行中: data/cache/aligned_pending.inprogress.jsonl

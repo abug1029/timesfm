@@ -104,7 +104,7 @@ TQSDK_ACCOUNT=your_account
 TQSDK_PASSWORD=your_password
 
 # 激活环境 (共享底座)
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 cd D:/FlyBuddy/FM_a
 ```
 
@@ -114,7 +114,7 @@ cd D:/FlyBuddy/FM_a
 
 ```bash
 # 激活环境 (共享底座)
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 cd D:/FlyBuddy/FM_a
 
 # 采集数据

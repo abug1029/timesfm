@@ -16,7 +16,7 @@
 - **断点续算**: 重启时读 `tsfm.jsonl` 提取已完成 `bar_idx`，只计算未完成的
 - **缓存优先级**: dense_matrix.parquet > market.parquet + tsfm.jsonl
 - **数值一致性**: 断点续算与全量计算结果一致
-- **Python 环境**: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python`
+- **Python 环境**: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python`
 - **主仓库**: `D:\FlyBuddy\fm_a`
 - **保持不变**: 12 维特征池、step=24、Gate、JSONL eval 断点、品种进程隔离
 
@@ -60,7 +60,7 @@ def test_compute_timesfm_resume_path():
 - [ ] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_compute_timesfm_resume_path -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_compute_timesfm_resume_path -v
 ```
 
 Expected: FAIL — `AssertionError: 必须支持 resume_path 参数`
@@ -165,7 +165,7 @@ def compute_timesfm_features_batch(
 - [ ] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_compute_timesfm_resume_path -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_compute_timesfm_resume_path -v
 ```
 
 Expected: PASS
@@ -204,7 +204,7 @@ def test_build_dense_market_cache():
 - [ ] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_market_cache -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_market_cache -v
 ```
 
 Expected: FAIL — `AssertionError: 必须支持 market_cache_path 参数`
@@ -295,7 +295,7 @@ def build_dense_feature_matrix(
 - [ ] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_market_cache -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_market_cache -v
 ```
 
 Expected: PASS
@@ -332,7 +332,7 @@ def test_worker_passes_cache_paths():
 - [ ] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_worker_passes_cache_paths -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_worker_passes_cache_paths -v
 ```
 
 Expected: FAIL — `AssertionError: Worker 必须传入 market_cache_path`
@@ -363,7 +363,7 @@ Expected: FAIL — `AssertionError: Worker 必须传入 market_cache_path`
 - [ ] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_worker_passes_cache_paths -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_worker_passes_cache_paths -v
 ```
 
 Expected: PASS
@@ -400,7 +400,7 @@ def test_orchestrator_unbuffered_and_timeout():
 - [ ] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_orchestrator_unbuffered_and_timeout -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_orchestrator_unbuffered_and_timeout -v
 ```
 
 Expected: FAIL — `AssertionError: 必须用 -u 无缓冲模式`
@@ -424,7 +424,7 @@ Expected: FAIL — `AssertionError: 必须用 -u 无缓冲模式`
 - [ ] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_orchestrator_unbuffered_and_timeout -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_orchestrator_unbuffered_and_timeout -v
 ```
 
 Expected: PASS
@@ -443,7 +443,7 @@ git commit -m "fix(a2-p1): Orchestrator -u 无缓冲 + timeout 5400 (覆盖冷�
 - [ ] **Step 1: 运行全部单测**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py -v
 ```
 
 Expected: 全部 PASS（含既有 6 个 + 新增 4 个 = 10 个）
@@ -451,7 +451,7 @@ Expected: 全部 PASS（含既有 6 个 + 新增 4 个 = 10 个）
 - [ ] **Step 2: 验证 dry-run 不写缓存**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python scripts/a2_p1_worker.py ss --dry-run
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python scripts/a2_p1_worker.py ss --dry-run
 # 检查 reports/a2_p1_features/ 下无新增文件
 ```
 
@@ -463,11 +463,11 @@ Expected: dry-run 只打印 pending bars，不生成任何缓存文件
 
 ```bash
 # 启动 Worker (后台)
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -u scripts/a2_p1_worker.py ss > reports/a2_p1_logs/ss_test.log 2>&1 &
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -u scripts/a2_p1_worker.py ss > reports/a2_p1_logs/ss_test.log 2>&1 &
 # 等待 ~60s (让 TimesFM 计算 ~5 个 bars)
 # kill 进程 (验证断点)
 # 重启 Worker
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -u scripts/a2_p1_worker.py ss > reports/a2_p1_logs/ss_test2.log 2>&1 &
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -u scripts/a2_p1_worker.py ss > reports/a2_p1_logs/ss_test2.log 2>&1 &
 ```
 
 预期:

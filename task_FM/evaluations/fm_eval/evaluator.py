@@ -17,7 +17,7 @@ VALID_COVARIATES = {
 }
 
 # P2 试运行范围: 信用>=2星品种 (loop-constraints 允许, 数据质量已核)
-ALLOWED_SYMBOLS = {"m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"}
+ALLOWED_SYMBOLS = {"ao", "bu", "cf", "fg", "fu", "i", "jm", "ma", "p", "sh", "sp", "ta", "ur", "m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"}
 
 # 证据阶梯 (2026-09-02 G6): 诊断档筛除 → aligned 档过硬门
 STAGE_POINTS = {

@@ -25,7 +25,7 @@
 ## 30 秒上手
 
 ```bash
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 cd D:/FlyBuddy/FM_a
 
 # 盘中主观（推荐）

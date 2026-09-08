@@ -9,7 +9,9 @@ capabilities:
 research_direction: |
   Search covariate candidates on the frozen FM_a 1H cascade backtest pipeline.
   Candidates are JSON files {symbol, cov_override, max_points, stage} written under
-  scripts/praxist_ws/. symbol limited to 2-star symbols (m/ss/sr/cj/jd/lh/eg/rb);
+  scripts/praxist_ws/. symbol limited to 1-star symbols eligible for promotion (ao/bu/cf/fg/fu/i/jm/ma/p/sh/sp/ta/ur).
+  Goal: promote at least one 1-star symbol to 2-star by finding covariate overrides
+  that improve PF above 1.05 with n>=350, IC>=0.05, EV>0 (full walk-forward gate).;
   cov_override limited to the pre-registered list (config/praxist_task.yaml).
   diagnostic stage max_points 1..6; aligned stage 350..500.
   Forbidden: editing evaluator/model code, writing outside allowed roots,
@@ -77,8 +79,8 @@ runtime_outputs:
 
 runtime_environment:
   cwd: task_project
-  venv: ../.venv
-  python: ../.venv/bin/python
+  venv: ../.praxist-venv
+  python: ../.praxist-venv/bin/python
   require_paths: true
   env:
     CUDA_VISIBLE_DEVICES: ""

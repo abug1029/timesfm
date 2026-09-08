@@ -15,7 +15,7 @@
 | GPU | **无**（无 nvidia 设备 / 无 `nvidia-smi`） |
 | 磁盘 | overlay ≈ 126G，评估当日 Used ≈ 17G / Avail ≈ 104G |
 | 项目根 | `/workspace/repos/timesfm-abug1029`（GitHub `abug1029/timesfm`） |
-| Python（FM_a） | `/workspace/repos/timesfm-abug1029/.venv`（CPython 3.13） |
+| Python（FM_a） | `/home/abug/timesfm/.praxist-venv`（CPython 3.13） |
 | 行情 SSOT | `db` → symlink → `/workspace/repos/timesFM_fu/db`（由「行情」岗维护） |
 | TQSDK / `.env` | `.env` → symlink → `timesFM_fu/.env`（gitignore，不复制密钥） |
 | Praxist CLI | 独立 venv（目标 `/home/box/.praxist-venv` 或本仓 `.praxist-venv`），与 FM_a `.venv` 隔离 |
@@ -62,7 +62,7 @@
 | 单次评估耗时 | **≈ 6.6–6.7 s** wall（单品种 `fu`，`--no-auto-collect`，串行冷/热加载各次独立进程） |
 | 连续 N 次是否稳定 | **是**（N=3，exit 0，无 OOM；与「预测」岗无共驻冲突） |
 
-**三次串行明细**（`.venv/bin/python /tmp/timed_run.py .venv/bin/python scripts/cascade_predict.py fu --no-auto-collect`；`RUSAGE_CHILDREN`；GNU `/usr/bin/time` 未安装）：
+**三次串行明细**（`.praxist-venv/bin/python /tmp/timed_run.py .praxist-venv/bin/python scripts/cascade_predict.py fu --no-auto-collect`；`RUSAGE_CHILDREN`；GNU `/usr/bin/time` 未安装）：
 
 | Run | Wall | Peak RSS | OOM? | log |
 |-----|------|----------|------|-----|
