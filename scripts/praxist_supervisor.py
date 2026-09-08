@@ -29,6 +29,9 @@ REGISTRY = os.path.join(FM_ROOT, "task_FM", "config", "aligned_verdicts.jsonl")
 STATE_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_state.json")
 LOCK_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor.lock")
 VERDICTS_INC = os.path.join(FM_ROOT, "task_FM", "known_verdicts.inc.md")
+POOL_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_pool.json")
+BACKLOG_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_backlog.jsonl")
+MENU_INC = os.path.join(FM_ROOT, "task_FM", "covariate_menu.inc.md")
 REPORT_DIR = os.path.join(FM_ROOT, "docs", "superpowers", "reports")
 STATE_MD = os.path.join(FM_ROOT, "STATE.md")
 EVENTS_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_events.jsonl")
@@ -471,6 +474,173 @@ def materialize_known_verdicts(snapshot, dest_path):
         lines.append("- {0}: gate_pass={1}, ev={2}, n={3}, status={4}".format(
             v.get("variant_id"), v.get("gate_pass"), v.get("ev"),
             v.get("n"), v.get("status", "ok")))
+    os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+    with open(dest_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+def load_covariate_pool():
+    """读协变量池 covariate_pool.json → cov dict。fail-open 返回 {}。"""
+    try:
+        with open(POOL_PATH, encoding="utf-8") as f:
+            return (json.load(f) or {}).get("covariates", {})
+    except Exception as e:
+        print("[WARN] covariate pool load failed (fail-open): %s" % e, file=sys.stderr)
+        return {}
+
+def _load_evaluator():
+    """惰性导入 evaluator (仅 json/os/AST, 无 torch) 复用 active/archived/symbol 校验。"""
+    try:
+        p = os.path.join(FM_ROOT, "task_FM", "evaluations", "fm_eval")
+        if p not in sys.path:
+            sys.path.insert(0, p)
+        import evaluator as ev
+        return ev
+    except Exception as e:
+        print("[WARN] evaluator import failed in supervisor: %s" % e, file=sys.stderr)
+        return None
+
+def _proposal_priority_score(prop, cov, symbol, snapshot):
+    """机制化排序 (替代噪声小样本 EV)。确定性可复现。
+    1) 协变量履历: 同协变量在任一品种近门 (pf>1 / ic 高) 加分
+    2) 机制完备度: symbol_fit/kill/promote 齐全加分
+    3) 新颖性: 未测组合加分
+    """
+    score = 0.0
+    for v in (snapshot or {}).values():
+        if v.get("cov_override") == cov and v.get("status", "ok") == "ok":
+            score += max(0.0, float(v.get("pf") or 0) - 1.0) * 10.0
+            score += float(v.get("ic") or 0) * 200.0
+    for key in ("symbol_fit", "kill_condition", "promote_condition"):
+        if str(prop.get(key) or "").strip():
+            score += 1.0
+    if "%s_%s" % (symbol, cov) not in (snapshot or {}):
+        score += 2.0
+    return score
+
+def _append_backlog(prop, src_path):
+    """新协变量想法追加到 backlog (宿主评审用)，不入 aligned 队列。"""
+    os.makedirs(os.path.dirname(BACKLOG_PATH), exist_ok=True)
+    nc = prop.get("new_covariate") or prop.get("new_cov") or {}
+    rec = {"ts": _now_iso(), "src": src_path,
+           "name": nc.get("name") or prop.get("cov_override"),
+           "proposal": prop}
+    with open(BACKLOG_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+def harvest_proposals(root, snapshot, dead, existing, pool, top_k, aligned_max_points=400):
+    """收割 peer 机制化假设 (results/**/proposals/*.json) → aligned 队列行。
+    与 harvest_survivors 平行但:
+      - 不依赖诊断评估 (peer 不跑 eval)，验证证据来自慢环
+      - 强制机制论证 (mechanism>=40 字)
+      - 多样性按 family (QD 门)
+    new_cov_*.json (new_covariate 字段) → 汇入 backlog, 不入队。
+    返回 (selected_rows, stats)。
+    """
+    ev = _load_evaluator()
+    stats = {"seen": 0, "rejected": 0, "backlog": 0, "selected": 0,
+             "reject_reasons": {}}
+    passing_ids = {v["variant_id"] for v in rl.pass_variants(snapshot or {})}
+    archived = getattr(ev, "ARCHIVED_COVARIATES", {}) if ev else {}
+    valid_covs = getattr(ev, "VALID_COVARIATES", None) if ev else None
+    allowed_syms = getattr(ev, "ALLOWED_SYMBOLS", None) if ev else None
+
+    def _reject(reason):
+        stats["rejected"] += 1
+        stats["reject_reasons"][reason] = stats["reject_reasons"].get(reason, 0) + 1
+
+    candidates = []
+    seen_vids = set()
+    run_dirs = sorted(glob.glob(os.path.join(root, "task_FM", "experiments", "run_*")),
+                      key=os.path.getmtime, reverse=True)
+    for run_dir in run_dirs:
+        for sp in glob.glob(os.path.join(run_dir, "results", "**", "proposals", "*.json"),
+                            recursive=True):
+            try:
+                with open(sp, encoding="utf-8") as f:
+                    p = json.load(f)
+            except Exception:
+                _reject("unparseable_json"); continue
+            stats["seen"] += 1
+            # 新协变量想法 → backlog
+            if p.get("new_covariate") or p.get("new_cov"):
+                _append_backlog(p, sp); stats["backlog"] += 1; continue
+            symbol = str(p.get("symbol") or "").lower().strip()
+            cov = str(p.get("cov_override") or "").strip()
+            mechanism = str(p.get("mechanism") or "").strip()
+            if not symbol or not cov:
+                _reject("missing_symbol_or_cov"); continue
+            if allowed_syms is not None and symbol not in allowed_syms:
+                _reject("symbol_not_allowed"); continue
+            if cov in archived:
+                _reject("cov_archived"); continue
+            if valid_covs is not None and cov not in valid_covs:
+                _reject("cov_not_in_active_pool"); continue
+            if len(mechanism) < 40:
+                _reject("mechanism_too_short"); continue
+            vid = "%s_%s" % (symbol, cov)
+            if vid in dead or vid in existing or vid in passing_ids or vid in seen_vids:
+                _reject("dedup"); continue
+            seen_vids.add(vid)
+            family = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or "other"
+            score = _proposal_priority_score(p, cov, symbol, snapshot or {})
+            candidates.append({
+                "variant_id": vid, "symbol": symbol, "cov_override": cov,
+                "max_points": int(aligned_max_points), "stage": "aligned",
+                "checkpoint_path": "", "enqueued_at": _now_iso(),
+                "src_run": os.path.basename(run_dir), "source": "peer_proposal",
+                "_family": family, "_score": score})
+
+    candidates.sort(key=lambda r: (-r["_score"], r["_family"], r["variant_id"]))
+    selected = []
+    used_families = set()
+    # Pass 1: 每个 family 一个名额 (QD 多样性)
+    for r in candidates:
+        if len(selected) >= int(top_k):
+            break
+        if r["_family"] in used_families:
+            continue
+        selected.append(r); used_families.add(r["_family"])
+    # Pass 2: 剩余名额按分数补
+    if len(selected) < int(top_k):
+        sel_ids = {r["variant_id"] for r in selected}
+        for r in candidates:
+            if len(selected) >= int(top_k):
+                break
+            if r["variant_id"] not in sel_ids:
+                selected.append(r); sel_ids.add(r["variant_id"])
+    for r in selected:
+        r.pop("_family", None); r.pop("_score", None)
+    stats["selected"] = len(selected)
+    return selected, stats
+
+def materialize_covariate_menu(pool, dest_path):
+    """从协变量池生成 peer 菜单 (active 机制目录 + archived 禁用块)。"""
+    lines = ["## Covariate pool (supervisor snapshot)",
+             "Propose symbol x covariate combos ONLY with ACTIVE covariates below.",
+             "Each covariate carries a mechanism hypothesis — your own mechanism argument must extend it to the chosen symbol.",
+             "archived covariates are RETIRED: do NOT propose them.",
+             ""]
+    active = {n: v for n, v in pool.items() if v.get("status") == "active"}
+    archived = {n: v for n, v in pool.items() if v.get("status") == "archived"}
+    experimental = {n: v for n, v in pool.items() if v.get("status") == "experimental"}
+    by_fam = {}
+    for n, v in active.items():
+        by_fam.setdefault(v.get("family", "other"), []).append((n, v))
+    for fam in sorted(by_fam):
+        lines.append("### family: %s" % fam)
+        for n, v in sorted(by_fam[fam]):
+            tr = " [track: %s]" % v["track_record"] if v.get("track_record") else ""
+            lines.append("- %s: %s%s" % (n, v.get("mechanism", ""), tr))
+        lines.append("")
+    if experimental:
+        lines.append("### experimental (host testing — do not propose yet)")
+        for n in sorted(experimental):
+            lines.append("- %s" % n)
+        lines.append("")
+    if archived:
+        lines.append("### archived — DO NOT PROPOSE")
+        for n in sorted(archived):
+            lines.append("- %s: %s" % (n, archived[n].get("archived_reason", "archived")))
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
     with open(dest_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
@@ -929,26 +1099,31 @@ def _harvest_rows(goal):
     snap_now = rl.load_snapshot(REGISTRY)
     dead = rl.dead_variants(snap_now)
     existing = rl.in_flight_ids(QUEUE, INPROGRESS)
-    rows = harvest_survivors(
-        FM_ROOT, snap_now, dead, existing,
+    pool = load_covariate_pool()
+    rows, pstats = harvest_proposals(
+        FM_ROOT, snap_now, dead, existing, pool,
         top_k=cad.get("survivors_per_cycle", 2),
         aligned_max_points=cad.get("aligned_max_points", 400))
-    return rows, dead, existing
+    return rows, dead, existing, pstats
 
 def _maybe_harvest(st, goal, log):
-    """Harvest a finished run into aligned queue.
+    """Harvest a finished run's peer proposals into the aligned queue.
 
-    paused_429 / wait_quota / failover do NOT block harvest: survivors are local
-    CPU work and should keep draining.
+    paused_429 / wait_quota / failover do NOT block harvest: proposals are local
+    hypotheses fed to the slow loop (local CPU) and should keep draining.
     """
     last = st.get("last_run_id")
     harvested_already = bool(last) and st.get("last_harvested_run_id") == last
     if _run_active() or not last or harvested_already:
         return False
-    rows, dead, existing = _harvest_rows(goal)
+    rows, dead, existing, pstats = _harvest_rows(goal)
+    if pstats and pstats.get("seen"):
+        _log_decision(log, "proposal_scan",
+                      "seen=%(seen)d rejected=%(rejected)d backlog=%(backlog)d reasons=%(reject_reasons)s" % pstats,
+                      [])
     if rows:
         n = rl.queue_enqueue(QUEUE, rows, dead, existing)
-        _log_decision(log, "harvested", f"enqueued {n}",
+        _log_decision(log, "harvested_proposals", f"enqueued {n}",
                       [r["variant_id"] for r in rows])
         _merge_save({"last_harvested_run_id": last, "phase": "slow"})
         try:
@@ -958,8 +1133,9 @@ def _maybe_harvest(st, goal, log):
             _log_decision(log, "assets_archive_error", f"harvest: {e}")
     else:
         _log_decision(log, "harvest_empty",
-                      "finished run produced 0 diagnostic survivors "
-                      "(need results/**/evaluation_summary.json)")
+                      "finished run produced 0 valid proposals "
+                      "(need results/**/proposals/*.json; reject_reasons=%s)"
+                      % (pstats.get("reject_reasons") if pstats else {}))
         gate_ok, _ = quota_gate(goal)
         fresh = load_state()
         fresh["cycles_done"] = int(fresh.get("cycles_done") or 0) + 1
@@ -993,6 +1169,7 @@ def _maybe_finish_slow(goal, log):
         return False
     snap = rl.load_snapshot(REGISTRY)
     materialize_known_verdicts(snap, VERDICTS_INC)
+    materialize_covariate_menu(load_covariate_pool(), MENU_INC)
     gate_ok, _ = quota_gate(goal)
     fresh = load_state()
     fresh["cycles_done"] = int(fresh.get("cycles_done") or 0) + 1
@@ -1042,9 +1219,10 @@ def _main_locked(args):
                 print(json.dumps({"action": "budget_exhausted",
                                   "reason": f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend} tok_unknown={tok_unknown}"},
                                  ensure_ascii=False))
-            rows, _, _ = _harvest_rows(goal)
+            rows, _, _, pstats = _harvest_rows(goal)
             print(json.dumps({"action": "harvest_plan", "n": len(rows),
-                              "vids": [r["variant_id"] for r in rows]}, ensure_ascii=False))
+                              "vids": [r["variant_id"] for r in rows],
+                              "proposal_stats": pstats}, ensure_ascii=False))
             planned = decide_fast_loop(goal, dry_run=True)
             for a in planned:
                 print(json.dumps(a, ensure_ascii=False, default=str))
@@ -1052,6 +1230,7 @@ def _main_locked(args):
             return 0
 
         materialize_known_verdicts(snap["variants"], VERDICTS_INC)
+        materialize_covariate_menu(load_covariate_pool(), MENU_INC)
         if ok:
             rec = _log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
             write_stop_report("goal_reached", snap, why, rec["reason"])
