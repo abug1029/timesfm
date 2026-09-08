@@ -9,19 +9,20 @@ Role: {{ contract.get("role", "unassigned - follow peer_generalist defaults") }}
 {% if research_agenda.mainline_observation %}Mainline observation: {{ research_agenda.mainline_observation }}{% endif %}
 {% else %}
 No agenda available (generation 0 or PI panel skipped). Follow peer_generalist
-defaults: propose 2-4 diagnostic candidates across DISTINCT covariate families.
+defaults: author 2-4 structured hypothesis proposals across DISTINCT covariate
+families.
 {% endif %}
 
 ## Cross-peer hypotheses
 {% if research_agenda and research_agenda.cross_peer_hypotheses %}
 {% for h in research_agenda.cross_peer_hypotheses %}
 - [{{ h.get("id", "?") }}] {{ h.get("claim", "") }}
-  minimal_test: {{ h.get("minimal_test", "diagnostic p3/p6") }} | kill: {{ h.get("kill_condition", "-") }} | promote: {{ h.get("promote_condition", "aligned gate") }}
+  minimal_test: {{ h.get("minimal_test", "slow-loop walk-forward n=350-600") }} | kill: {{ h.get("kill_condition", "-") }} | promote: {{ h.get("promote_condition", "aligned gate") }}
 {% endfor %}
 {% else %}
-None yet - you are generating the first generation of hypotheses. Publish yours
-via share_finding (finding_type=hypothesis) with mechanism, kill and promote
-conditions attached.
+None yet - you are generating the first generation of hypotheses. Write proposal
+JSON files (schema fm.hypothesis_proposal.v1) and publish each via share_finding
+(finding_type=hypothesis) with mechanism, kill and promote conditions attached.
 {% endif %}
 
 ## Frontier state (parent-eligible entries)
@@ -30,33 +31,37 @@ conditions attached.
 - {{ f.get("variant_id", f.get("variant_name", "?")) }}: {{ f.get("ev_after_slippage", "?") }}
 {% endfor %}
 {% else %}
-Empty frontier - be the first to feed it via the aligned stage.
+Empty frontier - be the first to feed hypotheses whose slow-loop verdicts populate it.
 {% endif %}
 
 ## Exploration hint
 {{ variant_hint | default("no hint this generation - stay orthogonal") }}
 
-## Role execution guidance
-- exploit: take the best diagnostic survivors and push them through aligned
-  (max_points 350..500). Confirm or kill with the pre-registered gate.
-- falsifier: do NOT chase the leaderboard. Design the ablation that would
-  DISPROVE the most load-bearing mechanism claim (e.g. run the candidate
-  WITHOUT the covariate as a control variant, same window). Publish
-  finding_type=challenge via share_finding if the control matches the
-  treatment.
-- bridge: combine two non-redundant covariate families on one symbol (e.g.
-  CCL positioning x rsi_state) and ablate each component explicitly.
-- anti_mainline: your candidates are FORBIDDEN from using the dominant
-  families (see anti_mainline contract above if present, else the families
-  already on the frontier). Cover the neglected families: oi, ccl,
-  basis_momentum, volume-related, calendar_cyclical.
+## Role execution guidance (you author hypotheses; you run NO evaluations)
+- exploit: take the strongest-mechanism near-miss verdicts (e.g. cov/ symbol with
+  pf>1 or high ic that did not clear the gate) and propose a refined symbol x cov
+  combination with a sharper mechanism and pre-registered kill/promote conditions.
+- falsifier: do NOT chase the leaderboard. Identify the most load-bearing
+  mechanism claim behind a frontier/near-miss result and author a proposal that
+  would DISPROVE it (e.g. the same covariate on a symbol where the mechanism
+  predicts it should FAIL). Publish finding_type=challenge via share_finding.
+- bridge: propose a symbol that combines two non-redundant covariate families
+  (e.g. CCL positioning x rsi_state), with an explicit combined mechanism and a
+  reasoning chain for why the interaction adds edge over each alone.
+- anti_mainline: your proposals are FORBIDDEN from using the dominant families
+  (see anti_mainline contract above if present, else the families already on the
+  frontier). Cover the neglected families: oi, ccl, volume-related (nvi, vor),
+  calendar_cyclical, structure (crack_spread, basis, vwap).
 
 ## End-of-generation checklist
-1. Every candidate passed to the evaluator inline via --candidate <(echo '...')
-   or written under the run_dir peer workspace. Do NOT use scripts/praxist_ws/
-   (blocked by delete guard).
-2. Every evaluation written to the canonical tree
-   {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/<variant_id>/<stage>/
-3. Every hypothesis/insight/challenge published via share_finding with
-   metrics and links. Result findings flow from evaluation summaries.
-4. Done means: evidence landed in the canonical tree, not in your workspace.
+1. Every hypothesis written as a JSON file under the canonical proposals tree
+   {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/proposals/<symbol>_<covariate>.json
+   Use a heredoc or Write tool. Do NOT use scripts/praxist_ws/ (delete-guard blocked).
+2. Every proposal has: mechanism (>=40 chars), symbol_fit, predicted_direction,
+   kill_condition, promote_condition, and an ACTIVE covariate from the pool menu.
+3. Every hypothesis/insight/challenge also published via share_finding with
+   extra={symbol, covariate, mechanism, proposal_id}. Publish >=2-3 this generation.
+4. New-indicator ideas (not in the pool) use new_cov_<name>.json with
+   cov_override=null and a new_covariate object (these go to the host backlog).
+5. Done means: proposal files landed in the canonical proposals tree (not your
+   workspace or /tmp) — that is the only place the supervisor reads.

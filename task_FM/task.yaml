@@ -5,30 +5,25 @@ description_file: description.md
 capabilities:
 - task.classical_control
 - task.multi_metric_pareto
-research_direction: 'Search covariate candidates on the frozen FM_a 1H cascade backtest
-  pipeline.
+research_direction: 'Author MECHANISM-FIRST covariate hypotheses for the FM_a 1H
+  cascade walk-forward backtest. Peers do NOT run evaluations; they write structured
+  proposal JSON files (schema fm.hypothesis_proposal.v1) under the results proposals
+  tree and publish each via share_finding (finding_type=hypothesis). The slow loop
+  runs the only valid evidence (walk-forward n=350-600; gate n>=350 and IC>=0.05).
 
-  Candidates are JSON files {symbol, cov_override, max_points, stage} written under
+  Each proposal needs: mechanism (>=40 chars, extends the covariate menu hypothesis to
+  the chosen symbol), symbol_fit, predicted_direction, and pre-registered kill/promote
+  conditions. cov_override limited to ACTIVE covariates in task_FM/config/covariate_pool.json
+  (rendered as covariate_menu.inc.md); archived covariates are forbidden. Symbols:
+  m/ss/sr/cj/jd/lh/eg/rb plus the 2-star set. Spread across covariate families (QD gate).
 
-  scripts/praxist_ws/. symbol limited to 1-star symbols eligible for promotion (ao/bu/cf/fg/fu/i/jm/ma/p/sh/sp/ta/ur).
+  New indicator ideas (not in the pool) go to new_cov_<name>.json with cov_override=null
+  plus a new_covariate object; they route to a host backlog and are NOT backtested until
+  implemented in features.py.
 
-  Goal: promote at least one 1-star symbol to 2-star by finding covariate overrides
-
-  that improve PF above 1.05 with n>=350, IC>=0.05, EV>0 (full walk-forward gate).;
-
-  cov_override limited to the pre-registered list (config/praxist_task.yaml).
-
-  diagnostic stage max_points 1..6; aligned stage 350..500.
-
-  Forbidden: editing evaluator/model code, writing outside allowed roots,
-
-  retraining models, look-ahead bias. Evaluator caliber owned by FM_a
-
-  (config/praxist_task.yaml). PRIMARY = ev_after_slippage (net of slippage).
-
-  GREEN requires full walk-forward + hard gate (n>=350, IC>=0.05, correction).
-
-  '
+  Forbidden: running evaluations or loading TimesFM, editing evaluator/cascade/model
+  code, writing outside allowed roots, look-ahead bias, proposing without an articulable
+  mechanism, or repeating DEAD variant_ids. Evaluator caliber owned by FM_a.'
 prompt_layout:
   base_template: prompt_base.jinja2
   generation_template: prompt_generation.jinja2
