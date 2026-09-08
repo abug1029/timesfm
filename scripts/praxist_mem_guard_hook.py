@@ -46,6 +46,12 @@ _GATE_PATTERNS = (
     "monthly_backtest",
     "timesfm",
     "from evaluations",
+    "standalone_eval",
+    "run_eval_v",
+    "run_eval_direct",
+    "/tmp/run_eval",
+    "/tmp/standalone_eval",
+    "/tmp/eval_",
 )
 
 

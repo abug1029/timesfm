@@ -25,6 +25,9 @@ cd /workspace/repos/timesfm-abug1029/task_FM
 - ❌ `python -c` / `python3 -c` 加载 TimesFM、调用 `do_evaluate` / `HourlyModel` / `DailyModel` / `monthly_backtest` / `run_symbol_backtest`（含任何“bypass protected_pids / mem_guard flock”写法）
 - ❌ 绕过 `evaluations/fm_eval/run.py` 的 inline 评测脚本；双路时 hardcap 会 TERM 最新一路
 - ❌ 在 flock 已占满时改用 inline 续跑（必须等槽；`EVAL_SLOT_FREE` 轮询可以）
+- ❌ 自写 `/tmp/*eval*.py` / `standalone_eval.py` / `run_eval_v*.py` 等旁路加载 TimesFM（硬顶外双驻留已实测压垮 Mem）
+- ❌ 任何不经 `protected_pids` → `evaluations/fm_eval/run.py` 的评测入口
+
 
 ## 候选 spec
 - symbol 限于 {m,ss,sr,cj,jd,lh,eg,rb}

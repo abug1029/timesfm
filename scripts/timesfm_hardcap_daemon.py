@@ -32,6 +32,12 @@ def classify(cmd: str) -> str:
         or 'dailymodel' in low
         or 'monthly_backtest' in low
         or 'run_symbol_backtest' in low
+        or 'standalone_eval' in low
+        or 'run_eval_v' in low
+        or 'run_eval_direct' in low
+        or '/tmp/run_eval' in low
+        or '/tmp/standalone_eval' in low
+        or '/tmp/eval_' in low
     ):
         return 'inline'
     return 'other'

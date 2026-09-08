@@ -80,6 +80,14 @@ DEFAULT_CMD_PATTERNS = (
     # inline python -c bypass of protected_pids (peer Bash)
     "from evaluations",
     "import timesfm",
+    # peer-written /tmp loaders (bypass flock)
+    "standalone_eval",
+    "run_eval_v",
+    "run_eval_direct",
+    "run_eval_wrapper",
+    "/tmp/run_eval",
+    "/tmp/standalone_eval",
+    "/tmp/eval_",
 )
 _CMD_RE = re.compile("|".join(re.escape(p) for p in DEFAULT_CMD_PATTERNS))
 
@@ -371,6 +379,20 @@ def is_timesfm_eval_cmdline(cmd: str) -> bool:
             )
         ):
             return True
+    # peer-written /tmp TimesFM loaders (script path in argv)
+    if "/tmp/" in lower and any(
+        k in lower
+        for k in (
+            "run_eval",
+            "standalone_eval",
+            "eval_",
+            "hourlymodel",
+            "monthly_backtest",
+            "do_evaluate",
+            "timesfm",
+        )
+    ):
+        return True
     return False
 
 
