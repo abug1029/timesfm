@@ -6,7 +6,7 @@
 
 **Architecture:** 三阶段流水线。Phase 1 已完成 scan+backtest 双段验证（JD 证伪 scan 方向增益，MA 边缘不固化，CJ 破例）。Phase 2 沿用相同方法论，LH 用 L1 `ECONOMIC_VERDICT.json` 的 PF/EV 快速通道 + walk-forward backtest。Phase 3 启动 `ledger_backfill` 反馈环，产出跨品种一致性报告 + 方法论教训文档。
 
-**Tech Stack:** Python 3.11 + TimesFM 2.5 + TqSdk SQLite + numpy + pandas + scikit-learn。共享 venv: `D:\FlyBuddy\shared\timesfm\.venv\`。所有 Python 命令用 `/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe`。
+**Tech Stack:** Python 3.11 + TimesFM 2.5 + TqSdk SQLite + numpy + pandas + scikit-learn。共享 venv: `D:\FlyBuddy\shared\timesfm\.venv\`。所有 Python 命令用 `/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe`。
 
 ## Global Constraints
 
@@ -152,7 +152,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 - [ ] **Step 2: 验证语法正确**
 
 ```bash
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -c "from config.prediction_scheme import SCHEMES; c=SCHEMES['cj']; print(f'cj: type={c.covariate_type}, stars={c.stars}, DirAcc={c.dir_acc:.0%}, MAPE={c.mape}%')"
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -c "from config.prediction_scheme import SCHEMES; c=SCHEMES['cj']; print(f'cj: type={c.covariate_type}, stars={c.stars}, DirAcc={c.dir_acc:.0%}, MAPE={c.mape}%')"
 ```
 
 期望输出：`cj: type=reversal_shadow, stars=2, DirAcc=53%, MAPE=2.64%`
@@ -161,7 +161,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 
 ```bash
 cd D:/FlyBuddy/FM_a
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/cascade_predict.py cj --no-auto-collect 2>&1 | tail -30
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/cascade_predict.py cj --no-auto-collect 2>&1 | tail -30
 ```
 
 期望：预测正常完成，报告显示 CJ 使用 `reversal_shadow` 协变量。若失败，回滚 Step 1 改动。
@@ -195,7 +195,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 
 ```bash
 cd D:/FlyBuddy/FM_a
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/build_knowledge_base.py 2>&1 | tail -30
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/build_knowledge_base.py 2>&1 | tail -30
 ```
 
 期望输出：`Wrote config/knowledge_base.json (20 symbols)`，其中 `cj` 条目显示 `covariate=reversal_shadow, stars=2`。
@@ -204,7 +204,7 @@ cd D:/FlyBuddy/FM_a
 
 ```bash
 cd D:/FlyBuddy/FM_a
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -c "import json; kb=json.load(open('config/knowledge_base.json')); c=kb['symbols']['cj']; print(f\"cj: cov={c['covariate']}, stars={c['credit_stars']}, DirAcc={c['historical_diracc']}\")"
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -c "import json; kb=json.load(open('config/knowledge_base.json')); c=kb['symbols']['cj']; print(f\"cj: cov={c['covariate']}, stars={c['credit_stars']}, DirAcc={c['historical_diracc']}\")"
 ```
 
 期望：`cj: cov=reversal_shadow, stars=2, DirAcc=0.53`
@@ -239,7 +239,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 
 ```bash
 cd D:/FlyBuddy/FM_a
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/covariate_scan.py eg lh ta --points 7 2>&1 | tee reports/covariate_scan/20260728_phase2_scan.txt
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/covariate_scan.py eg lh ta --points 7 2>&1 | tee reports/covariate_scan/20260728_phase2_scan.txt
 ```
 
 预计时长：30 分钟（每品种 ~10 分钟）。
@@ -329,8 +329,8 @@ LH 生猪 backtest 需要计算 5% 极值截断后的 EV/PF（spec §4 例外路
 
 ```bash
 cd D:/FlyBuddy/FM_a
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/monthly_backtest.py cj --cov-override reversal_shadow 2>&1 | grep -E "MAPE|DirAcc" > /tmp/cj_no_clip.txt
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/monthly_backtest.py cj --cov-override reversal_shadow --clip-gap 0.05 2>&1 | grep -E "MAPE|DirAcc" > /tmp/cj_clip.txt
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/monthly_backtest.py cj --cov-override reversal_shadow 2>&1 | grep -E "MAPE|DirAcc" > /tmp/cj_no_clip.txt
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/monthly_backtest.py cj --cov-override reversal_shadow --clip-gap 0.05 2>&1 | grep -E "MAPE|DirAcc" > /tmp/cj_clip.txt
 diff /tmp/cj_no_clip.txt /tmp/cj_clip.txt
 ```
 
@@ -397,11 +397,11 @@ cd D:/FlyBuddy/FM_a
 EG_CAND=<从 Step 1 表格填入>; LH_CAND=<从 Step 1 表格填入>; TA_CAND=<从 Step 1 表格填入>
 mkdir -p reports/monthly_backtest
 
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/monthly_backtest.py eg --cov-override "$EG_CAND" > reports/monthly_backtest/eg_bt.txt 2>&1 &
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/monthly_backtest.py eg --cov-override "$EG_CAND" > reports/monthly_backtest/eg_bt.txt 2>&1 &
 EG_PID=$!
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/monthly_backtest.py lh --cov-override "$LH_CAND" > reports/monthly_backtest/lh_bt.txt 2>&1 &
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/monthly_backtest.py lh --cov-override "$LH_CAND" > reports/monthly_backtest/lh_bt.txt 2>&1 &
 LH_PID=$!
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/monthly_backtest.py ta --cov-override "$TA_CAND" > reports/monthly_backtest/ta_bt.txt 2>&1 &
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/monthly_backtest.py ta --cov-override "$TA_CAND" > reports/monthly_backtest/ta_bt.txt 2>&1 &
 TA_PID=$!
 
 wait $EG_PID $LH_PID $TA_PID
@@ -427,7 +427,7 @@ grep "DirAcc=" reports/monthly_backtest/eg_bt.txt reports/monthly_backtest/lh_bt
 ```bash
 cd D:/FlyBuddy/FM_a
 LH_CAND=<从 Step 1 表格填入>
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/monthly_backtest.py lh --cov-override "$LH_CAND" --clip-gap 0.05 > reports/monthly_backtest/lh_bt_clipped.txt 2>&1
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/monthly_backtest.py lh --cov-override "$LH_CAND" --clip-gap 0.05 > reports/monthly_backtest/lh_bt_clipped.txt 2>&1
 ```
 
 从 `lh_bt_clipped.txt` 提取 clipped 版 EV / PF：
@@ -483,14 +483,14 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 - [ ] **Step 2: 验证语法正确**
 
 ```bash
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -c "from config.prediction_scheme import SCHEMES; [print(f'{k}: {v.covariate_type} DirAcc={v.dir_acc:.0%}') for k,v in SCHEMES.items() if k in ('eg','lh','ta')]"
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -c "from config.prediction_scheme import SCHEMES; [print(f'{k}: {v.covariate_type} DirAcc={v.dir_acc:.0%}') for k,v in SCHEMES.items() if k in ('eg','lh','ta')]"
 ```
 
 - [ ] **Step 3: 重建 KB**
 
 ```bash
 cd D:/FlyBuddy/FM_a
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/build_knowledge_base.py
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/build_knowledge_base.py
 ```
 
 - [ ] **Step 4: 提交**
@@ -521,7 +521,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 
 ```bash
 cd D:/FlyBuddy/FM_a
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/ledger_backfill.py --all-unfilled --limit 500 2>&1
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/ledger_backfill.py --all-unfilled --limit 500 2>&1
 ```
 
 期望：回填所有 unfilled 的 ledger 记录（`actual_t24`, `err_t24_pct`, `dir_correct_t24`, `max_adverse_excursion`）。
@@ -529,7 +529,7 @@ cd D:/FlyBuddy/FM_a
 - [ ] **Step 2: 检查回填结果**
 
 ```bash
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -c "
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -c "
 from cascade.live_ledger import LiveLedger
 led = LiveLedger()
 stats = led.health_stats()
@@ -541,7 +541,7 @@ for s in stats:
 - [ ] **Step 3: 导出当前弱信号候选**
 
 ```bash
-/d/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -c "
+/d/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -c "
 from cascade.live_ledger import export_candidates
 candidates = export_candidates(max_diracc=0.50, min_n=3)
 import json

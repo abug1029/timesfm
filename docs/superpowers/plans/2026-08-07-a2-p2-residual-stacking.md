@@ -84,7 +84,7 @@ def test_run_config_a2_p2_features_dir_shared_with_a2_p1():
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
 Expected: `ValueError: unsupported run_id: a2-p2`
 
 - [ ] **Step 3: 在 `RunConfig.for_run` 增加 a2-p2 分支**
@@ -101,7 +101,7 @@ elif run_id == "a2-p2":
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
 Expected: 2 passed
 
 - [ ] **Step 5: Commit**
@@ -162,7 +162,7 @@ def test_stack_predictions_adds_residual_to_base():
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
 Expected: `ModuleNotFoundError: No module named 'scripts.a2_p2_worker'`
 
 - [ ] **Step 3: 创建 `scripts/a2_p2_worker.py` 实现残差目标与堆叠函数**
@@ -192,7 +192,7 @@ def stack_predictions(timesfm_pure_pred: np.ndarray, lgbm_residual_pred: np.ndar
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
 Expected: 5 passed
 
 - [ ] **Step 5: Commit**
@@ -245,7 +245,7 @@ def test_a2_p2_worker_uses_residual_target_in_source():
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
 Expected: 失败（`target_col` 参数不存在、`run_worker` 不存在）
 
 - [ ] **Step 3: 修改 `train_lgbm_walkforward` 增加 `target_col` 参数**
@@ -286,7 +286,7 @@ def train_lgbm_walkforward(
 
 - [ ] **Step 5: 运行测试确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q`
 Expected: 全部 PASS（A2-P1 回归不破坏）
 
 - [ ] **Step 6: Commit**
@@ -344,7 +344,7 @@ def test_a2_p2_report_fail_closed_on_missing_symbol(tmp_path):
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py -q`
 Expected: 失败（orchestrator/report 模块不存在）
 
 - [ ] **Step 3: 创建 `scripts/a2_p2_orchestrator.py`**
@@ -368,7 +368,7 @@ Expected: 失败（orchestrator/report 模块不存在）
 
 - [ ] **Step 5: 运行测试确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -q`
 Expected: 全部 PASS
 
 - [ ] **Step 6: Commit**
@@ -400,7 +400,7 @@ git commit -m "feat(a2-p2): 编排器与三曲线报告生成器"
 
 ```bash
 cd D:/FlyBuddy/fm_a
-nohup D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -u scripts/a2_p2_orchestrator.py fg ta bu ao ur --run-id a2-p2 > reports/a2_p2_orchestrator.log 2>&1 &
+nohup D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -u scripts/a2_p2_orchestrator.py fg ta bu ao ur --run-id a2-p2 > reports/a2_p2_orchestrator.log 2>&1 &
 ```
 
 - [ ] **Step 3: 巡检进度**
@@ -413,7 +413,7 @@ tail -5 reports/a2_p2_logs/<symbol>.log
 - [ ] **Step 4: 生成裁决报告**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/a2_p2_generate_report.py --run-id a2-p2
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/a2_p2_generate_report.py --run-id a2-p2
 ```
 
 - [ ] **Step 5: 记录裁决**
@@ -460,7 +460,7 @@ python scripts/a2_p2_generate_report.py --run-id a2-p2
 - [ ] **Step 3: 运行完整回归测试**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m pytest tests/test_a2_p2_integrity.py tests/test_a2_p1_integrity.py tests/test_a2_p1_runtime.py -v
 ```
 
 Expected: 全部 PASS（A2-P1 + A2-P2 无回归）
@@ -468,7 +468,7 @@ Expected: 全部 PASS（A2-P1 + A2-P2 无回归）
 - [ ] **Step 4: 编译检查**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m py_compile scripts/a2_p2_worker.py scripts/a2_p2_orchestrator.py scripts/a2_p2_generate_report.py scripts/a2_p1_runtime.py scripts/a2_p1_lgbm_baseline.py
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m py_compile scripts/a2_p2_worker.py scripts/a2_p2_orchestrator.py scripts/a2_p2_generate_report.py scripts/a2_p1_runtime.py scripts/a2_p1_lgbm_baseline.py
 ```
 
 - [ ] **Step 5: Commit**

@@ -2,21 +2,29 @@
 # Host: 8×Xeon, 15GiB RAM, 0 Swap, no GPU (see docs/host_environment_assessment.md)
 # Policy: control-plane gated; N≤1–2 TimesFM (see docs/superpowers/specs/praxist_control_plane.md).
 # APPROVED 稳妥启动 2026-09-06：eval硬顶=1 cohort=2；2026-09-07 max_cycles 3→8 用户批续跑自转。
+# 2026-09-09 用户批扩大目标：ss_vor 已过门 → 再推进 3 个 1 星品种过门 (1星集合共需 4 个)；
+#             cycles 8→20, cpu_hours 8→30, token 30→80M, deadline→2026-09-20；
+#             新增 n-不足型近失误自动复测 (cj_oi: ic/ev/pf 全过仅 n=324，数据长到 n≥350 自动 checkpoint resume)。
 goal:
   success_condition:
-    - "len(symbols_hit) >= 1"
+    # 1 星品种集 = m/ss/sr/cj/jd/lh/eg/rb (见 task.yaml research_direction)；ss_vor 已占一席，还需 3 个。
+    - "len(symbols_hit & {'m','ss','sr','cj','jd','lh','eg','rb'}) >= 4"
     - "min(pass_variant_pf_ratios) > 1.05"
     - "len(families_hit) >= 1"
   budgets:
-    # Controlled: 3 cycles first (was 5); reopen to 5 only after stable control-plane run.
-    max_cycles: 8  # user批续跑 2026-09-07：cycles_done=3 后抬到 8
-    cpu_hours: 8
-    # ~2.7M+/cycle observed; 3 cycles → 20M headroom.
-    token_budget_m: 120  # raised 2026-09-08: was 80; prevent false/near exhaust; 总管批 120（deadline 仍 2026-09-13）
-    deadline: "2026-09-13"
+    max_cycles: 20  # 2026-09-09：8→20 (扩大目标续跑；cycles_done 跨重启累计)
+    cpu_hours: 30   # 慢环 elapsed 累计 (slow_loop_metrics.jsonl，跨重启累加)
+    # ~2.7M+/cycle observed；扩目标后 12+ cycles 余量。
+    token_budget_m: 80  # 相对 state.tokens_baseline_m 的增量预算 (2026-09-09：30→80)
+    deadline: "2026-09-20"
   cadence:
     survivors_per_cycle: 3  # 慢环加压 2026-09-06：每周期最多 3 survivors
     aligned_max_points: 600  # 慢环加压：aligned 深度 600
     run_budget_hours: 1.5
     quota_window_hours: 5.0
     quota_margin_min: 30
+    # n-不足型近失误 (gate 仅差 n：ic≥0.05, ev>0, pf/incumbent>1.05)：
+    # 本地 1H 库有效点长到 ≥350 且比上次裁决多 ≥N 点时自动排队复测 (checkpoint resume，只算新点)。
+    retest_min_new_points: 1
+    # 慢环选座优先: 1 星目标品种 (其中当前 n>=350 的最先; cj/lh 样本暂不足次之; 2 星最后)。
+    priority_symbols: [m, ss, sr, cj, jd, lh, eg, rb]

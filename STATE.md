@@ -4,7 +4,7 @@
 > `reports/` 全部为 derived_view（可从 `predictions.json` / 回测 JSONL / db 产物重建），
 > 冲突时以 **STATE.md + 磁盘回测产物**为准。此规则用于终结"滞后文档事故"（如 SH 状态那次）。
 
-**最后更新**: 2026-09-01  
+**最后更新**: 2026-09-09  
 **Phase 1 状态**: **L1 ops 全量完成 → ECONOMIC_PASS=False → 生产 REMAIN_OFF**  
 **人类文档**: `docs/README.md`（含 product_positioning / module_freeze / 新口径全表链接）  
 **冲突债**: `reports/research/20260808_conflict_debt_register.md`（绝大多数 DONE）  
@@ -19,6 +19,25 @@
 **Phase 15b (2026-08-29)**: StdDev 改 returns std **保留**（5/6 改善，AO PF +0.14；UR -0.11 例外退化待复评）；VWAP 衰减填充**回滚**（0/6 改善）。详见下节。  
 **Phase Q1 (2026-08-29 结案)**: 协变量实现质量审计 6 方向裁决：D1 RSI 自适应 **REJECT**（JD -0.02 / P combo -0.10；信息量↑≠预测力↑，固定边界 91% 零输出=隐式信号门控）；D2/D4 CANCEL；D3 SKIP；D5 PAUSE；D6 审计框架 **ACCEPT**（`tests/test_covariate_audit.py` 19 测试）。实验性协变量代码已从 features.py 移除。SCHEMES 无变更。详见下节。
 **MaxDD>100% bug (2026-08-30 闭环)**: 已于 2026-08-21 修复 (`cascade/evaluation_metrics.py` cumprod+clamp) 并 8 测试覆盖；-265%/-134% 为修复前旧口径 (batch_f1 2026-08-18)，Phase 11 裁决以 PF 为准不受影响。
+**PRAXIST (2026-09-09)**: 三环已上线（方案 A：peer 不跑评估）。人类概览 `docs/praxist.md`。机器状态 `data/cache/supervisor_state.json`；裁决 `task_FM/config/aligned_verdicts.jsonl`。监督环已有序停机，详见下节。
+
+---
+
+## PRAXIST 运行快照（2026-09-09）
+
+> Praxist 的**机器事实所有者**是 `data/cache/supervisor_state.json` 与 `task_FM/config/aligned_verdicts.jsonl`，不是本文件。本节省人类交接。停机报告仍落 `docs/superpowers/reports/`。
+
+| 项 | 值 |
+|----|-----|
+| 宿主 | WSL2 Ubuntu-22.04 `/home/abug/timesfm`，`.praxist-venv` CPython 3.11 |
+| 合同 | 方案 A：peer 写假设，慢环唯一验证器 |
+| 目标 | 1 星集合过门 ≥4 + PF 比>1.05 + ≥1 族；预算 20 cycles / 30h CPU / 80M token / 2026-09-20 |
+| 监督环 | 2026-09-09 10:54 SIGTERM 有序停（重启电脑）；`cycles_done=6`，`phase=slow`，队列空 |
+| 过门 | 经济意义上实质仅 `ss_vor`（n=396 PF=1.123 ev=+11.06 ic=0.06） |
+| 已知瑕疵 | `i_oi` gate_pass=True 但 ev=−2.46（硬门只判 n+ic；materializer 未区分亏钱过门） |
+| 近失误复测 | `cj_oi` n=324 PF=1.133 ic=0.08，样本长到 350 自动补队 |
+
+重启命令见 `docs/praxist.md` §4 或 `docs/runbook_praxist_three_loop.md`。
 
 ---
 
@@ -610,3 +629,15 @@ See /root/timesFM_fu/docs/superpowers/reports/supervisor_budget_exhausted_202609
 ## Supervisor budget_exhausted (20260903_131108)
 
 See /root/timesFM_fu/docs/superpowers/reports/supervisor_budget_exhausted_20260903_131108.md
+
+## Supervisor goal_reached (20260909_035816)
+
+See /home/abug/timesfm/docs/superpowers/reports/supervisor_goal_reached_20260909_035816.md
+
+## Supervisor goal_reached (20260909_041328)
+
+See /home/abug/timesfm/docs/superpowers/reports/supervisor_goal_reached_20260909_041328.md
+
+## Supervisor goal_reached (20260909_041429)
+
+See /home/abug/timesfm/docs/superpowers/reports/supervisor_goal_reached_20260909_041429.md

@@ -15,7 +15,7 @@
 - **PCA 防穿越**: `pca_momentum` 必须用 `closes[:t+1]` 切片，禁止预计算（StandardScaler+PCA 全局 fitting 会泄漏未来数据）
 - **数值等价**: 安全特征预计算 `[t]` 必须严格等于切片 `func(closes[:t+1])[-1]`
 - **向后兼容**: `precomputed=None` 时行为与原版完全一致（Copilot 等调用方不受影响）
-- **Python 环境**: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python`
+- **Python 环境**: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python`
 - **主仓库**: `D:\FlyBuddy\fm_a`
 - **保持不变**: tsfm 断点机制、12 维特征池、step=24、Gate
 
@@ -58,7 +58,7 @@ def test_extract_features_precomputed_param():
 - [ ] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_extract_features_precomputed_param -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_extract_features_precomputed_param -v
 ```
 
 Expected: FAIL
@@ -152,7 +152,7 @@ def extract_market_features_at_bar(
 - [ ] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_extract_features_precomputed_param -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_extract_features_precomputed_param -v
 ```
 
 Expected: PASS
@@ -192,7 +192,7 @@ def test_build_dense_precomputes_safe_features():
 - [ ] **Step 2: 运行测试验证失败**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_precomputes_safe_features -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_precomputes_safe_features -v
 ```
 
 Expected: FAIL
@@ -238,7 +238,7 @@ Expected: FAIL
 - [ ] **Step 4: 运行测试验证通过**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_precomputes_safe_features -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_build_dense_precomputes_safe_features -v
 ```
 
 Expected: PASS
@@ -296,7 +296,7 @@ def test_precomputed_equals_slice_numeric():
 - [ ] **Step 2: 运行数值一致性测试**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_precomputed_equals_slice_numeric -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py::test_precomputed_equals_slice_numeric -v
 ```
 
 Expected: PASS（安全特征预计算 == 切片）
@@ -306,7 +306,7 @@ Expected: PASS（安全特征预计算 == 切片）
 ```bash
 # 删除 RB 旧缓存, 计时 market 阶段
 rm -f reports/a2_p1_features/rb_market.parquet reports/a2_p1_features/rb_dense_matrix.parquet
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -c "
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -c "
 import time
 from data.data_store import DataStore
 from cascade.lgbm_features import build_dense_feature_matrix
@@ -322,7 +322,7 @@ Expected: < 180s（3min），rows=396
 - [ ] **Step 4: 运行全部测试**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py -v
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_runtime.py -v
 ```
 
 Expected: 全部 PASS

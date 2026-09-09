@@ -1,6 +1,7 @@
 # tests/test_lgbm_features.py
 import numpy as np
 import pandas as pd
+import pytest
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 from cascade.lgbm_features import extract_market_features_at_bar
@@ -76,6 +77,7 @@ def test_timesfm_features_schema():
 from cascade.lgbm_features import build_dense_feature_matrix
 
 def test_dense_matrix_schema_and_cache(tmp_path, monkeypatch):
+    pytest.importorskip("pyarrow")  # 仅本测试: build_dense_feature_matrix(cache_path=) 写 parquet
     df_1h = _make_df_1h(700)
     df_daily = _make_df_daily(200)
     class FakeStore:

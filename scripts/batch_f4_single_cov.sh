@@ -7,7 +7,7 @@ export PYTHONIOENCODING=utf-8
 export PYTHONWARNINGS=ignore
 
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source .praxist-venv/bin/activate
 
 # ---- 路径设置 ----
 FM_ROOT="D:/FlyBuddy/FM_a"

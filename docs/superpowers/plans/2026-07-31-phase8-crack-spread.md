@@ -6,7 +6,7 @@
 
 **Architecture:** 底层纯函数 `calc_crack_spread(df_main, df_leg, ratio, mode, ...)` 做 left-join 对齐 + 三模式数学变换;`hourly_model.predict()` 作 DI 咽喉点构建 `feedstock_cache`(cutoff 感知,防穿越);`build_covariate_matrix`/`build_combo_covariate_matrix` 通过通用 `feedstock_cache` context 参数分发,签名只膨胀一次。BacktestDataStore 下沉到 data 层解层洁癖。
 
-**Tech Stack:** Python 3, pandas, numpy, SQLite (DataStore), TimesFM 2.5 XReg, unittest。虚拟环境 `D:/FlyBuddy/shared/timesfm/.venv/`。
+**Tech Stack:** Python 3, pandas, numpy, SQLite (DataStore), TimesFM 2.5 XReg, unittest。虚拟环境 `D:/FlyBuddy/timesfm/.praxist-venv/`。
 
 ## Global Constraints
 
@@ -15,7 +15,7 @@
 - 零回归铁律: 非 crack_spread 路径字节级不变。
 - 路径含 `\Pu chong\` 空格时,读取用 8.3 短名 `\PUCHON~1\`。
 - 长 GPU 任务(回测)用 nohup+disown,勿用 run_in_background。
-- venv python: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe`
+- venv python: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe`
 - Phase 8a **不固化** prediction_scheme.py(underpowered n≈178,仅验证)。
 - spec 文档: `docs/superpowers/specs/2026-07-31-phase8-crack-spread-design.md`
 
@@ -82,9 +82,9 @@ from data.data_store import DataStore, BacktestDataStore
 Run:
 ```bash
 cd D:/FlyBuddy/fm_a
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -c "from data.data_store import BacktestDataStore; print('data layer OK')"
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -c "from scripts.backtest_1h import BacktestDataStore; print('backtest_1h re-export OK')"
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -c "from scripts.monthly_backtest import run_symbol_backtest; print('monthly OK')"
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -c "from data.data_store import BacktestDataStore; print('data layer OK')"
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -c "from scripts.backtest_1h import BacktestDataStore; print('backtest_1h re-export OK')"
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -c "from scripts.monthly_backtest import run_symbol_backtest; print('monthly OK')"
 ```
 Expected: 三行 OK,无 ImportError。
 
@@ -126,7 +126,7 @@ class TestCrackPair(unittest.TestCase):
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread_pairs -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread_pairs -v`
 Expected: FAIL (ModuleNotFoundError)
 
 - [ ] **Step 3: 实现 config/crack_spread_pairs.py**
@@ -157,7 +157,7 @@ def get_crack_pair(symbol: str) -> Optional[Tuple[str, float]]:
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread_pairs -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread_pairs -v`
 Expected: 4 PASS
 
 - [ ] **Step 5: Commit**
@@ -284,7 +284,7 @@ class TestCrackSpread(unittest.TestCase):
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread -v`
 Expected: FAIL (ImportError: cannot import calc_crack_spread)
 
 - [ ] **Step 3: 实现 calc_crack_spread**
@@ -378,12 +378,12 @@ def calc_crack_spread(df_main: pd.DataFrame, df_leg: pd.DataFrame,
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread -v`
 Expected: 9 PASS。若 `test_ffill_gap_exceeds_limit` 失败,检查 `runs` 统计与 `trusted` 掩码。
 
 - [ ] **Step 5: 零回归 - 现有协变量单测不破坏**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_calendar_cyclical -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_calendar_cyclical -v`
 Expected: 现有 7 PASS 不变。
 
 - [ ] **Step 6: Commit**
@@ -472,7 +472,7 @@ class TestBuildCrackSpread(unittest.TestCase):
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread.TestBuildCrackSpread -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread.TestBuildCrackSpread -v`
 Expected: FAIL (crack_spread_slope 未注册 / TypeError: unexpected kwarg feedstock_cache)
 
 - [ ] **Step 3: 修改 build_covariate_matrix 签名 + 注册 elif**
@@ -534,7 +534,7 @@ combo 末尾 `supported = [...]`(line ~1296)追加 `"crack_spread_slope"`, `"cra
 
 - [ ] **Step 6: 运行确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread -v`
 Expected: 全 PASS(9 + 2 = 11)。
 
 - [ ] **Step 7: Commit**
@@ -570,7 +570,7 @@ class TestHourlyDI(unittest.TestCase):
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread.TestHourlyDI -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread.TestHourlyDI -v`
 Expected: FAIL (cannot import _needs_feedstock)
 
 - [ ] **Step 3: 实现 _needs_feedstock + _fetch_feedstock_1h + 注入**
@@ -626,12 +626,12 @@ def _fetch_feedstock_1h(fs_sym: str, target_store, limit: int = 480):
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread.TestHourlyDI -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread.TestHourlyDI -v`
 Expected: 1 PASS
 
 - [ ] **Step 5: 零回归 - features 单测全跑**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread tests.test_calendar_cyclical -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread tests.test_calendar_cyclical -v`
 Expected: 全 PASS
 
 - [ ] **Step 6: Commit**
@@ -693,7 +693,7 @@ class TestEffectiveN(unittest.TestCase):
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread.TestEffectiveN -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread.TestEffectiveN -v`
 Expected: 1 PASS
 
 - [ ] **Step 5: Commit**
@@ -719,13 +719,13 @@ git commit -m "feat(phase8): scan 注册 crack_spread 3 档 + verdict 用 effect
 Run:
 ```bash
 cd D:/FlyBuddy/fm_a
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe scripts/covariate_scan.py ta --points 3
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe scripts/covariate_scan.py ta --points 3
 ```
 Expected: exit 0;结果表含 `crack_spread_slope` / `crack_spread_level` / `crack_spread_zscore` 三行 MAE。若三档 MAE 均 999% 或 >> 基线 bb_squeeze 1.5×,人工排查(可能 bug,也可能 TA 上确无 PX-TA 信号,均有效结论)。
 
 - [ ] **Step 2: 全单测回归**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -m unittest tests.test_crack_spread tests.test_calendar_cyclical tests.test_crack_spread_pairs tests.test_future_bar_guard tests.test_vol_threshold_contract -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -m unittest tests.test_crack_spread tests.test_calendar_cyclical tests.test_crack_spread_pairs tests.test_future_bar_guard tests.test_vol_threshold_contract -v`
 Expected: 全 PASS(零回归)。
 
 - [ ] **Step 3: backtest 三模式矩阵(长任务,用 nohup)**
@@ -734,7 +734,7 @@ Expected: 全 PASS(零回归)。
 ```bash
 # 串行链 (&&): baseline -> replace -> additive
 nohup bash -c '
-PY=D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe
+PY=D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe
 $PY scripts/monthly_backtest.py ta > reports/data_ops/p8_baseline.log 2>&1 && \
 $PY scripts/monthly_backtest.py ta --cov-override crack_spread_slope > reports/data_ops/p8_replace.log 2>&1 && \
 $PY scripts/monthly_backtest.py ta --combo bb_squeeze,crack_spread_slope > reports/data_ops/p8_additive.log 2>&1
@@ -746,7 +746,7 @@ $PY scripts/monthly_backtest.py ta --combo bb_squeeze,crack_spread_slope > repor
 
 对每模式结果(从 log 提取 DirAcc/MAPE/EV/PF/MaxDD/n),用 `scripts/phase4d_parse_results.py` 的 verdict 判定。手动补充 effective_n(PX 覆盖内评估点数 ≈ 178):
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python.exe -c "
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python.exe -c "
 from scripts.phase4d_parse_results import verdict
 base = {'n':396,'ev':0.120,'pf':1.27,'maxdd':-0.3,'mape':2.26,'diracc':56}
 cand = {'n':396,'effective_n':178,'ev':<replace_ev>,'pf':<replace_pf>,'maxdd':<replace_maxdd>,'mape':<replace_mape>,'diracc':<replace_diracc>}

@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-09 -->
 
 # docs
 
@@ -12,6 +12,9 @@
 | File | Description |
 |------|-------------|
 | `README.md` | 文档索引 |
+| `praxist.md` | Praxist 架构概览（本体 vs 三环；现行合同） |
+| `runbook_praxist_three_loop.md` | Praxist 三环运维 |
+| `spec_hypothesis_driven_fast_loop_20260908.md` | 方案 A：peer 只写假设 |
 | `runbook.md` | 日常运维 |
 | `copilot.md` | Copilot 用法 |
 | `vol-risk.md` | Vol 风控状态（生产默认 OFF） |
@@ -33,6 +36,8 @@
 - 重跑 heavy WF 前先读 `backtest_registry.md` 与 `STATE.md`。
 - 固化门槛以 `validation_criteria.md` v2 为准；实现参考 `scripts/phase4d_parse_results.verdict`。
 - 更新文档时区分：**磁盘事实**（STATE/reports）vs 规划（plans）。
+- Praxist：新人读 `praxist.md`；运维读 `runbook_praxist_three_loop.md`。`praxist_integration_plan.md` / `praxist_directive_design.md` 是历史方案，顶部有取代说明。
+- Praxist 机器状态不在 STATE.md 独占：`data/cache/supervisor_state.json` + `task_FM/config/aligned_verdicts.jsonl`。
 
 ### Validation Criteria v2 (summary)
 

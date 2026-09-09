@@ -1048,15 +1048,18 @@ def build_covariate_matrix(
         last_valid = float(h_slope.iloc[-1]) if len(h_slope) > 0 else 0.0
         covariate_full = np.concatenate([h_slope.values, np.full(horizon, last_valid)])
         covariate_name = "hourly_slope"
-    elif covariate_type == "rsi_state":
+    elif covariate_type in ("rsi_state", "rsi6", "rsi12", "rsi24"):
         # 日线 RSI 离散状态降维 (-2~+2) + 向均值衰减
-        # 使用日线收盘价计算 RSI(14)，再 forward-fill 到 1H 时间轴
+        # 使用日线收盘价计算 RSI，再 forward-fill 到 1H 时间轴
+        # rsi_state=RSI(14), rsi6=RSI(6), rsi12=RSI(12), rsi24=RSI(24)
+        _rsi_period_map = {"rsi_state": 14, "rsi6": 6, "rsi12": 12, "rsi24": 24}
+        _rsi_period = _rsi_period_map[covariate_type]
         hist_daily = np.array(historical_daily_closes, dtype=float)
         pred_daily = np.array(predicted_daily_closes, dtype=float)
         full_daily = np.concatenate([hist_daily, pred_daily])
 
         # 计算全序列日线 RSI 状态
-        daily_states = calc_rsi_state(full_daily, rsi_period=14)
+        daily_states = calc_rsi_state(full_daily, rsi_period=_rsi_period)
         n_hist = len(hist_daily)
         hist_states = daily_states[:n_hist]
         pred_states = daily_states[n_hist:]
@@ -1089,7 +1092,7 @@ def build_covariate_matrix(
         last_ctx_state = float(context_states[-1]) if len(context_states) > 0 else 0.0
         horizon_states = _generate_rsi_state_horizon(last_ctx_state, horizon, decay_step=2)
         covariate_full = np.concatenate([context_states, horizon_states])
-        covariate_name = "rsi_state"
+        covariate_name = covariate_type
     elif covariate_type == "pca_momentum":
         # 多周期 RSI → PCA 复合动量 (一维)
         hourly_closes = df_1h["close_price"].values.astype(float)
@@ -1356,8 +1359,8 @@ def build_covariate_matrix(
         covariate_full = np.concatenate([ctx, _decay_fill(float(ctx[-1]), horizon)])
         covariate_name = "stddev"
 
-    else:
-        # CCL 变化率 (默认)
+    elif covariate_type == "ccl":
+        # CCL 仓差变化率 (此前为 else 默认，提为显式分支以便未知类型显式报错)
         if "ccl_value" in df_1h.columns and df_1h["ccl_value"].notna().any():
             ccl_pct = calc_ccl_pct(df_1h["ccl_value"], df_1h.get("open_interest"))
         elif "open_interest" in df_1h.columns:
@@ -1369,6 +1372,13 @@ def build_covariate_matrix(
             ccl_pct = pd.Series(np.zeros(len(df_1h)), index=df_1h.index)
         covariate_full = np.concatenate([ccl_pct.values, np.zeros(horizon)])
         covariate_name = "ccl_pct"
+
+    else:
+        # 未知协变量显式报错 (此前静默降级为 CCL，会产出错误结果而不报警)
+        raise ValueError(
+            f"build_covariate_matrix 不支持 covariate_type='{covariate_type}'；"
+            f"请在 features.py 注册分派，或在 covariate_pool.json 中归档。"
+        )
 
     assert len(covariate_full) == total_len
 
@@ -1449,6 +1459,14 @@ def build_combo_covariate_matrix(
             horizon_rsi = _generate_rsi_state_horizon(
                 float(ctx_rsi[-1]) if len(ctx_rsi) > 0 else 0.0, horizon, decay_step=2)
             result["rsi_state"] = np.concatenate([ctx_rsi, horizon_rsi])
+
+        elif cov_type in ("rsi6", "rsi12", "rsi24"):
+            # combo 路径补齐 (此前仅单路径 build_covariate_matrix 支持)
+            _rsi_p = {"rsi6": 6, "rsi12": 12, "rsi24": 24}[cov_type]
+            ctx_rsi = calc_rsi_state(hourly_closes, rsi_period=_rsi_p).astype(float)
+            horizon_rsi = _generate_rsi_state_horizon(
+                float(ctx_rsi[-1]) if len(ctx_rsi) > 0 else 0.0, horizon, decay_step=2)
+            result[cov_type] = np.concatenate([ctx_rsi, horizon_rsi])
 
         elif cov_type == "hurst":
             hurst = calc_rolling_hurst(hourly_closes, window=120, step=6)
@@ -1594,7 +1612,7 @@ def build_combo_covariate_matrix(
             result["stddev"] = np.concatenate([ctx, last_val * decay])
 
         else:
-            supported = ["oi", "rsi_state", "hurst", "hourly_slope", "rsi_slope",
+            supported = ["oi", "rsi_state", "rsi6", "rsi12", "rsi24", "hurst", "hourly_slope", "rsi_slope",
                          "pca_momentum", "ao_accel", "bb_squeeze", "ha_body",
                          "reversal_shadow", "reversal_shadow_gated_02",
                          "reversal_shadow_gated_03", "reversal_shadow_gated_05",

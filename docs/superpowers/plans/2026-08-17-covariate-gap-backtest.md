@@ -89,7 +89,7 @@ set -euo pipefail
 export PYTHONIOENCODING=utf-8
 
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 
 JSONL="reports/data_ops/batch_X_progress.jsonl"
 LOG="reports/data_ops/batch_X.log"
@@ -149,7 +149,7 @@ run_one sr  "sar_dist"                      "A2-SR-sardist-alone"
 set -euo pipefail
 export PYTHONIOENCODING=utf-8
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 
 JSONL="reports/data_ops/batch_a_progress.jsonl"
 LOG="reports/data_ops/batch_a.log"
@@ -232,7 +232,7 @@ sleep 8 && powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filte
 
 ```bash
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 python -m data.cli status ss ur sr jd rb fu fg sp ma ta
 ```
 

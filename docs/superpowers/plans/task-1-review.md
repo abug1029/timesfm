@@ -33,7 +33,7 @@
 ## 冒烟验证实际输出
 
 ```
-$ source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate && python -c "from config.prediction_scheme import get_scheme, SCHEMES; s=get_scheme('ta'); assert s.covariate_type=='bb_squeeze', s; print('TA scheme OK:', s.covariate_type)"
+$ source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate && python -c "from config.prediction_scheme import get_scheme, SCHEMES; s=get_scheme('ta'); assert s.covariate_type=='bb_squeeze', s; print('TA scheme OK:', s.covariate_type)"
 TA scheme OK: bb_squeeze
 ```
 

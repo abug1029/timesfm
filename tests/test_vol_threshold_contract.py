@@ -23,6 +23,9 @@ from cascade.vol_gating_replay import (  # noqa: E402
     vol_prob_stats,
 )
 
+# 训练好的波动率模型工件 (run scripts/train_vol_risk_sector.py)；缺失时相关集成测试跳过
+_VOL_MODELS_PRESENT = (Path(FM_ROOT) / "models" / "vol_risk_filter_v2.pkl").exists()
+
 
 class TestThresholdContract(unittest.TestCase):
     def test_init_does_not_let_cal_override_explicit_threshold(self):
@@ -99,6 +102,8 @@ class TestThresholdContract(unittest.TestCase):
             m.SECTOR_MODEL_PATHS["energy_chem"] = old
 
     def test_paths_are_absolute_under_fm_root(self):
+        if not _VOL_MODELS_PRESENT:
+            self.skipTest("trained vol models absent (run train_vol_risk_sector)")
         p = VolRiskFilter.resolve_model_path_for_symbol("fu", mode="r1")
         self.assertTrue(Path(p).is_absolute(), msg=p)
         self.assertTrue(str(p).replace("\\", "/").startswith(
@@ -107,6 +112,8 @@ class TestThresholdContract(unittest.TestCase):
 
     def test_resolve_independent_of_cwd(self):
         """相对 models/ 锚定 FM_ROOT，不依赖 cwd。"""
+        if not _VOL_MODELS_PRESENT:
+            self.skipTest("trained vol models absent (run train_vol_risk_sector)")
         old = os.getcwd()
         try:
             os.chdir(tempfile.gettempdir())
@@ -119,6 +126,8 @@ class TestThresholdContract(unittest.TestCase):
             os.chdir(old)
 
     def test_black_missing_pkl_falls_back_to_r0_with_source(self):
+        if not _VOL_MODELS_PRESENT:
+            self.skipTest("trained vol models absent (R0 fallback unavailable)")
         ref = VolRiskFilter.resolve_model_ref("rb", mode="r1")
         self.assertEqual(ref.source, "r0_fallback_black")
         self.assertTrue(ref.path.endswith("vol_risk_filter_v2.pkl") or "vol_risk_filter_v2" in ref.path)

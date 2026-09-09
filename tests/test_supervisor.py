@@ -14,6 +14,11 @@ def _patch_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(sup, "VERDICTS_INC", str(tmp_path / "known_verdicts.inc.md"))
     monkeypatch.setattr(sup, "REPORT_DIR", str(tmp_path / "reports"))
     monkeypatch.setattr(sup, "STATE_MD", str(tmp_path / "STATE.md"))
+    # 事件/心跳/停机报告也必须落在 tmp：否则测试会往生产 supervisor_events.jsonl 写
+    # run_started/provider_switch/sample_retest_enqueued 等假事件 (2026-09-09 实测污染)。
+    monkeypatch.setattr(sup, "EVENTS_PATH", str(tmp_path / "events.jsonl"))
+    monkeypatch.setattr(sup, "HEARTBEAT_PATH", str(tmp_path / "heartbeat"))
+    monkeypatch.setattr(sup, "STOP_REPORT_JSON", str(tmp_path / "stop_report.json"))
 
 
 def _clear_failover_env(monkeypatch):
@@ -85,6 +90,8 @@ def _eval_summary(symbol, cov, ev, n=6, pf=1.3, max_points=None):
 
 def test_harvest_survivors(tmp_path):
     run = tmp_path / "task_FM" / "experiments" / "run_2026-09-02_10-00-00_x"
+    # 保留的 harvest_survivors (回滚用) 读旧诊断产物 evaluation_summary.json;
+    # 新提案产物 proposals/*.json 由 harvest_proposals 收割, 见 test_harvest_proposals.py。
     d1 = run / "results" / "gen_0" / "p0" / "m_rsi_state_diagnostic_p6" / "diagnostic"
     d1.mkdir(parents=True)
     (d1 / "evaluation_summary.json").write_text(json.dumps(
@@ -163,6 +170,56 @@ def test_dry_run_one_shot_no_sleep(tmp_path, monkeypatch):
     assert not (tmp_path / "known_verdicts.inc.md").exists()
     assert not (tmp_path / "pending.jsonl").exists()
     assert not (tmp_path / "STATE.md").exists()
+
+def test_import_does_not_arm_atexit():
+    """仅 import 模块 (当库用 harvest_proposals/build_snapshot 等) 不得武装 atexit，
+    否则脚本退出会被误报 supervisor unexpected_exit (2026-09-09 实测 19 条假事件)。
+    用子进程复现: 全新解释器 import 后退出, 生产事件文件必须零变化。"""
+    import subprocess, sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ev_path = sup.EVENTS_PATH
+    before = os.path.getmtime(ev_path) if os.path.exists(ev_path) else None
+    code = (
+        "import atexit, sys; "
+        "sys.path.insert(0, r'%s'); "
+        "import praxist_supervisor as s; "
+        "n0 = atexit._ncallbacks(); atexit.unregister(s._atexit_handler); "
+        "assert not s._HANDLERS_ARMED; assert atexit._ncallbacks() == n0; "
+        "print('CHILD_OK')" % os.path.join(root, "scripts"))
+    r = subprocess.run([sys.executable, "-c", code], cwd=root,
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert "CHILD_OK" in r.stdout
+    after = os.path.getmtime(ev_path) if os.path.exists(ev_path) else None
+    assert before == after  # import-only 子进程退出未写任何事件
+
+def test_goal_reached_marks_stop_emitted(tmp_path, monkeypatch):
+    """goal_reached 干净退出必须先 _mark_stop_emitted, 否则 atexit 兜底误报 unexpected_exit。"""
+    monkeypatch.setattr(sup, "_STOP_EMITTED", False)
+    monkeypatch.setattr(sup, "build_snapshot", lambda *a, **k: {
+        "symbols_hit": {"ss"}, "families_hit": {"volatility"},
+        "pass_variant_pf_ratios": [1.123], "variants": {}})
+    # 隔离生产 IO (MENU_INC/VERDICTS/报告/事件未被 _patch_paths 重定向)
+    monkeypatch.setattr(sup, "materialize_known_verdicts", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "write_stop_report", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "_emit_event", lambda *a, **k: None)
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "state.json").write_text(json.dumps({
+        "cycles_done": 5, "last_run_id": None, "paused_429": False}), encoding="utf-8")
+    goal = tmp_path / "goal.yaml"
+    goal.write_text(
+        "goal:\n"
+        "  success_condition: ['len(symbols_hit) >= 1',\n"
+        "                      'min(pass_variant_pf_ratios) > 1.05',\n"
+        "                      'len(families_hit) >= 1']\n"
+        "  budgets: {max_cycles: 10, cpu_hours: 60, token_budget_m: 80}\n"
+        "  cadence: {survivors_per_cycle: 2, aligned_max_points: 400,\n"
+        "            run_budget_hours: 2.0, quota_window_hours: 5.0, quota_margin_min: 30}\n",
+        encoding="utf-8")
+    rc = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
+    assert rc == 0
+    assert sup._STOP_EMITTED is True  # atexit 不会再发 supervisor_stopped/unexpected_exit
 
 def test_cycles_increment_only_after_harvest(tmp_path, monkeypatch):
     monkeypatch.setattr(sup.time, "sleep", lambda s: None)
@@ -281,10 +338,21 @@ def test_harvest_survivors_enter_slow_no_start_no_cycle(tmp_path, monkeypatch):
         "last_harvested_run_id": None, "paused_429": False,
     }), encoding="utf-8")
     run = tmp_path / "task_FM" / "experiments" / "run_2026-09-02_10-00-00_x"
-    d1 = run / "results" / "gen_0" / "p0" / "m_rsi_state_diagnostic_p6" / "diagnostic"
-    d1.mkdir(parents=True)
-    (d1 / "evaluation_summary.json").write_text(json.dumps(
-        _eval_summary("m", "rsi_state", ev=0.05, n=6, pf=1.3)))
+    # peer 已转型为假设作者: 主循环 _harvest_rows 走 harvest_proposals, 读 proposals/*.json
+    # (不再产 evaluation_summary.json)。造一份合格机制化提案触发入队 + 进 slow 相。
+    pdir = run / "results" / "gen_0" / "p0" / "proposals"
+    pdir.mkdir(parents=True)
+    (pdir / "m_rsi_state.json").write_text(json.dumps({
+        "schema": "fm.hypothesis_proposal.v1",
+        "proposal_id": "m_rsi_state",
+        "symbol": "m", "cov_override": "rsi_state",
+        "covariate_family": "oscillator",
+        "mechanism": "RSI(14) 超买超卖体制在豆粕主力合约上有明确的均值回归机制，极端读数后价格倾向回到波动中枢，持仓资金活跃放大反转有效性。",
+        "symbol_fit": "豆粕主力持仓资金活跃，RSI 反转信号在主力合约上有效性高。",
+        "predicted_direction": "oversold -> long revert",
+        "kill_condition": "aligned ev<0 或 ic<0.02",
+        "promote_condition": "gate_pass 且 PF>1.05 且 ev>0",
+    }), encoding="utf-8")
     goal = _goal_yaml(tmp_path)
     rc = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc == 0
@@ -426,7 +494,9 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup, "_praxist", lambda *a, **k: {"ok": True})
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: True)
+    # 无慢环在排空: budget_hit 当 tick 必须写 stop 报告。
+    # alive=True 会让 _slow_drain_complete() 为 False → 走 drain-defer 分支不退出。
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(sup, "_read_token_m", lambda: (21.0, False))
     (tmp_path / "state.json").write_text(json.dumps({
@@ -447,9 +517,11 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
     assert st["tokens_baseline_m"] == 21.0
     assert not list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
     monkeypatch.setattr(sup, "_read_token_m", lambda: (31.0, False))
+    monkeypatch.setattr(sup, "_STOP_EMITTED", False)
     rc2 = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc2 == 0
     assert list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
+    assert sup._STOP_EMITTED is True  # budget 干净退出同样不得触发 atexit unexpected_exit
     st2 = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     assert st2["tokens_baseline_m"] == 21.0
 
@@ -828,4 +900,110 @@ def test_failover_env_auth_token_matches_api_key(monkeypatch):
     assert env["ANTHROPIC_AUTH_TOKEN"] == "sk-failover-key"
     assert env["ANTHROPIC_AUTH_TOKEN"] != "ark-primary-key"
     assert "dashscope" in env["ANTHROPIC_BASE_URL"]
+
+
+# ── n-不足型近失误自动复测 (cj_oi: PF1.133/ev19.46/ic0.08 全过, 仅 n=324<350) ──
+
+def _aligned_verdict(vid, symbol, cov, n, pf, ev, ic, gate, status="ok",
+                     max_points=600):
+    return {"variant_id": vid, "symbol": symbol, "cov_override": cov,
+            "max_points": max_points, "n": n, "pf": pf, "ev": ev, "maxdd": -0.2,
+            "dir_acc": 0.5 + ic / 2.0, "gate_pass": gate, "ic": ic,
+            "decided_at": "2026-09-08T00:00:00", "checkpoint_path": "",
+            "slow_loop_pid": 1, "git_rev": "x", "schema": "fm.aligned_verdict.v1",
+            "status": status}
+
+def test_retest_candidates_only_n_near_miss():
+    snap = {
+        # 近失误: n<350, ic/ev/pf-ratio 全过 → 入选
+        "cj_oi": _aligned_verdict("cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False),
+        # n 已达标但 gate False (ic 不足) → 不入选
+        "ss_nvi": _aligned_verdict("ss_nvi", "ss", "nvi", 396, 1.068, 6.34, 0.036, False),
+        # 已过门 → 不入选
+        "ss_vor": _aligned_verdict("ss_vor", "ss", "vor", 396, 1.123, 11.06, 0.06, True),
+        # no_data 不进 dead → 不入选
+        "lh_x": _aligned_verdict("lh_x", "lh", "oi", 0, 0.0, 0.0, 0.0, False,
+                                 status="no_data"),
+        # n<350 但 pf/ev 不过 → 不入选 (加样本也无意义)
+        "m_bad": _aligned_verdict("m_bad", "m", "oi", 300, 0.9, -1.0, 0.08, False),
+    }
+    assert [v["variant_id"] for v in sup._retest_candidates(snap)] == ["cj_oi"]
+
+def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    with open(sup.REGISTRY, "w", encoding="utf-8") as f:
+        f.write(json.dumps(_aligned_verdict(
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+    log = str(tmp_path / "decisions.jsonl")
+    goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 1}}
+    live_n = {"cj": 324}
+    monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: live_n.get(s))
+    # 数据未增长到硬门样本量 → 不排队
+    assert sup._maybe_enqueue_retests(goal, log) == 0
+    assert not os.path.exists(sup.QUEUE)
+    # 本地库 n>=350 → 旁路 dead 去重排队, phase=slow
+    live_n["cj"] = 350
+    assert sup._maybe_enqueue_retests(goal, log) == 1
+    rows = sup.rl.queue_load(sup.QUEUE)
+    assert [r["variant_id"] for r in rows] == ["cj_oi"]
+    assert rows[0]["source"] == "sample_retest"
+    assert json.load(open(sup.STATE_PATH, encoding="utf-8"))["phase"] == "slow"
+    # 事件必须落在隔离的 tmp events 文件, 不得污染生产 supervisor_events.jsonl
+    ev = [json.loads(l) for l in open(sup.EVENTS_PATH, encoding="utf-8") if l.strip()]
+    assert [e["event"] for e in ev].count("sample_retest_enqueued") == 1
+    # 已在队列 → 不重复
+    assert sup._maybe_enqueue_retests(goal, log) == 0
+    assert len(sup.rl.queue_load(sup.QUEUE)) == 1
+
+def test_maybe_enqueue_retests_respects_margin(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    with open(sup.REGISTRY, "w", encoding="utf-8") as f:
+        f.write(json.dumps(_aligned_verdict(
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+    goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 30}}
+    monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: 350)
+    # 350-324=26 < margin 30 → 不排队
+    assert sup._maybe_enqueue_retests(goal, str(tmp_path / "d.jsonl")) == 0
+    assert not os.path.exists(sup.QUEUE)
+
+def test_maybe_enqueue_retests_fail_open_on_db_error(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    with open(sup.REGISTRY, "w", encoding="utf-8") as f:
+        f.write(json.dumps(_aligned_verdict(
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+    goal = {"cadence": {"retest_min_new_points": 1}}
+    monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: None)
+    # DB 查询失败 → 0 排队, 不抛
+    assert sup._maybe_enqueue_retests(goal, str(tmp_path / "d.jsonl")) == 0
+
+def test_menu_renders_symbol_sample_ceiling(monkeypatch, tmp_path):
+    monkeypatch.setattr(sup, "_symbol_n_table",
+                        lambda: [("cj", 324), ("m", 396), ("lh", None)])
+    dest = str(tmp_path / "menu.md")
+    sup.materialize_covariate_menu({}, dest)
+    txt = open(dest, encoding="utf-8").read()
+    assert "cj: n=324 BELOW GATE" in txt
+    assert "m: n=396 gate-reachable" in txt
+    assert "lh: n=? unknown" in txt
+
+def test_production_goal_yaml_tier1_expansion():
+    goal_fp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "scripts", "praxist_goal.yaml")
+    goal = sup.load_goal(goal_fp)
+    conds = goal["success_condition"]
+    # 当前生产状态: 仅 ss_vor 过门 → 扩目标后未达成
+    snap = {"symbols_hit": {"ss"}, "families_hit": {"vor"},
+            "pass_variant_pf_ratios": [1.123]}
+    ok, why = sup.evaluate_goal(conds, snap)
+    assert ok is False and any("symbols_hit" in w for w in why)
+    # 4 个 1 星品种过门 → 达成 (含 2 星品种不额外计数)
+    snap2 = {"symbols_hit": {"ss", "m", "sr", "jd", "ao"},
+             "families_hit": {"vor", "oi"}, "pass_variant_pf_ratios": [1.1, 1.08]}
+    ok2, _ = sup.evaluate_goal(conds, snap2)
+    assert ok2 is True
+    # 只有 3 个 1 星 (即使加 2 星凑数) → 仍未达成
+    snap3 = {"symbols_hit": {"ss", "m", "ao", "bu"},
+             "families_hit": {"vor"}, "pass_variant_pf_ratios": [1.1]}
+    ok3, _ = sup.evaluate_goal(conds, snap3)
+    assert ok3 is False
 

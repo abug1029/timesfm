@@ -21,7 +21,7 @@
 | 条件 | 动作 | 谁执行 |
 |------|------|--------|
 | MemAvailable **&lt; 2.5 GiB** | 预警：记 `mem_guard_watch.log`，报总管（可静默限频 15min/次） | 监控 |
-| MemAvailable **&lt; 2.2 GiB** | **强制**真实 `fm_eval` 并发 ≤ **1**（TERM **最新** `.venv/bin/python evaluations/fm_eval/run.py`，禁杀 launcher/wrapper） | FM研/监控 |
+| MemAvailable **&lt; 2.2 GiB** | **强制**真实 `fm_eval` 并发 ≤ **1**（TERM **最新** `.praxist-venv/bin/python evaluations/fm_eval/run.py`，禁杀 launcher/wrapper） | FM研/监控 |
 | cgroup ratio **≥ 0.85** | **禁止新 eval**（拒启 / flock 不放行）；已有 eval 可跑完或按下行降档 | mem_guard + 监控 |
 | cgroup ratio **≥ 0.90** | **主动停 peer eval**（TERM 全部真实 fm_eval），防 ORCHESTRATOR_SHUTDOWN@~0.94；报总管；**勿**自行清 SHUTDOWN 续跑除非总管授权 | FM研 |
 | 出现 `ORCHESTRATOR_SHUTDOWN` | 立即报总管；默认停干净再议，禁止 peer sleep 空转耗壁钟 | FM研 |
@@ -30,7 +30,7 @@
 
 - `scripts/mem_guard.py`：flock≤配置槽、MemAvailable 拒启、RSS shed  
 - `scripts/praxist_mem_guard_hook.py` + `zz_fm_mem_guard.pth`：强制 `protected_pids.launch_command`  
-- 计数真实 eval：`fm_eval/run.py` **以及** inline `python -c` / `HourlyModel` / `monthly_backtest` / **`/tmp/*eval*.py` / `standalone_eval` / `run_eval_v*`**（禁止把 bash/`protected_pids launch` cmdline 算进去）；硬顶仍=1，>1 时 TERM **最新** inline 优先；**禁止** peer 自写 /tmp 评测脚本
+- 计数真实 eval：**仅**匹配 `.praxist-venv/bin/python evaluations/fm_eval/run.py`（禁止把 bash/`protected_pids launch` cmdline 算进去）
 
 默认硬顶（本机）：
 

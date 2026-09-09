@@ -24,10 +24,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 模型路径锚定 `data.config.FM_ROOT`，不依赖进程 cwd
 - 幽灵 K 线：`data.future_bar_guard.run_guard` 为唯一批量入口（`daily_update` 末尾调用）
 
+## PRAXIST 三环（现行合同，2026-09-09）
+
+Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM/` 提供科学合同；外层监督环零 token 调度。架构见 `docs/praxist.md`，运维见 `docs/runbook_praxist_three_loop.md`。**不要改** `.praxist-venv` 里的 Praxist 源码。
+
+- 快环：peer 只写机制化假设（方案 A），不加载 TimesFM
+- 慢环：`scripts/aligned_slow_loop.py` 是唯一验证器，唯一可写 `aligned_verdicts.jsonl`
+- 硬门：n≥350 且 IC≥0.05 且扣滑点 EV>0
+- 目标：`scripts/praxist_goal.yaml`；机器状态：`data/cache/supervisor_state.json`
+- 密钥只进 `.env.praxist`，不要写进 `task_FM/task.yaml`
+
 ## 目录结构
 
+> **运行环境（2026-09-09 起）**：WSL2 Ubuntu-22.04，仓库根 `/home/abug/timesfm`（GitHub `abug1029/timesfm`），venv `.praxist-venv`（CPython 3.11）。下文 Windows `D:\FlyBuddy\...` 路径为历史遗留，已不适用；宿主事实见 `docs/host_environment_assessment.md` 顶部迁移表，PRAXIST 运维见 `docs/runbook_praxist_three_loop.md`。
+
 ```
-D:\FlyBuddy\FM_a\
+/home/abug/timesfm/
 ├── data/             # 期货数据管理系统
 │   ├── config.py               # 品种/交易所 + FM_ROOT/resolve_under_root
 │   ├── trading_calendar.py     # 会话感知交易日标签（夜盘/周末）
@@ -103,19 +115,19 @@ D:\FlyBuddy\FM_a\
 TQSDK_ACCOUNT=your_account
 TQSDK_PASSWORD=your_password
 
-# 激活环境 (共享底座)
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
-cd D:/FlyBuddy/FM_a
+# 激活环境 (WSL2, 本仓 .praxist-venv, CPython 3.11)
+source .praxist-venv/bin/activate
+cd /home/abug/timesfm
 ```
 
-**数据库位置：** `db/futures_<symbol>.db` (SQLite，每品种独立)
+**数据库位置：** `db/futures_<symbol>.db` (SQLite，每品种独立，本仓真实目录)
 
 ## 快速使用
 
 ```bash
-# 激活环境 (共享底座)
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
-cd D:/FlyBuddy/FM_a
+# 激活环境
+source .praxist-venv/bin/activate
+cd /home/abug/timesfm
 
 # 采集数据
 python -m data.cli collect cf          # 棉花

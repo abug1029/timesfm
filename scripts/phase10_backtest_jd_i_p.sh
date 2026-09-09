@@ -3,7 +3,7 @@
 # 用法: bash scripts/phase10_backtest_jd_i_p.sh
 
 set -e
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source .praxist-venv/bin/activate
 cd D:/FlyBuddy/fm_a
 
 echo "=== Phase 10 JD/I/P 完整 backtest ==="

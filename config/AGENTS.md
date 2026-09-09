@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-09 -->
 
 # config
 
@@ -16,6 +16,7 @@
 | `sector_map.py` | agri / chem / black 板块唯一表 |
 | `crack_spread_pairs.py` | 裂解价差配对与 ratio |
 | `knowledge_base.json` | Copilot L1+SCHEMES 信用背书（由 `build_knowledge_base.py` 生成） |
+| `praxist_task.yaml` | Praxist 预注册评估口径（n/IC/EV）；校验器 `scripts/praxist_validate_task.py` |
 
 ## For AI Agents
 

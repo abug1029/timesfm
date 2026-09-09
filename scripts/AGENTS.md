@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-09 -->
 
 # scripts
 
@@ -21,6 +21,9 @@ CLI 入口与实验编排：预测、月度回测、Vol/Neutral 全链路、A2 L
 | A2 残差叠加 | `a2_p2_orchestrator.py` | Track B 已 NO-GO 关闭 |
 | 数据日更 | `daily_update.py` | 末尾唯一 `run_guard` |
 | 调度采集 | `data_management.py` | 不二次 purge |
+| Praxist 监督环 | `praxist_supervisor.py` | 0 token 调度快/慢环；架构 `docs/praxist.md` |
+| Praxist 慢环 | `aligned_slow_loop.py` | 唯一验证器；唯一可写 `aligned_verdicts.jsonl` |
+| Praxist 目标 | `praxist_goal.yaml` | 成功条件 + 预算 + cadence |
 
 ## Key Backtest Scripts
 
@@ -54,6 +57,7 @@ CLI 入口与实验编排：预测、月度回测、Vol/Neutral 全链路、A2 L
 - 新指标请 import `cascade.evaluation_metrics`，勿本地重写。
 - 并发写 JSONL 必须锁（参考 A2 `exclusive_result_lock`）；monthly checkpoint 目前**无锁**。
 - 长时 batch 任务必须 `source scripts/_batch_lib.sh` + `batch_init`，禁止手写 `kill -0` Highlander。
+- Praxist：peer 不跑评估；不要改 `.praxist-venv`；verdict 只能由 `aligned_slow_loop.py` 写。import `praxist_supervisor` 当库不会再武装 atexit（handler 仅 `main()` 注册）。
 - **启动顺序**: 先手动 `powershell -File scripts/_kill_batch.ps1` 清残留 → 再 `nohup bash scripts/batch_fX.sh`（batch_init 不自动清场，因 MSYS winpid 与 Win32 进程树不兼容）。
 
 ### Known Bugs / Traps (2026-08-08 audit)

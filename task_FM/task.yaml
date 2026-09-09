@@ -1,37 +1,52 @@
 schema_version: 1
 task_id: fm_covariate_search_toy
-task_name: "FM_a covariate search task package"
+task_name: FM_a covariate search task package
 description_file: description.md
 capabilities:
-  - task.classical_control
-  - task.multi_metric_pareto
+- task.classical_control
+- task.multi_metric_pareto
+research_direction: 'Author MECHANISM-FIRST covariate hypotheses for the FM_a 1H
+  cascade walk-forward backtest. Peers do NOT run evaluations; they write structured
+  proposal JSON files (schema fm.hypothesis_proposal.v1) under the results proposals
+  tree and publish each via share_finding (finding_type=hypothesis). The slow loop
+  runs the only valid evidence (walk-forward n=350-600; gate n>=350 and IC>=0.05).
 
-research_direction: |
-  Search covariate candidates on the frozen FM_a 1H cascade backtest pipeline.
-  Candidates are JSON files {symbol, cov_override, max_points, stage} written under
-  scripts/praxist_ws/. symbol limited to 2-star symbols (m/ss/sr/cj/jd/lh/eg/rb);
-  cov_override limited to the pre-registered list (config/praxist_task.yaml).
-  diagnostic stage max_points 1..6; aligned stage 350..500.
-  Forbidden: editing evaluator/model code, writing outside allowed roots,
-  retraining models, look-ahead bias. Evaluator caliber owned by FM_a
-  (config/praxist_task.yaml). PRIMARY = ev_after_slippage (net of slippage).
-  GREEN requires full walk-forward + hard gate (n>=350, IC>=0.05, correction).
+  Each proposal needs: mechanism (>=40 chars, extends the covariate menu hypothesis to
+  the chosen symbol), symbol_fit, predicted_direction, and pre-registered kill/promote
+  conditions. cov_override limited to ACTIVE covariates in task_FM/config/covariate_pool.json
+  (rendered as covariate_menu.inc.md); archived covariates are forbidden. Symbols:
+  m/ss/sr/cj/jd/lh/eg/rb plus the 2-star set. Spread across covariate families (QD gate).
 
+  New indicator ideas (not in the pool) go to new_cov_<name>.json with cov_override=null
+  plus a new_covariate object; they route to a host backlog and are NOT backtested until
+  implemented in features.py.
+
+  Forbidden: running evaluations or loading TimesFM, editing evaluator/cascade/model
+  code, writing outside allowed roots, look-ahead bias, proposing without an articulable
+  mechanism, or repeating DEAD variant_ids. Evaluator caliber owned by FM_a.'
 prompt_layout:
   base_template: prompt_base.jinja2
   generation_template: prompt_generation.jinja2
-
 evaluation:
   primary_metric: ev_after_slippage
   direction: maximize
-  aux_metrics: [pf, maxdd, n, dir_acc, gate_pass]
-  seeds: [20260901]
+  aux_metrics:
+  - pf
+  - maxdd
+  - n
+  - dir_acc
+  - gate_pass
+  seeds:
+  - 20260901
   maturity_policy:
     min_effort_ratio: 0.85
     min_coverage_ratio: 0.85
     require_ratio_gate: true
-    complete_stage_labels: [complete, aligned]
-    preliminary_stage_labels: [diagnostic]
+    complete_stage_labels:
+    - complete
+    - aligned
+    preliminary_stage_labels:
+    - diagnostic
   launch_guard:
     enabled: true
     safety_factor: 1.5
@@ -55,64 +70,59 @@ evaluation:
       parent_allowed: true
       close_allowed: true
   diversity_dimensions:
-    - name: intent
-      description: "explore / exploit / falsify / diagnose"
+  - name: intent
+    description: explore / exploit / falsify / diagnose
   must_explore_axes:
-    - name: covariate_family
-      description: "each generation must cover at least one covariate family orthogonal to current best (QD gate)"
-
+  - name: covariate_family
+    description: each generation must cover at least one covariate family orthogonal
+      to current best (QD gate)
 compute_budget:
   max_parallel_runs_per_peer: 1
   max_concurrent_evals: 1
-
 task_entrypoints:
   evaluation:
     command: evaluations/fm_eval/run.py
-    output_policy: "scheduled commands use --output-dir and write one peer-owned evaluation_summary.json under results/gen_<N>/<peer_id>/<variant_id>/<mode>; task-root cwd is mandatory"
-
+    output_policy: scheduled commands use --output-dir and write one peer-owned evaluation_summary.json
+      under results/gen_<N>/<peer_id>/<variant_id>/<mode>; task-root cwd is mandatory
 runtime_outputs:
   root: .
   gitignored: true
-  policy: "Evaluation outputs go to results/gen_<N>/<peer_id>/<variant_id>/<stage>/ under the run dir. Do NOT write to scripts/praxist_ws/ (blocked by delete guard)."
-
+  policy: Evaluation outputs go to results/gen_<N>/<peer_id>/<variant_id>/<stage>/
+    under the run dir. Do NOT write to scripts/praxist_ws/ (blocked by delete guard).
 runtime_environment:
   cwd: task_project
-  venv: ../.venv
-  python: ../.venv/bin/python
+  venv: ../.praxist-venv
+  python: ../.praxist-venv/bin/python
   require_paths: true
   env:
-    CUDA_VISIBLE_DEVICES: ""
-    # ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY come from process env (.env.praxist).
-    # Do NOT hardcode BASE_URL here: praxist task_runtime_env would overwrite
-    # supervisor 429 failover overlays (Ark → DashScope). Hook
-    # scripts/praxist_llm_env_hook.py makes anthropic_messages honor process BASE_URL.
-    # ANTHROPIC_API_KEY intentionally omitted: empty string overwrites process env.
-  protected_child_paths: [evaluations, roles, audit_rules]
-  writable_roots: []
-
+    CUDA_VISIBLE_DEVICES: ''
+    PRAXIST_TRUSTED_PROJECT_EXTRA_ROOTS: /home/abug/timesfm
+  protected_child_paths:
+  - evaluations
+  - roles
+  - audit_rules
+  writable_roots:
+  - results
 generation_policy:
   max_generations: 3
   cohort_size: 2
   per_generation_hours: 1.5
   promote_top_k: 2
   promote_criterion: multi_metric_frontier_lanes
-
 synthesis_trigger:
   min_findings: 4
   min_contributing_peers: 2
   min_interval_minutes: 25
   max_interval_minutes: 45
-
 gems:
   enabled: true
   min_mature_eval_units: 1
-  evidence_stage_min_units: {aligned: 1, complete: 1}
-
+  evidence_stage_min_units:
+    aligned: 1
+    complete: 1
 agent:
   reasoning_effort: max
-
 baselines: []
-
 praxist_plugins:
   task_ref: task:fm_covariate_search_toy
   workflow:
@@ -120,10 +130,10 @@ praxist_plugins:
   panel:
     topology: panel_topology:legacy_multi_pi_two_round
     roles:
-      - task_role:peer_generalist
+    - task_role:peer_generalist
   audit_rules:
-    - task_audit:scope_and_protocol
+  - task_audit:scope_and_protocol
   evaluations:
-    - task_evaluation:fm_eval
+  - task_evaluation:fm_eval
   tools: []
   graph_maintainers: []

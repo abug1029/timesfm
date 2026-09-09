@@ -49,8 +49,8 @@
 - [ ] **Step 1: 安装 LightGBM 到共享 venv**
 
 ```bash
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/pip install lightgbm
-D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -c "import lightgbm; print(lightgbm.__version__)"
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/pip install lightgbm
+D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -c "import lightgbm; print(lightgbm.__version__)"
 ```
 Expected: 打印版本号 (≥4.0)
 
@@ -87,7 +87,7 @@ def test_vol_scaled_mae_multi_point():
 
 - [ ] **Step 3: 运行测试确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_vol_scaled_mae.py -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_vol_scaled_mae.py -v`
 Expected: FAIL (ImportError / function not defined)
 
 - [ ] **Step 4: 实现 calc_vol_scaled_mae**
@@ -126,7 +126,7 @@ def calc_vol_scaled_mae(
 
 - [ ] **Step 5: 运行测试确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_vol_scaled_mae.py -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_vol_scaled_mae.py -v`
 Expected: 3 passed
 
 - [ ] **Step 6: 提交**
@@ -200,7 +200,7 @@ def test_market_features_no_lookahead():
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_lgbm_features.py::test_market_features_schema -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_lgbm_features.py::test_market_features_schema -v`
 Expected: FAIL (module not found)
 
 - [ ] **Step 3: 实现 extract_market_features_at_bar**
@@ -299,7 +299,7 @@ def extract_market_features_at_bar(
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_lgbm_features.py -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_lgbm_features.py -v`
 Expected: 2 passed
 
 - [ ] **Step 5: 提交**
@@ -355,7 +355,7 @@ def test_timesfm_features_schema():
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_lgbm_features.py::test_timesfm_features_schema -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_lgbm_features.py::test_timesfm_features_schema -v`
 Expected: FAIL (function not defined)
 
 - [ ] **Step 3: 实现 compute_timesfm_features_batch**
@@ -438,7 +438,7 @@ def compute_timesfm_features_batch(
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_lgbm_features.py -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_lgbm_features.py -v`
 Expected: 3 passed
 
 - [ ] **Step 5: 提交**
@@ -531,7 +531,7 @@ def test_dense_matrix_no_lookahead():
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_lgbm_features.py::test_dense_matrix_schema_and_cache -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_lgbm_features.py::test_dense_matrix_schema_and_cache -v`
 Expected: FAIL
 
 - [ ] **Step 3: 实现 build_dense_feature_matrix**
@@ -627,7 +627,7 @@ def build_dense_feature_matrix(
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_lgbm_features.py -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_lgbm_features.py -v`
 Expected: 5 passed
 
 - [ ] **Step 5: 提交**
@@ -695,7 +695,7 @@ def test_walkforward_no_train_test_overlap():
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_baseline.py -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_baseline.py -v`
 Expected: FAIL (module not found)
 
 - [ ] **Step 3: 实现 train_lgbm_walkforward**
@@ -824,7 +824,7 @@ def train_lgbm_walkforward(
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_baseline.py -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_baseline.py -v`
 Expected: 2 passed
 
 - [ ] **Step 5: 提交**
@@ -892,7 +892,7 @@ def test_evaluate_gate_no_go():
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_baseline.py::test_evaluate_gate_go -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_baseline.py::test_evaluate_gate_go -v`
 Expected: FAIL
 
 - [ ] **Step 3: 实现 bootstrap + evaluate_gate**
@@ -976,7 +976,7 @@ def evaluate_gate(
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_a2_p1_baseline.py -v`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_a2_p1_baseline.py -v`
 Expected: 5 passed
 
 - [ ] **Step 5: 提交**
@@ -1007,7 +1007,7 @@ def test_smoke_ss_end_to_end():
     """端到端: ss 品种, --max-points 10, 验证落盘 + 报告生成"""
     import subprocess
     r = subprocess.run(
-        ["D:/FlyBuddy/shared/timesfm/.venv/Scripts/python",
+        ["D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python",
          "scripts/a2_p1_lgbm_baseline.py", "ss", "--max-points", "10",
          "--dense-step", "24", "--refit-every", "5"],
         capture_output=True, text=True, cwd="D:/FlyBuddy/fm_a", timeout=1800,
@@ -1193,12 +1193,12 @@ if __name__ == "__main__":
 
 - [ ] **Step 3: 运行全量单测 (非 smoke)**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python -m pytest tests/test_vol_scaled_mae.py tests/test_lgbm_features.py tests/test_a2_p1_baseline.py -v -m "not slow"`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python -m pytest tests/test_vol_scaled_mae.py tests/test_lgbm_features.py tests/test_a2_p1_baseline.py -v -m "not slow"`
 Expected: 全 passed
 
 - [ ] **Step 4: smoke 测试 (单品种 ss, 减量)**
 
-Run: `D:/FlyBuddy/shared/timesfm/.venv/Scripts/python scripts/a2_p1_lgbm_baseline.py ss --max-points 10 --dense-step 24 --refit-every 5`
+Run: `D:/FlyBuddy/timesfm/.praxist-venv/Scripts/python scripts/a2_p1_lgbm_baseline.py ss --max-points 10 --dense-step 24 --refit-every 5`
 Expected: 退出码 0, 生成 `reports/a2_p1_baseline_results.jsonl` + `reports/research/2026-08-04_a2_p1_baseline_result.md`, 打印 ss 的 gate。
 
 - [ ] **Step 5: 提交**

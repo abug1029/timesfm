@@ -1,5 +1,7 @@
 # PRAXIST 探索指令发布机制设计 (2026-09-02)
 
+> **状态（2026-09-09）**：指令闭环（PI 议程 × 角色契约 × 证据路径）仍有效。§3 的 diagnostic/aligned 证据阶梯与「peer 跑评估」已被 2026-09-08 **方案 A** 取代：peer 只写机制化假设，慢环是唯一验证器。现行合同见 [`spec_hypothesis_driven_fast_loop_20260908.md`](./spec_hypothesis_driven_fast_loop_20260908.md) 与 `task_FM/prompt_base.jinja2`。架构见 [`praxist.md`](./praxist.md)。
+
 ## 1. 问题定义
 
 协变量搜索的质量不取决于尝试数量, 而取决于每代指令的信息增量。

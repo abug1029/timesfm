@@ -10,7 +10,7 @@
 | 数据库 | `db/futures_<symbol>.db` |
 
 ```bash
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 cd D:/FlyBuddy/FM_a
 ```
 

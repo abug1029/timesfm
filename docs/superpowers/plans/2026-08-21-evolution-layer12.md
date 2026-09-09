@@ -40,7 +40,7 @@ JM -265% / FG -134% 的 MaxDD 值在数学上不合理（最大亏损不应超�
 
 ```bash
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 # 复现 JM 的 -265% MaxDD
 PYTHONIOENCODING=utf-8 python scripts/monthly_backtest.py jm 2>&1 | grep -i "maxdd\|max_dd\|drawdown"
 ```
@@ -78,7 +78,7 @@ class TestMaxDDCalculation(unittest.TestCase):
 
 ```bash
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 PYTHONIOENCODING=utf-8 python -m pytest tests/test_maxdd_calculation.py -v
 ```
 
@@ -167,7 +167,7 @@ export PYTHONIOENCODING=utf-8
 export PYTHONWARNINGS=ignore
 
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 
 JSONL="reports/data_ops/batch_weak_combo_progress.jsonl"
 LOG="reports/data_ops/batch_weak_combo.log"
@@ -247,7 +247,7 @@ SH (烧碱) 于 2026-07-27 加入品种池, Phase 11 测试 0 GREEN (best PF=0.9
 
 ```bash
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 PYTHONIOENCODING=utf-8 python scripts/monthly_backtest.py sh
 ```
 
@@ -395,7 +395,7 @@ git commit -m "chore: dir_acc 全量刷新 (2026-08-21 窗口)"
 
 ```bash
 cd D:/FlyBuddy/FM_a
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
+source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
 PYTHONIOENCODING=utf-8 python scripts/build_knowledge_base.py
 ```
 
