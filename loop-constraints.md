@@ -44,11 +44,11 @@
 - 如果 loop-pause-all 激活，立即退出
 - 如果 STATE.md 无待处理事项，快速退出（不要空跑）
 
-## 预注册评估契约 (2026-09-01, P0a)
-- **任何诊断性回测启动前**，先在任务文件中写死最终裁决口径：全量 walk-forward、扣滑点 EV>0、IC≥0.05、多重比较校正（bonferroni/holm）
-- 评估代码与口径同 commit 落盘；诊断 PF 好看不作数（B1 教训：诊断 PF 好看但全量 0/11 GREEN）
+## 预注册评估契约 (2026-09-01, P0a；2026-09-08 方案 A 修订)
+- **最终裁决口径不变**：全量 walk-forward（n≥350）、IC≥0.05（ic=2×|dir_acc−0.5|）、扣滑点 EV>0、PF/incumbent>1.05
+- **方案 A（2026-09-08 起）：peers 不再跑任何评估/加载 TimesFM**，只写机制化提案 `results/**/proposals/*.json`（schema `fm.hypothesis_proposal.v1`，mechanism ≥40 字）；慢环 `aligned_slow_loop.py` 是唯一验证器，诊断小样本 PF 不作数
 - 契约权威文件：`config/praxist_task.yaml`（校验器 `scripts/praxist_validate_task.py`，违规 exit 2）
-- PRAXIST peers 唯一可写区：`scripts/praxist_ws/` 与 `reports/praxist/`；SCHEMES/cascade/data.config 固化仍须人工执行
+- PRAXIST peers 唯一可写区：run 目录下 `results/`（proposals/findings）；新协变量想法只能进 `task_FM/config/covariate_backlog.jsonl`。SCHEMES/cascade/data.config 固化、features.py 加协变量仍须人工（宿主）执行
 
 ---
 <!-- 在下方添加自定义规则。Loop 会原样读取。 -->

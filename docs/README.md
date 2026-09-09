@@ -14,6 +14,21 @@
 | [validation_criteria.md](./validation_criteria.md) | 固化判据 v2 |
 | [backtest_registry.md](./backtest_registry.md) | 历史协变量实验目录（Phase 扫描；**新口径以 g005e 为准**） |
 
+### PRAXIST 自主研究三环（2026-09）
+
+| 文档 | 内容 |
+|------|------|
+| [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | **运维手册（先读）**：启停、429 failover、队列/checkpoint、方案 A 收割、近失误复测、故障速查 |
+| [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（已实施，含 2026-09-09 增补） |
+| [praxist_directive_design.md](./praxist_directive_design.md) | 指令/目标 DSL 设计 |
+| [praxist_integration_plan.md](./praxist_integration_plan.md) | 三环集成计划 |
+| [praxist_llm_env.md](./praxist_llm_env.md) | LLM 环境变量（Ark 主 / DashScope 备） |
+| [praxist_peer_evaluation_fix.md](./praxist_peer_evaluation_fix.md) | 诊断评估可信度分析（方案 A 动机） |
+| [host_environment_assessment.md](./host_environment_assessment.md) | 宿主评估（**顶部有 2026-09-09 WSL 迁移事实表**） |
+| [audit_system_efficiency_20260908.md](./audit_system_efficiency_20260908.md) | 2026-09-08 系统效率审计 |
+
+Goal / 运行口径：`scripts/praxist_goal.yaml`（2026-09-09 起目标=1 星品种过门 ≥4）。
+
 ### 2026-08-08 新口径 rebaseline（必读）
 
 | 文档 | 内容 |
@@ -25,8 +40,8 @@
 ## 30 秒上手
 
 ```bash
-source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
-cd D:/FlyBuddy/FM_a
+cd /home/abug/timesfm
+source .praxist-venv/bin/activate
 
 # 盘中主观（推荐）
 python scripts/copilot.py ss fu

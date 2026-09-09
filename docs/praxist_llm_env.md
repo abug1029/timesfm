@@ -5,7 +5,7 @@
 ## 启动前
 
 ```bash
-cd /workspace/repos/timesfm-abug1029
+cd /home/abug/timesfm   # WSL2 Ubuntu-22.04
 set -a
 source .env.praxist
 set +a
@@ -21,9 +21,9 @@ set +a
 | `ANTHROPIC_API_KEY` | 网关鉴权 | **仅** `.env.praxist`；勿写入 yaml / 报告 |
 | `ANTHROPIC_AUTH_TOKEN` | 备选鉴权名 | `praxist_supervisor._praxist_env` 会映射到 `ANTHROPIC_API_KEY` |
 | `VOLCENGINE_API_KEY` | Volc 直连时 | 若网关另要 Volc key 再填；否则可空 |
-| `FM_TIMESFM_MODEL_PATH` | TimesFM 本地权重根 | 默认 `/workspace/repos/timesfm-abug1029/models/timesfm-2.5-200m-pytorch` |
+| `FM_TIMESFM_MODEL_PATH` | TimesFM 本地权重根 | `/home/abug/timesfm/models/timesfm-2.5-200m-pytorch`（WSL 仓内） |
 | `TIMESFM_WEIGHTS_DIR` | 指纹 / 兼容别名 | 可与上者同路径 |
-| `PRAXIST_BIN` | praxist 可执行文件 | 默认 `/home/box/.praxist-venv/bin/praxist` |
+| `PRAXIST_BIN` | praxist 可执行文件 | supervisor 默认解析本仓 `.praxist-venv/bin/praxist` |
 | `CUDA_VISIBLE_DEVICES` | 设备 | task.yaml 默认 `""`（CPU） |
 
 ## 可选
@@ -62,7 +62,7 @@ set +a
 
 ### 模型如何传到 praxist
 
-- **今日主用**：`claude-opus-4-7`（`PRIMARY_MODEL`；praxist 默认亦为此）
+- **主用模型**：`claude-opus-4-7`（`PRIMARY_MODEL`；praxist 默认亦为此；当前 `.env.praxist` 中实际配为 qwen3.7-plus 时以 env 为准）
 - **Failover**：`qwen3.7-plus`
 - **接线优先序**：supervisor start/resume **argv `--model <name>`**（明确覆盖）→ 同时设 env `PRAXIST_MODEL`（praxist CLI 也会读）→ 不改 `task.yaml`
 - **BASE_URL**：勿在 `task_FM/task.yaml` `runtime_environment.env` 写死；由 process env + `scripts/praxist_llm_env_hook.py`（`.pth` 安装）让 `anthropic_messages` 透传 `ANTHROPIC_BASE_URL`。重装 praxist 后跑 `scripts/install_praxist_llm_env_hook.py`。

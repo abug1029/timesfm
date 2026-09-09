@@ -30,17 +30,18 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 | 用途 | 仓库 / 进程 | 权重路径 |
 |------|-------------|----------|
 | 预测岗 | `timesFM_fu` | 其自身路径或该进程的 HF cache；**勿与 PRAXIST 共用 runtime 加载路径** |
-| PRAXIST / FM_a cascade 慢路径 | `timesfm-abug1029`（本仓） | **本地目录** `/workspace/repos/timesfm-abug1029/models/timesfm-2.5-200m-pytorch` |
+| PRAXIST / FM_a cascade 慢路径 | `timesfm`（本仓，WSL `/home/abug/timesfm`） | **本地目录** `/home/abug/timesfm/models/timesfm-2.5-200m-pytorch` |
 
 - 环境变量（优先）：`FM_TIMESFM_MODEL_PATH`（兼容 `TIMESFM_MODEL_PATH` / `TIMESFM_WEIGHTS_DIR`）
 - 解析入口：`data.config.get_timesfm_model_path()`；cascade `DailyModel`/`HourlyModel` 经此加载
 - HF hub id `google/timesfm-2.5-200m-pytorch` 仅作缺本地权重时的最后回退；PRAXIST 正式跑应保证本地目录已填充
 - 权重目录 gitignore：`models/timesfm-*/`；填充方式：从 HF cache snapshot **复制**（非 runtime 直连共享 cache）或 `huggingface-cli download --local-dir`
 
-## PRAXIST 运行环境（box）
+## PRAXIST 运行环境（WSL2）
 
-- praxist venv：`/home/box/.praxist-venv`（回退：本仓 `.praxist-venv`）；监督环 `scripts/praxist_supervisor.py` 自动解析，可用 `PRAXIST_BIN` 覆盖
-- LLM：启动前 `set -a; source .env.praxist; set +a`（文件 gitignored）。`task_FM/task.yaml` 内 **不要** 放明文 API key
+- 宿主：WSL2 Ubuntu-22.04，项目根 `/home/abug/timesfm`，8 vCPU / 7.7 GiB / 无 GPU（旧 Grok 盒 `/workspace` 路径已废弃）
+- praxist venv：本仓 `.praxist-venv`（CPython 3.11，FM_a 与 PRAXIST 共用）；监督环自动解析本仓 `bin/praxist`，可用 `PRAXIST_BIN` 覆盖
+- 规范启动：`set -a; source .env.praxist; set +a` 后 setsid 拉起 supervisor（见 `docs/runbook_praxist_three_loop.md`）。`task_FM/task.yaml` 内 **不要** 放明文 API key
 - 所需环境变量见 `docs/praxist_llm_env.md`
 
 ## 分层文档 (deepinit 2026-08-08)
@@ -84,7 +85,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 ## 目录结构
 
 ```
-/workspace/repos/timesfm-abug1029/
+/home/abug/timesfm/
 ├── data/             # 期货数据管理系统
 │   ├── config.py               # 品种/交易所 + FM_ROOT/resolve_under_root
 │   ├── trading_calendar.py     # 会话感知交易日标签（夜盘/周末）
@@ -154,22 +155,22 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## 环境配置
 
-> 宿主评估见 `docs/host_environment_assessment.md`（2026-09-04：8 核 / 15GiB / 无 GPU）。下列 Windows 路径已废弃。
+> 宿主评估见 `docs/host_environment_assessment.md` 顶部 2026-09-09 WSL 迁移表（8 vCPU / 7.7GiB / 无 GPU）。旧 Grok 盒 `/workspace/...` 与 Windows `D:/FlyBuddy/...` 路径均已废弃。
 
 **必需：**
 ```bash
-cd /workspace/repos/timesfm-abug1029
+cd /home/abug/timesfm
 source .praxist-venv/bin/activate
-# TqSdk: .env → symlink timesFM_fu/.env（勿把密钥写入可提交文件）
+# TqSdk 凭证在 .env（真实文件，勿把密钥写入可提交文件）
 ```
 
-**数据库位置：** `db/` → symlink → `/workspace/repos/timesFM_fu/db`（行情岗维护，每品种 `futures_<symbol>.db`）
+**数据库位置：** 本仓 `db/futures_<symbol>.db`（真实目录，29 个品种 SQLite；不再是 /workspace symlink）
 
 ## 快速使用
 
 ```bash
-# 激活环境 (共享底座)
-cd /workspace/repos/timesfm-abug1029 && source .praxist-venv/bin/activate
+# 激活环境
+cd /home/abug/timesfm && source .praxist-venv/bin/activate
 
 # 采集数据
 python -m data.cli collect cf          # 棉花

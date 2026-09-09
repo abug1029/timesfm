@@ -1,6 +1,22 @@
 # 宿主环境评估报告（Grok Bot 盒）
 
-> **as_of**: 2026-09-04 09:31 CST
+> **⚠️ 2026-09-09 起宿主再次迁移：以下 Grok Box（Debian/`/workspace`/15GiB/CPython 3.13）结论为历史记录，当前事实以下表为准。**
+>
+> | 项 | 当前值（2026-09-09 实测，WSL） |
+> |----|-----|
+> | 主机 | **WSL2**（Windows 10，发行版 Ubuntu-22.04.5，kernel 6.18 microsoft-standard） |
+> | 项目根 | **`/home/abug/timesfm`**（GitHub `abug1029/timesfm`，分支 `improve/system_efficiency`） |
+> | Python | 本仓 **`.praxist-venv`（CPython 3.11.15）**，FM_a 与 PRAXIST 共用 |
+> | CPU / 内存 | 8 vCPU / **7.7 GiB total（无 swap 兜底，OOM 风险高于旧盒 15GiB）** |
+> | GPU | 无 |
+> | 磁盘 | `/` 约 1TB，用量 2% |
+> | 行情库 | **本仓 `db/` 为真实目录**（29 个 `futures_<sym>.db`），不再是 `/workspace` symlink；`.env` 为真实文件 |
+> | 权重 | 本仓 `models/timesfm-2.5-200m-pytorch/` |
+> | Praxist CLI | 本仓 `.praxist-venv/bin/praxist` |
+>
+> 旧盒的 N=4≈8.53GiB 结论在 7.7GiB WSL 上更不可持续；flock≤2 / `MemAvailable<2GiB` 拒启的硬顶继续有效。旧 `/workspace` 硬编码残留会报 `assets_archive_error: Permission denied: '/workspace'`（已 catch，非阻塞，待清理）。
+
+> **as_of**: 2026-09-04 09:31 CST（**已被上方 2026-09-09 WSL 事实取代，保留作历史**）
 > **取代**: 文档中基于 Windows/`D:/FlyBuddy`、旧 Linux `/root/timesFM_fu`（约 1.9GB RAM / 2 核）的环境结论。那些评估**不适用于**当前宿主。  
 > **实测命令**: `lscpu` / `free -h` / `df -h` / `nvidia-smi`（无设备）
 

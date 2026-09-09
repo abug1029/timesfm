@@ -1,8 +1,16 @@
 # 设计规格：快环 Peer 转型为机制化假设作者（Hypothesis-Driven Fast Loop）
 
 > 日期: 2026-09-08
-> 状态: 待实施
+> 状态: **已实施（2026-09-08 上线，当日首个过门策略 ss_vor 即出自本方案）**
 > 关联文档: praxist_peer_evaluation_fix.md, audit_system_efficiency_20260908.md, runbook_praxist_three_loop.md
+
+> **实施后增补（2026-09-09）**：
+> - §4.3 选座在 QD 两遍填充之前增加 **tier 分层**（goal `cadence.priority_symbols`）：目标 1 星品种且当前 n≥350 → 目标品种欠样本（cj/lh）→ 其余品种；修复"扩目标后慢环座位全给 2 星"问题。
+> - 新增 **n-不足近失误自动复测**：`plan_sample_retests` / `_maybe_enqueue_retests` 每 tick 扫描 gate 仅差 n 的裁决（n<350, ic≥0.05, ev>0, pf/incumbent>1.05），本地库有效点长到 ≥350 时旁路 dead 去重补队，checkpoint resume 只算新点；goal key `retest_min_new_points`。
+> - 菜单新增 **symbol sample ceiling** 段（每品种当前可对齐有效点 + BELOW GATE/gate-reachable）。
+> - 与设计的偏差：§4.3"合格未入队提案结转 pending-proposals 索引"未实现（下一 cycle 直接重扫 proposals/，dead/in-flight 去重已防重复入队）。
+> - 事件可靠性修复：signal/atexit handler 改为 `main()` 启动时才武装（import 本模块当库用不再误发 unexpected_exit）；测试经 `_patch_paths` 隔离 EVENTS_PATH。
+> - 当前运行口径（host 迁移）：WSL2 Ubuntu-22.04 `/home/abug/timesfm`，`.praxist-venv` CPython 3.11，7.7 GiB RAM。
 
 ---
 
