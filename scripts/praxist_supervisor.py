@@ -702,7 +702,10 @@ def materialize_covariate_menu(pool, dest_path):
     # 品种样本天花板 (本地库当前可对齐有效点; 硬门 n>=350)。fail-open：无 DB/查询失败则跳过。
     try:
         n_table = _symbol_n_table()
-    except Exception:
+    except Exception as exc:
+        # 仅预期失败 (DB 连接/查询); 其余 (ImportError, AttributeError) 需浮出
+        if isinstance(exc, (ImportError, AttributeError, SyntaxError)):
+            raise
         n_table = []
     if n_table:
         lines.append("### symbol sample ceiling (valid aligned points now; hard gate n>=350)")
@@ -830,12 +833,16 @@ def _read_cpu_hours():
     p = os.path.join(FM_ROOT, "data", "cache", "slow_loop_metrics.jsonl")
     total = 0.0
     if os.path.exists(p):
-        for line in open(p, encoding="utf-8"):
-            if line.strip():
-                try:
-                    total += float(json.loads(line).get("elapsed_s", 0)) / 3600.0
-                except (json.JSONDecodeError, ValueError, TypeError):
-                    continue
+        try:
+            with open(p, encoding="utf-8") as fh:
+                for line in fh:
+                    if line.strip():
+                        try:
+                            total += float(json.loads(line).get("elapsed_s", 0)) / 3600.0
+                        except (json.JSONDecodeError, ValueError, TypeError):
+                            continue
+        except OSError:
+            pass
     return round(total, 3)
 
 def _ensure_tokens_baseline(st):
@@ -900,7 +907,10 @@ def _slow_loop_alive():
     lock_path = os.path.join(FM_ROOT, "data", "cache", "aligned_slow_loop.lock")
     if not os.path.exists(lock_path):
         return False
-    f = open(lock_path, "a")
+    try:
+        f = os.open(lock_path, os.O_RDONLY)
+    except OSError:
+        return False
     try:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fcntl.flock(f, fcntl.LOCK_UN)
@@ -908,7 +918,7 @@ def _slow_loop_alive():
     except BlockingIOError:
         return True
     finally:
-        f.close()
+        os.close(f)
 
 def _queue_busy():
     return bool(rl.queue_load(QUEUE) + rl.queue_load(INPROGRESS))
@@ -987,9 +997,8 @@ def decide_fast_loop(goal, dry_run=False, now=None):
         ]
 
     def _start_argv(provider):
-        import datetime as _dt
         tag = "failover_qwen" if provider == "failover" else "primary"
-        ts = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         run_dir = os.path.join(
             FM_ROOT, "task_FM", "experiments", f"run_{ts}_{tag}_task_FM",
         )
@@ -1332,8 +1341,11 @@ def _maybe_start_slow_loop(goal, log):
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     out_fp = open(out_path, "ab")
     try:
+        project_python = os.path.join(FM_ROOT, ".venv", "bin", "python")
+        if not os.path.isfile(project_python):
+            project_python = sys.executable
         subprocess.Popen(
-            [sys.executable, os.path.join(HERE, "aligned_slow_loop.py")],
+            [project_python, os.path.join(HERE, "aligned_slow_loop.py")],
             stdout=out_fp, stderr=subprocess.STDOUT, start_new_session=True)
     finally:
         out_fp.close()
@@ -1465,6 +1477,35 @@ def _main_locked(args):
                     # Skip success/budget returns by jumping to phase handling
                 else:
                     _maybe_finish_slow(goal, log)
+                    # Re-check goal after slow drain — slow loop verdicts may have
+                    # satisfied the success condition since the stale snapshot at top.
+                    fresh_cycles = int(load_state().get("cycles_done") or 0)
+                    fresh_cpu_h = _read_cpu_hours()
+                    fresh_tok_m, fresh_tok_unknown = _read_token_m()
+                    fresh_tok_spend = _token_spend_m(load_state(), fresh_tok_m)
+                    fresh_snap = build_snapshot(REGISTRY, fresh_cycles, fresh_cpu_h, fresh_tok_spend)
+                    fresh_ok, fresh_why = evaluate_goal(goal["success_condition"], fresh_snap)
+                    if fresh_ok:
+                        rec = _log_decision(log, "goal_reached",
+                                            "; ".join(fresh_why) or "all conditions met (post-slow-drain)")
+                        write_stop_report("goal_reached", fresh_snap, fresh_why, rec["reason"])
+                        _emit_event("critical", "goal_reached", {
+                            "why": fresh_why, "cycles_done": fresh_cycles,
+                            "cpu_h": fresh_cpu_h, "tok_m": fresh_tok_spend,
+                            "source": "budget_hit_post_slow_drain",
+                        })
+                        _mark_stop_emitted()
+                        print(json.dumps(rec, ensure_ascii=False))
+                        return 0
+                    # Goal not reached — recompute budget_hit with fresh numbers
+                    fresh_b = goal["budgets"]
+                    fresh_tok_hit = (not fresh_tok_unknown) and fresh_tok_spend >= fresh_b.get("token_budget_m", 80)
+                    budget_hit = (fresh_cycles >= (args.max_cycles or goal["budgets"]["max_cycles"])
+                                  or fresh_cpu_h >= fresh_b.get("cpu_hours", 60)
+                                  or fresh_tok_hit or _deadline_passed(fresh_b))
+                    # Update outer-scope vars so the budget_exhausted report (if still hit) is accurate
+                    cycles, cpu_h, tok_spend, snap = fresh_cycles, fresh_cpu_h, fresh_tok_spend, fresh_snap
+                    tok_unknown, tok_hit = fresh_tok_unknown, fresh_tok_hit
             if budget_hit:
                 rec = _log_decision(log, "budget_exhausted",
                                     f"cycles={cycles}/{max_cycles} cpu_h={cpu_h} "
