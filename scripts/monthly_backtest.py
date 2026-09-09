@@ -198,12 +198,9 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
         fill_strategy: Horizon 填充策略, "default" (常数) 或 "decay" (12-bar 半衰期衰减)
         daily_cache_dir: 日线预测 pickle 缓存目录 (None=不缓存)
     """
-    store = DataStore(symbol)
-    all_1h = store.get_main_contract_1h(limit=99999)
-
-    # 检查日线数据可用性 (daily model 需要 CONTEXT_DAYS 天)
-    daily_df = store.get_main_continuous(limit=99999)
-    store.close()
+    with DataStore(symbol) as store:
+        all_1h = store.get_main_contract_1h(limit=99999)
+        daily_df = store.get_main_continuous(limit=99999)
 
     if all_1h.empty or len(all_1h) < CONTEXT_BARS + HORIZON:
         return None
