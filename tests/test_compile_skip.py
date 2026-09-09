@@ -123,3 +123,47 @@ def test_shared_model_daily_then_hourly_must_recompile():
     assert m.n == n_after_daily + 1
     ensure_compiled(m, DailyModel._DAILY_CONFIG)
     assert m.n == n_after_daily + 2
+
+import pytest
+from data.data_store import BacktestDataStore
+
+
+@pytest.mark.slow
+def test_skip_vs_force_compile_bitexact_real_model():
+    cutoffs = [
+        "2021-01-05 14:00:00",
+        "2021-01-11 09:00:00",
+        "2021-01-14 13:00:00",
+    ]
+    probe = BacktestDataStore("m", cutoffs[0])
+    try:
+        df = probe.get_main_continuous(limit=30)
+        if df is None or getattr(df, "empty", True):
+            pytest.skip("no m daily data")
+        df1h = probe.get_main_contract_1h(limit=30)
+        if df1h is None or getattr(df1h, "empty", True):
+            pytest.skip("no m 1h data")
+    finally:
+        probe.close()
+
+    daily = DailyModel()
+    hourly = HourlyModel(shared_model=daily.model)
+    for cutoff in cutoffs:
+        with BacktestDataStore("m", cutoff) as store:
+            r_skip = daily.predict("m", store, context_days=250, horizon_days=22)
+            daily.model.compile(DailyModel._DAILY_CONFIG)
+            setattr(daily.model, FM_COMPILED_FP_ATTR, None)
+            r_force = daily.predict("m", store, context_days=250, horizon_days=22)
+            assert np.array_equal(r_skip.forecast, r_force.forecast), cutoff
+
+            h_skip = hourly.predict(
+                "m", store, r_skip, horizon=24, visualize=False,
+                covariate_type="ccl", verbose=False,
+            )
+            hourly.model.compile(HourlyModel._XREG_CONFIG)
+            setattr(hourly.model, FM_COMPILED_FP_ATTR, None)
+            h_force = hourly.predict(
+                "m", store, r_force, horizon=24, visualize=False,
+                covariate_type="ccl", verbose=False,
+            )
+            assert np.array_equal(h_skip.point_forecast, h_force.point_forecast), cutoff
