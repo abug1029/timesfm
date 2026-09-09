@@ -11,6 +11,7 @@ gate_pass=False: DEAD, revive only with PI mechanism correction.
 - fu_nvi: gate_pass=False, ev=3.82, n=396, status=ok
 - rb_ha_body: gate_pass=False, ev=3.0, n=396, status=ok
 - ss_ha_body: gate_pass=False, ev=2.1, n=396, status=ok
+- p_vor: gate_pass=False, ev=1.73, n=396, status=ok
 - ss_ccl: gate_pass=False, ev=1.49, n=396, status=ok
 - ta_bb_squeeze: gate_pass=False, ev=0.32, n=396, status=ok
 - sr_calendar_cyclical: gate_pass=False, ev=-0.85, n=396, status=ok
