@@ -79,7 +79,7 @@ class DailyModel:
                 "google/timesfm-2.5-200m-pytorch"
             )
         # compile 为日线配置 (predict 中也会重新 compile，确保配置正确)
-        self.model.compile(self._DAILY_CONFIG)
+        ensure_compiled(self.model, self._DAILY_CONFIG)
 
     def predict(self, symbol: str, store: DataStore,
                 context_days: int = 250, horizon_days: int = 22) -> DailyResult:
@@ -96,7 +96,7 @@ class DailyModel:
             DailyResult
         """
         # 确保日线配置生效 (HourlyModel 会重编译为 XReg，每次 predict 前重新 compile)
-        self.model.compile(self._DAILY_CONFIG)
+        ensure_compiled(self.model, self._DAILY_CONFIG)
 
         # 读取主链日线数据
         df = store.get_main_continuous(limit=context_days)

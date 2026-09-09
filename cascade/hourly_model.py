@@ -14,7 +14,7 @@ from pathlib import Path
 
 import timesfm
 from data.data_store import DataStore, BacktestDataStore
-from .daily_model import DailyResult
+from .daily_model import DailyResult, ensure_compiled
 from .features import build_covariate_matrix, build_combo_covariate_matrix, visualize_alignment
 
 
@@ -79,12 +79,12 @@ class HourlyModel:
             # [B2-1] 共享模型实例，避免重复加载 (~800MB)
             self.model = shared_model
             # compile 为 XReg 配置 (predict 中也会重新 compile，确保配置正确)
-            self.model.compile(self._XREG_CONFIG)
+            ensure_compiled(self.model, self._XREG_CONFIG)
         else:
             self.model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
                 "google/timesfm-2.5-200m-pytorch"
             )
-            self.model.compile(self._XREG_CONFIG)
+            ensure_compiled(self.model, self._XREG_CONFIG)
 
     def predict(self, symbol: str, store: DataStore,
                 daily_result: DailyResult, horizon: int = 24,
@@ -114,7 +114,7 @@ class HourlyModel:
             HourlyResult
         """
         # 确保 XReg 配置生效 (DailyModel 会重编译为日线配置，每次 predict 前重新 compile)
-        self.model.compile(self._XREG_CONFIG)
+        ensure_compiled(self.model, self._XREG_CONFIG)
 
         # 0. 数据校验 (skip_validation 仅跳过重复告警输出，错误阻断始终生效)
         from .data_validator import validate_prediction_data

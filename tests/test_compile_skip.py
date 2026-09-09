@@ -85,3 +85,41 @@ def test_ensure_compiled_does_not_write_fp_if_compile_raises():
         pass
     assert m.n == 1
     assert not hasattr(m, FM_COMPILED_FP_ATTR) or getattr(m, FM_COMPILED_FP_ATTR, None) is None
+
+import numpy as np
+import pandas as pd
+from cascade.hourly_model import HourlyModel
+
+
+class _Store:
+    cutoff_date = "2020-02-28"
+    def get_main_continuous(self, limit=250):
+        n = max(limit, 40)
+        dates = pd.bdate_range("2020-01-02", periods=n)
+        return pd.DataFrame({
+            "dt": dates,
+            "close_price": np.linspace(3000.0, 3100.0, n),
+        })
+
+
+def test_daily_predict_skips_second_compile():
+    m = FakeModel()
+    model = DailyModel(shared_model=m)
+    assert m.n == 1
+    store = _Store()
+    r1 = model.predict("m", store, context_days=40, horizon_days=22)
+    r2 = model.predict("m", store, context_days=40, horizon_days=22)
+    assert m.n == 1
+    assert np.array_equal(r1.forecast, r2.forecast)
+
+
+def test_shared_model_daily_then_hourly_must_recompile():
+    m = FakeModel()
+    DailyModel(shared_model=m)
+    n_after_daily = m.n
+    HourlyModel(shared_model=m)
+    assert m.n == n_after_daily + 1
+    ensure_compiled(m, HourlyModel._XREG_CONFIG)
+    assert m.n == n_after_daily + 1
+    ensure_compiled(m, DailyModel._DAILY_CONFIG)
+    assert m.n == n_after_daily + 2
