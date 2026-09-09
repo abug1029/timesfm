@@ -159,10 +159,19 @@ def _atexit_handler():
     })
 
 
-# Register signal + atexit handlers
-signal.signal(signal.SIGTERM, _signal_handler)
-signal.signal(signal.SIGINT, _signal_handler)
-atexit.register(_atexit_handler)
+# Signal/atexit handlers are armed only when main() actually runs the supervisor.
+# 历史 bug: 这些在 import 时注册, 导致仅把本模块当库 import 的只读脚本/测试
+# (调 harvest_proposals/build_snapshot 等) 退出时被 atexit 误报 unexpected_exit。
+_HANDLERS_ARMED = False
+
+def _arm_handlers():
+    global _HANDLERS_ARMED
+    if _HANDLERS_ARMED:
+        return
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
+    atexit.register(_atexit_handler)
+    _HANDLERS_ARMED = True
 
 
 def parse_429_reset(log_text):
@@ -1235,6 +1244,7 @@ def main(argv=None):
     ap.add_argument("--root", default=FM_ROOT)
     ap.add_argument("--max-cycles", type=int, default=None)
     args = ap.parse_args(argv)
+    _arm_handlers()
     if args.root != FM_ROOT:
         # 测试可把模块级路径 monkeypatch; --root 仅给 harvest 用
         pass
@@ -1245,6 +1255,8 @@ def main(argv=None):
     except BlockingIOError:
         print("another supervisor holds the lock; exit")
         _emit_event("info", "lock_contention", {"reason": "another supervisor holds the lock"})
+        # 主动避让不是崩溃: 标记后退出, atexit 不得误报 unexpected_exit。
+        _mark_stop_emitted()
         return 0
     try:
         return _main_locked(args)

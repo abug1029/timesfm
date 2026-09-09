@@ -171,6 +171,28 @@ def test_dry_run_one_shot_no_sleep(tmp_path, monkeypatch):
     assert not (tmp_path / "pending.jsonl").exists()
     assert not (tmp_path / "STATE.md").exists()
 
+def test_import_does_not_arm_atexit():
+    """仅 import 模块 (当库用 harvest_proposals/build_snapshot 等) 不得武装 atexit，
+    否则脚本退出会被误报 supervisor unexpected_exit (2026-09-09 实测 19 条假事件)。
+    用子进程复现: 全新解释器 import 后退出, 生产事件文件必须零变化。"""
+    import subprocess, sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ev_path = sup.EVENTS_PATH
+    before = os.path.getmtime(ev_path) if os.path.exists(ev_path) else None
+    code = (
+        "import atexit, sys; "
+        "sys.path.insert(0, r'%s'); "
+        "import praxist_supervisor as s; "
+        "n0 = atexit._ncallbacks(); atexit.unregister(s._atexit_handler); "
+        "assert not s._HANDLERS_ARMED; assert atexit._ncallbacks() == n0; "
+        "print('CHILD_OK')" % os.path.join(root, "scripts"))
+    r = subprocess.run([sys.executable, "-c", code], cwd=root,
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert "CHILD_OK" in r.stdout
+    after = os.path.getmtime(ev_path) if os.path.exists(ev_path) else None
+    assert before == after  # import-only 子进程退出未写任何事件
+
 def test_goal_reached_marks_stop_emitted(tmp_path, monkeypatch):
     """goal_reached 干净退出必须先 _mark_stop_emitted, 否则 atexit 兜底误报 unexpected_exit。"""
     monkeypatch.setattr(sup, "_STOP_EMITTED", False)
