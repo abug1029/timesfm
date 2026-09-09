@@ -641,3 +641,7 @@ See /home/abug/timesfm/docs/superpowers/reports/supervisor_goal_reached_20260909
 ## Supervisor goal_reached (20260909_041429)
 
 See /home/abug/timesfm/docs/superpowers/reports/supervisor_goal_reached_20260909_041429.md
+
+## Supervisor budget_exhausted (20260909_232042)
+
+See /home/abug/timesfm/docs/superpowers/reports/supervisor_budget_exhausted_20260909_232042.md

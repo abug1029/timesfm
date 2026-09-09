@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Generator, Optional
 from datetime import datetime, timezone
 
-from config.backtest_config import CONTEXT_BARS, HORIZON, STEP, SLIPPAGE_TICKS, SYMBOLS
+from config.backtest_config import CONTEXT_BARS, HORIZON, STEP, EVAL_WINDOW_BARS, SLIPPAGE_TICKS, SYMBOLS
 
 
 def stable_symbol_seed(symbol: str) -> int:
@@ -151,7 +151,9 @@ def generate_eval_grid(total_bars: int) -> list[int]:
     终点: total_bars - HORIZON (需要足够空间计算未来移动)
     步长: STEP (非重叠窗口)
     """
-    return list(range(CONTEXT_BARS, total_bars - HORIZON + 1, STEP))
+    # 评估窗口截断: 聚焦最近 EVAL_WINDOW_BARS 根 bar (~200 交易日)
+    eval_start = max(CONTEXT_BARS, total_bars - EVAL_WINDOW_BARS)
+    return list(range(eval_start, total_bars - HORIZON + 1, STEP))
 
 
 def expected_eval_grid(symbol: str) -> list[int]:

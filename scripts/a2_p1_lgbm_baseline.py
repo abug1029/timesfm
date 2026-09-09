@@ -234,7 +234,7 @@ def run_symbol(symbol: str, max_points: int | None, dense_step: int,
     from cascade.lgbm_features import build_dense_feature_matrix
     from cascade.hourly_model import HourlyModel
     from cascade.daily_model import DailyModel
-    from config.backtest_config import CONTEXT_BARS, HORIZON, STEP
+    from config.backtest_config import CONTEXT_BARS, HORIZON, STEP, EVAL_WINDOW_BARS
     from config.prediction_scheme import SCHEMES
     from cascade.features import _calc_atr
     import json, pathlib
@@ -258,7 +258,9 @@ def run_symbol(symbol: str, max_points: int | None, dense_step: int,
 
     # eval points: 复用 monthly_backtest 网格
     total = len(df_1h)
-    eval_bars = list(range(CONTEXT_BARS, total - HORIZON + 1, STEP))
+    # 评估窗口截断: 聚焦最近 EVAL_WINDOW_BARS 根 bar (~200 交易日)
+    eval_start = max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)
+    eval_bars = list(range(eval_start, total - HORIZON + 1, STEP))
     if max_points:
         eval_bars = eval_bars[-max_points:]  # 取最新 max_points 个, 确保训练数据充足
     # 仅保留 dense_matrix 中有的 bar

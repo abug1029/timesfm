@@ -36,7 +36,7 @@ import torch
 
 from config.backtest_config import (
     SYMBOLS, SYMBOL_NAMES, CONTEXT_BARS, CONTEXT_DAYS,
-    HORIZON, HORIZON_DAYS, STEP, MIN_EVAL_POINTS, MIN_1H_BARS,
+    HORIZON, HORIZON_DAYS, STEP, EVAL_WINDOW_BARS, MIN_EVAL_POINTS, MIN_1H_BARS,
     THRESHOLDS, CATEGORY_LABELS, BACKTEST_DIR, HISTORY_FILE,
     ensure_dirs, TICK_SIZES, SLIPPAGE_TICKS,
 )
@@ -217,7 +217,9 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
 
     total = len(all_1h)
     contract = all_1h["contract_code"].iloc[-1]
-    eval_indices = list(range(CONTEXT_BARS, total - HORIZON + 1, STEP))
+    # 评估窗口截断: 聚焦最近 EVAL_WINDOW_BARS 根 bar (~200 交易日)，抑制 concept drift
+    eval_start = max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)
+    eval_indices = list(range(eval_start, total - HORIZON + 1, STEP))
 
     # 减量排查: 截断评估点上限 (不破坏后续过滤逻辑)
     if max_points is not None:

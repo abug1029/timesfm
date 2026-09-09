@@ -657,9 +657,19 @@ class BacktestDataStore(DataStore):
         self.cutoff_date = self.cutoff_ts
 
     def get_main_continuous(self, limit=None, **kwargs):
-        """日线数据: 截断到 cutoff 日历日 (含当日日线 bar)"""
+        """日线数据: 根据 cutoff 时刻决定是否包含当日日线（防止日内前视）
+        
+        - 15:00 及之后（含夜盘）：当天日线已定型，安全可用
+        - 15:00 之前（日盘进行中）：严格回退至前一日历日
+        """
+        cutoff_hour = pd.Timestamp(self.cutoff_ts).hour
+        if cutoff_hour >= 15:
+            target_day = self.cutoff_day
+        else:
+            target_day = (pd.Timestamp(self.cutoff_day) - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+        
         return super().get_main_continuous(
-            end_date=self.cutoff_day, limit=limit
+            end_date=target_day, limit=limit, **kwargs
         )
 
     def get_main_contract_1h(self, limit=480):
