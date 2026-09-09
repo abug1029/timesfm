@@ -1363,9 +1363,7 @@ def _maybe_finish_slow(goal, log):
     return True
 
 def _main_locked(args):
-    goal = load_goal(args.goal)
     log = os.path.join(FM_ROOT, ".omc", "supervisor_decisions.jsonl")
-    max_cycles = args.max_cycles or goal["budgets"]["max_cycles"]
     one_shot = args.dry_run or args.once
     while True:
         _write_heartbeat()
@@ -1376,6 +1374,11 @@ def _main_locked(args):
                 "uptime_s": round(time.time() - _START_TIME, 1),
             })
             return 0
+        # Reload goal every poll so hot token_budget_m / max_cycles edits apply
+        # without restart (2026-09-08: stale 50 in-memory while disk was 80 → false
+        # budget_exhausted at tok_m=52.516).
+        goal = load_goal(args.goal)
+        max_cycles = args.max_cycles or goal["budgets"]["max_cycles"]
         st = load_state()
         cycles = int(st.get("cycles_done") or 0)
         cpu_h = _read_cpu_hours()
@@ -1384,7 +1387,8 @@ def _main_locked(args):
         snap = build_snapshot(REGISTRY, cycles, cpu_h, tok_spend)
         ok, why = evaluate_goal(goal["success_condition"], snap)
         b = goal["budgets"]
-        tok_hit = (not tok_unknown) and tok_spend >= b.get("token_budget_m", 80)
+        tok_budget = b.get("token_budget_m", 80)
+        tok_hit = (not tok_unknown) and tok_spend >= tok_budget
         budget_hit = (cycles >= max_cycles or cpu_h >= b.get("cpu_hours", 60)
                       or tok_hit or _deadline_passed(b))
 
@@ -1427,42 +1431,52 @@ def _main_locked(args):
             print(json.dumps(rec, ensure_ascii=False))
             return 0
         if budget_hit:
-            # Drain finished-run harvest + local slow queue BEFORE exiting on budget.
-            st_pre = load_state()
-            if not _run_active():
+            # If a fast run is still alive, do NOT exit — wait for it to finish so we
+            # can harvest→slow before any budget_exhausted return (2026-09-07 lesson:
+            # exited at tok>budget while failover run lived → missed harvest).
+            if _run_active():
+                _log_decision(
+                    log, "budget_hit_wait_run",
+                    f"cycles={cycles}/{max_cycles} cpu_h={cpu_h} "
+                    f"tok_m={tok_spend}/{tok_budget}; "
+                    "defer exit until active run ends then harvest/slow",
+                )
+                budget_hit = False
+            else:
+                # Drain finished-run harvest + local slow queue BEFORE exiting on budget.
+                st_pre = load_state()
                 _maybe_harvest(st_pre, goal, log)
-            st_pre = load_state()
-            if st_pre.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
-                if st_pre.get("phase") != "slow":
-                    _merge_save({"phase": "slow"})
-                    _emit_event("action", "phase_change", {"from": "fast", "to": "slow"})
-                _maybe_start_slow_loop(goal, log)
-                # One-shot drain wait is not appropriate here; leave slow running and
-                # only exit once queue is empty. If still draining, keep process alive.
-                if not _slow_drain_complete():
-                    _log_decision(
-                        log, "budget_hit_drain_slow",
-                        f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend}; "
-                        "defer exit until aligned queue drains",
-                    )
-                    # Fall through to slow-handling path below instead of return.
-                    budget_hit = False
-                    # Skip success/budget returns by jumping to phase handling
-                else:
-                    _maybe_finish_slow(goal, log)
-            if budget_hit:
-                rec = _log_decision(log, "budget_exhausted",
-                                    f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend} tok_unknown={tok_unknown}")
-                write_stop_report("budget_exhausted", snap, [rec["reason"]], rec["reason"])
-                _emit_event("critical", "budget_exhausted", {
-                    "cycles": cycles, "cpu_h": cpu_h, "tok_m": tok_spend,
-                    "tok_unknown": tok_unknown,
-                    "uptime_s": round(time.time() - _START_TIME, 1),
-                })
-                # 干净终止: 先标记, 否则 atexit 兜底会误报 supervisor_stopped/unexpected_exit。
-                _mark_stop_emitted()
-                print(json.dumps(rec, ensure_ascii=False))
-                return 0
+                st_pre = load_state()
+                if st_pre.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
+                    if st_pre.get("phase") != "slow":
+                        _merge_save({"phase": "slow"})
+                        _emit_event("action", "phase_change", {"from": "fast", "to": "slow"})
+                    _maybe_start_slow_loop(goal, log)
+                    # Leave slow running; only exit once queue is empty.
+                    if not _slow_drain_complete():
+                        _log_decision(
+                            log, "budget_hit_drain_slow",
+                            f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend}; "
+                            "defer exit until aligned queue drains",
+                        )
+                        budget_hit = False
+                    else:
+                        _maybe_finish_slow(goal, log)
+                if budget_hit:
+                    rec = _log_decision(log, "budget_exhausted",
+                                        f"cycles={cycles}/{max_cycles} cpu_h={cpu_h} "
+                                        f"tok_m={tok_spend}/{tok_budget} tok_unknown={tok_unknown} "
+                                        f"tok_hit={tok_hit}")
+                    write_stop_report("budget_exhausted", snap, [rec["reason"]], rec["reason"])
+                    _emit_event("critical", "budget_exhausted", {
+                        "cycles": cycles, "cpu_h": cpu_h, "tok_m": tok_spend,
+                        "tok_unknown": tok_unknown,
+                        "uptime_s": round(time.time() - _START_TIME, 1),
+                    })
+                    # 干净终止: 先标记, 否则 atexit 兜底会误报 supervisor_stopped/unexpected_exit。
+                    _mark_stop_emitted()
+                    print(json.dumps(rec, ensure_ascii=False))
+                    return 0
 
         st = ensure_phase(load_state())
         st = _merge_save({"phase": st["phase"]})

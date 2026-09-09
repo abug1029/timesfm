@@ -30,7 +30,7 @@
 
 - `scripts/mem_guard.py`：flock≤配置槽、MemAvailable 拒启、RSS shed  
 - `scripts/praxist_mem_guard_hook.py` + `zz_fm_mem_guard.pth`：强制 `protected_pids.launch_command`  
-- 计数真实 eval：**仅**匹配 `.praxist-venv/bin/python evaluations/fm_eval/run.py`（禁止把 bash/`protected_pids launch` cmdline 算进去）
+- 计数真实 eval：`fm_eval/run.py` **以及** inline `python -c` / `HourlyModel` / `monthly_backtest` / **`/tmp/*eval*.py` / `standalone_eval` / `run_eval_v*`**（禁止把 bash/`protected_pids launch` cmdline 算进去）；硬顶仍=1，>1 时 TERM **最新** inline 优先；**禁止** peer 自写 /tmp 评测脚本
 
 默认硬顶（本机）：
 
@@ -112,10 +112,10 @@
 
 | 字段 | 提案 |
 |------|------|
-| `max_cycles` | **8**（2026-09-07 用户批续跑；cycles_done 已 3） |
-| `deadline` | **2026-09-13** |
-| `token_budget_m` | **30**（failover 烧 ~22M 后抬；deadline 仍 2026-09-13） |
-| `cpu_hours` | **8** |
+| `max_cycles` | **20**（2026-09-09 扩目标；合入 origin/master 后保留） |
+| `deadline` | **2026-09-20** |
+| `token_budget_m` | **120**（2026-09-08 origin：防热更未加载误杀） |
+| `cpu_hours` | **30** |
 | `survivors_per_cycle` | **3**（慢环加压，已批） |
 | `aligned_max_points` | **600**（慢环加压，已批） |
 | `run_budget_hours` | **1.5** |
@@ -157,6 +157,11 @@
 |------|------|
 | 2026-09-06 | 初稿：自 9-6 长跑熔断/空转/contributing 污染教训 |
 | 2026-09-06 | **稳妥启动批准**：cohort=2，fm_eval 硬顶=1，goal max_cycles=3/token=20M |
+| 2026-09-08 | **/tmp 旁路降级**：matcher 覆盖 `standalone_eval`/`run_eval_v*`/`/tmp/*eval*`；禁 peer 自写 /tmp 评测；硬顶仍≤1 |
+| 2026-09-08 | **inline bypass 降级**：matcher 计 HourlyModel/`python -c`/monthly_backtest；`run.py` 无 `FM_EVAL_SLOT_HELD` 时自挂 flock；cgroup≥0.90 拒启+hardcap TERM；硬顶仍≤1 禁抬 2 |
+| 2026-09-08 | token_budget_m **80→120**；supervisor **每 poll 重载 goal**（修热更 50→80 后内存仍 50 导致 tok=52.5 误杀） |
+| 2026-09-08 | token_budget_m **50→80**（spend~46 相对 50 过紧）；deadline 仍 2026-09-13 |
+| 2026-09-08 | token_budget_m **30→50**；budget_hit 若 run 仍活则 `budget_hit_wait_run`（先等结束再 harvest/slow/exit） |
 | 2026-09-07 | **自动 session 解卡**：`praxist_session_unstick.py` + supervisor poll；nudge/回填；限频 20min；二次 escalate |
 | 2026-09-07 | 用户批续跑：max_cycles **3→8**；快环启停自转（harvest→slow→下一快环），异常仍报总管 |
 | 2026-09-06 | token_budget_m **20→30**（failover 烧 ~22M 后；deadline 仍 2026-09-13）；budget_hit 先 harvest/slow 再 exit |

@@ -19,11 +19,28 @@ sys.path.insert(0, HERE)
 from evaluator import build_summary, validate_candidate  # noqa: E402
 
 
+_HELD_EVAL_SLOT = None
+
+
+def _ensure_eval_slot():
+    """Belt-and-suspenders flock: skip if parent protected_pids hook already holds."""
+    global _HELD_EVAL_SLOT
+    if os.environ.get("FM_EVAL_SLOT_HELD", "").strip() in ("1", "true", "yes"):
+        return None
+    import mem_guard as mg  # noqa: WPS433
+    _HELD_EVAL_SLOT = mg.acquire_slot(apply_limit=False, block=False)
+    mg.log_capacity_action(
+        f"run.py: acquired slot={_HELD_EVAL_SLOT.slot} (no FM_EVAL_SLOT_HELD)"
+    )
+    return _HELD_EVAL_SLOT
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--output-dir", required=True)
     ap.add_argument("--candidate", required=True)
     a = ap.parse_args()
+    _ensure_eval_slot()
     os.makedirs(a.output_dir, exist_ok=True)
     with open(a.candidate, encoding="utf-8") as f:
         cand = json.load(f)

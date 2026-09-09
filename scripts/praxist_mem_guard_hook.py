@@ -46,6 +46,12 @@ _GATE_PATTERNS = (
     "monthly_backtest",
     "timesfm",
     "from evaluations",
+    "standalone_eval",
+    "run_eval_v",
+    "run_eval_direct",
+    "/tmp/run_eval",
+    "/tmp/standalone_eval",
+    "/tmp/eval_",
 )
 
 
@@ -85,12 +91,18 @@ def _make_wrapper(orig_fn, mg):
                 f"hook: refuse launch_command: {e}; cmd={command!r}"
             )
             raise
+        prev_held = os.environ.get("FM_EVAL_SLOT_HELD")
         try:
+            os.environ["FM_EVAL_SLOT_HELD"] = "1"
             mg.log_capacity_action(
                 f"hook: launch slot={slot.slot} cmd={list(command)[:8]!r}"
             )
             return orig_fn(command, *args, **kwargs)
         finally:
+            if prev_held is None:
+                os.environ.pop("FM_EVAL_SLOT_HELD", None)
+            else:
+                os.environ["FM_EVAL_SLOT_HELD"] = prev_held
             if slot is not None:
                 sid = slot.slot
                 slot.release()
