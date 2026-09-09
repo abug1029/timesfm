@@ -553,15 +553,20 @@ def _append_backlog(prop, src_path):
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     return True
 
-def harvest_proposals(root, snapshot, dead, existing, pool, top_k, aligned_max_points=400):
+def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
+                      aligned_max_points=400, priority_symbols=None):
     """收割 peer 机制化假设 (results/**/proposals/*.json) → aligned 队列行。
     与 harvest_survivors 平行但:
       - 不依赖诊断评估 (peer 不跑 eval)，验证证据来自慢环
       - 强制机制论证 (mechanism>=40 字)
       - 多样性按 family (QD 门)
+      - priority_symbols (目标 1 星品种) 优先选座: 其中当前有效点 n>=350 的最先,
+        样本暂不足的次之, 其余品种最后 —— 慢环是瓶颈, 座位优先给能直接推进目标的组合
     new_cov_*.json (new_covariate 字段) → 汇入 backlog, 不入队。
     返回 (selected_rows, stats)。
     """
+    priority = set(priority_symbols or [])
+    n_cache = {}
     ev = _load_evaluator()
     stats = {"seen": 0, "rejected": 0, "backlog": 0, "selected": 0,
              "reject_reasons": {}}
@@ -613,14 +618,27 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k, aligned_max_p
             seen_vids.add(vid)
             family = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or "other"
             score = _proposal_priority_score(p, cov, symbol, snapshot or {})
+            if priority:
+                if symbol not in n_cache:
+                    n_cache[symbol] = _valid_n_for_symbol(symbol)
+                n_now = n_cache[symbol]
+                # 0=目标品种且当前可过门; 1=目标品种但样本暂不足(cj/lh); 2=非目标品种; 查询失败归 1
+                if symbol not in priority:
+                    tier = 2
+                elif n_now is not None and n_now >= RETEST_GATE_N:
+                    tier = 0
+                else:
+                    tier = 1
+            else:
+                tier = 0
             candidates.append({
                 "variant_id": vid, "symbol": symbol, "cov_override": cov,
                 "max_points": int(aligned_max_points), "stage": "aligned",
                 "checkpoint_path": "", "enqueued_at": _now_iso(),
                 "src_run": os.path.basename(run_dir), "source": "peer_proposal",
-                "_family": family, "_score": score})
+                "_family": family, "_score": score, "_tier": tier})
 
-    candidates.sort(key=lambda r: (-r["_score"], r["_family"], r["variant_id"]))
+    candidates.sort(key=lambda r: (r["_tier"], -r["_score"], r["_family"], r["variant_id"]))
     selected = []
     used_families = set()
     # Pass 1: 每个 family 一个名额 (QD 多样性)
@@ -639,7 +657,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k, aligned_max_p
             if r["variant_id"] not in sel_ids:
                 selected.append(r); sel_ids.add(r["variant_id"])
     for r in selected:
-        r.pop("_family", None); r.pop("_score", None)
+        r.pop("_family", None); r.pop("_score", None); r.pop("_tier", None)
     stats["selected"] = len(selected)
     return selected, stats
 
@@ -1250,7 +1268,8 @@ def _harvest_rows(goal):
     rows, pstats = harvest_proposals(
         FM_ROOT, snap_now, dead, existing, pool,
         top_k=cad.get("survivors_per_cycle", 2),
-        aligned_max_points=cad.get("aligned_max_points", 400))
+        aligned_max_points=cad.get("aligned_max_points", 400),
+        priority_symbols=cad.get("priority_symbols"))
     return rows, dead, existing, pstats
 
 def _maybe_harvest(st, goal, log):

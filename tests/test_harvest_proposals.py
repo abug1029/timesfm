@@ -124,6 +124,42 @@ def test_family_diversity_pass_one(tmproot):
     assert "ss_oi" in {r["variant_id"] for r in rows}
 
 
+def test_priority_symbols_tiered_seat_fill(tmproot, monkeypatch):
+    """扩目标: 1 星品种优先选座 —— tier0(1星 n>=350) > tier1(1星样本不足) > tier2(2星)。"""
+    monkeypatch.setattr(S, "load_covariate_pool", lambda: {})
+    nmap = {"m": 396, "jd": 396, "cj": 324, "fu": 396, "p": 396, "i": 396}
+    monkeypatch.setattr(S, "_valid_n_for_symbol", lambda s: nmap.get(s))
+    pri = ["m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"]
+    # 同分 (空 snapshot, 机制齐全) 跨 4 个族; 2 个 1 星可过门 + 1 个 1 星欠样本 + 3 个 2 星
+    for sym, cov, fam in [("jd", "nvi", "positioning"), ("m", "oi", "volume"),
+                          ("cj", "vor", "volatility"),
+                          ("fu", "ccl", "structure"), ("p", "hurst", "statistical"),
+                          ("i", "rsi_state", "oscillator")]:
+        _make_run(tmproot, _prop(sym, cov, family=fam))
+    rows, stats = S.harvest_proposals(
+        tmproot, {}, set(), set(), {}, top_k=3,
+        aligned_max_points=600, priority_symbols=pri)
+    vids = {r["variant_id"] for r in rows}
+    assert stats["selected"] == 3
+    # tier0 两个必选, 第三席给 tier1(cj, 欠样本的 1 星) 而非任何 2 星
+    assert {"jd_nvi", "m_oi", "cj_vor"} == vids
+
+def test_priority_symbols_disabled_keeps_score_order(tmproot, monkeypatch):
+    """不传 priority_symbols 时行为不变 (按分数/族/vid)。"""
+    monkeypatch.setattr(S, "load_covariate_pool", lambda: {})
+    called = {"n": 0}
+    def _n(s):
+        called["n"] += 1
+        return 396
+    monkeypatch.setattr(S, "_valid_n_for_symbol", _n)
+    _make_run(tmproot, _prop("fu", "nvi", family="positioning"))
+    _make_run(tmproot, _prop("m", "oi", family="volume"))
+    rows, stats = S.harvest_proposals(
+        tmproot, {}, set(), set(), {}, top_k=2, aligned_max_points=600)
+    assert stats["selected"] == 2
+    # 无 priority: 分层逻辑不查 DB
+    assert called["n"] == 0
+
 def test_new_covariate_dedup_across_harvests(tmproot):
     """同一 new_cov 被后续 cycle 重扫 (harvest 每 cycle glob 所有 run) 只入 backlog 一次。"""
     _make_run(tmproot, {"schema": "fm.hypothesis_proposal.v1", "symbol": "m",
