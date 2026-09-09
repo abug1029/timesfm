@@ -27,6 +27,36 @@ class DailyResult:
     quantile_forecast: Optional[np.ndarray] = None  # shape (22, 10)
 
 
+FM_COMPILED_FP_ATTR = "_fm_compiled_fp"
+FP_FIELDS = (
+    "max_context",
+    "max_horizon",
+    "normalize_inputs",
+    "use_continuous_quantile_head",
+    "force_flip_invariance",
+    "infer_is_positive",
+    "fix_quantile_crossing",
+    "return_backcast",
+    "per_core_batch_size",
+)
+
+
+def forecast_config_fp(config):
+    try:
+        return tuple(getattr(config, name) for name in FP_FIELDS)
+    except Exception:
+        return None
+
+
+def ensure_compiled(model, config):
+    fp = forecast_config_fp(config)
+    if fp is not None and getattr(model, FM_COMPILED_FP_ATTR, None) == fp:
+        return
+    model.compile(config)
+    if fp is not None:
+        setattr(model, FM_COMPILED_FP_ATTR, fp)
+
+
 class DailyModel:
     """日线预测模型"""
 
@@ -49,7 +79,7 @@ class DailyModel:
                 "google/timesfm-2.5-200m-pytorch"
             )
         # compile 为日线配置 (predict 中也会重新 compile，确保配置正确)
-        self.model.compile(self._DAILY_CONFIG)
+        ensure_compiled(self.model, self._DAILY_CONFIG)
 
     def predict(self, symbol: str, store: DataStore,
                 context_days: int = 250, horizon_days: int = 22) -> DailyResult:
@@ -66,7 +96,7 @@ class DailyModel:
             DailyResult
         """
         # 确保日线配置生效 (HourlyModel 会重编译为 XReg，每次 predict 前重新 compile)
-        self.model.compile(self._DAILY_CONFIG)
+        ensure_compiled(self.model, self._DAILY_CONFIG)
 
         # 读取主链日线数据
         df = store.get_main_continuous(limit=context_days)

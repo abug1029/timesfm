@@ -30,7 +30,7 @@
 
 - `scripts/mem_guard.py`：flock≤配置槽、MemAvailable 拒启、RSS shed  
 - `scripts/praxist_mem_guard_hook.py` + `zz_fm_mem_guard.pth`：强制 `protected_pids.launch_command`  
-- 计数真实 eval：**仅**匹配 `.praxist-venv/bin/python evaluations/fm_eval/run.py`（禁止把 bash/`protected_pids launch` cmdline 算进去）
+- 计数真实 eval：`fm_eval/run.py` **以及** inline `python -c` / `HourlyModel` / `monthly_backtest` / **`/tmp/*eval*.py` / `standalone_eval` / `run_eval_v*`**（禁止把 bash/`protected_pids launch` cmdline 算进去）；硬顶仍=1，>1 时 TERM **最新** inline 优先；**禁止** peer 自写 /tmp 评测脚本
 
 默认硬顶（本机）：
 
@@ -112,10 +112,10 @@
 
 | 字段 | 提案 |
 |------|------|
-| `max_cycles` | **8**（2026-09-07 用户批续跑；cycles_done 已 3） |
-| `deadline` | **2026-09-13** |
-| `token_budget_m` | **120**（2026-09-08 总管批；防热更未热加载误杀；deadline 仍 2026-09-13） |
-| `cpu_hours` | **8** |
+| `max_cycles` | **20**（2026-09-09 扩目标；合入 origin/master 后保留） |
+| `deadline` | **2026-09-20** |
+| `token_budget_m` | **120**（2026-09-08 origin：防热更未加载误杀） |
+| `cpu_hours` | **30** |
 | `survivors_per_cycle` | **3**（慢环加压，已批） |
 | `aligned_max_points` | **600**（慢环加压，已批） |
 | `run_budget_hours` | **1.5** |

@@ -73,5 +73,5 @@ BELOW GATE symbols cannot pass today regardless of covariate (1H bars accrue ove
 - sr: n=396 gate-reachable
 - ss: n=396 gate-reachable
 - ta: n=396 gate-reachable
-- ur: n=309 BELOW GATE
+- ur: n=310 BELOW GATE
 

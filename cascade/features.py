@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 from typing import Optional, Dict
 from pathlib import Path
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 # ── 全局极小值，防除零（quant-trading covariate 修复） ──
 EPSILON = 1e-8
@@ -207,9 +209,6 @@ def calc_pca_momentum(closes: np.ndarray,
     Returns:
         一维复合动量序列, shape = closes.shape
     """
-    from sklearn.decomposition import PCA
-    from sklearn.preprocessing import StandardScaler
-
     if periods is None:
         periods = [5, 9, 14, 21]
 

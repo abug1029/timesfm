@@ -65,7 +65,7 @@ def test_eval_grid_step_24():
 
 def test_run_config_never_uses_a2_p1_1_for_a2_p1_by_default():
     """验证 a2-p1 默认不使用 a2-p1.1 的路径。"""
-    root = Path("D:/FlyBuddy/fm_a")
+    root = Path(__file__).resolve().parent.parent
     cfg = RunConfig.for_run("a2-p1", ["ss"], root)
     assert cfg.results_dir == root / "reports/a2_p1_results"
     assert cfg.logs_dir == root / "reports/a2_p1_logs"
@@ -74,7 +74,7 @@ def test_run_config_never_uses_a2_p1_1_for_a2_p1_by_default():
 
 def test_run_config_isolated_for_a2_p1_1():
     """验证 a2-p1.1 使用独立路径。"""
-    root = Path("D:/FlyBuddy/fm_a")
+    root = Path(__file__).resolve().parent.parent
     cfg = RunConfig.for_run("a2-p1.1", ["fg"], root)
     assert cfg.results_dir == root / "reports/a2_p1.1_results"
     assert cfg.logs_dir == root / "reports/a2_p1.1_logs"
@@ -83,14 +83,14 @@ def test_run_config_isolated_for_a2_p1_1():
 
 def test_run_config_symbols_lowercased():
     """验证 symbols 自动转小写。"""
-    root = Path("D:/FlyBuddy/fm_a")
+    root = Path(__file__).resolve().parent.parent
     cfg = RunConfig.for_run("a2-p1", ["SS", "RB"], root)
     assert cfg.symbols == ["ss", "rb"]
 
 
 def test_run_config_unsupported_run_id():
     """验证不支持的 run_id 抛出 ValueError。"""
-    root = Path("D:/FlyBuddy/fm_a")
+    root = Path(__file__).resolve().parent.parent
     try:
         RunConfig.for_run("a2-p3", ["ss"], root)
         raise AssertionError("should have raised ValueError")
@@ -100,7 +100,7 @@ def test_run_config_unsupported_run_id():
 
 def test_run_config_features_dir_shared():
     """验证 features_dir 对 a2-p1 和 a2-p1.1 相同。"""
-    root = Path("D:/FlyBuddy/fm_a")
+    root = Path(__file__).resolve().parent.parent
     cfg1 = RunConfig.for_run("a2-p1", ["ss"], root)
     cfg2 = RunConfig.for_run("a2-p1.1", ["ss"], root)
     assert cfg1.features_dir == cfg2.features_dir == root / "reports/a2_p1_features"
@@ -108,7 +108,7 @@ def test_run_config_features_dir_shared():
 
 def test_run_config_frozen():
     """验证 RunConfig 是不可变的 (frozen dataclass)。"""
-    root = Path("D:/FlyBuddy/fm_a")
+    root = Path(__file__).resolve().parent.parent
     cfg = RunConfig.for_run("a2-p1", ["ss"], root)
     try:
         cfg.run_id = "a2-p2"
@@ -1177,3 +1177,9 @@ def test_scan_reports_unexpected_bars_count(tmp_path):
     entry = manifest["per_symbol"]["ss"]
     assert "unexpected_bars_count" in entry
     assert entry["unexpected_bars_count"] == 400 - EXPECTED_BARS_COUNT
+
+def test_integrity_file_has_no_hardcoded_windows_root():
+    src = Path(__file__).read_text(encoding="utf-8")
+    assert "D:/FlyBuddy/" + "fm_a" not in src
+    root = Path(__file__).resolve().parent.parent
+    assert (root / "cascade").is_dir()

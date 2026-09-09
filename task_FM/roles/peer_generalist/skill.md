@@ -46,6 +46,11 @@ mechanism, proposal_id}.
 - Pre-registering findings with no proposal file (use real metrics: none — you run no evals)
 - Writing proposals to `scripts/praxist_ws/` (delete-guard blocked) or anywhere outside
   the results proposals tree
+- Inline TimesFM (`python -c` / `HourlyModel` / `DailyModel` / `monthly_backtest`) to
+  bypass `evaluations/fm_eval/run.py` or mem_guard flock
+- Peer-written `/tmp/*eval*.py`, `standalone_eval.py`, or `run_eval_v*.py` (hardcap
+  will TERM the newest extra TimesFM; dual-resident OOMs this host)
+- Continuing inline when the eval flock is full (wait for the slot)
 
 ## Proposal scope
 - symbol: {m, ss, sr, cj, jd, lh, eg, rb} + the evaluator's 2-star set

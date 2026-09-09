@@ -520,6 +520,13 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
     monkeypatch.setattr(sup, "_STOP_EMITTED", False)
     rc2 = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc2 == 0
+    # origin/master: budget_hit while a run is alive waits (budget_hit_wait_run);
+    # do not write exhausted report until the run is gone.
+    assert not list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
+    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup, "_STOP_EMITTED", False)
+    rc3 = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
+    assert rc3 == 0
     assert list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
     assert sup._STOP_EMITTED is True  # budget 干净退出同样不得触发 atexit unexpected_exit
     st2 = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))

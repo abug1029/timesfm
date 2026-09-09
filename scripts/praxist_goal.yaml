@@ -15,7 +15,7 @@ goal:
     max_cycles: 20  # 2026-09-09：8→20 (扩大目标续跑；cycles_done 跨重启累计)
     cpu_hours: 30   # 慢环 elapsed 累计 (slow_loop_metrics.jsonl，跨重启累加)
     # ~2.7M+/cycle observed；扩目标后 12+ cycles 余量。
-    token_budget_m: 80  # 相对 state.tokens_baseline_m 的增量预算 (2026-09-09：30→80)
+    token_budget_m: 120  # 合入 origin/master 2026-09-08：防热更未加载导致误杀；相对 tokens_baseline_m 增量
     deadline: "2026-09-20"
   cadence:
     survivors_per_cycle: 3  # 慢环加压 2026-09-06：每周期最多 3 survivors

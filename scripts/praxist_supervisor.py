@@ -1378,11 +1378,6 @@ def _main_locked(args):
     log = os.path.join(FM_ROOT, ".omc", "supervisor_decisions.jsonl")
     one_shot = args.dry_run or args.once
     while True:
-        # Reload goal every poll so hot token_budget_m / max_cycles edits apply
-        # without restart (2026-09-08: stale 50 in-memory while disk was 80 → false
-        # budget_exhausted at tok_m=52.516).
-        goal = load_goal(args.goal)
-        max_cycles = args.max_cycles or goal["budgets"]["max_cycles"]
         _write_heartbeat()
         if _SHUTDOWN_REQUESTED:
             _emit_event("critical", "supervisor_stopped", {
@@ -1391,6 +1386,11 @@ def _main_locked(args):
                 "uptime_s": round(time.time() - _START_TIME, 1),
             })
             return 0
+        # Reload goal every poll so hot token_budget_m / max_cycles edits apply
+        # without restart (2026-09-08: stale 50 in-memory while disk was 80 → false
+        # budget_exhausted at tok_m=52.516).
+        goal = load_goal(args.goal)
+        max_cycles = args.max_cycles or goal["budgets"]["max_cycles"]
         st = load_state()
         cycles = int(st.get("cycles_done") or 0)
         cpu_h = _read_cpu_hours()
