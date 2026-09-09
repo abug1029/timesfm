@@ -27,6 +27,36 @@ class DailyResult:
     quantile_forecast: Optional[np.ndarray] = None  # shape (22, 10)
 
 
+FM_COMPILED_FP_ATTR = "_fm_compiled_fp"
+FP_FIELDS = (
+    "max_context",
+    "max_horizon",
+    "normalize_inputs",
+    "use_continuous_quantile_head",
+    "force_flip_invariance",
+    "infer_is_positive",
+    "fix_quantile_crossing",
+    "return_backcast",
+    "per_core_batch_size",
+)
+
+
+def forecast_config_fp(config):
+    try:
+        return tuple(getattr(config, name) for name in FP_FIELDS)
+    except Exception:
+        return None
+
+
+def ensure_compiled(model, config):
+    fp = forecast_config_fp(config)
+    if fp is not None and getattr(model, FM_COMPILED_FP_ATTR, None) == fp:
+        return
+    model.compile(config)
+    if fp is not None:
+        setattr(model, FM_COMPILED_FP_ATTR, fp)
+
+
 class DailyModel:
     """日线预测模型"""
 
