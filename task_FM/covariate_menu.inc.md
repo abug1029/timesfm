@@ -51,3 +51,27 @@ archived covariates are RETIRED: do NOT propose them.
 ### family: volume
 - nvi: 负量指标(NVI)：仅在缩量日累计涨跌，跟踪聪明钱在散户离场时的方向。 [track: sh_nvi n142样本不足/PF0.64]
 
+### symbol sample ceiling (valid aligned points now; hard gate n>=350)
+BELOW GATE symbols cannot pass today regardless of covariate (1H bars accrue over time; supervisor auto-retests near-misses):
+- ao: n=204 BELOW GATE
+- bu: n=396 gate-reachable
+- cf: n=396 gate-reachable
+- cj: n=324 BELOW GATE
+- eg: n=396 gate-reachable
+- fg: n=396 gate-reachable
+- fu: n=396 gate-reachable
+- i: n=396 gate-reachable
+- jd: n=396 gate-reachable
+- jm: n=396 gate-reachable
+- lh: n=238 BELOW GATE
+- m: n=396 gate-reachable
+- ma: n=396 gate-reachable
+- p: n=396 gate-reachable
+- rb: n=396 gate-reachable
+- sh: n=142 BELOW GATE
+- sp: n=396 gate-reachable
+- sr: n=396 gate-reachable
+- ss: n=396 gate-reachable
+- ta: n=396 gate-reachable
+- ur: n=309 BELOW GATE
+

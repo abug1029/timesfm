@@ -44,6 +44,11 @@ _START_TIME = time.time()
 _STOP_EMITTED = False
 POLL_S = 300
 PHASES = ("fast", "slow", "wait_quota")
+# 镜像 evaluator.gate 的预注册硬门 (min_n=350, min_ic=0.05)；宿主侧仅用于识别"仅差样本"的
+# 近失误裁决并安排复测，不改变慢环硬门本身。
+RETEST_GATE_N = 350
+RETEST_GATE_IC = 0.05
+RETEST_PF_RATIO = 1.05
 
 with open(os.path.join(FM_ROOT, "config", "knowledge_base.json"), encoding="utf-8") as _f:
     _kb = json.load(_f)
@@ -666,9 +671,126 @@ def materialize_covariate_menu(pool, dest_path):
         lines.append("### archived — DO NOT PROPOSE")
         for n in sorted(archived):
             lines.append("- %s: %s" % (n, archived[n].get("archived_reason", "archived")))
+        lines.append("")
+    # 品种样本天花板 (本地库当前可对齐有效点; 硬门 n>=350)。fail-open：无 DB/查询失败则跳过。
+    try:
+        n_table = _symbol_n_table()
+    except Exception:
+        n_table = []
+    if n_table:
+        lines.append("### symbol sample ceiling (valid aligned points now; hard gate n>=350)")
+        lines.append("BELOW GATE symbols cannot pass today regardless of covariate "
+                     "(1H bars accrue over time; supervisor auto-retests near-misses):")
+        for sym, n in n_table:
+            tag = "unknown" if n is None else ("gate-reachable" if n >= RETEST_GATE_N else "BELOW GATE")
+            lines.append("- %s: n=%s %s" % (sym, "?" if n is None else n, tag))
+        lines.append("")
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
     with open(dest_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
+
+def _valid_n_for_symbol(symbol):
+    """复刻 monthly_backtest.run_symbol_backtest 的有效评估点计数 (不 import torch)。
+
+    eval_indices = range(CONTEXT_BARS, total-HORIZON+1, STEP)，再按日线充足性
+    (累计日线 >= max(CONTEXT_DAYS-HORIZON_DAYS,100)) 过滤。任何异常返回 None (fail-open)。
+    """
+    try:
+        import bisect
+        from config.backtest_config import (
+            CONTEXT_BARS, HORIZON, STEP, CONTEXT_DAYS, HORIZON_DAYS)
+        from data.data_store import DataStore
+        store = DataStore(symbol)
+        try:
+            h1 = store.get_main_contract_1h(limit=99999)
+            daily = store.get_main_continuous(limit=99999)
+        finally:
+            store.close()
+        if h1.empty or len(h1) < CONTEXT_BARS + HORIZON or daily.empty:
+            return 0
+        need = max(CONTEXT_DAYS - HORIZON_DAYS, 100)
+        dates = sorted(daily["dt"].astype(str).str[:10].tolist())
+        n_ok = 0
+        for idx in range(CONTEXT_BARS, len(h1) - HORIZON + 1, STEP):
+            if bisect.bisect_right(dates, str(h1["dt"].iloc[idx])[:10]) >= need:
+                n_ok += 1
+        return n_ok
+    except Exception:
+        return None
+
+def _symbol_n_table():
+    """[(symbol, valid_n)] for evaluator-allowed symbols; [] if evaluator unavailable."""
+    ev = _load_evaluator()
+    syms = sorted(getattr(ev, "ALLOWED_SYMBOLS", None) or [])
+    return [(s, _valid_n_for_symbol(s)) for s in syms]
+
+def _retest_candidates(snapshot):
+    """gate 仅因 n 不足而失败的近失误最新裁决 (ic>=0.05, ev>0, pf/incumbent>1.05)。
+
+    语义即 'inconclusive, retest when more data' (cj_oi 2026-09-08: PF1.133/ev19.46/
+    ic0.08, 仅 n=324<350)。snapshot 按 variant_id 保留最新裁决。no_data 已被排除
+    (status != ok)；gate 因 ic 不足而失败者不入选 (加样本也救不回)。
+    """
+    out = []
+    for vid, v in snapshot.items():
+        if v.get("status", "ok") != "ok" or v.get("gate_pass") is not False:
+            continue
+        n = int(v.get("n") or 0)
+        if n <= 0 or n >= RETEST_GATE_N:
+            continue
+        ic = float(v.get("ic") or 0.0)
+        ev = float(v.get("ev") or 0.0)
+        ratio = float(v.get("pf") or 0.0) / INCUMBENT_PF.get(v.get("symbol"), 1.0)
+        if ic >= RETEST_GATE_IC and ev > 0 and ratio > RETEST_PF_RATIO:
+            out.append(v)
+    return out
+
+def plan_sample_retests(goal):
+    """只读：返回当前可排队的 (row, last_n, current_n) 复测计划 (不写队列)。"""
+    cad = goal.get("cadence") or {}
+    margin = int(cad.get("retest_min_new_points", 1))
+    inflight = rl.in_flight_ids(QUEUE, INPROGRESS)
+    snap = rl.load_snapshot(REGISTRY)
+    plan = []
+    for v in _retest_candidates(snap):
+        vid = v["variant_id"]
+        if vid in inflight:
+            continue
+        cur_n = _valid_n_for_symbol(v["symbol"])
+        if not cur_n or cur_n < RETEST_GATE_N:
+            continue
+        if cur_n - int(v.get("n") or 0) < margin:
+            continue
+        row = {"variant_id": vid, "symbol": v["symbol"],
+               "cov_override": v["cov_override"],
+               "max_points": int(v.get("max_points")
+                                 or cad.get("aligned_max_points", 600)),
+               "stage": "aligned", "checkpoint_path": "",
+               "enqueued_at": _now_iso(), "src_run": "supervisor_retest",
+               "source": "sample_retest"}
+        plan.append((row, int(v.get("n") or 0), cur_n))
+    return plan
+
+def _maybe_enqueue_retests(goal, log):
+    """近失误自动复测：本地数据长到过门样本量时旁路 dead 去重补队 (checkpoint resume)。"""
+    plan = plan_sample_retests(goal)
+    if not plan:
+        return 0
+    # dead 去重刻意旁路：这些 variant 上次 gate=False 已在 dead 集，复测是宿主显式决策；
+    # queue/inflight 去重仍在 rl.queue_enqueue 内部生效。
+    added = rl.queue_enqueue(QUEUE, [row for row, _, _ in plan],
+                             dead=set(), existing=set())
+    if added:
+        _merge_save({"phase": "slow"})
+        for row, last_n, cur_n in plan:
+            _log_decision(log, "sample_retest_enqueued",
+                          "%s n %d->%d (gate_n=%d); checkpoint resume, 只算新点"
+                          % (row["variant_id"], last_n, cur_n, RETEST_GATE_N),
+                          [row["variant_id"]])
+            _emit_event("action", "sample_retest_enqueued",
+                        {"variant_id": row["variant_id"],
+                         "last_n": last_n, "current_n": cur_n})
+    return added
 
 def _log_decision(log_path, action, reason, refs=None):
     rec = {"ts": _now_iso(), "action": action, "reason": reason, "refs": refs or []}
@@ -1248,6 +1370,11 @@ def _main_locked(args):
             print(json.dumps({"action": "harvest_plan", "n": len(rows),
                               "vids": [r["variant_id"] for r in rows],
                               "proposal_stats": pstats}, ensure_ascii=False))
+            for rrow, last_n, cur_n in plan_sample_retests(goal):
+                print(json.dumps({"action": "sample_retest_plan",
+                                  "variant_id": rrow["variant_id"],
+                                  "last_n": last_n, "current_n": cur_n},
+                                 ensure_ascii=False))
             planned = decide_fast_loop(goal, dry_run=True)
             for a in planned:
                 print(json.dumps(a, ensure_ascii=False, default=str))
@@ -1311,6 +1438,11 @@ def _main_locked(args):
         # Harvest finished runs even during paused_429 / wait_quota.
         if not _run_active():
             _maybe_harvest(st, goal, log)
+        # n-不足型近失误自动复测 (本地慢环, 不受 LLM 暂停/failover 影响)。
+        try:
+            _maybe_enqueue_retests(goal, log)
+        except Exception as e:
+            _log_decision(log, "retest_scan_error", str(e))
         st = load_state()
         # Local aligned drain is never blocked by LLM pause/failover.
         if st.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():

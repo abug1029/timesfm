@@ -874,3 +874,106 @@ def test_failover_env_auth_token_matches_api_key(monkeypatch):
     assert env["ANTHROPIC_AUTH_TOKEN"] != "ark-primary-key"
     assert "dashscope" in env["ANTHROPIC_BASE_URL"]
 
+
+# ── n-不足型近失误自动复测 (cj_oi: PF1.133/ev19.46/ic0.08 全过, 仅 n=324<350) ──
+
+def _aligned_verdict(vid, symbol, cov, n, pf, ev, ic, gate, status="ok",
+                     max_points=600):
+    return {"variant_id": vid, "symbol": symbol, "cov_override": cov,
+            "max_points": max_points, "n": n, "pf": pf, "ev": ev, "maxdd": -0.2,
+            "dir_acc": 0.5 + ic / 2.0, "gate_pass": gate, "ic": ic,
+            "decided_at": "2026-09-08T00:00:00", "checkpoint_path": "",
+            "slow_loop_pid": 1, "git_rev": "x", "schema": "fm.aligned_verdict.v1",
+            "status": status}
+
+def test_retest_candidates_only_n_near_miss():
+    snap = {
+        # 近失误: n<350, ic/ev/pf-ratio 全过 → 入选
+        "cj_oi": _aligned_verdict("cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False),
+        # n 已达标但 gate False (ic 不足) → 不入选
+        "ss_nvi": _aligned_verdict("ss_nvi", "ss", "nvi", 396, 1.068, 6.34, 0.036, False),
+        # 已过门 → 不入选
+        "ss_vor": _aligned_verdict("ss_vor", "ss", "vor", 396, 1.123, 11.06, 0.06, True),
+        # no_data 不进 dead → 不入选
+        "lh_x": _aligned_verdict("lh_x", "lh", "oi", 0, 0.0, 0.0, 0.0, False,
+                                 status="no_data"),
+        # n<350 但 pf/ev 不过 → 不入选 (加样本也无意义)
+        "m_bad": _aligned_verdict("m_bad", "m", "oi", 300, 0.9, -1.0, 0.08, False),
+    }
+    assert [v["variant_id"] for v in sup._retest_candidates(snap)] == ["cj_oi"]
+
+def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    with open(sup.REGISTRY, "w", encoding="utf-8") as f:
+        f.write(json.dumps(_aligned_verdict(
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+    log = str(tmp_path / "decisions.jsonl")
+    goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 1}}
+    live_n = {"cj": 324}
+    monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: live_n.get(s))
+    # 数据未增长到硬门样本量 → 不排队
+    assert sup._maybe_enqueue_retests(goal, log) == 0
+    assert not os.path.exists(sup.QUEUE)
+    # 本地库 n>=350 → 旁路 dead 去重排队, phase=slow
+    live_n["cj"] = 350
+    assert sup._maybe_enqueue_retests(goal, log) == 1
+    rows = sup.rl.queue_load(sup.QUEUE)
+    assert [r["variant_id"] for r in rows] == ["cj_oi"]
+    assert rows[0]["source"] == "sample_retest"
+    assert json.load(open(sup.STATE_PATH, encoding="utf-8"))["phase"] == "slow"
+    # 已在队列 → 不重复
+    assert sup._maybe_enqueue_retests(goal, log) == 0
+    assert len(sup.rl.queue_load(sup.QUEUE)) == 1
+
+def test_maybe_enqueue_retests_respects_margin(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    with open(sup.REGISTRY, "w", encoding="utf-8") as f:
+        f.write(json.dumps(_aligned_verdict(
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+    goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 30}}
+    monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: 350)
+    # 350-324=26 < margin 30 → 不排队
+    assert sup._maybe_enqueue_retests(goal, str(tmp_path / "d.jsonl")) == 0
+    assert not os.path.exists(sup.QUEUE)
+
+def test_maybe_enqueue_retests_fail_open_on_db_error(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    with open(sup.REGISTRY, "w", encoding="utf-8") as f:
+        f.write(json.dumps(_aligned_verdict(
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+    goal = {"cadence": {"retest_min_new_points": 1}}
+    monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: None)
+    # DB 查询失败 → 0 排队, 不抛
+    assert sup._maybe_enqueue_retests(goal, str(tmp_path / "d.jsonl")) == 0
+
+def test_menu_renders_symbol_sample_ceiling(monkeypatch, tmp_path):
+    monkeypatch.setattr(sup, "_symbol_n_table",
+                        lambda: [("cj", 324), ("m", 396), ("lh", None)])
+    dest = str(tmp_path / "menu.md")
+    sup.materialize_covariate_menu({}, dest)
+    txt = open(dest, encoding="utf-8").read()
+    assert "cj: n=324 BELOW GATE" in txt
+    assert "m: n=396 gate-reachable" in txt
+    assert "lh: n=? unknown" in txt
+
+def test_production_goal_yaml_tier1_expansion():
+    goal_fp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "scripts", "praxist_goal.yaml")
+    goal = sup.load_goal(goal_fp)
+    conds = goal["success_condition"]
+    # 当前生产状态: 仅 ss_vor 过门 → 扩目标后未达成
+    snap = {"symbols_hit": {"ss"}, "families_hit": {"vor"},
+            "pass_variant_pf_ratios": [1.123]}
+    ok, why = sup.evaluate_goal(conds, snap)
+    assert ok is False and any("symbols_hit" in w for w in why)
+    # 4 个 1 星品种过门 → 达成 (含 2 星品种不额外计数)
+    snap2 = {"symbols_hit": {"ss", "m", "sr", "jd", "ao"},
+             "families_hit": {"vor", "oi"}, "pass_variant_pf_ratios": [1.1, 1.08]}
+    ok2, _ = sup.evaluate_goal(conds, snap2)
+    assert ok2 is True
+    # 只有 3 个 1 星 (即使加 2 星凑数) → 仍未达成
+    snap3 = {"symbols_hit": {"ss", "m", "ao", "bu"},
+             "families_hit": {"vor"}, "pass_variant_pf_ratios": [1.1]}
+    ok3, _ = sup.evaluate_goal(conds, snap3)
+    assert ok3 is False
+

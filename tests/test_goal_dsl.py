@@ -32,3 +32,16 @@ def test_injection_rejected():
                  "open('/etc/passwd')", "symbols_hit.__class__"]:
         ok, why = evaluate_goal([expr], SNAP)
         assert ok is False and any("forbidden" in w for w in why)
+
+def test_set_intersection_tier_condition():
+    tier1 = ['m', 'ss', 'sr', 'cj', 'jd', 'lh', 'eg', 'rb']
+    expr = "len(symbols_hit & {%s}) >= 4" % ",".join(repr(x) for x in tier1)
+    # 4 个 1 星 → 达成; 2 星品种 (ao/bu) 不凑数
+    snap = dict(SNAP)
+    snap["symbols_hit"] = {"ss", "m", "sr", "jd", "ao"}
+    ok, _ = evaluate_goal([expr], snap)
+    assert ok is True
+    snap2 = dict(SNAP)
+    snap2["symbols_hit"] = {"ss", "ao", "bu"}
+    ok2, why2 = evaluate_goal([expr], snap2)
+    assert ok2 is False and "unmet" in why2[0]
