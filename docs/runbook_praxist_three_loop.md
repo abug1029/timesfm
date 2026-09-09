@@ -2,6 +2,8 @@
 
 > 宿主硬件与容量结论见 [`host_environment_assessment.md`](./host_environment_assessment.md)。**当前宿主 = WSL2 Ubuntu-22.04，项目根 `/home/abug/timesfm`**；勿沿用旧 Grok 盒 `/workspace/repos/...`、`/home/box/...`、Windows `D:/FlyBuddy` 或 1.9GB/15GB RAM 假设。
 
+新人先读架构概览 [`praxist.md`](./praxist.md)。本文是运维手册：启停、429、队列、收割、复测、故障速查。
+
 监督环（0 token）按 `scripts/praxist_goal.yaml` 编排快环（praxist）与慢环（aligned）。三环以 append-only 文件为总线。
 
 | 项 | 值 |
@@ -178,6 +180,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 
 ## 相关文件
 
+- `docs/praxist.md` — 架构概览（本体 vs 三环、现行合同、现场快照）
 - `scripts/praxist_supervisor.py` — 监督环
 - `scripts/aligned_slow_loop.py` — 慢环
 - `scripts/mem_guard.py` — 全局 flock≤2 + MemAvailable 门 + RSS shed（RLIMIT_AS 默认 OFF）

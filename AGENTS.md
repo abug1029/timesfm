@@ -44,6 +44,23 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 - 规范启动：`set -a; source .env.praxist; set +a` 后 setsid 拉起 supervisor（见 `docs/runbook_praxist_three_loop.md`）。`task_FM/task.yaml` 内 **不要** 放明文 API key
 - 所需环境变量见 `docs/praxist_llm_env.md`
 
+## PRAXIST 三环（现行合同，2026-09-09）
+
+Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM/` 提供科学合同；外层监督环零 token 调度。架构见 `docs/praxist.md`，运维见 `docs/runbook_praxist_three_loop.md`。**不要改** `.praxist-venv` 里的 Praxist 源码。
+
+```
+监督环  scripts/praxist_supervisor.py     0 token
+   ├─ 快环  praxist start --task-path task_FM   peer = 假设作者，不加载 TimesFM
+   └─ 慢环  scripts/aligned_slow_loop.py        唯一验证器；唯一可写 aligned_verdicts.jsonl
+```
+
+- 快环产物：`results/gen_<N>/<peer>/proposals/<symbol>_<cov>.json`（`fm.hypothesis_proposal.v1`，mechanism ≥40 字）
+- 硬门：n≥350 且 IC≥0.05 且扣滑点 EV>0（`config/praxist_task.yaml`）
+- 目标：`scripts/praxist_goal.yaml`（1 星集合过门 ≥4 + PF 比>1.05 + ≥1 族）
+- 机器状态：`data/cache/supervisor_state.json`；裁决：`task_FM/config/aligned_verdicts.jsonl`
+- `task_FM/task.yaml` 禁止明文 API key；密钥只进 `.env.praxist`
+- Windows 挂载/副本可能过期；读本仓用 `wsl -d Ubuntu-22.04 -- bash -c "..."`
+
 ## 分层文档 (deepinit 2026-08-08)
 
 | 目录 | 文档 |
@@ -52,8 +69,9 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 | `config/` | `config/AGENTS.md` — SCHEMES / 回测超参 |
 | `data/` | `data/AGENTS.md` — 采集 / BacktestDataStore 截断契约 |
 | `scripts/` | `scripts/AGENTS.md` — 入口矩阵 / 回测陷阱 |
-| `docs/` | `docs/AGENTS.md` — registry / validation v2 |
+| `docs/` | `docs/AGENTS.md` — registry / validation v2 / Praxist 文档路由 |
 | `tests/` | `tests/AGENTS.md` — 合约测试清单 |
+| `task_FM/` | Praxist 任务包（prompts / 评估器 / 协变量池）；合同见 `docs/praxist.md` |
 
 ## 回测真相源 (Sources of Truth)
 
@@ -67,6 +85,10 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 | 固化 WF 权威入口 | `scripts/monthly_backtest.py`（禁止 3/7 点 scan 顶替） |
 | 实验防重复 | `docs/backtest_registry.md` |
 | 幽灵 K 线 | `data.future_bar_guard.run_guard` only |
+| Praxist 机器状态 | `data/cache/supervisor_state.json` |
+| Praxist aligned 裁决 | `task_FM/config/aligned_verdicts.jsonl`（仅慢环可写） |
+| Praxist 预注册口径 | `config/praxist_task.yaml` |
+| Praxist 架构/运维 | `docs/praxist.md` + `docs/runbook_praxist_three_loop.md` |
 
 **2026-08-21 状态锚点（Phase 11/12 结案）**
 - Phase 11 单协变量穷举结案：12 品种协变量替换固化，34 GREEN（详见 `docs/backtest_registry.md`）

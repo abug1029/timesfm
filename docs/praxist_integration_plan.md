@@ -1,9 +1,13 @@
 # PRAXIST 整合方案 — FM_a (timesFM_fu)
 
+> **状态（2026-09-09）**：P0–P3 已落地。本文保留为 2026-09-01 方案稿。**路径与现行架构以** [`praxist.md`](./praxist.md) **和** [`runbook_praxist_three_loop.md`](./runbook_praxist_three_loop.md) **为准**。快环合同见 [`spec_hypothesis_driven_fast_loop_20260908.md`](./spec_hypothesis_driven_fast_loop_20260908.md)。
+>
+> 文中 `/root/timesFM_fu`、独立 `/root/.praxist-venv`、peer 跑 diagnostic 评估、磁盘 8.4GB 均为过时假设。当前宿主 WSL `/home/abug/timesfm`，venv `.praxist-venv`，peer 不加载 TimesFM。
+
 **日期**: 2026-09-01  
-**状态**: 方案稿（待人工批准后逐阶段执行）  
+**状态**: 已实施（方案稿原文保留）  
 **输入材料**: 用户提供的 PRAXIST 适配分析 + 本机事实核查  
-**仓库**: https://github.com/sapientinc/PRAXIST (5.8k★, Fair Source 1.0)
+**仓库**: https://github.com/sapientinc/PRAXIST (Fair Source 1.0)
 
 ---
 

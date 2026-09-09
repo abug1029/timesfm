@@ -18,7 +18,8 @@
 
 | 文档 | 内容 |
 |------|------|
-| [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | **运维手册（先读）**：启停、429 failover、队列/checkpoint、方案 A 收割、近失误复测、故障速查 |
+| [praxist.md](./praxist.md) | **架构概览（先读）**：Praxist 本体 vs 本仓三环、方案 A 合同、当前目标与现场 |
+| [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | **运维手册**：启停、429 failover、队列/checkpoint、方案 A 收割、近失误复测、故障速查 |
 | [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（已实施，含 2026-09-09 增补） |
 | [praxist_directive_design.md](./praxist_directive_design.md) | 指令/目标 DSL 设计 |
 | [praxist_integration_plan.md](./praxist_integration_plan.md) | 三环集成计划 |
@@ -52,6 +53,12 @@ python scripts/cascade_predict.py ss
 # 数据卫生
 python scripts/data_management.py --daily --1h
 python -m data.future_bar_guard --dry-run
+
+# Praxist 三环（监督环；密钥只进 .env.praxist）
+# 架构见 docs/praxist.md；细节见 docs/runbook_praxist_three_loop.md
+set -a && source .env.praxist && set +a
+setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.yaml \
+  >> data/cache/supervisor.out 2>&1 < /dev/null &
 ```
 
 ## 研究门禁状态（2026-08-07 A2-P1 完整性硬化 + A2-P2 完成）
@@ -101,3 +108,4 @@ python -m data.future_bar_guard --dry-run
 - **Phase 11（2026-08-21 结案）**：12 品种协变量替换固化（SS/SP/FU/I/RB/TA/EG/CJ/LH/JD + 3 基线保持 M/P/SR），34 GREEN
 - **Phase 12（2026-08-21）**：BU 组合协变量 `calendar_cyclical+hourly_slope` 固化（PF=1.01 边际 GREEN）
 - 新口径经济表与信用档：见上表 g005e（Phase 11/12 后协变量已刷新）；运维细节见 [vol-risk.md](./vol-risk.md) 与 `STATE.md`
+- **Praxist 三环（2026-09-09）**：方案 A 已上线；监督环有序停机、目标=1 星过门 ≥4。架构 [praxist.md](./praxist.md)，现场快照见 `STATE.md`

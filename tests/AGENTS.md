@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-08-29 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-09 -->
 
 # tests
 
@@ -25,6 +25,12 @@
 | `test_vol_scaled_mae.py` | 波动缩放 MAE |
 | `test_scan_significance.py` | scan 显著性门槛 |
 | `test_covariate_audit.py` | 协变量质量审计 (19 tests, 5 维度: 平稳性/范围/NaN/前视偏差/信息量, Phase Q1 D6) |
+| `test_supervisor.py` | 三环监督环（harvest / 429 / cycle / atexit 隔离） |
+| `test_harvest_proposals.py` | 方案 A 提案收割（机制校验 / 去重 / 选座） |
+| `test_covariate_pool.py` | 协变量池 schema 与归档拒绝 |
+| `test_aligned_slow_loop.py` | 慢环 claim/recover |
+| `test_goal_dsl.py` | goal.yaml DSL 白名单求值 |
+| `test_praxist_task_contract.py` | `config/praxist_task.yaml` 预注册契约 |
 
 ## For AI Agents
 
@@ -43,6 +49,10 @@ python -m unittest \
   tests.test_neutral_ab_report \
   tests.test_a2_p1_runtime \
   tests.test_future_bar_guard -v
+
+# Praxist 三环（改 supervisor / harvest / 任务契约后）
+python -m pytest tests/test_supervisor.py tests/test_harvest_proposals.py \
+  tests/test_covariate_pool.py tests/test_praxist_task_contract.py tests/test_goal_dsl.py -v
 ```
 
 ## Dependencies
