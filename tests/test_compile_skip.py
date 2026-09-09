@@ -150,12 +150,19 @@ def test_skip_vs_force_compile_bitexact_real_model():
     hourly = HourlyModel(shared_model=daily.model)
     for cutoff in cutoffs:
         with BacktestDataStore("m", cutoff) as store:
+            # warmup compiles DAILY if last cutoff left XREG; r_skip then hits skip
+            daily.predict("m", store, context_days=250, horizon_days=22)
             r_skip = daily.predict("m", store, context_days=250, horizon_days=22)
             daily.model.compile(DailyModel._DAILY_CONFIG)
             setattr(daily.model, FM_COMPILED_FP_ATTR, None)
             r_force = daily.predict("m", store, context_days=250, horizon_days=22)
             assert np.array_equal(r_skip.forecast, r_force.forecast), cutoff
 
+            # warmup compiles XREG after daily; h_skip then hits skip
+            hourly.predict(
+                "m", store, r_skip, horizon=24, visualize=False,
+                covariate_type="ccl", verbose=False,
+            )
             h_skip = hourly.predict(
                 "m", store, r_skip, horizon=24, visualize=False,
                 covariate_type="ccl", verbose=False,
