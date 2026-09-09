@@ -14,6 +14,11 @@ def _patch_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(sup, "VERDICTS_INC", str(tmp_path / "known_verdicts.inc.md"))
     monkeypatch.setattr(sup, "REPORT_DIR", str(tmp_path / "reports"))
     monkeypatch.setattr(sup, "STATE_MD", str(tmp_path / "STATE.md"))
+    # 事件/心跳/停机报告也必须落在 tmp：否则测试会往生产 supervisor_events.jsonl 写
+    # run_started/provider_switch/sample_retest_enqueued 等假事件 (2026-09-09 实测污染)。
+    monkeypatch.setattr(sup, "EVENTS_PATH", str(tmp_path / "events.jsonl"))
+    monkeypatch.setattr(sup, "HEARTBEAT_PATH", str(tmp_path / "heartbeat"))
+    monkeypatch.setattr(sup, "STOP_REPORT_JSON", str(tmp_path / "stop_report.json"))
 
 
 def _clear_failover_env(monkeypatch):
@@ -921,6 +926,9 @@ def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
     assert [r["variant_id"] for r in rows] == ["cj_oi"]
     assert rows[0]["source"] == "sample_retest"
     assert json.load(open(sup.STATE_PATH, encoding="utf-8"))["phase"] == "slow"
+    # 事件必须落在隔离的 tmp events 文件, 不得污染生产 supervisor_events.jsonl
+    ev = [json.loads(l) for l in open(sup.EVENTS_PATH, encoding="utf-8") if l.strip()]
+    assert [e["event"] for e in ev].count("sample_retest_enqueued") == 1
     # 已在队列 → 不重复
     assert sup._maybe_enqueue_retests(goal, log) == 0
     assert len(sup.rl.queue_load(sup.QUEUE)) == 1
