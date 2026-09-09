@@ -53,7 +53,7 @@ archived covariates are RETIRED: do NOT propose them.
 
 ### symbol sample ceiling (valid aligned points now; hard gate n>=350)
 BELOW GATE symbols cannot pass today regardless of covariate (1H bars accrue over time; supervisor auto-retests near-misses):
-- ao: n=204 BELOW GATE
+- ao: n=205 BELOW GATE
 - bu: n=396 gate-reachable
 - cf: n=396 gate-reachable
 - cj: n=324 BELOW GATE

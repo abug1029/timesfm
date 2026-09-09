@@ -121,7 +121,7 @@ ALLOWED_SYMBOLS = {"ao", "bu", "cf", "fg", "fu", "i", "jm", "ma", "p", "sh", "sp
 # 证据阶梯 (2026-09-02 G6): 诊断档筛除 → aligned 档过硬门
 STAGE_POINTS = {
     "diagnostic": (1, 6),      # 快筛: max_points 1..6, 永不过硬门 (结构性)
-    "aligned": (350, 500),     # 近全量: max_points >= gate min_n=350, 可过预注册硬门
+    "aligned": (350, 600),     # 近全量: max_points >= gate min_n=350, 可过预注册硬门 (2026-09-09 用户批 500→600)
 }
 DEFAULT_STAGE = "diagnostic"
 

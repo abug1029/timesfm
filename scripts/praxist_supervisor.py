@@ -416,7 +416,7 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
         "tokens_used_m": tokens_used_m,
     }
 
-def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=400):
+def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=600):
     """Pick up to top_k diagnostic survivors, preferring symbol×cov diversity.
 
     Ranking is still by diagnostic EV, but we fill seats in passes:
@@ -563,7 +563,7 @@ def _append_backlog(prop, src_path):
     return True
 
 def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
-                      aligned_max_points=400, priority_symbols=None):
+                      aligned_max_points=600, priority_symbols=None):
     """收割 peer 机制化假设 (results/**/proposals/*.json) → aligned 队列行。
     与 harvest_survivors 平行但:
       - 不依赖诊断评估 (peer 不跑 eval)，验证证据来自慢环
