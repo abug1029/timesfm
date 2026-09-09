@@ -173,6 +173,14 @@ def _daily_predict_cached(daily_model, symbol, cutoff, context_days, horizon_day
     return result
 
 
+def _append_progress(path, line: str) -> None:
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError as e:
+        print(f"  [WARN] progress log write failed: {e}")
+
+
 def run_symbol_backtest(symbol, daily_model, hourly_model,
                         cov_override=None, cov_combo=None, clip_gap=None,
                         cache_interval=10, max_points=None,
@@ -897,12 +905,11 @@ def main():
 
     # 进度日志文件 (供 Monitor 工具事件驱动监控，避免重复轮询触发 400)
     progress_log = BACKTEST_DIR / "progress.log"
-    progress_log.write_text(f"START {datetime.now().isoformat()}\n", encoding="utf-8")
+    _append_progress(progress_log, f"START {datetime.now().isoformat()}\n")
 
     for i, symbol in enumerate(symbols):
         print(f"  [{i+1}/{len(symbols)}] {symbol.upper()}...", end=" ", flush=True)
-        progress_log.write_text(f"[{i+1}/{len(symbols)}] {symbol.upper()} START\n",
-                                encoding="utf-8")
+        _append_progress(progress_log, f"[{i+1}/{len(symbols)}] {symbol.upper()} START\n")
         try:
             data = run_symbol_backtest(symbol, daily_model, hourly_model,
                                         cov_override=cov_override, cov_combo=cov_combo,
@@ -914,15 +921,13 @@ def main():
                                         fill_strategy=fill_strategy)
             if data is None:
                 print("SKIP (无数据)")
-                progress_log.write_text(f"[{i+1}/{len(symbols)}] {symbol.upper()} SKIP\n",
-                                        encoding="utf-8")
+                _append_progress(progress_log, f"[{i+1}/{len(symbols)}] {symbol.upper()} SKIP\n")
                 continue
 
             s = summarize(data)
             if s is None:
                 print("FAIL")
-                progress_log.write_text(f"[{i+1}/{len(symbols)}] {symbol.upper()} FAIL\n",
-                                        encoding="utf-8")
+                _append_progress(progress_log, f"[{i+1}/{len(symbols)}] {symbol.upper()} FAIL\n")
                 continue
 
             all_data.append(data)
@@ -933,17 +938,13 @@ def main():
                    f"MaxDD={s.get('max_dd', 0):.2%} "
                    f"WR={s.get('win_rate', 0):.0%}")
             print(msg)
-            progress_log.write_text(
-                f"[{i+1}/{len(symbols)}] {symbol.upper()} OK {msg}\n",
-                encoding="utf-8",
-            )
+            _append_progress(progress_log, f"[{i+1}/{len(symbols)}] {symbol.upper()} OK {msg}\n")
 
         except Exception as e:
             print(f"ERROR: {e}")
-            progress_log.write_text(f"[{i+1}/{len(symbols)}] {symbol.upper()} ERROR {e}\n",
-                                    encoding="utf-8")
+            _append_progress(progress_log, f"[{i+1}/{len(symbols)}] {symbol.upper()} ERROR {e}\n")
 
-    progress_log.write_text(f"DONE {datetime.now().isoformat()}\n", encoding="utf-8")
+    _append_progress(progress_log, f"DONE {datetime.now().isoformat()}\n")
 
     if not summary_list:
         print("无有效结果")
