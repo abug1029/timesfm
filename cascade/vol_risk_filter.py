@@ -20,6 +20,7 @@ Volatility Gating / Vol Circuit Breaker（波动率熔断器）
 
 from __future__ import annotations
 
+import logging
 import os
 import pickle
 from dataclasses import dataclass, field
@@ -28,6 +29,8 @@ from typing import Mapping, Optional
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
@@ -106,6 +109,66 @@ def apply_neutral_override(
             q_flat = np.full(q.shape, float(base_price))
     return flat, q_flat
 
+
+
+
+def apply_neutral_override_v2(
+    point_forecast: np.ndarray,
+    base_price: float,
+    quantile_forecast: np.ndarray | None,
+    atr: float,
+    tick_size: float = 1.0,
+    vol_penalty_mult: float = 1.5,
+) -> tuple:
+    """
+    Neutral Override v2: 点预测归零 + 分位数波动率扩散 (v1.4)
+
+    布朗运动扩散: q_override[t, q_idx] = base_price + z_q * sigma_1 * sqrt(t) * vol_penalty_mult
+
+    10 列契约 (与 system_design.md §5.3 一致):
+      Col 0: Mean (z=0), Col 1-4: P10-P40, Col 5: P50 (z=0), Col 6-9: P60-P90
+    """
+    horizon = len(point_forecast)
+    flat_point = np.full(horizon, float(base_price))
+
+    if quantile_forecast is None:
+        return flat_point, None
+
+    if np.isnan(atr) or atr <= 0:
+        logger.warning("Neutral override 接收到非法或零 ATR，置信区间退化为 base_price")
+        return flat_point, np.full_like(quantile_forecast, float(base_price))
+
+    sigma_1 = atr * 0.8
+    time_steps = np.sqrt(np.arange(1, horizon + 1, dtype=float))
+    n_q = quantile_forecast.shape[1]
+
+    if n_q == 10:
+        z_scores = np.array([
+            0.0,
+            -1.28155, -0.84162, -0.52440, -0.25335,
+             0.0,
+            +0.25335, +0.52440, +0.84162, +1.28155,
+        ])
+    else:
+        from scipy.stats import norm
+        if n_q % 2 == 1:
+            prob_levels = np.linspace(1.0 / (n_q + 1), 1.0 - 1.0 / (n_q + 1), n_q)
+            prob_levels[n_q // 2] = 0.5
+        else:
+            prob_levels = np.linspace(0.5 / n_q, 1.0 - 0.5 / n_q, n_q)
+        z_scores = norm.ppf(prob_levels)
+        z_scores[n_q // 2] = 0.0
+
+    vol_spread = sigma_1 * time_steps[:, None] * vol_penalty_mult * z_scores[None, :]
+    q_override = base_price + vol_spread
+    q_override = np.maximum(q_override, tick_size)
+
+    if n_q == 10:
+        q_override[:, 1:] = np.sort(q_override[:, 1:], axis=-1)
+    else:
+        q_override = np.sort(q_override, axis=-1)
+
+    return flat_point, q_override
 
 def load_operational_thr_map(
     path: str | Path = DEFAULT_OPERATIONAL_THR_PATH,
