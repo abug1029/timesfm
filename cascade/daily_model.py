@@ -168,6 +168,24 @@ class DailyModel:
         )
 
 
+    def summary(self, result: DailyResult, scheme=None) -> str:
+        """生成日线预测摘要"""
+        fc = result.forecast
+        lines = [
+            f"日线预测 ({result.symbol.upper()})",
+            f"  历史窗口: {len(result.historical_closes)} 天",
+            f"  预测天数: {len(fc)} 天",
+            f"  预测范围: {fc.min():.1f} ~ {fc.max():.1f}",
+            f"  Horizon 斜率: {result.horizon_slope * 100:+.3f}%/天",
+            f"  方向: {_compute_direction_v2(result, scheme)}",
+        ]
+        if result.quantile_forecast is not None:
+            lines.append(f"  P10 范围: {result.quantile_forecast[:, 1].min():.1f} ~ {result.quantile_forecast[:, 1].max():.1f}")
+            lines.append(f"  P90 范围: {result.quantile_forecast[:, 9].min():.1f} ~ {result.quantile_forecast[:, 9].max():.1f}")
+        return "\n".join(lines)
+
+
+
 def _compute_direction_v2(daily_result, scheme) -> str:
     """R²-gated direction decision.
 
@@ -189,18 +207,3 @@ def _compute_direction_v2(daily_result, scheme) -> str:
         return "中性 →"
 
 
-    def summary(self, result: DailyResult, scheme=None) -> str:
-        """生成日线预测摘要"""
-        fc = result.forecast
-        lines = [
-            f"日线预测 ({result.symbol.upper()})",
-            f"  历史窗口: {len(result.historical_closes)} 天",
-            f"  预测天数: {len(fc)} 天",
-            f"  预测范围: {fc.min():.1f} ~ {fc.max():.1f}",
-            f"  Horizon 斜率: {result.horizon_slope * 100:+.3f}%/天",
-            f"  方向: {_compute_direction_v2(result, scheme)}",
-        ]
-        if result.quantile_forecast is not None:
-            lines.append(f"  P10 范围: {result.quantile_forecast[:, 1].min():.1f} ~ {result.quantile_forecast[:, 1].max():.1f}")
-            lines.append(f"  P90 范围: {result.quantile_forecast[:, 9].min():.1f} ~ {result.quantile_forecast[:, 9].max():.1f}")
-        return "\n".join(lines)

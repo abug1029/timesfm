@@ -347,18 +347,6 @@ class CopilotCard:
     xreg_fallback: bool = False
 
 
-def _compute_direction(d_slope: float, scheme=None) -> str:
-    """与 cascade_predict 一致的方向标签（避免 import 脚本模块）。"""
-    if scheme:
-        thr = scheme.trend_threshold_pct
-        if d_slope * 100 > thr:
-            return "看多 ↑"
-        if d_slope * 100 < -thr:
-            return "看空 ↓"
-        return "中性 →"
-    return "看多 ↑" if d_slope > 0.001 else "看空 ↓" if d_slope < -0.001 else "中性 →"
-
-
 def run_one(
     symbol: str,
     shared_model,
@@ -370,7 +358,7 @@ def run_one(
     from data.data_store import DataStore
     from data.config import get_name
     from config.prediction_scheme import get_scheme
-    from cascade.daily_model import DailyModel
+    from cascade.daily_model import DailyModel, _compute_direction_v2
     from cascade.hourly_model import HourlyModel
 
     symbol = symbol.lower()
@@ -420,7 +408,7 @@ def run_one(
             p90 = [float(q[i, 9]) for i in range(len(fc))]
 
         d_slope = float(daily_result.horizon_slope)
-        direction = _compute_direction(d_slope, scheme)
+        direction = _compute_direction_v2(daily_result, scheme)
         # 终点涨跌：用 T+h 点 vs 当前（更直观）；加权作补充
         t24 = float(fc[-1]) if len(fc) else last_close
         delta_pct = (t24 / last_close - 1.0) * 100.0 if last_close else 0.0
