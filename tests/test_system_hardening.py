@@ -196,3 +196,30 @@ class TestSPEC012R2DecisionClosure:
         ss_tot = np.sum((y - np.mean(y)) ** 2)
         r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
         assert r2 > 0.99
+
+
+class TestSPEC013DriftClipping:
+    """SPEC-013: Stage 1 prediction drift clipping."""
+
+    def test_extreme_prediction_clipped(self):
+        from cascade.features import _clip_prediction_drift
+        hist = np.array([100.0])
+        pred = np.array([200.0] * 22)
+        clipped = _clip_prediction_drift(hist, pred)
+        upper = 100.0 * (1.05) ** np.arange(1, 23)
+        assert np.all(clipped <= upper + 1e-6)
+
+    def test_normal_prediction_unchanged(self):
+        from cascade.features import _clip_prediction_drift
+        hist = np.array([100.0])
+        pred = 100.0 + np.arange(1, 23) * 0.5
+        clipped = _clip_prediction_drift(hist, pred)
+        np.testing.assert_allclose(clipped, pred)
+
+    def test_symmetric_clipping(self):
+        from cascade.features import _clip_prediction_drift
+        hist = np.array([100.0])
+        pred_down = np.array([10.0] * 22)
+        clipped = _clip_prediction_drift(hist, pred_down)
+        lower = 100.0 * (1 - 0.05) ** np.arange(1, 23)
+        assert np.all(clipped >= lower - 1e-6)

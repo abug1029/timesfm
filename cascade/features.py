@@ -19,6 +19,20 @@ from sklearn.preprocessing import StandardScaler
 EPSILON = 1e-8
 
 
+def _clip_prediction_drift(
+    hist_daily: np.ndarray,
+    pred_daily: np.ndarray,
+    max_daily_drift_pct: float = 0.05,
+) -> np.ndarray:
+    """Clip Stage 1 predictions to +/-5% daily drift envelope from last close."""
+    last_close = hist_daily[-1]
+    t = np.arange(1, len(pred_daily) + 1)
+    upper = last_close * (1 + max_daily_drift_pct) ** t
+    lower = last_close * (1 - max_daily_drift_pct) ** t
+    return np.clip(pred_daily, lower, upper)
+
+
+
 def _calc_atr(df: pd.DataFrame, period: int = 14) -> np.ndarray:
     """
     计算 ATR (Average True Range)，纯 numpy 实现
@@ -1055,7 +1069,7 @@ def build_covariate_matrix(
         _rsi_period = _rsi_period_map[covariate_type]
         hist_daily = np.array(historical_daily_closes, dtype=float)
         pred_daily = np.array(predicted_daily_closes, dtype=float)
-        full_daily = np.concatenate([hist_daily, pred_daily])
+        full_daily = np.concatenate([hist_daily, _clip_prediction_drift(hist_daily, pred_daily)])
 
         # 计算全序列日线 RSI 状态
         daily_states = calc_rsi_state(full_daily, rsi_period=_rsi_period)
