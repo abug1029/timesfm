@@ -34,7 +34,19 @@ from config.prediction_scheme import (
     signal_weight, trend_direction, confidence_band, scheme_summary,
     VarietyScheme,
 )
-from cascade.vol_risk_filter import VolRiskFilter, apply_neutral_override
+from cascade.vol_risk_filter import VolRiskFilter, apply_neutral_override_v2
+from cascade.features import _calc_atr
+
+# 品种最小变动价位表 (权威源, copilot.py 从此处导入)
+TICK_SIZE = {
+    'ss': 5.0, 'rb': 1.0, 'i': 0.5, 'jm': 0.5,
+    'au': 0.02, 'ag': 1.0, 'cu': 10.0, 'al': 5.0,
+    'm': 1.0, 'y': 2.0, 'p': 2.0, 'sr': 1.0,
+    'cf': 5.0, 'ta': 2.0, 'ma': 1.0, 'fu': 1.0,
+    'bu': 2.0, 'jd': 1.0, 'lh': 5.0, 'eg': 1.0,
+    'cj': 5.0, 'ur': 1.0, 'fg': 1.0, 'sp': 1.0,
+    'ao': 1.0, 'sh': 1.0,
+}
 
 
 def is_vol_filter_enabled(cli_flag: bool = False) -> bool:
@@ -159,12 +171,19 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
         # 获取最新 1H 收盘价
         last_1h_close = float(hourly_df["close_price"].iloc[-1]) if not hourly_df.empty else None
 
+        # 计算 ATR_14 (Wilder RMA, 取最后一个有效值)
+        atr_arr = _calc_atr(hourly_df, period=14)
+        atr_val = float(atr_arr[-1]) if len(atr_arr) > 0 else 0.0
+        tick_size = TICK_SIZE.get(symbol, 1.0)
+
         # Absolute Risk Overlay: 预测压平 → delta_pred=0 → 空仓
         if force_neutral and last_1h_close is not None:
-            flat_pt, flat_q = apply_neutral_override(
+            flat_pt, flat_q = apply_neutral_override_v2(
                 hourly_result.point_forecast,
                 last_1h_close,
                 hourly_result.quantile_forecast,
+                atr=atr_val,
+                tick_size=tick_size,
             )
             hourly_result = HourlyResult(
                 symbol=hourly_result.symbol,
