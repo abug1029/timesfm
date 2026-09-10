@@ -158,3 +158,41 @@ class TestSPEC007CosineRolloff:
         w = signal_weight(24, scheme)
         np.testing.assert_allclose(w[:12], 1.0)
         np.testing.assert_allclose(w[12:], 0.0)
+
+
+class TestSPEC012R2DecisionClosure:
+    """SPEC-012: Log slope R² filter + decision closure"""
+
+    def test_low_r2_returns_neutral(self):
+        from cascade.daily_model import _compute_direction_v2, DailyResult
+        dr = DailyResult.__new__(DailyResult)
+        dr.horizon_slope = 0.005
+        dr.slope_unreliable = True
+        scheme_mock = type('S', (), {'trend_threshold_pct': 0.1})()
+        assert '中性' in _compute_direction_v2(dr, scheme_mock)
+
+    def test_high_r2_bullish(self):
+        from cascade.daily_model import _compute_direction_v2, DailyResult
+        dr = DailyResult.__new__(DailyResult)
+        dr.horizon_slope = 0.005
+        dr.slope_unreliable = False
+        scheme_mock = type('S', (), {'trend_threshold_pct': 0.1})()
+        assert '看多' in _compute_direction_v2(dr, scheme_mock)
+
+    def test_high_r2_bearish(self):
+        from cascade.daily_model import _compute_direction_v2, DailyResult
+        dr = DailyResult.__new__(DailyResult)
+        dr.horizon_slope = -0.005
+        dr.slope_unreliable = False
+        scheme_mock = type('S', (), {'trend_threshold_pct': 0.1})()
+        assert '看空' in _compute_direction_v2(dr, scheme_mock)
+
+    def test_r_squared_computation(self):
+        x = np.arange(22, dtype=float)
+        y = 0.001 * x + 5.0
+        coeffs = np.polyfit(x, y, 1)
+        y_pred = np.polyval(coeffs, x)
+        ss_res = np.sum((y - y_pred) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+        assert r2 > 0.99

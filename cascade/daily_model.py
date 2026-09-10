@@ -25,6 +25,8 @@ class DailyResult:
     historical_closes: np.ndarray  # 历史真实日线收盘价
     historical_dates: pd.DatetimeIndex  # 历史真实日期
     quantile_forecast: Optional[np.ndarray] = None  # shape (22, 10)
+    r_squared: float = 0.0
+    slope_unreliable: bool = False
 
 
 FM_COMPILED_FP_ATTR = "_fm_compiled_fp"
@@ -143,8 +145,16 @@ class DailyModel:
 
         # 计算 horizon 段的百分比斜率 (线性回归)
         x = np.arange(len(forecast), dtype=float)
-        reg_slope = np.polyfit(x, forecast, 1)[0]
+        coeffs = np.polyfit(x, forecast, 1)
+        reg_slope = coeffs[0]
         horizon_slope = reg_slope / forecast.mean() if forecast.mean() != 0 else 0.0
+
+        # R²: 线性拟合优度，用于判断斜率可靠性
+        y_pred = np.polyval(coeffs, x)
+        ss_res = np.sum((forecast - y_pred) ** 2)
+        ss_tot = np.sum((forecast - np.mean(forecast)) ** 2)
+        r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+        slope_unreliable = r_squared < 0.35
 
         return DailyResult(
             symbol=symbol,
@@ -153,9 +163,33 @@ class DailyModel:
             historical_closes=closes,
             historical_dates=dates,
             quantile_forecast=quant,
+            r_squared=r_squared,
+            slope_unreliable=slope_unreliable,
         )
 
-    def summary(self, result: DailyResult) -> str:
+
+def _compute_direction_v2(daily_result, scheme) -> str:
+    """R²-gated direction decision.
+
+    If slope_unreliable (R² < 0.35), return neutral regardless of slope.
+    Otherwise apply scheme threshold (or default 0.001) on horizon_slope.
+    """
+    if getattr(daily_result, "slope_unreliable", False):
+        return "中性 → (形态分歧)"
+    if scheme:
+        thr_ratio = scheme.trend_threshold_pct / 100.0
+    else:
+        thr_ratio = 0.001
+    slope = daily_result.horizon_slope
+    if slope > thr_ratio:
+        return "看多 ↑"
+    elif slope < -thr_ratio:
+        return "看空 ↓"
+    else:
+        return "中性 →"
+
+
+    def summary(self, result: DailyResult, scheme=None) -> str:
         """生成日线预测摘要"""
         fc = result.forecast
         lines = [
@@ -164,7 +198,7 @@ class DailyModel:
             f"  预测天数: {len(fc)} 天",
             f"  预测范围: {fc.min():.1f} ~ {fc.max():.1f}",
             f"  Horizon 斜率: {result.horizon_slope * 100:+.3f}%/天",
-            f"  方向: {'看多 ↑' if result.horizon_slope > 0.001 else '看空 ↓' if result.horizon_slope < -0.001 else '中性 →'}",
+            f"  方向: {_compute_direction_v2(result, scheme)}",
         ]
         if result.quantile_forecast is not None:
             lines.append(f"  P10 范围: {result.quantile_forecast[:, 1].min():.1f} ~ {result.quantile_forecast[:, 1].max():.1f}")
