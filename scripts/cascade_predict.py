@@ -112,7 +112,8 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
         print(daily_model.summary(daily_result))
 
         # 读取历史数据用于报告
-        daily_df = store.get_main_continuous(limit=500)
+        from data.data_store import get_safe_daily
+        daily_df = get_safe_daily(symbol, store=store)
         hourly_df = store.get_main_contract_1h(limit=ctx_bars)
 
         # 静态配置（生产默认）；熔断不改 XReg 维数，避免 Ridge 跳变
