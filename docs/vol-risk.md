@@ -1,6 +1,6 @@
 # Vol 风控与 Phase 1 状态
 
-**快照日期：2026-07-27**（细节以 `STATE.md` 与 `reports/phase1/` 为准）
+**快照日期：2026-09-10**（v2 布朗运动 CI 扩散已上线）（细节以 `STATE.md` 与 `reports/phase1/` 为准）
 
 ## 红线
 
@@ -15,7 +15,7 @@
 
 | 组件 | 路径 |
 |------|------|
-| 熔断实现 | `cascade/vol_risk_filter.py` |
+| 熔断实现 | `cascade/vol_risk_filter.py` (v1 压平 + v2 布朗运动CI扩散) |
 | 操作 thr | `models/operational_thr.json`：chem **0.65** / agri **0.45** / black **0.55** |
 | R1 chem | `models/vol_risk_filter_chem.pkl` |
 | R1 agri | `models/vol_risk_filter_agri.pkl` |
