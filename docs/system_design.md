@@ -456,11 +456,20 @@ class ThrPolicy:
 
 ```python
 def apply_neutral_override(point_forecast, base_price, quantile_forecast):
-    """压平预测 → delta_pred=0 → 空仓建议"""
+    """v1: 压平预测 → delta_pred=0 → 空仓建议 (CI 全部归零)"""
     horizon = len(point_forecast)
-    flat = np.full(horizon, base_price)  # 所有预测 = 当前价格
+    flat = np.full(horizon, base_price)
     q_flat = np.full_like(quantile_forecast, base_price)
     return flat, q_flat
+
+def apply_neutral_override_v2(point_forecast, base_price, quantile_forecast,
+                               atr, tick_size=1.0, vol_penalty_mult=1.5):
+    """v2 (2026-09-10): 点预测归零 + 分位数波动率扩散 (布朗运动)
+
+    CI 不再归零，而是按 ATR 扩散:
+      q_override[t, q_idx] = base_price + z_q * sigma_1 * sqrt(t) * penalty
+    10 列 z-score 表: [0, -1.28, -0.84, -0.52, -0.25, 0, +0.25, +0.52, +0.84, +1.28]
+    旧函数保留向后兼容，生产路径 (cascade_predict.py) 已切换至 v2。"""
 ```
 
 ---
@@ -593,7 +602,7 @@ def gate_pass(n: int, ic: float, ev: float) -> bool:
 │  【领航员建议】                                             │
 │  ● 方向看多，但胜率仅 51%，建议轻仓试探                     │
 │  ● 短期信号强于长期，建议 T+12 前平仓                       │
-│  ● 止损参考: P10=14380 (跌破则趋势失效)                    │
+│  ● 止损参考 (多头防线): P10≈14380, 建议止损位 14370        │
 │  ● 止盈参考: P90=14660 (触及则减仓)                        │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘

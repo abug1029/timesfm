@@ -42,7 +42,9 @@ python scripts/copilot.py ss --no-vol-radar  # 关闭波动雷达
 
 ## 研报结构
 
-Markdown 含：结论面板、T+1~T+24 点预测与 P10/P90、止损锚点、因子快照。
+Markdown 含：结论面板、T+1~T+24 点预测与 P10/P90、止损锚点（tick 整量化 + 方向自适应）、因子快照。
+
+> 2026-09-10: 止损锚点从硬编码文案升级为 `generate_risk_bounds()` — 自动 tick snapping (floor/ceil/round)、价格下界保护、多空方向自适应。
 
 ## 与 variety_analysis 的关系
 

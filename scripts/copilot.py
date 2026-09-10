@@ -26,6 +26,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from scripts.cascade_predict import TICK_SIZE
+
 # ── 屏蔽刷屏 ──────────────────────────────────────────────
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 warnings.filterwarnings("ignore")
@@ -173,6 +175,64 @@ def evaluate_vol_radar(symbol: str, hourly_df) -> dict:
         out["error"] = str(e)
         out["message"] = f"风险雷达不可用: {e}"
     return out
+
+
+
+def quantize_price(price: float, tick_size: float, mode: str = "round") -> float:
+    """最小变动价位物理网格整量化 (Tick Snapping).
+
+    mode: 'round' (四舍五入), 'floor' (向下, 多头止损), 'ceil' (向上, 空头止损)
+    """
+    if tick_size <= 0:
+        return price
+    factor = 1.0 / tick_size
+    if mode == "floor":
+        return float(np.floor(np.round(price * factor, 6)) / factor)
+    elif mode == "ceil":
+        return float(np.ceil(np.round(price * factor, 6)) / factor)
+    else:
+        return float(np.round(price * factor) / factor)
+
+
+def _price_format(price: float, tick_size: float) -> str:
+    """基于 tick_size 自动决定显示精度"""
+    s = f"{tick_size:g}"
+    precision = len(s.split('.')[1]) if '.' in s else 0
+    return f"{price:.{precision}f}"
+
+
+def generate_risk_bounds(
+    direction: str,
+    p10: float,
+    p90: float,
+    tick_size: float,
+    stop_buffer_ticks: int = 2,
+) -> list:
+    """方向自适应止盈止损映射 + tick 整量化 + 价格下界保护"""
+    buffer = tick_size * stop_buffer_ticks
+    fmt = lambda v: _price_format(quantize_price(v, tick_size), tick_size)
+    lines = []
+
+    if "多" in direction or "↑" in direction:
+        raw_stop = p10 - buffer
+        stop = max(quantize_price(raw_stop, tick_size, mode="floor"), tick_size)
+        target = quantize_price(p90, tick_size, mode="round")
+        lines.append(f"止损参考 (多头防线): P10≈{fmt(p10)}, 建议止损位 {fmt(stop)}")
+        lines.append(f"止盈参考 (第一目标): P90≈{fmt(target)} (触及高位减仓)")
+
+    elif "空" in direction or "↓" in direction:
+        raw_stop = p90 + buffer
+        stop = quantize_price(raw_stop, tick_size, mode="ceil")
+        target = max(quantize_price(p10, tick_size, mode="round"), tick_size)
+        lines.append(f"止损参考 (空头防线): P90≈{fmt(p90)}, 建议止损位 {fmt(stop)}")
+        lines.append(f"止盈参考 (第一目标): P10≈{fmt(target)} (跌至目标位分批止盈)")
+
+    else:
+        lines.append(f"区间下轨支撑: P10≈{fmt(p10)}")
+        lines.append(f"区间上轨阻力: P90≈{fmt(p90)}")
+        lines.append("建议: 高抛低吸或观望")
+
+    return lines
 
 
 def _direction_bias(direction: str) -> str:
@@ -605,10 +665,14 @@ def write_markdown(cards: list[CopilotCard], asof: str, path: Path) -> Path:
             lines.append(
                 f"- 区间最低 P10 ≈ **{min(c.p10):,.1f}**；最高 P90 ≈ **{max(c.p90):,.1f}**  \n"
                 f"- 历史 P10–P90 Coverage ≈ **{cov_s}**  \n"
-                f"- **做多**: 止损可参考 P10 下方 1–2 个最小变动价位；"
-                f"击穿属小概率（约 1−Coverage）事件  \n"
-                f"- **做空**: 止损可参考 P90 上方对称处理  \n"
             )
+            # ★ 安全提取 P10/P90 (避免 numpy 数组真值歧义 ValueError)
+            p10_val = float(np.min(c.p10)) if (c.p10 is not None and len(c.p10) > 0) else 0.0
+            p90_val = float(np.max(c.p90)) if (c.p90 is not None and len(c.p90) > 0) else 0.0
+            tick_size = TICK_SIZE.get(c.symbol, 1.0)
+            risk_lines = generate_risk_bounds(c.direction, p10_val, p90_val, tick_size)
+            for rl in risk_lines:
+                lines.append(f"- {rl}  \n")
         else:
             lines.append("- 本次未取得分位数输出（可能 xreg 回退）。")
         if c.xreg_fallback:
