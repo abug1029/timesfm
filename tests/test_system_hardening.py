@@ -2,6 +2,7 @@ import json
 import tempfile
 from pathlib import Path
 import numpy as np
+import pandas as pd
 import pytest
 from task_FM.evaluations.fm_eval.evaluator import effective_sample_size
 
@@ -373,3 +374,80 @@ class TestSPEC009HalfLifeRefactor:
         # Only function signature defaults should remain (half_life: float = 12.0)
         non_sig = [l for l in lines if "half_life" not in l]
         assert len(non_sig) == 0, f"Remaining hardcoded: {non_sig}"
+
+
+class TestSPEC011RollAdjustment:
+    """SPEC-011: Cross-sectional roll adjustment with vectorized backward adj."""
+
+    def test_no_quadratic_explosion(self):
+        from data.data_store import apply_backward_adjustment_robust
+        df = pd.DataFrame({
+            "dt": pd.date_range("2026-01-01", periods=100, freq="D"),
+            "open": np.full(100, 100.0),
+            "high": np.full(100, 105.0),
+            "low": np.full(100, 95.0),
+            "close": np.full(100, 100.0),
+        })
+        rolls = [
+            {"dt": pd.Timestamp("2026-02-01"), "roll_ratio": 1.05},
+            {"dt": pd.Timestamp("2026-03-01"), "roll_ratio": 1.03},
+            {"dt": pd.Timestamp("2026-04-01"), "roll_ratio": 0.98},
+        ]
+        result = apply_backward_adjustment_robust(df, rolls)
+        # 100 * 1.05 * 1.03 * 0.98 = 106.027 < 200
+        assert result["close"].max() < 200.0
+
+    def test_latest_contract_unchanged(self):
+        df = pd.DataFrame({
+            "dt": pd.date_range("2026-01-01", periods=50, freq="D"),
+            "open": np.full(50, 100.0),
+            "high": np.full(50, 105.0),
+            "low": np.full(50, 95.0),
+            "close": np.full(50, 100.0),
+        })
+        from data.data_store import apply_backward_adjustment_robust
+        rolls = [{"dt": pd.Timestamp("2026-01-20"), "roll_ratio": 1.05}]
+        result = apply_backward_adjustment_robust(df, rolls)
+        # Rows at/after the roll date should be unchanged (factor=1.0)
+        mask_after = df["dt"] >= pd.Timestamp("2026-01-20")
+        np.testing.assert_allclose(result.loc[mask_after, "close"], 100.0)
+
+    def test_raw_close_preserved(self):
+        df = pd.DataFrame({
+            "dt": pd.date_range("2026-01-01", periods=50, freq="D"),
+            "open": np.full(50, 100.0),
+            "high": np.full(50, 105.0),
+            "low": np.full(50, 95.0),
+            "close": np.full(50, 100.0),
+        })
+        from data.data_store import apply_backward_adjustment_robust
+        rolls = [{"dt": pd.Timestamp("2026-01-20"), "roll_ratio": 1.05}]
+        result = apply_backward_adjustment_robust(df, rolls)
+        assert "raw_close" in result.columns
+        np.testing.assert_allclose(result["raw_close"], 100.0)
+
+    def test_empty_rolls_passthrough(self):
+        df = pd.DataFrame({
+            "dt": pd.date_range("2026-01-01", periods=10, freq="D"),
+            "close": np.full(10, 100.0),
+        })
+        from data.data_store import apply_backward_adjustment_robust
+        result = apply_backward_adjustment_robust(df, [])
+        np.testing.assert_allclose(result["close"], 100.0)
+
+    def test_detect_roll_events_basic(self):
+        from data.tqsdk_fetcher import detect_roll_events
+        df = pd.DataFrame({
+            "dt": ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"],
+            "contract_code": ["CF2509", "CF2509", "CF2601", "CF2601"],
+            "close": [100.0, 101.0, 150.0, 151.0],
+        })
+        rolls = detect_roll_events(df)
+        # Contract change detected between index 1 and 2
+        assert len(rolls) == 1
+        assert rolls[0]["old_contract"] == "CF2509"
+        assert rolls[0]["new_contract"] == "CF2601"
+
+    def test_detect_roll_events_empty(self):
+        from data.tqsdk_fetcher import detect_roll_events
+        assert detect_roll_events(pd.DataFrame()) == []

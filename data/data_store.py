@@ -79,6 +79,52 @@ def _clean_val(val):
 
 
 
+
+def apply_backward_adjustment_robust(kline_df: pd.DataFrame, roll_records: list) -> pd.DataFrame:
+    """Vectorized backward roll adjustment — no quadratic compounding.
+
+    Latest contract prices remain unchanged (factor=1.0 baseline).
+    Historical prices before each roll are scaled cumulatively by roll_ratio.
+    Preserves raw pre-adjustment values in raw_close (and raw_open etc.)
+    when those columns are not already present.
+    """
+    if not roll_records or kline_df.empty:
+        return kline_df
+
+    df = kline_df.copy()
+
+    # Preserve raw prices before any adjustment
+    if "raw_close" not in df.columns:
+        close_col = "close_price" if "close_price" in df.columns else "close"
+        if close_col in df.columns:
+            df["raw_close"] = df[close_col]
+
+    sorted_rolls = sorted(roll_records, key=lambda x: x["dt"])
+
+    # Determine the dt column
+    dt_col = "dt" if "dt" in df.columns else df.columns[0]
+
+    # Vectorized: build a cumulative adjustment factor series
+    # Start with 1.0 everywhere; walk backwards through rolls and multiply.
+    adj_series = np.ones(len(df), dtype=float)
+    dt_values = pd.to_datetime(df[dt_col])
+
+    for roll in reversed(sorted_rolls):
+        roll_dt = pd.to_datetime(roll["dt"])
+        mask = dt_values < roll_dt
+        adj_series[mask] *= roll["roll_ratio"]
+
+    # Apply to price columns (handle both open_price/close_price and open/close)
+    price_cols = [c for c in ["open_price", "high", "low", "close_price",
+                               "open", "close"]
+                  if c in df.columns]
+    for col in price_cols:
+        df[col] = df[col] * adj_series
+
+    return df
+
+
+
 def get_safe_daily(
     symbol: str,
     limit: int = 500,
@@ -313,6 +359,7 @@ class DataStore:
         """读取主力连续数据
 
         [H4 fix] LIMIT 返回最近 N 条，不是最旧 N 条
+        [SPEC-011] 主力连续加载后自动检测换月事件并执行向量ized向后复权
         """
         if limit:
             # 子查询: 先倒序取最近 N 条，再正序返回
@@ -325,7 +372,7 @@ class DataStore:
             inner += " ORDER BY dt DESC LIMIT ?"
             params.append(int(limit))
             sql = f"SELECT * FROM ({inner}) ORDER BY dt"
-            return pd.read_sql_query(sql, self.conn, params=params)
+            df = pd.read_sql_query(sql, self.conn, params=params)
         else:
             sql = "SELECT * FROM main_continuous_1d WHERE 1=1"
             params = []
@@ -334,7 +381,16 @@ class DataStore:
             if end_date:
                 sql += " AND dt <= ?"; params.append(end_date)
             sql += " ORDER BY dt"
-            return pd.read_sql_query(sql, self.conn, params=params)
+            df = pd.read_sql_query(sql, self.conn, params=params)
+
+        # [SPEC-011] Roll adjustment: detect & adjust if not already adjusted
+        if not df.empty and "raw_close" not in df.columns:
+            from .tqsdk_fetcher import detect_roll_events
+            roll_records = detect_roll_events(df)
+            if roll_records:
+                df = apply_backward_adjustment_robust(df, roll_records)
+
+        return df
 
     def get_xreg_factors(self, factor_names=None, start_date=None) -> pd.DataFrame:
         """读取 XReg 因子"""
