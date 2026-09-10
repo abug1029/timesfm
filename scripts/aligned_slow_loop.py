@@ -8,7 +8,7 @@ sys.path.insert(0, FM_ROOT)
 sys.path.insert(0, os.path.join(FM_ROOT, "task_FM", "evaluations", "fm_eval"))
 import monthly_backtest as mb
 import registry_lib as rl
-from evaluator import build_summary
+from evaluator import build_summary, effective_sample_size
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
 
@@ -98,6 +98,9 @@ def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path):
             v.setdefault("ic", round(2 * abs(float(v.get("dir_acc", 0.5)) - 0.5), 10))
             v.setdefault("decided_at", _now())
             v.setdefault("schema", "fm.aligned_verdict.v1")
+            # SPEC-004: n_eff integration point
+            v["n_eff"] = effective_sample_size(v.get("n", 0), horizon=24, step=2)
+            v["n_eff_method"] = "bartlett_full_kernel_rho0.9"
     v["checkpoint_path"] = cp
     v["slow_loop_pid"] = os.getpid()
     v["git_rev"] = _git_rev()
