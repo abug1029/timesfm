@@ -175,6 +175,64 @@ def evaluate_vol_radar(symbol: str, hourly_df) -> dict:
     return out
 
 
+
+def quantize_price(price: float, tick_size: float, mode: str = "round") -> float:
+    """最小变动价位物理网格整量化 (Tick Snapping).
+
+    mode: 'round' (四舍五入), 'floor' (向下, 多头止损), 'ceil' (向上, 空头止损)
+    """
+    if tick_size <= 0:
+        return price
+    factor = 1.0 / tick_size
+    if mode == "floor":
+        return float(np.floor(np.round(price * factor, 6)) / factor)
+    elif mode == "ceil":
+        return float(np.ceil(np.round(price * factor, 6)) / factor)
+    else:
+        return float(np.round(price * factor) / factor)
+
+
+def _price_format(price: float, tick_size: float) -> str:
+    """基于 tick_size 自动决定显示精度"""
+    s = f"{tick_size:g}"
+    precision = len(s.split('.')[1]) if '.' in s else 0
+    return f"{price:.{precision}f}"
+
+
+def generate_risk_bounds(
+    direction: str,
+    p10: float,
+    p90: float,
+    tick_size: float,
+    stop_buffer_ticks: int = 2,
+) -> list:
+    """方向自适应止盈止损映射 + tick 整量化 + 价格下界保护"""
+    buffer = tick_size * stop_buffer_ticks
+    fmt = lambda v: _price_format(quantize_price(v, tick_size), tick_size)
+    lines = []
+
+    if "多" in direction or "↑" in direction:
+        raw_stop = p10 - buffer
+        stop = max(quantize_price(raw_stop, tick_size, mode="floor"), tick_size)
+        target = quantize_price(p90, tick_size, mode="round")
+        lines.append(f"止损参考 (多头防线): P10≈{fmt(p10)}, 建议止损位 {fmt(stop)}")
+        lines.append(f"止盈参考 (第一目标): P90≈{fmt(target)} (触及高位减仓)")
+
+    elif "空" in direction or "↓" in direction:
+        raw_stop = p90 + buffer
+        stop = quantize_price(raw_stop, tick_size, mode="ceil")
+        target = max(quantize_price(p10, tick_size, mode="round"), tick_size)
+        lines.append(f"止损参考 (空头防线): P90≈{fmt(p90)}, 建议止损位 {fmt(stop)}")
+        lines.append(f"止盈参考 (第一目标): P10≈{fmt(target)} (跌至目标位分批止盈)")
+
+    else:
+        lines.append(f"区间下轨支撑: P10≈{fmt(p10)}")
+        lines.append(f"区间上轨阻力: P90≈{fmt(p90)}")
+        lines.append("建议: 高抛低吸或观望")
+
+    return lines
+
+
 def _direction_bias(direction: str) -> str:
     d = direction or ""
     if "多" in d or "↑" in d:
