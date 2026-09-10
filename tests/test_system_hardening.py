@@ -1,3 +1,6 @@
+import json
+import tempfile
+from pathlib import Path
 import numpy as np
 import pytest
 from task_FM.evaluations.fm_eval.evaluator import effective_sample_size
@@ -223,3 +226,65 @@ class TestSPEC013DriftClipping:
         clipped = _clip_prediction_drift(hist, pred_down)
         lower = 100.0 * (1 - 0.05) ** np.arange(1, 23)
         assert np.all(clipped >= lower - 1e-6)
+
+
+class TestSPEC006SchemeRetirement:
+    """SPEC-006: Composite key retirement + star override (real function calls)"""
+
+    def _make_kb(self):
+        return {
+            "symbols": {
+                "ss": {
+                    "credit_stars": 2, "historical_pf": 1.10,
+                    "production_covariate": "vor", "slow_loop_status": "ok",
+                },
+                "rb": {
+                    "credit_stars": 1, "historical_pf": 1.05,
+                    "production_covariate": "rsi_state", "slow_loop_status": "ok",
+                },
+            }
+        }
+
+    def test_sync_degrades_on_negative_ev(self):
+        from scripts.build_knowledge_base import sync_slow_loop_status
+        kb = self._make_kb()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({
+                "symbol": "ss", "variant_id": "ss_vor",
+                "gate_pass": False, "ev": -1.5, "pf": 0.90,
+                "metrics": {"ev_after_slippage": -1.5}
+            }) + "\n")
+            tmppath = Path(f.name)
+        result = sync_slow_loop_status(kb, tmppath)
+        assert result["symbols"]["ss"]["slow_loop_status"] == "degraded"
+        assert result["symbols"]["rb"]["slow_loop_status"] == "ok"
+        tmppath.unlink()
+
+    def test_sync_ignores_non_production_covariate(self):
+        from scripts.build_knowledge_base import sync_slow_loop_status
+        kb = self._make_kb()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({
+                "symbol": "ss", "variant_id": "ss_calendar_cyclical",
+                "gate_pass": False, "ev": -2.0, "pf": 0.80,
+            }) + "\n")
+            tmppath = Path(f.name)
+        result = sync_slow_loop_status(kb, tmppath)
+        assert result["symbols"]["ss"]["slow_loop_status"] == "ok"
+        tmppath.unlink()
+
+    def test_craft_advisory_revoked_freezes(self):
+        from scripts.copilot import craft_advisory_v2
+        kb = self._make_kb()
+        kb["symbols"]["ss"]["slow_loop_status"] = "revoked"
+        lines = craft_advisory_v2("ss", kb, "看多 ↑", 0.5, 0.3, "vor")
+        assert any("冻结" in line for line in lines)
+
+    def test_craft_advisory_degraded_downgrades_stars(self):
+        from scripts.copilot import craft_advisory_v2
+        kb = self._make_kb()
+        kb["symbols"]["ss"]["slow_loop_status"] = "degraded"
+        kb["symbols"]["ss"]["credit_stars"] = 3
+        lines = craft_advisory_v2("ss", kb, "看多 ↑", 0.5, 0.3, "vor")
+        assert any("弱信号" in line for line in lines)
+        assert not any("标准仓位" in line for line in lines)

@@ -318,6 +318,29 @@ def craft_advisory(
     return lines
 
 
+
+def craft_advisory_v2(symbol, kb, direction, delta_pct, vol, scheme_type):
+    """Advisory with effective_stars override for degraded/revoked status."""
+    entry = kb_entry(kb, symbol)
+    status = entry.get("slow_loop_status", "ok")
+
+    raw_stars = int(entry.get("credit_stars") or 0)
+    effective_stars = 1 if status in ("degraded", "revoked") else raw_stars
+
+    lines = []
+    if status == "revoked":
+        lines.append("🔒 慢环实证已完全退化冻结，禁止建立新仓，仅供观望监控。")
+        return lines
+
+    if effective_stars >= 2:
+        lines.append(f"模型底气: 盈亏比(PF) {entry.get('historical_pf', 0):.2f}，中等信用，建议标准仓位。")
+    else:
+        reason = "（慢环实证退化）" if status == "degraded" else ""
+        lines.append(f"模型底气: 弱信号品种{reason}，建议轻仓试探或观望。")
+
+    return lines
+
+
 # ─────────────────────────────────────────────────────────
 # 预测核心（永不压平）
 # ─────────────────────────────────────────────────────────

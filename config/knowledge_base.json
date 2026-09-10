@@ -1,10 +1,10 @@
 {
   "_meta": {
     "version": 1,
-    "built_at": "2026-08-21T23:03:21",
+    "built_at": "2026-09-10T21:38:02",
     "note": "信用星级 credit_stars = scheme.stars（唯一源 CF-10 A）。DirAcc/MAPE/decay 来自 SCHEMES；PF/EV 来自 L1 OFF 基线。Vol 仅预警不压平。产品=主观辅助非自动下单。展示优先 PF/EV/MaxDD，DirAcc 仅附录（CF-23 A）。",
     "l1_source": null,
-    "warning": "missing D:\\FlyBuddy\\FM_a\\reports\\phase1\\full_universe_neutral_r1_ops\\ECONOMIC_VERDICT.json"
+    "warning": "missing /home/abug/timesfm/reports/phase1/full_universe_neutral_r1_ops/ECONOMIC_VERDICT.json"
   },
   "symbols": {
     "ao": {

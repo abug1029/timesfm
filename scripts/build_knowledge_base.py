@@ -159,13 +159,55 @@ def build(l1_path: Path) -> dict:
     return kb
 
 
+def sync_slow_loop_status(kb: dict, verdicts_path) -> dict:
+    """Sync slow loop status from aligned_verdicts.jsonl with composite (symbol, covariate) key."""
+    latest = {}
+    try:
+        with open(verdicts_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                v = json.loads(line)
+                sym = v["symbol"]
+                # Fallback: extract covariate from variant_id
+                cov = v.get("covariate") or (
+                    "_".join(v.get("variant_id", "").split("_")[1:])
+                    if "_" in v.get("variant_id", "")
+                    else "unknown"
+                )
+                key = (sym, cov)
+                latest[key] = v
+    except FileNotFoundError:
+        return kb
+
+    now = datetime.now().isoformat(timespec="seconds")
+    for (sym, cov), v in latest.items():
+        if sym not in kb["symbols"]:
+            continue
+        entry = kb["symbols"][sym]
+        if entry.get("production_covariate") != cov:
+            continue
+        if v.get("gate_pass"):
+            entry["slow_loop_status"] = "ok"
+        elif v.get("ev", 0) < 0 or v.get("pf", 0) < 0.95:
+            entry["slow_loop_status"] = "degraded"
+        entry["slow_loop_pf"] = v.get("pf")
+        entry["slow_loop_ev"] = v.get("metrics", {}).get("ev_after_slippage")
+        entry["slow_loop_updated"] = now
+
+    return kb
+
+
 def main():
     ap = argparse.ArgumentParser(description="Build Copilot knowledge_base.json")
     ap.add_argument("--l1", type=Path, default=DEFAULT_L1)
     ap.add_argument("--out", type=Path, default=OUT_PATH)
+    ap.add_argument("--verdicts", type=Path, default=ROOT / "data" / "aligned_verdicts.jsonl")
     args = ap.parse_args()
 
     kb = build(args.l1)
+    sync_slow_loop_status(kb, args.verdicts)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(kb, ensure_ascii=False, indent=2), encoding="utf-8")
     n = len(kb["symbols"])
