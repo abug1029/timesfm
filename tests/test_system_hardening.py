@@ -309,3 +309,38 @@ class TestSPEC006SchemeRetirement:
             assert kb["symbols"][sym]["production_covariate"] == expected, (
                 f"{sym}: expected {expected}, got {kb[symbols][sym][production_covariate]}"
             )
+
+
+class TestSPEC010TradingHourAutoDetect:
+    """SPEC-010: Calendar trading hour auto-detect with 5% threshold"""
+
+    def test_detect_trading_hours_filters_noise(self):
+        """Noise hour (0.3%) should be filtered; real trading hour (11.1%) should pass."""
+        from cascade.data_validator import detect_trading_hours
+        import pandas as pd
+
+        base_hours = [9, 10, 11, 13, 14, 15, 21, 22, 23]
+        rows = []
+        for day in range(100):
+            for h in base_hours:
+                rows.append(pd.Timestamp("2026-01-01") + pd.Timedelta(days=day, hours=h))
+        # Add noise: hour 20 appears only 3 times (0.3%)
+        for i in range(3):
+            rows.append(pd.Timestamp("2026-01-01") + pd.Timedelta(days=i, hours=20))
+
+        df = pd.DataFrame({"dt": rows})
+        detected = detect_trading_hours(df)
+        assert 20 not in detected, f"Noise hour 20 should be filtered, got {detected}"
+        assert 9 in detected, f"Real trading hour 9 should be detected, got {detected}"
+
+    def test_calc_calendar_no_silent_fallback(self):
+        """calc_calendar_cyclical should auto-detect trading hours when valid_hours=None."""
+        from cascade.features import calc_calendar_cyclical
+        import pandas as pd
+        import numpy as np
+
+        n = 200
+        dts = pd.date_range("2026-01-01", periods=n, freq="h")
+        df = pd.DataFrame({"dt": dts, "close": np.random.randn(n)})
+        result = calc_calendar_cyclical(df, horizon=24)
+        assert result.shape == (224, 4), f"Expected (224, 4), got {result.shape}"

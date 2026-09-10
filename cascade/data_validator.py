@@ -487,6 +487,11 @@ def _group_into_sessions(valid_hours: list) -> list:
     if not valid_hours:
         return []
 
+    # 兼容整数小时输入: 转换为 time 对象
+    from datetime import time as _dt_time
+    if isinstance(valid_hours[0], int):
+        valid_hours = [_dt_time(h) for h in valid_hours]
+
     sessions = [[valid_hours[0]]]
     for t in valid_hours[1:]:
         prev = sessions[-1][-1]
@@ -536,7 +541,9 @@ def _detect_gaps(df_1h: pd.DataFrame, max_gap_hours: int = 3) -> int:
     if not valid_hours:
         return 0
 
-    valid_set = set(valid_hours)
+    # 转换为 time 对象用于与 bar time 比较
+    from datetime import time as _dt_time
+    valid_set = set(_dt_time(h) for h in valid_hours)
 
     # 按日分组, 检查每天的 bar 完整性
     gaps = 0
@@ -552,35 +559,26 @@ def _detect_gaps(df_1h: pd.DataFrame, max_gap_hours: int = 3) -> int:
     return gaps
 
 
-def detect_trading_hours(df_1h: pd.DataFrame) -> list:
-    """从历史 1H 数据提取合法交易时点 (数据驱动, 零维护成本)
+def detect_trading_hours(df_1h: pd.DataFrame, min_frequency_pct: float = 0.05) -> list:
+    """从历史 1H 数据提取合法交易时段 (数据驱动, 零维护成本)
 
-    原理: 统计每个时点 (HH:MM) 在历史数据中出现的频率,
-    取频率 ≥ 80% 的时点作为该品种的合法交易时段。
+    原理: 统计每个小时在数据中出现的频率,
+    过滤掉低于阈值的噪声时点。
 
     Args:
         df_1h: 1H K线 DataFrame, 需有 'dt' 列
+        min_frequency_pct: 最低频率阈值 (0-1), 默认 0.05 (5%)
 
     Returns:
-        排序后的 time 对象列表, e.g. [time(10,0), time(11,15), ...]
+        排序后的小时列表, e.g. [9, 10, 11, 13, 14, 15, 21, 22, 23]
     """
     if df_1h.empty:
         return []
 
-    dates = pd.to_datetime(df_1h["dt"])
-    times = dates.dt.time
-    dates_only = dates.dt.date
-
-    total_days = dates_only.nunique()
-    if total_days == 0:
-        return []
-
-    counts = Counter(times)
-    # 出现频率 ≥ 80% 的时点视为合法交易时点
-    threshold = total_days * 0.8
-    valid = sorted([t for t, c in counts.items() if c >= threshold])
-
-    return valid
+    dt_col = 'dt' if 'dt' in df_1h.columns else 'date'
+    hours = pd.DatetimeIndex(df_1h[dt_col]).hour
+    counts = hours.value_counts(normalize=True)
+    return sorted(counts[counts >= min_frequency_pct].index.tolist())
 
 
 def generate_trading_dates(last_dt, horizon: int, valid_hours: list) -> pd.DatetimeIndex:
@@ -619,7 +617,10 @@ def generate_trading_dates(last_dt, horizon: int, valid_hours: list) -> pd.Datet
             continue
 
         # 检查是否属于合法交易时点
-        if current.time() in valid_set:
+        # 兼容整数小时和 time 对象
+        _sample = next(iter(valid_set))
+        check_val = current.hour if isinstance(_sample, int) else current.time()
+        if check_val in valid_set:
             future.append(current)
 
     return pd.DatetimeIndex(future)

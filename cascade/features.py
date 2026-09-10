@@ -2084,13 +2084,14 @@ def calc_sar_distance(df: pd.DataFrame,
 # Phase 4: 日历周期协变量 (calendar_cyclical)
 # ──────────────────────────────────────────────────────────────
 
-def calc_calendar_cyclical(df_1h: pd.DataFrame, horizon: int) -> np.ndarray:
+def calc_calendar_cyclical(df_1h: pd.DataFrame, horizon: int, valid_hours=None) -> np.ndarray:
     """
     计算日历周期 4 维正余弦编码: [sin(2π·DOY/365.25), cos(...), sin(2π·Month/12), cos(...)]
 
     Args:
         df_1h: 含时间列('dt'或'date')的 1H K线 DataFrame,长度 = context_bars
         horizon: 未来预测步数
+        valid_hours: 合法交易时段列表 (整数小时). None 时自动从数据检测。
 
     Returns:
         np.ndarray: shape (len(df_1h) + horizon, 4), dtype=float32
@@ -2110,13 +2111,34 @@ def calc_calendar_cyclical(df_1h: pd.DataFrame, horizon: int) -> np.ndarray:
         np.cos(2 * np.pi * month / 12),
     ]).astype(np.float32)
 
-    # 3) Horizon 部分: 向量化生成未来时间戳并编码
+    # 3) Horizon 部分: 交易时段感知的未来时间戳生成
     last_dt = dt_idx[-1]
-    future_dts = pd.date_range(
-        start=last_dt + pd.Timedelta(hours=1),
-        periods=horizon,
-        freq='h'
-    )
+
+    if valid_hours is None:
+        from .data_validator import detect_trading_hours
+        valid_hours = detect_trading_hours(df_1h)
+
+    if not valid_hours:
+        # 最终回退: 简单 1h 间隔
+        future_dts = pd.date_range(
+            start=last_dt + pd.Timedelta(hours=1),
+            periods=horizon,
+            freq='h'
+        )
+    else:
+        # 只在合法交易时段生成未来 bar
+        valid_set = set(int(h) for h in valid_hours)
+        future_list = []
+        current = last_dt + pd.Timedelta(hours=1)
+        current = current.replace(minute=0, second=0, microsecond=0)
+        max_iter = horizon * 48
+        while len(future_list) < horizon and max_iter > 0:
+            max_iter -= 1
+            if current.weekday() < 5 and current.hour in valid_set:
+                future_list.append(current)
+            current += pd.Timedelta(hours=1)
+        future_dts = pd.DatetimeIndex(future_list)
+
     future_doy = future_dts.dayofyear.values
     future_month = future_dts.month.values
 
