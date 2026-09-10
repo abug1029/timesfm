@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Any, Optional, Dict, List
 from datetime import datetime
 
 from .config import get_db_path, get_exchange, parse_contract_info
@@ -76,6 +76,50 @@ def _clean_val(val):
     except (TypeError, ValueError):
         return None
     return val
+
+
+
+def get_safe_daily(
+    symbol: str,
+    limit: int = 500,
+    now_dt: datetime | None = None,
+    store: Any | None = None,
+) -> pd.DataFrame:
+    """生产路径同构防护: 向量化收盘掩码, 防御夜盘跨日穿透.
+
+    规则:
+    - date < today  → 历史已收盘, 保留
+    - date == today 且 hour >= 15 → 当日已收盘, 保留
+    - date == today 且 hour < 15  → 当日未收盘, 剔除
+    - date > today → 未来交易日 (夜盘跨日标签), 无条件剔除
+    """
+    if now_dt is None:
+        now_dt = datetime.now()
+
+    if store is not None:
+        df = store.get_main_continuous(limit=limit)
+    else:
+        with DataStore(symbol) as ds:
+            df = ds.get_main_continuous(limit=limit)
+
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    df_dates = pd.to_datetime(df["dt"]).dt.date
+    today = now_dt.date()
+
+    closed_mask = (df_dates < today) | ((df_dates == today) & (now_dt.hour >= 15))
+    safe_df = df[closed_mask].copy().reset_index(drop=True)
+    trimmed_rows = len(df) - len(safe_df)
+
+    if trimmed_rows > 0:
+        logger.warning(
+            f"[{symbol}] 检测到 {trimmed_rows} 行未收盘/未来交易日日线, "
+            f"当前系统时间 {now_dt.strftime('%Y-%m-%d %H:%M')}, "
+            f"已透明回退至最新已收盘日线"
+        )
+
+    return safe_df
 
 
 class DataStore:
