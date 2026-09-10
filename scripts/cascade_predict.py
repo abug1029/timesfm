@@ -112,7 +112,7 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
         daily_model = DailyModel(shared_model=shared_model)
         daily_result = daily_model.predict(symbol, store,
                                            context_days=ctx_days, horizon_days=h_days)
-        print(daily_model.summary(daily_result))
+        print(daily_model.summary(daily_result, scheme))
 
         # 读取历史数据用于报告
         from data.data_store import get_safe_daily
@@ -122,6 +122,7 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
         # 静态配置（生产默认）；熔断不改 XReg 维数，避免 Ridge 跳变
         cov_type = scheme.covariate_type if scheme else "ccl"
         cov_types = scheme.covariate_types if scheme else None
+        half_life = scheme.half_life_bars if scheme else 12.0
         cov_label = '+'.join(cov_types) if cov_types else cov_type
         force_neutral = False
         force_slope_only = False
@@ -161,6 +162,7 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
                 covariate_type="slope_only",
                 covariate_types=None,
                 skip_validation=True,
+                half_life=half_life,
             )
         else:
             # 始终用静态 scheme 跑 XReg（含将要中性覆写的情况）
@@ -170,6 +172,7 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
                 covariate_type=cov_type,
                 covariate_types=cov_types,
                 skip_validation=True,
+                half_life=half_life,
             )
 
         # 获取最新 1H 收盘价

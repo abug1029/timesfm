@@ -750,7 +750,8 @@ def calc_crack_spread(df_main: pd.DataFrame, df_leg: pd.DataFrame,
                       ratio: float = 0.655, mode: str = "slope",
                       lookback: int = 20, horizon: int = 24,
                       norm_window: int = 120, max_ffill_gap: int = 4,
-                      gain: float = 1.0) -> np.ndarray:
+                      gain: float = 1.0,
+                      half_life: float = 12.0) -> np.ndarray:
     """
     跨品种裂解价差协变量 (纯函数, 不开 DB)
 
@@ -795,7 +796,7 @@ def calc_crack_spread(df_main: pd.DataFrame, df_leg: pd.DataFrame,
         ctx = np.tanh(gain * slopes)
         ctx = np.where(guard_zero, 0.0, ctx)
         last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-        decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+        decay = _decay_fill(1.0, horizon, half_life=half_life)
         covariate_full = np.concatenate([ctx, last_val * decay])  # decay_0
     elif mode == "zscore":
         mu = spread.rolling(lookback, min_periods=lookback).mean().values
@@ -804,7 +805,7 @@ def calc_crack_spread(df_main: pd.DataFrame, df_leg: pd.DataFrame,
         ctx = np.tanh(gain * z)
         ctx = np.where(guard_zero, 0.0, ctx)
         last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-        decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+        decay = _decay_fill(1.0, horizon, half_life=half_life)
         covariate_full = np.concatenate([ctx, last_val * decay])  # decay_0
     else:
         raise ValueError(f"未知 crack_spread mode: {mode}")
@@ -978,6 +979,16 @@ def _calc_stddev(df_1h: pd.DataFrame, lookback: int = 20) -> np.ndarray:
     return np.where(stddev_mean > 1e-8, stddev / (stddev_mean + EPSILON) - 1.0, 0.0)
 
 
+
+def _decay_fill(last_val, horizon, half_life=12.0):
+    """均值回复型协变量的指数衰减 horizon 填充.
+
+    last_val * 0.5^(i/half_life) — half_life bar 后信号减半
+    """
+    decay = np.array([0.5 ** (i / half_life) for i in range(horizon)])
+    return last_val * decay
+
+
 def build_covariate_matrix(
     symbol: str,
     store,
@@ -989,6 +1000,7 @@ def build_covariate_matrix(
     covariate_type: str = "ccl",
     feedstock_cache: Optional[Dict] = None,
     fill_strategy: str = "default",
+    half_life: float = 12.0,
 ) -> dict:
     """
     构建完整的 XReg 协变量矩阵
@@ -1025,12 +1037,6 @@ def build_covariate_matrix(
     )
 
     # 2. 第二协变量: 按 covariate_type 选择
-    # W1 辅助函数: 均值回复型协变量的指数衰减 horizon 填充 (12-bar 半衰期)
-    def _decay_fill(last_val, horizon, half_life=12):
-        """last_val * 0.5^(i/half_life) — 12 bar 后信号减半"""
-        decay = np.array([0.5 ** (i / half_life) for i in range(horizon)])
-        return last_val * decay
-
     if covariate_type in ("slope_only", "none", "baseline"):
         # Path2 波动熔断：仅保留 daily_slope，无第二协变量
         return {"daily_slope": slope}
@@ -1227,10 +1233,7 @@ def build_covariate_matrix(
 
             # Horizon: 基差斜率向 0 衰减 (未来基差变化不可预测, 回归中性)
             last_slope = float(ctx_momentum[-1]) if len(ctx_momentum) > 0 else 0.0
-            horizon_momentum = np.zeros(horizon, dtype=float)
-            for i in range(horizon):
-                decay = 0.5 ** (i / 24.0)  # 24 bars 半衰期
-                horizon_momentum[i] = last_slope * decay
+            horizon_momentum = _decay_fill(last_slope, horizon, half_life=24.0)
 
             covariate_full = np.concatenate([ctx_momentum, horizon_momentum])
         covariate_name = "basis_momentum"
@@ -1248,10 +1251,7 @@ def build_covariate_matrix(
             ctx_vor = np.zeros(context_len)
         # Horizon: 向 0 衰减 (投机量无法维持)
         last_vor = float(ctx_vor[-1]) if len(ctx_vor) > 0 else 0.0
-        horizon_vor = np.zeros(horizon, dtype=float)
-        for i in range(horizon):
-            decay = 0.5 ** (i / 12.0)  # 12 bars 快速衰减 (投机行为短暂)
-            horizon_vor[i] = last_vor * decay
+        horizon_vor = _decay_fill(last_vor, horizon, half_life=half_life)
         covariate_full = np.concatenate([ctx_vor, horizon_vor])
         covariate_name = "vor"
 
@@ -1331,7 +1331,7 @@ def build_covariate_matrix(
             df_leg = None
             _ratio = 0.655
         covariate_full = calc_crack_spread(df_1h, df_leg, ratio=_ratio, mode=_mode,
-                                           horizon=horizon)
+                                           horizon=horizon, half_life=half_life)
         covariate_name = covariate_type
 
     elif covariate_type == "calendar_cyclical":
@@ -1361,7 +1361,7 @@ def build_covariate_matrix(
         ctx = _calc_vwap_deviation(df_1h, lookback=24)
         last_val = float(ctx[-1])
         if fill_strategy == "decay":
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             covariate_full = np.concatenate([ctx, last_val * decay])
         else:
             covariate_full = np.concatenate([ctx, np.full(horizon, last_val)])
@@ -1412,6 +1412,7 @@ def build_combo_covariate_matrix(
     covariate_types: list = None,
     feedstock_cache: Optional[Dict] = None,
     fill_strategy: str = "default",
+    half_life: float = 12.0,
 ) -> dict:
     """
     正交协变量组合构建
@@ -1509,13 +1510,13 @@ def build_combo_covariate_matrix(
         elif cov_type == "ao_accel":
             ctx = calc_ao_acceleration(df_1h)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["ao_accel"] = np.concatenate([ctx, last_val * decay])
 
         elif cov_type == "bb_squeeze":
             ctx = calc_bb_squeeze(df_1h)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["bb_squeeze"] = np.concatenate([ctx, last_val * decay])
 
         elif cov_type == "ha_body":
@@ -1528,35 +1529,35 @@ def build_combo_covariate_matrix(
             atr_arr = _calc_atr(df_1h, period=14)
             ctx = calc_reversal_shadow_ratio(df_1h, atr_arr=atr_arr, lookback=20)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["reversal_shadow"] = np.concatenate([ctx, last_val * decay])
 
         elif cov_type == "reversal_shadow_gated_02":
             atr_arr = _calc_atr(df_1h, period=14)
             ctx = calc_reversal_shadow_ratio(df_1h, atr_arr=atr_arr, lookback=20, min_shadow_atr=0.2)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["reversal_shadow_gated_02"] = np.concatenate([ctx, last_val * decay])
 
         elif cov_type == "reversal_shadow_gated_03":
             atr_arr = _calc_atr(df_1h, period=14)
             ctx = calc_reversal_shadow_ratio(df_1h, atr_arr=atr_arr, lookback=20, min_shadow_atr=0.3)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["reversal_shadow_gated_03"] = np.concatenate([ctx, last_val * decay])
 
         elif cov_type == "reversal_shadow_gated_05":
             atr_arr = _calc_atr(df_1h, period=14)
             ctx = calc_reversal_shadow_ratio(df_1h, atr_arr=atr_arr, lookback=20, min_shadow_atr=0.5)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["reversal_shadow_gated_05"] = np.concatenate([ctx, last_val * decay])
 
         elif cov_type == "sar_dist":
             atr_arr = _calc_atr(df_1h, period=14)
             ctx = calc_sar_distance(df_1h, atr_arr=atr_arr)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["sar_dist"] = np.concatenate([ctx, last_val * decay])
 
         elif cov_type in ("crack_spread_slope", "crack_spread_level", "crack_spread_zscore"):
@@ -1570,7 +1571,7 @@ def build_combo_covariate_matrix(
                 df_leg = None
                 _ratio = 0.655
             result[cov_type] = calc_crack_spread(df_1h, df_leg, ratio=_ratio,
-                                                 mode=_mode, horizon=horizon)
+                                                 mode=_mode, horizon=horizon, half_life=half_life)
 
         elif cov_type == "calendar_cyclical":
             # Phase 4: combo 模式下拆成 4 个独立的 1D 协变量
@@ -1590,30 +1591,27 @@ def build_combo_covariate_matrix(
                 ctx_vor = np.zeros(context_len)
             # Horizon: 向 0 衰减 (投机量无法维持)
             last_vor = float(ctx_vor[-1]) if len(ctx_vor) > 0 else 0.0
-            horizon_vor = np.zeros(horizon, dtype=float)
-            for i in range(horizon):
-                decay = 0.5 ** (i / 12.0)  # 12 bars 快速衰减
-                horizon_vor[i] = last_vor * decay
+            horizon_vor = _decay_fill(last_vor, horizon, half_life=half_life)
             result["vor"] = np.concatenate([ctx_vor, horizon_vor])
 
         # ── Phase 15: 新信号维度协变量 ──
         elif cov_type == "nvi":
             ctx = _calc_nvi(df_1h, lookback=20)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["nvi"] = np.concatenate([ctx, last_val * decay])
 
         elif cov_type == "qstick":
             ctx = _calc_qstick(df_1h, lookback=14)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["qstick"] = np.concatenate([ctx, last_val * decay])
 
         elif cov_type == "vwap_deviation":
             ctx = _calc_vwap_deviation(df_1h, lookback=24)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
             if fill_strategy == "decay":
-                decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+                decay = _decay_fill(1.0, horizon, half_life=half_life)
                 result["vwap_deviation"] = np.concatenate([ctx, last_val * decay])
             else:  # "default" = constant
                 result["vwap_deviation"] = np.concatenate([ctx, np.full(horizon, last_val)])
@@ -1621,7 +1619,7 @@ def build_combo_covariate_matrix(
         elif cov_type == "stddev":
             ctx = _calc_stddev(df_1h, lookback=20)
             last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
-            decay = np.array([0.5 ** (i / 12.0) for i in range(horizon)])
+            decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["stddev"] = np.concatenate([ctx, last_val * decay])
 
         else:

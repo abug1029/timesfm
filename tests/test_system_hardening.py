@@ -344,3 +344,32 @@ class TestSPEC010TradingHourAutoDetect:
         df = pd.DataFrame({"dt": dts, "close": np.random.randn(n)})
         result = calc_calendar_cyclical(df, horizon=24)
         assert result.shape == (224, 4), f"Expected (224, 4), got {result.shape}"
+
+
+class TestSPEC009HalfLifeRefactor:
+    """SPEC-009: Per-variety half-life + atomic refactor"""
+
+    def test_decay_fill_custom_half_life(self):
+        from cascade.features import _decay_fill
+        d_fast = _decay_fill(100.0, 24, half_life=8.0)
+        d_slow = _decay_fill(100.0, 24, half_life=16.0)
+        assert d_fast[10] < d_slow[10]
+
+    def test_decay_fill_default_unchanged(self):
+        import numpy as np
+        from cascade.features import _decay_fill
+        d = _decay_fill(100.0, 24, half_life=12.0)
+        expected = 100.0 * np.array([0.5 ** (i / 12.0) for i in range(24)])
+        np.testing.assert_allclose(d, expected)
+
+    def test_no_hardcoded_12_in_features(self):
+        import subprocess
+        result = subprocess.run(
+            ["grep", "-n", "12\\.0", "cascade/features.py"],
+            capture_output=True, text=True, cwd="/home/abug/timesfm"
+        )
+        lines = [l for l in result.stdout.strip().split("\n")
+                 if l and "#" not in l.split(":", 2)[-1]]
+        # Only function signature defaults should remain (half_life: float = 12.0)
+        non_sig = [l for l in lines if "half_life" not in l]
+        assert len(non_sig) == 0, f"Remaining hardcoded: {non_sig}"

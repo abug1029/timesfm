@@ -109,6 +109,7 @@ class VarietyScheme:
     # ── 趋势判断阈值 ──
     trend_threshold_pct: float = 0.1   # 斜率 > 此值视为上升/下降
     min_data_bars: int = 48            # 1H 最少数据量
+    half_life_bars: float = 12.0        # Horizon 衰减半衰期 (bars)
 
 
 # ─────────────────────────────────────────────────────────
