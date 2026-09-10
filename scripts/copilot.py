@@ -26,6 +26,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from scripts.cascade_predict import TICK_SIZE
+
 # ── 屏蔽刷屏 ──────────────────────────────────────────────
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 warnings.filterwarnings("ignore")
@@ -663,10 +665,14 @@ def write_markdown(cards: list[CopilotCard], asof: str, path: Path) -> Path:
             lines.append(
                 f"- 区间最低 P10 ≈ **{min(c.p10):,.1f}**；最高 P90 ≈ **{max(c.p90):,.1f}**  \n"
                 f"- 历史 P10–P90 Coverage ≈ **{cov_s}**  \n"
-                f"- **做多**: 止损可参考 P10 下方 1–2 个最小变动价位；"
-                f"击穿属小概率（约 1−Coverage）事件  \n"
-                f"- **做空**: 止损可参考 P90 上方对称处理  \n"
             )
+            # ★ 安全提取 P10/P90 (避免 numpy 数组真值歧义 ValueError)
+            p10_val = float(np.min(c.p10)) if (c.p10 is not None and len(c.p10) > 0) else 0.0
+            p90_val = float(np.max(c.p90)) if (c.p90 is not None and len(c.p90) > 0) else 0.0
+            tick_size = TICK_SIZE.get(c.symbol, 1.0)
+            risk_lines = generate_risk_bounds(c.direction, p10_val, p90_val, tick_size)
+            for rl in risk_lines:
+                lines.append(f"- {rl}  \n")
         else:
             lines.append("- 本次未取得分位数输出（可能 xreg 回退）。")
         if c.xreg_fallback:
