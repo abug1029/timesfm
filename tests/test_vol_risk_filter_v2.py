@@ -82,3 +82,61 @@ def test_neutral_override_dynamic_columns():
     quant_5col = np.tile([98,99,100,101,102], (24,1))
     flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant_5col, atr=2.0, tick_size=1.0)
     assert flat_q.shape[1] == 5, f'Expected 5 columns, got {flat_q.shape[1]}'
+
+
+def test_neutral_override_even_columns():
+    """Even n_q should NOT force middle column to z=0"""
+    point = np.array([100.0] * 24)
+    quant_4col = np.tile([97, 99, 101, 103], (24, 1))
+    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant_4col, atr=2.0, tick_size=1.0)
+    assert flat_q.shape[1] == 4
+    # For even n_q=4, no column should be forced to exactly base_price
+    # (unless z-score naturally lands there). Check monotonicity holds.
+    for t in range(24):
+        for i in range(3):
+            assert flat_q[t, i] <= flat_q[t, i+1], f"Bar {t}: col{i} > col{i+1}"
+
+
+def test_neutral_override_zero_columns():
+    """Zero-column quantile forecast should return None"""
+    point = np.array([100.0] * 24)
+    quant_0col = np.empty((24, 0))
+    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant_0col, atr=2.0, tick_size=1.0)
+    assert flat_q is None
+
+
+def test_neutral_override_atr_inf():
+    """Inf ATR should be treated same as NaN/zero"""
+    point = np.array([100.0] * 24)
+    quant = np.tile([95,98,99,99.5,100,100.5,101,102,103,106], (24,1))
+    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant, atr=float('inf'), tick_size=1.0)
+    assert np.allclose(flat_q, 100.0)
+
+
+def test_neutral_override_even_columns():
+    """Even n_q should NOT force middle column to z=0"""
+    point = np.array([100.0] * 24)
+    quant_4col = np.tile([97, 99, 101, 103], (24, 1))
+    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant_4col, atr=2.0, tick_size=1.0)
+    assert flat_q.shape[1] == 4
+    # For even n_q=4, no column should be forced to exactly base_price
+    # (unless z-score naturally lands there). Check monotonicity holds.
+    for t in range(24):
+        for i in range(3):
+            assert flat_q[t, i] <= flat_q[t, i+1], f"Bar {t}: col{i} > col{i+1}"
+
+
+def test_neutral_override_zero_columns():
+    """Zero-column quantile forecast should return None"""
+    point = np.array([100.0] * 24)
+    quant_0col = np.empty((24, 0))
+    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant_0col, atr=2.0, tick_size=1.0)
+    assert flat_q is None
+
+
+def test_neutral_override_atr_inf():
+    """Inf ATR should be treated same as NaN/zero"""
+    point = np.array([100.0] * 24)
+    quant = np.tile([95,98,99,99.5,100,100.5,101,102,103,106], (24,1))
+    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant, atr=float("inf"), tick_size=1.0)
+    assert np.allclose(flat_q, 100.0)

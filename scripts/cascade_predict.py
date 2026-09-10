@@ -46,6 +46,9 @@ TICK_SIZE = {
     'bu': 2.0, 'jd': 1.0, 'lh': 5.0, 'eg': 1.0,
     'cj': 5.0, 'ur': 1.0, 'fg': 1.0, 'sp': 1.0,
     'ao': 1.0, 'sh': 1.0,
+    # Added: missing symbols from DEFAULT_SYMBOLS
+    'sc': 0.1, 'eb': 1.0, 'pp': 1.0, 'bz': 1.0,
+    'px': 1.0, 'oi': 1.0,
 }
 
 

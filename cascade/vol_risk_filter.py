@@ -134,13 +134,16 @@ def apply_neutral_override_v2(
     if quantile_forecast is None:
         return flat_point, None
 
-    if np.isnan(atr) or atr <= 0:
+    if np.isnan(atr) or np.isinf(atr) or atr <= 0:
         logger.warning("Neutral override 接收到非法或零 ATR，置信区间退化为 base_price")
         return flat_point, np.full_like(quantile_forecast, float(base_price))
 
     sigma_1 = atr * 0.8
     time_steps = np.sqrt(np.arange(1, horizon + 1, dtype=float))
     n_q = quantile_forecast.shape[1]
+    if n_q == 0:
+        logger.warning("Neutral override 接收到零列分位数预测，置信区间退化为 base_price")
+        return flat_point, None
 
     if n_q == 10:
         z_scores = np.array([
@@ -154,10 +157,11 @@ def apply_neutral_override_v2(
         if n_q % 2 == 1:
             prob_levels = np.linspace(1.0 / (n_q + 1), 1.0 - 1.0 / (n_q + 1), n_q)
             prob_levels[n_q // 2] = 0.5
+            z_scores = norm.ppf(prob_levels)
+            z_scores[n_q // 2] = 0.0
         else:
             prob_levels = np.linspace(0.5 / n_q, 1.0 - 0.5 / n_q, n_q)
-        z_scores = norm.ppf(prob_levels)
-        z_scores[n_q // 2] = 0.0
+            z_scores = norm.ppf(prob_levels)
 
     vol_spread = sigma_1 * time_steps[:, None] * vol_penalty_mult * z_scores[None, :]
     q_override = base_price + vol_spread
