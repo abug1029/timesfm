@@ -288,3 +288,24 @@ class TestSPEC006SchemeRetirement:
         lines = craft_advisory_v2("ss", kb, "看多 ↑", 0.5, 0.3, "vor")
         assert any("弱信号" in line for line in lines)
         assert not any("标准仓位" in line for line in lines)
+
+    def test_build_includes_new_fields(self):
+        """Integration test: build() must produce all 5 new SPEC-006 fields."""
+        from scripts.build_knowledge_base import build
+        from config.prediction_scheme import SCHEMES
+        # Use a dummy l1_path that does not exist (build handles missing gracefully)
+        kb = build(Path("/nonexistent/ECONOMIC_VERDICT.json"))
+        assert len(kb["symbols"]) > 0, "build() produced no symbols"
+        for sym, entry in kb["symbols"].items():
+            assert "production_covariate" in entry, f"{sym} missing production_covariate"
+            assert "slow_loop_status" in entry, f"{sym} missing slow_loop_status"
+            assert "slow_loop_pf" in entry, f"{sym} missing slow_loop_pf"
+            assert "slow_loop_ev" in entry, f"{sym} missing slow_loop_ev"
+            assert "slow_loop_updated" in entry, f"{sym} missing slow_loop_updated"
+        # Verify production_covariate matches SCHEMES primary covariate
+        for sym in SCHEMES:
+            scheme = SCHEMES[sym]
+            expected = (scheme.covariate_types or [scheme.covariate_type])[0]
+            assert kb["symbols"][sym]["production_covariate"] == expected, (
+                f"{sym}: expected {expected}, got {kb[symbols][sym][production_covariate]}"
+            )

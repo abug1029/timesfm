@@ -62,6 +62,16 @@ def _stars_from_metrics(dir_acc: float, pf: float, scheme_stars: int | None) -> 
     return max(0, min(3, int(round(min(3, score)))))
 
 
+def _get_production_covariate(sym: str) -> str:
+    """Return the primary (first) covariate for a symbol from SCHEMES."""
+    scheme = get_scheme(sym)
+    if scheme:
+        if scheme.covariate_types:
+            return scheme.covariate_types[0]
+        return scheme.covariate_type
+    return "unknown"
+
+
 def _rationale(sym: str, cov: str, scheme) -> str:
     st = scheme.scheme_type if scheme else "unknown"
     parts = [
@@ -153,6 +163,11 @@ def build(l1_path: Path) -> dict:
             "best_hold_period": _best_hold(sym, scheme),
             "short_horizon_only": bool(scheme.short_horizon_only) if scheme else False,
             "covariate_rationale": _rationale(sym, cov, scheme),
+            "production_covariate": _get_production_covariate(sym),
+            "slow_loop_status": "ok",
+            "slow_loop_pf": None,
+            "slow_loop_ev": None,
+            "slow_loop_updated": None,
         }
         kb["symbols"][sym] = entry
 
