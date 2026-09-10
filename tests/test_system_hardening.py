@@ -115,3 +115,46 @@ class TestSPEC008MarginMaxDD:
         dd = calc_margin_maxdd_robust(pnl, prices, contract_multiplier=10,
                                        horizon=24, step=2)
         assert -1.0 <= dd <= 0.0
+
+
+class TestSPEC007CosineRolloff:
+    """SPEC-007: Cosine rolloff signal weight"""
+
+    def test_cosine_rolloff_plateau(self):
+        from config.prediction_scheme import signal_weight, VarietyScheme
+        scheme = VarietyScheme.__new__(VarietyScheme)
+        scheme.use_full_signal = False
+        scheme.short_horizon_only = True
+        scheme.smooth_cutoff = True
+        w = signal_weight(24, scheme)
+        np.testing.assert_allclose(w[:8], 1.0)
+
+    def test_cosine_rolloff_zero_tail(self):
+        from config.prediction_scheme import signal_weight, VarietyScheme
+        scheme = VarietyScheme.__new__(VarietyScheme)
+        scheme.use_full_signal = False
+        scheme.short_horizon_only = True
+        scheme.smooth_cutoff = True
+        w = signal_weight(24, scheme)
+        np.testing.assert_allclose(w[16:], 0.0)
+
+    def test_cosine_rolloff_monotone_decay(self):
+        from config.prediction_scheme import signal_weight, VarietyScheme
+        scheme = VarietyScheme.__new__(VarietyScheme)
+        scheme.use_full_signal = False
+        scheme.short_horizon_only = True
+        scheme.smooth_cutoff = True
+        w = signal_weight(24, scheme)
+        decay_region = w[8:16]
+        for i in range(len(decay_region) - 1):
+            assert decay_region[i] >= decay_region[i + 1]
+
+    def test_hard_cutoff_unchanged(self):
+        from config.prediction_scheme import signal_weight, VarietyScheme
+        scheme = VarietyScheme.__new__(VarietyScheme)
+        scheme.use_full_signal = False
+        scheme.short_horizon_only = True
+        scheme.smooth_cutoff = False
+        w = signal_weight(24, scheme)
+        np.testing.assert_allclose(w[:12], 1.0)
+        np.testing.assert_allclose(w[12:], 0.0)

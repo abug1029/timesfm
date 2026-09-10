@@ -96,6 +96,7 @@ class VarietyScheme:
     # ── 信号使用策略 ──
     use_full_signal: bool = True    # 是否使用 T+1~T+24 全段信号
     short_horizon_only: bool = False  # 若 True，只使用 T+1~T+12
+    smooth_cutoff: bool = False  # cosine rolloff (default False = hard cutoff)
     confidence_multiplier: float = 1.0  # 置信区间乘数 (>1 = 更保守)
 
     # ── 协变量配置 ──
@@ -538,11 +539,23 @@ def signal_weight(horizon: int, scheme: VarietyScheme) -> np.ndarray:
         w = decay ** (-t / horizon)
         return w
     else:
-        # 短段信号: T+1~T+12 权重 1，T+13~T+24 权重 0
-        w = np.zeros(horizon, dtype=float)
-        half = min(horizon // 2, 12)
-        w[:half] = 1.0
-        return w
+        if getattr(scheme, "smooth_cutoff", False):
+            # Cosine rolloff (SPEC-007)
+            plateau = 8   # Bar 1~8: full weight
+            cutoff = 16   # Bar 9~16: cosine decay, Bar 17+: zero
+            t = np.arange(1, horizon + 1, dtype=float)
+            w = np.ones(horizon)
+            decay_mask = (t > plateau) & (t <= cutoff)
+            w[decay_mask] = 0.5 * (1 + np.cos(
+                np.pi * (t[decay_mask] - plateau) / (cutoff - plateau)))
+            w[t > cutoff] = 0.0
+            return w
+        else:
+            # Hard cutoff (existing default)
+            w = np.zeros(horizon, dtype=float)
+            half = min(horizon // 2, 12)
+            w[:half] = 1.0
+            return w
 
 
 def trend_direction(slope_pct_per_day: float, scheme: VarietyScheme) -> str:
