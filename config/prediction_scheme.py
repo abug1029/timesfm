@@ -570,27 +570,32 @@ def confidence_band(
     scheme: VarietyScheme,
 ) -> np.ndarray:
     """
-    根据品种的 confidence_multiplier 调整置信区间
+    v2: log-space monotonic widening with Col 0 isolation.
 
-    Args:
-        quantile_forecast: shape (horizon, 10) 原始分位数预测
-        scheme: 品种方案
+    TimesFM 10-col contract:
+      Col 0 = Point Forecast (Mean); Col 5 = P50 (Median)
+      Col 1~4 = P10~P40; Col 6~9 = P60~P90
 
-    Returns:
-        调整后的 quantile_forecast
+    Col 0 is NOT expanded or sorted — it passes through unchanged.
     """
-    if scheme.confidence_multiplier == 1.0:
+    mult = scheme.confidence_multiplier
+    if mult == 1.0:
         return quantile_forecast
 
-    mult = scheme.confidence_multiplier
-    median = quantile_forecast[:, 5:6]  # P50
-    # 展宽低端和高端
-    adjusted = quantile_forecast.copy()
-    for q_idx in [1, 2, 3, 4]:  # P10~P40
-        adjusted[:, q_idx] = median[:, 0] - (median[:, 0] - quantile_forecast[:, q_idx]) * mult
-    for q_idx in [6, 7, 8, 9]:  # P60~P90
-        adjusted[:, q_idx] = median[:, 0] + (quantile_forecast[:, q_idx] - median[:, 0]) * mult
-    return adjusted
+    eps = 1e-6
+    log_q = np.log(np.maximum(quantile_forecast, eps))
+    log_median = log_q[:, 5:6]
+
+    # Strict isolation: Col 0 keeps original value, only widen Col 1~9
+    log_adjusted = log_q.copy()
+    if log_adjusted.shape[-1] == 10:
+        log_adjusted[:, 1:] = log_median + (log_q[:, 1:] - log_median) * mult
+        log_adjusted[:, 1:] = np.sort(log_adjusted[:, 1:], axis=-1)
+    else:
+        log_adjusted[:, 1:] = log_median + (log_q[:, 1:] - log_median) * mult
+        log_adjusted = np.sort(log_adjusted, axis=-1)
+
+    return np.exp(log_adjusted)
 
 
 def scheme_summary(scheme: VarietyScheme) -> str:
