@@ -79,3 +79,39 @@ class TestSPEC005ConfidenceBand:
         scheme.confidence_multiplier = 2.0
         adjusted = confidence_band(q, scheme)
         np.testing.assert_allclose(adjusted[:, 0], q[:, 0], rtol=1e-6)
+
+
+class TestSPEC008MarginMaxDD:
+    """SPEC-008: Non-overlapping stride margin MaxDD"""
+
+    def test_basic_drawdown_negative(self):
+        from cascade.evaluation_metrics import calc_margin_maxdd_robust
+        pnl = np.full(120, -5.0)
+        prices = np.full(120, 3600.0)
+        dd = calc_margin_maxdd_robust(pnl, prices, contract_multiplier=10)
+        assert dd < 0
+
+    def test_all_profit_zero_drawdown(self):
+        from cascade.evaluation_metrics import calc_margin_maxdd_robust
+        pnl = np.full(120, 5.0)
+        prices = np.full(120, 3600.0)
+        dd = calc_margin_maxdd_robust(pnl, prices, contract_multiplier=10)
+        assert dd == 0.0
+
+    def test_bankruptcy_returns_minus_one(self):
+        from cascade.evaluation_metrics import calc_margin_maxdd_robust
+        pnl = np.full(120, -500.0)
+        prices = np.full(120, 3600.0)
+        dd = calc_margin_maxdd_robust(
+            pnl, prices, contract_multiplier=10, initial_capital=10_000.0
+        )
+        assert dd == -1.0
+
+    def test_stride_reduces_leverage_inflation(self):
+        from cascade.evaluation_metrics import calc_margin_maxdd_robust
+        rng = np.random.RandomState(42)
+        pnl = rng.randn(589) * 10
+        prices = np.full(589, 3600.0)
+        dd = calc_margin_maxdd_robust(pnl, prices, contract_multiplier=10,
+                                       horizon=24, step=2)
+        assert -1.0 <= dd <= 0.0
