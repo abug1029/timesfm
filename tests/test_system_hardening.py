@@ -70,3 +70,12 @@ class TestSPEC005ConfidenceBand:
         scheme.confidence_multiplier = 1.0
         adjusted = confidence_band(q, scheme)
         np.testing.assert_array_equal(adjusted, q)
+
+    def test_nonstandard_cols_col0_preserved(self):
+        """Non-10-col input (7 cols) must still isolate Col 0"""
+        from config.prediction_scheme import confidence_band, VarietyScheme
+        q = np.tile([100, 102, 104, 106, 108, 110, 112], (24, 1))
+        scheme = VarietyScheme.__new__(VarietyScheme)
+        scheme.confidence_multiplier = 2.0
+        adjusted = confidence_band(q, scheme)
+        np.testing.assert_allclose(adjusted[:, 0], q[:, 0], rtol=1e-6)

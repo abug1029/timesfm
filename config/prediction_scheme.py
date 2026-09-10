@@ -593,7 +593,7 @@ def confidence_band(
         log_adjusted[:, 1:] = np.sort(log_adjusted[:, 1:], axis=-1)
     else:
         log_adjusted[:, 1:] = log_median + (log_q[:, 1:] - log_median) * mult
-        log_adjusted = np.sort(log_adjusted, axis=-1)
+        log_adjusted[:, 1:] = np.sort(log_adjusted[:, 1:], axis=-1)
 
     return np.exp(log_adjusted)
 
