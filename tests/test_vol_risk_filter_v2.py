@@ -85,16 +85,22 @@ def test_neutral_override_dynamic_columns():
 
 
 def test_neutral_override_even_columns():
-    """Even n_q should NOT force middle column to z=0"""
+    """Even n_q should NOT force middle column to z=0 (regression for CRITICAL bug)"""
     point = np.array([100.0] * 24)
     quant_4col = np.tile([97, 99, 101, 103], (24, 1))
-    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant_4col, atr=2.0, tick_size=1.0)
+    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant_4col, atr=4.0, tick_size=1.0)
     assert flat_q.shape[1] == 4
-    # For even n_q=4, no column should be forced to exactly base_price
-    # (unless z-score naturally lands there). Check monotonicity holds.
+    # With the bug: z_scores[n_q//2] was forced to 0, so col 2 = base_price for all t
+    # With the fix: z_scores[2] ≈ +0.319, so col 2 != base_price for t > 0
+    assert not np.isclose(flat_q[-1, 2], 100.0, atol=0.01),         f"Even n_q col 2 should NOT be forced to base_price, got {flat_q[-1, 2]}"
+    # Monotonicity
     for t in range(24):
         for i in range(3):
             assert flat_q[t, i] <= flat_q[t, i+1], f"Bar {t}: col{i} > col{i+1}"
+    # Symmetry: even n_q z-scores from norm.ppf are naturally symmetric
+    spread_left = flat_q[-1, 1] - flat_q[-1, 0]
+    spread_right = flat_q[-1, 3] - flat_q[-1, 2]
+    assert np.isclose(spread_left, spread_right, rtol=0.01),         f"Even n_q should be symmetric: left={spread_left:.4f}, right={spread_right:.4f}"
 
 
 def test_neutral_override_zero_columns():
@@ -112,31 +118,3 @@ def test_neutral_override_atr_inf():
     flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant, atr=float('inf'), tick_size=1.0)
     assert np.allclose(flat_q, 100.0)
 
-
-def test_neutral_override_even_columns():
-    """Even n_q should NOT force middle column to z=0"""
-    point = np.array([100.0] * 24)
-    quant_4col = np.tile([97, 99, 101, 103], (24, 1))
-    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant_4col, atr=2.0, tick_size=1.0)
-    assert flat_q.shape[1] == 4
-    # For even n_q=4, no column should be forced to exactly base_price
-    # (unless z-score naturally lands there). Check monotonicity holds.
-    for t in range(24):
-        for i in range(3):
-            assert flat_q[t, i] <= flat_q[t, i+1], f"Bar {t}: col{i} > col{i+1}"
-
-
-def test_neutral_override_zero_columns():
-    """Zero-column quantile forecast should return None"""
-    point = np.array([100.0] * 24)
-    quant_0col = np.empty((24, 0))
-    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant_0col, atr=2.0, tick_size=1.0)
-    assert flat_q is None
-
-
-def test_neutral_override_atr_inf():
-    """Inf ATR should be treated same as NaN/zero"""
-    point = np.array([100.0] * 24)
-    quant = np.tile([95,98,99,99.5,100,100.5,101,102,103,106], (24,1))
-    flat_p, flat_q = apply_neutral_override_v2(point, 100.0, quant, atr=float("inf"), tick_size=1.0)
-    assert np.allclose(flat_q, 100.0)
