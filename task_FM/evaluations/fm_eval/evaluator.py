@@ -8,6 +8,8 @@
 import json
 import os
 
+import numpy as np
+
 # evaluator.py 位于 <FM_ROOT>/task_FM/evaluations/fm_eval/，上溯 3 级到 FM_ROOT
 FM_ROOT = os.path.abspath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir, os.pardir))
@@ -199,3 +201,34 @@ def gate(s, min_n=350, min_ic=0.05):
     m = s if "dir_acc" in s else map_summary(s)
     ic = 2 * abs(m.get("dir_acc", 0.5) - 0.5)
     return m["n"] >= min_n and ic >= min_ic
+
+
+def effective_sample_size(
+    nominal_n: int,
+    horizon: int,
+    step: int,
+    residual_autocorr: float | None = None,
+) -> int:
+    """
+    Bartlett full-kernel effective sample size for overlapping windows.
+
+    K = floor((H-1) / S)
+    VIF = 1 + 2 * sum_{k=1}^{K} (1 - k/(K+1)) * rho^k
+    n_eff = nominal_n / VIF
+    """
+    if step >= horizon:
+        return nominal_n
+
+    if residual_autocorr is None:
+        residual_autocorr = 0.9
+
+    max_overlap_step = (horizon - 1) // step
+
+    kernel_sum = 0.0
+    for k in range(1, max_overlap_step + 1):
+        weight = 1.0 - (k / (max_overlap_step + 1))
+        kernel_sum += weight * (residual_autocorr ** k)
+
+    variance_inflation_factor = 1.0 + 2.0 * kernel_sum
+    n_eff = nominal_n / variance_inflation_factor
+    return max(1, int(n_eff))

@@ -263,3 +263,53 @@ class UnifiedFetcher:
         if self._fetcher:
             self._fetcher._disconnect()
             self._fetcher = None
+
+
+def detect_roll_events(kline_df: pd.DataFrame) -> list:
+    """Detect main contract roll events by contract_code change + ATR gap filter.
+
+    Works on DataFrames with columns: dt, contract_code, close (or close_price),
+    and optionally atr14.  Used by the data-loading pipeline in data_store to
+    build roll records for backward adjustment.
+    """
+    if kline_df.empty:
+        return []
+
+    # Flexible column access
+    cc_col = "contract_code" if "contract_code" in kline_df.columns else None
+    if cc_col is None:
+        return []
+
+    close_col = "close" if "close" in kline_df.columns else ("close_price" if "close_price" in kline_df.columns else None)
+    if close_col is None:
+        return []
+
+    atr_col = "atr14" if "atr14" in kline_df.columns else None
+
+    rolls = []
+    prev_contract = None
+    for i in kline_df.index:
+        cur_contract = kline_df.at[i, cc_col]
+        if prev_contract is not None and cur_contract != prev_contract:
+            gap = abs(kline_df.at[i, close_col] - kline_df.at[i - 1 if i > 0 else i, close_col])
+            if atr_col and atr_col in kline_df.columns:
+                window = kline_df.loc[max(kline_df.index[0], i - 14):i, atr_col]
+                atr = window.mean() if len(window) > 0 else 0.0
+                if atr > 0 and gap > 2 * atr:
+                    roll_ratio = kline_df.at[i, "roll_ratio"] if "roll_ratio" in kline_df.columns else 1.0
+                    rolls.append({
+                        "dt": kline_df.at[i, "dt"],
+                        "old_contract": prev_contract,
+                        "new_contract": cur_contract,
+                        "roll_ratio": roll_ratio,
+                    })
+            else:
+                roll_ratio = kline_df.at[i, "roll_ratio"] if "roll_ratio" in kline_df.columns else 1.0
+                rolls.append({
+                    "dt": kline_df.at[i, "dt"],
+                    "old_contract": prev_contract,
+                    "new_contract": cur_contract,
+                    "roll_ratio": roll_ratio,
+                })
+        prev_contract = cur_contract
+    return rolls

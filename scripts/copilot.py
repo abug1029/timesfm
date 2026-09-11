@@ -318,6 +318,29 @@ def craft_advisory(
     return lines
 
 
+
+def craft_advisory_v2(symbol, kb, direction, delta_pct, vol, scheme_type):
+    """Advisory with effective_stars override for degraded/revoked status."""
+    entry = kb_entry(kb, symbol)
+    status = entry.get("slow_loop_status", "ok")
+
+    raw_stars = int(entry.get("credit_stars") or 0)
+    effective_stars = 1 if status in ("degraded", "revoked") else raw_stars
+
+    lines = []
+    if status == "revoked":
+        lines.append("🔒 慢环实证已完全退化冻结，禁止建立新仓，仅供观望监控。")
+        return lines
+
+    if effective_stars >= 2:
+        lines.append(f"模型底气: 盈亏比(PF) {entry.get('historical_pf', 0):.2f}，中等信用，建议标准仓位。")
+    else:
+        reason = "（慢环实证退化）" if status == "degraded" else ""
+        lines.append(f"模型底气: 弱信号品种{reason}，建议轻仓试探或观望。")
+
+    return lines
+
+
 # ─────────────────────────────────────────────────────────
 # 预测核心（永不压平）
 # ─────────────────────────────────────────────────────────
@@ -347,18 +370,6 @@ class CopilotCard:
     xreg_fallback: bool = False
 
 
-def _compute_direction(d_slope: float, scheme=None) -> str:
-    """与 cascade_predict 一致的方向标签（避免 import 脚本模块）。"""
-    if scheme:
-        thr = scheme.trend_threshold_pct
-        if d_slope * 100 > thr:
-            return "看多 ↑"
-        if d_slope * 100 < -thr:
-            return "看空 ↓"
-        return "中性 →"
-    return "看多 ↑" if d_slope > 0.001 else "看空 ↓" if d_slope < -0.001 else "中性 →"
-
-
 def run_one(
     symbol: str,
     shared_model,
@@ -370,7 +381,7 @@ def run_one(
     from data.data_store import DataStore
     from data.config import get_name
     from config.prediction_scheme import get_scheme
-    from cascade.daily_model import DailyModel
+    from cascade.daily_model import DailyModel, _compute_direction_v2
     from cascade.hourly_model import HourlyModel
 
     symbol = symbol.lower()
@@ -420,7 +431,7 @@ def run_one(
             p90 = [float(q[i, 9]) for i in range(len(fc))]
 
         d_slope = float(daily_result.horizon_slope)
-        direction = _compute_direction(d_slope, scheme)
+        direction = _compute_direction_v2(daily_result, scheme)
         # 终点涨跌：用 T+h 点 vs 当前（更直观）；加权作补充
         t24 = float(fc[-1]) if len(fc) else last_close
         delta_pct = (t24 / last_close - 1.0) * 100.0 if last_close else 0.0

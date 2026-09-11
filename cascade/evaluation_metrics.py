@@ -309,3 +309,47 @@ def calc_vol_scaled_mae(
         scaled = np.where(atr_arr > 1e-8, err / np.maximum(atr_arr, 1e-8), np.inf)
     finite = scaled[np.isfinite(scaled)]
     return float(np.mean(finite)) if finite.size else float(np.inf)
+
+
+def calc_margin_maxdd_robust(
+    net_pnl_pts: np.ndarray,
+    base_prices: np.ndarray,
+    contract_multiplier: float,
+    horizon: int = 24,
+    step: int = 2,
+    margin_rate: float = 0.12,
+    capital_allocation_ratio: float = 0.30,
+    initial_capital: float = 1_000_000.0,
+) -> float:
+    """
+    Margin-based MaxDD with non-overlapping stride sub-sampling.
+    stride = horizon // step = 12 independent sub-sequences, average MaxDD.
+    """
+    stride = max(1, horizon // step)
+    sub_dd_list = []
+
+    for offset in range(stride):
+        sub_pnl = net_pnl_pts[offset::stride]
+        sub_prices = base_prices[offset::stride]
+
+        if len(sub_pnl) < 2:
+            continue
+
+        equity = initial_capital
+        peak = initial_capital
+        max_dd = 0.0
+
+        for t in range(len(sub_pnl)):
+            margin_per_lot = sub_prices[t] * contract_multiplier * margin_rate
+            lots = max(1, int((equity * capital_allocation_ratio) / margin_per_lot))
+            equity += sub_pnl[t] * contract_multiplier * lots
+
+            if equity <= 0:
+                max_dd = -1.0
+                break
+            peak = max(peak, equity)
+            max_dd = min(max_dd, (equity - peak) / peak)
+
+        sub_dd_list.append(max_dd)
+
+    return float(np.mean(sub_dd_list)) if sub_dd_list else 0.0

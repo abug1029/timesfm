@@ -51,7 +51,9 @@ class TestCalendarCyclical(unittest.TestCase):
     def test_horizon_exact_fill(self):
         """horizon 部分精确等于未来每小时的真实 dayofyear/month"""
         horizon = 12
-        out = calc_calendar_cyclical(self.df, horizon)
+        # Pass explicit valid_hours=all 24h to test encoding accuracy,
+        # not auto-detect (covered by TestSPEC010)
+        out = calc_calendar_cyclical(self.df, horizon, valid_hours=list(range(24)))
         last_ctx = self.df["dt"].iloc[-1]
         future_dts = pd.date_range(last_ctx + pd.Timedelta(hours=1), periods=horizon, freq="h")
         expected_doy = future_dts.dayofyear.values

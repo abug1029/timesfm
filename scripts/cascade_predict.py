@@ -36,6 +36,7 @@ from config.prediction_scheme import (
 )
 from cascade.vol_risk_filter import VolRiskFilter, apply_neutral_override_v2
 from cascade.features import _calc_atr
+from cascade.daily_model import _compute_direction_v2
 
 # 品种最小变动价位表 (权威源, copilot.py 从此处导入)
 TICK_SIZE = {
@@ -60,19 +61,6 @@ def is_vol_filter_enabled(cli_flag: bool = False) -> bool:
     高波时默认 Neutral Override（预测压平 → 空仓），非趋势路由。
     """
     return VolRiskFilter.is_enabled(cli_flag=cli_flag)
-
-
-def _compute_direction(d_slope: float, scheme: VarietyScheme = None) -> str:
-    """统一方向判断逻辑 (供 run_cascade 和 _build_report 共用)"""
-    if scheme:
-        thr = scheme.trend_threshold_pct
-        if d_slope * 100 > thr:
-            return "看多 ↑"
-        elif d_slope * 100 < -thr:
-            return "看空 ↓"
-        else:
-            return "中性 →"
-    return "看多 ↑" if d_slope > 0.001 else "看空 ↓" if d_slope < -0.001 else "中性 →"
 
 
 def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
@@ -112,7 +100,7 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
         daily_model = DailyModel(shared_model=shared_model)
         daily_result = daily_model.predict(symbol, store,
                                            context_days=ctx_days, horizon_days=h_days)
-        print(daily_model.summary(daily_result))
+        print(daily_model.summary(daily_result, scheme))
 
         # 读取历史数据用于报告
         from data.data_store import get_safe_daily
@@ -122,6 +110,7 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
         # 静态配置（生产默认）；熔断不改 XReg 维数，避免 Ridge 跳变
         cov_type = scheme.covariate_type if scheme else "ccl"
         cov_types = scheme.covariate_types if scheme else None
+        half_life = scheme.half_life_bars if scheme else 12.0
         cov_label = '+'.join(cov_types) if cov_types else cov_type
         force_neutral = False
         force_slope_only = False
@@ -161,6 +150,7 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
                 covariate_type="slope_only",
                 covariate_types=None,
                 skip_validation=True,
+                half_life=half_life,
             )
         else:
             # 始终用静态 scheme 跑 XReg（含将要中性覆写的情况）
@@ -170,6 +160,7 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
                 covariate_type=cov_type,
                 covariate_types=cov_types,
                 skip_validation=True,
+                half_life=half_life,
             )
 
         # 获取最新 1H 收盘价
@@ -228,7 +219,7 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
         direction = _sig["direction"]  # 可交易方向
         regime_direction = _sig.get("regime_direction")
     else:
-        direction = _compute_direction(d_slope, scheme)
+        direction = _compute_direction_v2(daily_result, scheme)
         regime_direction = direction
 
     result_data = {
@@ -302,7 +293,7 @@ def _build_report(symbol, daily_result, hourly_result,
     d_slope = daily_result.horizon_slope
 
     # 日线区块用 regime；交易方向在信号解读用加权1H
-    regime_direction = _compute_direction(d_slope, scheme)
+    regime_direction = _compute_direction_v2(daily_result, scheme)
     direction = regime_direction  # 下文日线段落；信号表会覆盖为 trade
 
     # 置信区间调整 (固化方案可能乘宽)

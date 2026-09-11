@@ -8,9 +8,12 @@ sys.path.insert(0, FM_ROOT)
 sys.path.insert(0, os.path.join(FM_ROOT, "task_FM", "evaluations", "fm_eval"))
 import monthly_backtest as mb
 import registry_lib as rl
-from evaluator import build_summary
+import numpy as np
+from evaluator import build_summary, effective_sample_size
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
+from cascade.evaluation_metrics import calc_margin_maxdd_robust
+from config.prediction_scheme import get_scheme
 
 _MODELS = None
 _METRICS_PATH = os.path.join(FM_ROOT, "data", "cache", "slow_loop_metrics.jsonl")
@@ -98,6 +101,19 @@ def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path):
             v.setdefault("ic", round(2 * abs(float(v.get("dir_acc", 0.5)) - 0.5), 10))
             v.setdefault("decided_at", _now())
             v.setdefault("schema", "fm.aligned_verdict.v1")
+            # SPEC-004: n_eff integration point
+            v["n_eff"] = effective_sample_size(v.get("n", 0), horizon=24, step=2)
+            v["n_eff_method"] = "bartlett_full_kernel_rho0.9"
+            # SPEC-008: margin-based MaxDD with non-overlapping stride
+            _ok_pts = [p for p in data["points"] if "error" not in p]
+            _pnl_arr = np.array([p["pnl"] for p in _ok_pts])
+            _base_arr = np.array([p["base"] for p in _ok_pts])
+            _scheme_obj = get_scheme(row["symbol"].upper())
+            _cm = getattr(_scheme_obj, "contract_multiplier", 10.0) if _scheme_obj else 10.0
+            v["margin_maxdd"] = calc_margin_maxdd_robust(
+                net_pnl_pts=_pnl_arr, base_prices=_base_arr,
+                contract_multiplier=_cm, horizon=24, step=2,
+            )
     v["checkpoint_path"] = cp
     v["slow_loop_pid"] = os.getpid()
     v["git_rev"] = _git_rev()

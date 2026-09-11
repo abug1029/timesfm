@@ -96,6 +96,7 @@ class VarietyScheme:
     # ── 信号使用策略 ──
     use_full_signal: bool = True    # 是否使用 T+1~T+24 全段信号
     short_horizon_only: bool = False  # 若 True，只使用 T+1~T+12
+    smooth_cutoff: bool = False  # cosine rolloff (default False = hard cutoff)
     confidence_multiplier: float = 1.0  # 置信区间乘数 (>1 = 更保守)
 
     # ── 协变量配置 ──
@@ -108,6 +109,7 @@ class VarietyScheme:
     # ── 趋势判断阈值 ──
     trend_threshold_pct: float = 0.1   # 斜率 > 此值视为上升/下降
     min_data_bars: int = 48            # 1H 最少数据量
+    half_life_bars: float = 12.0        # Horizon 衰减半衰期 (bars)
 
 
 # ─────────────────────────────────────────────────────────
@@ -538,11 +540,23 @@ def signal_weight(horizon: int, scheme: VarietyScheme) -> np.ndarray:
         w = decay ** (-t / horizon)
         return w
     else:
-        # 短段信号: T+1~T+12 权重 1，T+13~T+24 权重 0
-        w = np.zeros(horizon, dtype=float)
-        half = min(horizon // 2, 12)
-        w[:half] = 1.0
-        return w
+        if getattr(scheme, "smooth_cutoff", False):
+            # Cosine rolloff (SPEC-007)
+            plateau = 8   # Bar 1~8: full weight
+            cutoff = 16   # Bar 9~16: cosine decay, Bar 17+: zero
+            t = np.arange(1, horizon + 1, dtype=float)
+            w = np.ones(horizon)
+            decay_mask = (t > plateau) & (t <= cutoff)
+            w[decay_mask] = 0.5 * (1 + np.cos(
+                np.pi * (t[decay_mask] - plateau) / (cutoff - plateau)))
+            w[t > cutoff] = 0.0
+            return w
+        else:
+            # Hard cutoff (existing default)
+            w = np.zeros(horizon, dtype=float)
+            half = min(horizon // 2, 12)
+            w[:half] = 1.0
+            return w
 
 
 def trend_direction(slope_pct_per_day: float, scheme: VarietyScheme) -> str:
@@ -570,27 +584,36 @@ def confidence_band(
     scheme: VarietyScheme,
 ) -> np.ndarray:
     """
-    根据品种的 confidence_multiplier 调整置信区间
+    v2: log-space monotonic widening with Col 0 isolation.
 
-    Args:
-        quantile_forecast: shape (horizon, 10) 原始分位数预测
-        scheme: 品种方案
+    TimesFM 10-col contract:
+      Col 0 = Point Forecast (Mean); Col 5 = P50 (Median)
+      Col 1~4 = P10~P40; Col 6~9 = P60~P90
 
-    Returns:
-        调整后的 quantile_forecast
+    Col 0 is NOT expanded or sorted — it passes through unchanged.
     """
-    if scheme.confidence_multiplier == 1.0:
+    mult = scheme.confidence_multiplier
+    if mult == 1.0:
         return quantile_forecast
 
-    mult = scheme.confidence_multiplier
-    median = quantile_forecast[:, 5:6]  # P50
-    # 展宽低端和高端
-    adjusted = quantile_forecast.copy()
-    for q_idx in [1, 2, 3, 4]:  # P10~P40
-        adjusted[:, q_idx] = median[:, 0] - (median[:, 0] - quantile_forecast[:, q_idx]) * mult
-    for q_idx in [6, 7, 8, 9]:  # P60~P90
-        adjusted[:, q_idx] = median[:, 0] + (quantile_forecast[:, q_idx] - median[:, 0]) * mult
-    return adjusted
+    eps = 1e-6
+    log_q = np.log(np.maximum(quantile_forecast, eps))
+    log_median = log_q[:, 5:6]
+
+    # Strict isolation: Col 0 keeps original value, only widen Col 1~9
+    # [H-3 fix] Save original P50 (Col 5) before widening; restore after sort
+    # Asymmetric inputs can shift P50 during widen+sort, breaking median guarantee
+    log_adjusted = log_q.copy()
+    if log_adjusted.shape[-1] == 10:
+        original_p50 = log_q[:, 5:6].copy()  # save before widening
+        log_adjusted[:, 1:] = log_median + (log_q[:, 1:] - log_median) * mult
+        log_adjusted[:, 1:] = np.sort(log_adjusted[:, 1:], axis=-1)
+        log_adjusted[:, 5:6] = original_p50  # restore P50
+    else:
+        log_adjusted[:, 1:] = log_median + (log_q[:, 1:] - log_median) * mult
+        log_adjusted[:, 1:] = np.sort(log_adjusted[:, 1:], axis=-1)
+
+    return np.exp(log_adjusted)
 
 
 def scheme_summary(scheme: VarietyScheme) -> str:

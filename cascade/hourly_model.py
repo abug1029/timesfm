@@ -93,7 +93,8 @@ class HourlyModel:
                 covariate_types: list = None,
                 verbose: bool = True,
                 skip_validation: bool = False,
-                fill_strategy: str = "default") -> HourlyResult:
+                fill_strategy: str = "default",
+                half_life: float = 12.0) -> HourlyResult:
         """
         1H 级联预测 (防穿越版)
 
@@ -175,6 +176,7 @@ class HourlyModel:
                 covariate_types=covariate_types,
                 feedstock_cache=feedstock_cache,
                 fill_strategy=fill_strategy,
+                half_life=half_life,
             )
         else:
             # 单协变量模式 (向后兼容)
@@ -189,6 +191,7 @@ class HourlyModel:
                 covariate_type=single_type,
                 feedstock_cache=feedstock_cache,
                 fill_strategy=fill_strategy,
+                half_life=half_life,
             )
 
         slope_arr = covariates["daily_slope"]
