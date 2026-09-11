@@ -254,6 +254,26 @@ python scripts/copilot.py --three-star
 
 固化权威：`monthly_backtest.py`；`list_by_stars(2)` 在 `prediction_scheme.py`。
 
+## System Hardening v1.2 (2026-09-11)
+
+10 项统计严谨性与工程质量提升，已合并至 master。Spec: `docs/superpowers/specs/2026-09-10-system-hardening-design.md`。
+
+| SPEC | 能力 | 关键文件 |
+|------|------|---------|
+| 004 | Bartlett 有效样本量 (n_eff=71 for H=24,S=2,rho=0.9) | `task_FM/evaluations/fm_eval/evaluator.py` |
+| 005 | Col 0 隔离对数置信区间展宽 (P50 恒等) | `config/prediction_scheme.py:confidence_band` |
+| 007 | 余弦滚降信号权重 (`smooth_cutoff=True`) | `config/prediction_scheme.py:signal_weight` |
+| 008 | 非重叠步长保证金口径 MaxDD (stride=12) | `cascade/evaluation_metrics.py:calc_margin_maxdd_robust` |
+| 006 | 复合主键退役治理 + effective_stars 覆盖 | `scripts/build_knowledge_base.py`, `scripts/copilot.py` |
+| 009 | 品种级半衰期参数化 (17 处原子化重构) | `cascade/features.py`, `VarietyScheme.half_life_bars` |
+| 010 | 交易时段自动嗅探 (5% 频次阈值) | `cascade/data_validator.py:detect_trading_hours` |
+| 011 | 同时间戳截面比例后复权 (向量化 adj_series) | `data/data_store.py:apply_backward_adjustment_robust` |
+| 012 | R² 斜率滤网 + 决策闭环 (R²<0.35→中性) | `cascade/daily_model.py:_compute_direction_v2` |
+| 013 | 5% 日度复合漂移截断 | `cascade/features.py:_clip_prediction_drift` |
+
+**不变量**: 硬门阈值不变 (n>=350, IC>=0.05, EV>0)；aligned_verdicts.jsonl 零 diff；后复权预测值=名义价格（严禁除法还原）。
+
+
 ## 关键脚本分类
 
 **预测类：**
