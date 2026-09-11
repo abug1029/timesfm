@@ -108,6 +108,7 @@ class TestBarExactCutoff(unittest.TestCase):
                     store.close()
 
     def test_daily_includes_cutoff_calendar_day(self):
+        """10:00 cutoff (hour < 15) must not include same-day daily."""
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "futures_zz.db"
             _seed_1h_db(db, "zz")
@@ -116,7 +117,24 @@ class TestBarExactCutoff(unittest.TestCase):
                 try:
                     daily = store.get_main_continuous(limit=100)
                     days = set(pd.to_datetime(daily["dt"]).dt.strftime("%Y-%m-%d"))
+                    self.assertNotIn("2026-03-10", days)
+                    self.assertIn("2026-03-09", days)
+                    self.assertNotIn("2026-03-11", days)
+                finally:
+                    store.close()
+
+    def test_daily_includes_same_day_at_15(self):
+        """15:00 cutoff (hour >= 15) includes same-day daily."""
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / "futures_zz.db"
+            _seed_1h_db(db, "zz")
+            with mock.patch("data.data_store.get_db_path", return_value=db):
+                store = BacktestDataStore("zz", "2026-03-10 15:00:00")
+                try:
+                    daily = store.get_main_continuous(limit=100)
+                    days = set(pd.to_datetime(daily["dt"]).dt.strftime("%Y-%m-%d"))
                     self.assertIn("2026-03-10", days)
+                    self.assertIn("2026-03-09", days)
                     self.assertNotIn("2026-03-11", days)
                 finally:
                     store.close()
