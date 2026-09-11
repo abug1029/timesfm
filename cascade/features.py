@@ -1634,6 +1634,88 @@ def build_combo_covariate_matrix(
             decay = _decay_fill(1.0, horizon, half_life=half_life)
             result["stddev"] = np.concatenate([ctx, last_val * decay])
 
+
+        elif cov_type == "basis_momentum":
+            # 基差动量: 期限结构变化速度
+            basis_df = store.get_basis_1h(limit=limit)
+            if basis_df.empty or len(basis_df) < 48:
+                # 无基差数据: 回退到零填充
+                ctx = np.zeros(context_len)
+            else:
+                basis_arr = basis_df["basis"].values.astype(float)
+                if len(basis_arr) >= context_len:
+                    basis_ctx = basis_arr[-context_len:]
+                else:
+                    pad = context_len - len(basis_arr)
+                    basis_ctx = np.concatenate([np.zeros(pad), basis_arr])
+                ctx = calc_basis_momentum(basis_ctx, mode="slope", window=48)
+            last_val = float(ctx[-1]) if len(ctx) > 0 else 0.0
+            decay = _decay_fill(last_val, horizon, half_life=half_life)
+            result["basis_momentum"] = np.concatenate([ctx, decay])
+
+        elif cov_type == "ccl":
+            # CCL 仓差变化率
+            if "ccl_value" in df_1h.columns and df_1h["ccl_value"].notna().any():
+                ccl_pct = calc_ccl_pct(df_1h["ccl_value"], df_1h.get("open_interest"))
+            elif "open_interest" in df_1h.columns:
+                ccl_pct = calc_ccl_pct(
+                    pd.Series(np.nan, index=df_1h.index),
+                    df_1h["open_interest"],
+                )
+            else:
+                ccl_pct = pd.Series(np.zeros(len(df_1h)), index=df_1h.index)
+            result["ccl"] = np.concatenate([ccl_pct.values, np.zeros(horizon)])
+
+        elif cov_type == "gated_slope":
+            # Hurst 门控斜率: daily_slope × Hurst 门控因子
+            slope_cov = build_daily_slope_covariate(
+                historical_daily_closes=historical_daily_closes,
+                predicted_daily_closes=predicted_daily_closes,
+                hourly_dates=all_dates,
+                n_context=context_len,
+                daily_dates=daily_dates,
+            )
+            hurst_raw = calc_rolling_hurst_raw(hourly_closes, window=120, step=6)
+            if len(hurst_raw) < len(hourly_closes):
+                step = max(1, len(hourly_closes) // len(hurst_raw))
+                hurst_1h = np.repeat(hurst_raw, step)[:len(hourly_closes)]
+            else:
+                hurst_1h = hurst_raw[:len(hourly_closes)]
+            gate = 0.3 + 1.7 * np.clip((hurst_1h - 0.3) / 0.4, 0, 1)
+            gate_full = np.concatenate([gate, np.full(horizon, gate[-1])])
+            result["gated_slope"] = slope_cov * gate_full
+
+        elif cov_type == "regime_gated":
+            # 体制自适应融合: 根据 Hurst 动态加权 PCA/RSI/OI
+            hurst_raw = calc_rolling_hurst_raw(hourly_closes, window=120, step=6)
+            last_h = float(hurst_raw[-1]) if len(hurst_raw) > 0 else 0.5
+            hurst_full = np.concatenate([hurst_raw, np.full(horizon, last_h)])
+            
+            # PCA 动量 (趋势型)
+            ctx_pca = calc_pca_momentum(hourly_closes, periods=[5, 9, 14, 21], squash=True)
+            pca_full = np.concatenate([ctx_pca, np.zeros(horizon)])
+            
+            # RSI 状态 (均值回归型)
+            ctx_rsi = calc_rsi_state(hourly_closes, rsi_period=14).astype(float)
+            horizon_rsi = _generate_rsi_state_horizon(
+                float(ctx_rsi[-1]) if len(ctx_rsi) > 0 else 0.0, horizon, decay_step=2)
+            rsi_full = np.concatenate([ctx_rsi, horizon_rsi])
+            
+            # OI 变化率 (通用基线)
+            if "open_interest" in df_1h.columns and df_1h["open_interest"].notna().any():
+                oi_pct = calc_oi_pct_change(df_1h["open_interest"])
+            else:
+                oi_pct = pd.Series(np.zeros(len(df_1h)), index=df_1h.index)
+            oi_full = np.concatenate([oi_pct.values, np.zeros(horizon)])
+            
+            # 权重融合
+            w_trend = np.clip((hurst_full - 0.48) / 0.12, 0, 1)
+            w_revert = np.clip((0.42 - hurst_full) / 0.12, 0, 1)
+            w_base = np.clip(1.0 - w_trend - w_revert, 0, 1)
+            w_sum = w_trend + w_revert + w_base
+            w_sum = np.where(w_sum > 0, w_sum, 1.0)
+            result["regime_gated"] = (w_trend/w_sum) * pca_full + (w_revert/w_sum) * rsi_full + (w_base/w_sum) * oi_full
+
         else:
             supported = ["oi", "rsi_state", "rsi6", "rsi12", "rsi24", "hurst", "hourly_slope", "rsi_slope",
                          "pca_momentum", "ao_accel", "bb_squeeze", "ha_body",
@@ -1641,7 +1723,8 @@ def build_combo_covariate_matrix(
                          "reversal_shadow_gated_03", "reversal_shadow_gated_05",
                          "sar_dist", "vor", "calendar_cyclical",
                          "crack_spread_slope", "crack_spread_level", "crack_spread_zscore",
-                         "nvi", "qstick", "vwap_deviation", "stddev"]
+                         "nvi", "qstick", "vwap_deviation", "stddev",
+                         "basis_momentum", "ccl", "gated_slope", "regime_gated"]
             if cov_type not in supported:
                 raise ValueError(
                     f"combo 不支持协变量类型 '{cov_type}'。"

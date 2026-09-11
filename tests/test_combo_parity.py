@@ -81,9 +81,18 @@ def test_combo_rsi_variants(fake_inputs, cov):
     assert "oi_pct_change" in r
 
 
+@pytest.mark.parametrize("cov", ["basis_momentum", "ccl", "gated_slope", "regime_gated"])
+def test_combo_new_covariates(fake_inputs, cov):
+    """2026-09-11: 新增 4 个协变量到 combo 路径"""
+    s, h, p, d = fake_inputs
+    r = features.build_combo_covariate_matrix("m", s, h, p, d, horizon=24, limit=480,
+                                              covariate_types=[cov])
+    assert cov in r
+    assert len(r[cov]) == len(r["daily_slope"])
+
 def test_combo_unsupported_raises(fake_inputs):
     s, h, p, d = fake_inputs
-    # gated_slope 尚未在 combo 实现 — 必须显式 raise 而非静默错误
+    # 真正不支持的协变量 — 必须显式 raise 而非静默错误
     with pytest.raises(ValueError):
         features.build_combo_covariate_matrix("m", s, h, p, d, horizon=24, limit=480,
-                                              covariate_types=["gated_slope"])
+                                              covariate_types=["bogus_covariate_xyz"])
