@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import timesfm
-from data.data_store import DataStore
+from data.data_store import DataStore, get_safe_daily
 
 
 @dataclass
@@ -59,6 +59,24 @@ def ensure_compiled(model, config):
         setattr(model, FM_COMPILED_FP_ATTR, fp)
 
 
+def read_daily_frame(
+    symbol: str,
+    store: DataStore,
+    context_days: int = 250,
+    now_dt: Optional[datetime] = None,
+) -> pd.DataFrame:
+    """Read daily context for DailyModel.predict.
+
+    Live store (no cutoff_date): get_safe_daily (trim unclosed today).
+    BacktestDataStore (has cutoff_date): get_main_continuous.
+    """
+    if hasattr(store, "cutoff_date"):
+        return store.get_main_continuous(limit=context_days)
+    return get_safe_daily(
+        symbol, limit=context_days, now_dt=now_dt, store=store,
+    )
+
+
 class DailyModel:
     """日线预测模型"""
 
@@ -101,7 +119,7 @@ class DailyModel:
         ensure_compiled(self.model, self._DAILY_CONFIG)
 
         # 读取主链日线数据
-        df = store.get_main_continuous(limit=context_days)
+        df = read_daily_frame(symbol, store, context_days=context_days)
         if df.empty:
             raise ValueError(f"{symbol}: 无日线主链数据")
 
