@@ -601,10 +601,14 @@ def confidence_band(
     log_median = log_q[:, 5:6]
 
     # Strict isolation: Col 0 keeps original value, only widen Col 1~9
+    # [H-3 fix] Save original P50 (Col 5) before widening; restore after sort
+    # Asymmetric inputs can shift P50 during widen+sort, breaking median guarantee
     log_adjusted = log_q.copy()
     if log_adjusted.shape[-1] == 10:
+        original_p50 = log_q[:, 5:6].copy()  # save before widening
         log_adjusted[:, 1:] = log_median + (log_q[:, 1:] - log_median) * mult
         log_adjusted[:, 1:] = np.sort(log_adjusted[:, 1:], axis=-1)
+        log_adjusted[:, 5:6] = original_p50  # restore P50
     else:
         log_adjusted[:, 1:] = log_median + (log_q[:, 1:] - log_median) * mult
         log_adjusted[:, 1:] = np.sort(log_adjusted[:, 1:], axis=-1)

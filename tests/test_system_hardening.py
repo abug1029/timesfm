@@ -451,3 +451,73 @@ class TestSPEC011RollAdjustment:
     def test_detect_roll_events_empty(self):
         from data.tqsdk_fetcher import detect_roll_events
         assert detect_roll_events(pd.DataFrame()) == []
+
+
+class TestH3P50Preservation:
+    """H-3 fix: P50 (Col 5) preserved under asymmetric quantile widening."""
+
+    def test_asymmetric_p50_preserved(self):
+        """Asymmetric quantile input: P50 must equal original after widening+sort."""
+        from config.prediction_scheme import confidence_band, VarietyScheme
+
+        # Asymmetric quantiles: left side narrow, right side wide
+        # Col 0=100, Col 1-4 close to 100, Col 5=110 (P50), Col 6-9 far from 110
+        q = np.tile(
+            [100, 101, 103, 105, 107, 110, 120, 135, 155, 180],
+            (24, 1),
+        )
+        scheme = VarietyScheme.__new__(VarietyScheme)
+        scheme.confidence_multiplier = 2.0
+
+        adjusted = confidence_band(q, scheme)
+
+        # P50 (Col 5) must be exactly the original value
+        np.testing.assert_allclose(adjusted[:, 5], q[:, 5], rtol=1e-10)
+
+    def test_symmetric_p50_preserved(self):
+        """Symmetric input: P50 preserved (regression guard)."""
+        from config.prediction_scheme import confidence_band, VarietyScheme
+
+        q = np.tile(
+            [100, 102, 104, 106, 108, 110, 112, 114, 116, 118],
+            (24, 1),
+        )
+        scheme = VarietyScheme.__new__(VarietyScheme)
+        scheme.confidence_multiplier = 1.5
+
+        adjusted = confidence_band(q, scheme)
+        np.testing.assert_allclose(adjusted[:, 5], q[:, 5], rtol=1e-10)
+
+    def test_p50_preserved_mult_3(self):
+        """Extreme widening (mult=3.0): P50 still preserved."""
+        from config.prediction_scheme import confidence_band, VarietyScheme
+
+        # Highly asymmetric
+        q = np.tile(
+            [100, 100.5, 101, 102, 103, 105, 115, 130, 160, 200],
+            (12, 1),
+        )
+        scheme = VarietyScheme.__new__(VarietyScheme)
+        scheme.confidence_multiplier = 3.0
+
+        adjusted = confidence_band(q, scheme)
+        np.testing.assert_allclose(adjusted[:, 5], q[:, 5], rtol=1e-10)
+
+    def test_monotonicity_preserved_after_p50_restore(self):
+        """After P50 restore, Col 1..9 must still be monotonically sorted."""
+        from config.prediction_scheme import confidence_band, VarietyScheme
+
+        q = np.tile(
+            [100, 101, 103, 105, 107, 110, 120, 135, 155, 180],
+            (24, 1),
+        )
+        scheme = VarietyScheme.__new__(VarietyScheme)
+        scheme.confidence_multiplier = 2.0
+
+        adjusted = confidence_band(q, scheme)
+        for t in range(24):
+            for i in range(1, 9):
+                assert adjusted[t, i] <= adjusted[t, i + 1], (
+                    f"Monotonicity violated at t={t}, col {i}: "
+                    f"{adjusted[t, i]} > {adjusted[t, i+1]}"
+                )

@@ -201,7 +201,10 @@ def sync_slow_loop_status(kb: dict, verdicts_path) -> dict:
         if sym not in kb["symbols"]:
             continue
         entry = kb["symbols"][sym]
-        if entry.get("production_covariate") != cov:
+        # [H-2 fix] Use substring match: variant_id may contain multi-covariate names
+        # e.g. "ha_body_calendar_cyclical" should match production "ha_body"
+        prod_cov = entry.get("production_covariate", "")
+        if prod_cov and prod_cov not in cov:
             continue
         if v.get("gate_pass"):
             entry["slow_loop_status"] = "ok"

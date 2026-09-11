@@ -80,6 +80,36 @@ def _clean_val(val):
 
 
 
+
+def detect_rolls_from_price_gaps(df, gap_threshold_atr_mult=2.0):
+    """Detect rolls from large price gaps when contract_code is unavailable.
+
+    SPEC-011 fix: main_continuous_1d may have uniform contract_code (_CONT),
+    making detect_roll_events return []. This fallback detects rolls from
+    abnormal price jumps (> 2x average true range of recent window).
+    """
+    if len(df) < 20:
+        return []
+    rolls = []
+    close_col = "close_price" if "close_price" in df.columns else "close"
+    if close_col not in df.columns:
+        return []
+    closes = df[close_col].values.astype(float)
+    for i in range(14, len(closes)):
+        gap = abs(closes[i] - closes[i - 1])
+        window = closes[max(0, i - 14):i]
+        diffs = np.abs(np.diff(window))
+        atr = np.mean(diffs) if len(diffs) > 0 else 0.0
+        if atr > 0 and gap > gap_threshold_atr_mult * atr:
+            ratio = closes[i] / closes[i - 1] if closes[i - 1] != 0 else 1.0
+            dt_val = df.iloc[i].get("dt", df.index[i]) if "dt" in df.columns else df.index[i]
+            rolls.append({
+                "dt": dt_val,
+                "roll_ratio": ratio,
+            })
+    return rolls
+
+
 def apply_backward_adjustment_robust(kline_df: pd.DataFrame, roll_records: list) -> pd.DataFrame:
     """Vectorized backward roll adjustment — no quadratic compounding.
 
@@ -384,9 +414,9 @@ class DataStore:
             df = pd.read_sql_query(sql, self.conn, params=params)
 
         # [SPEC-011] Roll adjustment: detect & adjust if not already adjusted
+        # Use price-gap detection (main_continuous_1d may lack real contract_code)
         if not df.empty and "raw_close" not in df.columns:
-            from .tqsdk_fetcher import detect_roll_events
-            roll_records = detect_roll_events(df)
+            roll_records = detect_rolls_from_price_gaps(df)
             if roll_records:
                 df = apply_backward_adjustment_robust(df, roll_records)
 

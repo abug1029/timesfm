@@ -1012,6 +1012,12 @@ def build_covariate_matrix(
         feedstock_cache: 跨品种原料缓存 {symbol: DataFrame} (crack_spread 用)
         fill_strategy: Horizon 填充策略, "default" (常数填充) 或 "decay" (12-bar 半衰期衰减)
     """
+    # [H-1 fix] Clip prediction drift at the top, before any covariate uses it
+    hist_daily_arr = np.array(historical_daily_closes, dtype=float)
+    predicted_daily_closes = _clip_prediction_drift(
+        hist_daily_arr, np.array(predicted_daily_closes, dtype=float)
+    )
+
     # 读取 1H 数据
     df_1h = store.get_main_contract_1h(limit=limit)
     if df_1h.empty:
@@ -1075,7 +1081,7 @@ def build_covariate_matrix(
         _rsi_period = _rsi_period_map[covariate_type]
         hist_daily = np.array(historical_daily_closes, dtype=float)
         pred_daily = np.array(predicted_daily_closes, dtype=float)
-        full_daily = np.concatenate([hist_daily, _clip_prediction_drift(hist_daily, pred_daily)])
+        full_daily = np.concatenate([hist_daily, pred_daily])  # already clipped at top [H-1]
 
         # 计算全序列日线 RSI 状态
         daily_states = calc_rsi_state(full_daily, rsi_period=_rsi_period)
@@ -1431,6 +1437,12 @@ def build_combo_covariate_matrix(
     """
     if covariate_types is None:
         covariate_types = ["oi"]
+
+    # [H-1 fix] Clip prediction drift at the top, before any covariate uses it
+    hist_daily_arr = np.array(historical_daily_closes, dtype=float)
+    predicted_daily_closes = _clip_prediction_drift(
+        hist_daily_arr, np.array(predicted_daily_closes, dtype=float)
+    )
 
     # 读取 1H 数据 (只加载一次)
     df_1h = store.get_main_contract_1h(limit=limit)
