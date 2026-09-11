@@ -77,7 +77,7 @@ Peer 第一件事：至少写 2 份假设到
 每 300 秒 tick：
 
 1. 用 `scripts/praxist_goal.yaml` 的 DSL 判定成功 / 预算
-2. 配额窗够才 `praxist start` / `resume`；429 则 stop，解封后 **resume 同一 run**（禁止开新 run）
+2. 配额窗够才 `praxist start` / `resume`；429 则 stop。同提供商、同 model id 解封后 **resume 同一 run**；failover 且 model id 不同时允许新 `run_dir`
 3. run 结束后 `harvest_proposals`：校验 → 去重 → 分层选座 → 入慢环队列
 4. 有货立刻拉慢环
 5. 物化 `known_verdicts.inc.md` 与 `covariate_menu.inc.md`，喂给下一代
@@ -99,20 +99,30 @@ Peer 第一件事：至少写 2 份假设到
 
 ---
 
-## 4. 当前目标与现场（2026-09-09）
+## 4. 当前目标与现场（以 JSON 为准）
 
-成功条件（`scripts/praxist_goal.yaml`）：
+过期时以磁盘为准，不要把本节快照当成监督环现态。权威源：
+
+- 监督状态：`data/cache/supervisor_state.json`
+- 裁决：`task_FM/config/aligned_verdicts.jsonl`（按 `variant_id` 最新行）
+- 目标与预算：`scripts/praxist_goal.yaml`
+
+成功条件（goal.yaml，2026-09-11 仍有效）：
 
 - 1 星集合 `{m, ss, sr, cj, jd, lh, eg, rb}` 里至少 4 个过门
+- 过门 = `pass_variants()`：`gate_pass` 且 ev>0（硬门 `gate_pass` 只判 n+ic，不含 EV）
 - 过门策略相对现任 PF 比 > 1.05
 - 至少 1 个协变量族
-- 预算：20 cycles / 30 CPU 小时 / 80M token 增量 / 截止 2026-09-20
+- **预算已无限制**：`max_cycles` / `cpu_hours` / `token_budget_m` = 999999，`deadline` = 2099-12-31
 
-磁盘快照（监督环已于 2026-09-09 10:54 有序 SIGTERM，为重启电脑）：
+磁盘快照（2026-09-11；过期以 JSON 为准）：
 
-- `phase=slow`，`cycles_done=6`，队列空
-- 20 条 unique 裁决；**经济意义上过门的实质只有 `ss_vor`**（n=396，PF=1.123，ev=+11.06，ic=0.06）
-- `i_oi` 被标了 `gate_pass=True` 但 ev=−2.46：硬门只判 n+ic，materializer 未区分「过硬门」与「过硬门但亏钱」，对 peer 有误导（待修）
+- `phase=fast`，`cycles_done=1`，`paused_429=false`
+- `last_run_id=run_2026-09-10_03-06-50_primary_task_FM`
+- `last_harvested_run_id=run_2026-09-10_00-44-51_primary_task_FM`
+- 经济意义上过门的实质只有 `ss_vor`（n=396，ic=0.06，ev=+11.06，PF=1.123）
+- `gate_pass=True` 但 ev<0：`i_oi`（−2.46）、`m_ccl`（−3.64）。materializer 仍写成 `gate_pass=True … do NOT re-propose`，对 peer 有误导（代码未改）
+- `cj_oi` n=324 ic=0.08 ev=+19.46 `gate_pass=false`（欠样本，近失误复测候选）
 
 重启：
 
@@ -136,9 +146,10 @@ setsid nohup .praxist-venv/bin/python scripts/praxist_supervisor.py \
 2. 日线预测缓存（慢环候选之间复用）
 3. 1 星优先选座
 4. n 不足近失误自动复测
-5. 429 后 resume 同一 run；Ark 主 / DashScope 备
+5. 429：同提供商 resume 同一 run；model id 不同允许新 `run_dir`（Ark 主 / DashScope 备）
+6. TimesFM `ensure_compiled` 指纹跳过；生产 `DataStore` 连接关闭（compile-skip spec）
 
-预测链本身的性能债（重复 `compile`、连接泄漏、Hurst 循环等）记在 [audit_system_efficiency_20260908.md](./audit_system_efficiency_20260908.md)，与编排是两条线。
+预测链剩余性能债（Hurst 循环等）记在 [audit_system_efficiency_20260908.md](./audit_system_efficiency_20260908.md)，与编排是两条线。
 
 明确非目标：不改 Praxist 核心、不做 GPU/多机并行、监督环无出站通知（会话级监控随 Agent 会话消失）。
 
@@ -146,11 +157,14 @@ setsid nohup .praxist-venv/bin/python scripts/praxist_supervisor.py \
 
 ## 6. 历史文档怎么读
 
+冲突时以 **方案 A**（[spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md)）、`loop-constraints.md`、监督环 `harvest_proposals`（`proposals/*.json`）为准。09-02 实施计划「Spec 绑定解释」第 4 条（diagnostic survivors / `evaluation_summary.json`）**作废**。
+
 | 文档 | 地位 |
 |---|---|
 | [praxist_integration_plan.md](./praxist_integration_plan.md) | 2026-09-01 方案稿，P0–P3 已落地；路径 `/root/timesFM_fu` 过时 |
 | [praxist_directive_design.md](./praxist_directive_design.md) | 指令闭环仍有效；peer 跑 diagnostic 评估已被方案 A 取代 |
-| [praxist_peer_evaluation_fix.md](./praxist_peer_evaluation_fix.md) | 方案 A 的动机（诊断 PF 不可信） |
-| `docs/superpowers/specs/2026-09-02-praxist-three-loop-design.md` | 三环原始 spec；与现行冲突时以 runbook「Spec 绑定解释」为准 |
+| [praxist_peer_evaluation_fix.md](./praxist_peer_evaluation_fix.md) | **失效（方案 A）**。只解释诊断 PF 不可信；禁止按本文给 peer 加评估 |
+| `docs/superpowers/specs/2026-09-02-praxist-three-loop-design.md` | 部分取代。骨架仍有效（慢环写 verdict、daily 缓存、同提供商 429 resume）；peer diagnostic 已废 |
+| `docs/superpowers/plans/2026-09-02-praxist-three-loop.md` | 历史施工单，已落地，勿再执行。绑定解释第 4 条作废，现行 harvest 见 `harvest_proposals` |
 
 Windows 工作区里的 `D:\FlyBuddy\timesfm` 可能是过期副本。读/改本仓一律走 WSL：`wsl -d Ubuntu-22.04 -- bash -c "..."`。

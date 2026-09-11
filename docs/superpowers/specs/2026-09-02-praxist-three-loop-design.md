@@ -1,7 +1,9 @@
 # FM_a PRAXIST 三环自治架构设计 (Spec)
 
+> **2026-09-11 地位：部分取代。** Peer diagnostic 筛选已废（方案 A：peer 只写 `proposals/*.json`，监督环 `harvest_proposals`）。骨架仍有效：慢环写 verdict、daily 缓存、429 **同提供商** resume 同一 run。与现行冲突时以 `docs/praxist.md`、runbook、`docs/spec_hypothesis_driven_fast_loop_20260908.md`、`loop-constraints.md` 为准。勿当施工单。
+
 日期: 2026-09-02
-状态: 待审阅
+状态: 历史设计（部分取代）；勿再按本文实现 diagnostic 收割
 前序文档: docs/praxist_integration_plan.md, docs/praxist_directive_design.md
 
 ## 1. 背景与问题

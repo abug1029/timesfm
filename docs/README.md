@@ -100,12 +100,13 @@ setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.ya
 - `python scripts/a2_p1_restore_manifest.py --restore` — 从备份恢复缺失文件
 - 详见 [runbook.md](./runbook.md) "A2-P1 完整性工具" 章节
 
-## 当前生产姿态（2026-08-21）
+## 当前生产姿态（2026-09-11）
 
 - **Neutral / Absolute Risk Overlay：默认 OFF**（全宇宙经济门禁未过）
-- **Copilot：预警-only**，不改变预测数值；**可交易方向 = 加权 1H**（非日线标签）
+- **Copilot：预警-only**，不改变预测数值。卡面「方向」仍是日线 `_compute_direction_v2`（与 CF-01 A 加权 1H 分叉，代码未改）
+- **级联/回测可交易方向** = `position_from_forecast`（加权 1H）；见 [product_positioning.md](./product_positioning.md)
 - **无真实 3 星**；`--three-star` = 信用≥2 星列表
 - **Phase 11（2026-08-21 结案）**：12 品种协变量替换固化（SS/SP/FU/I/RB/TA/EG/CJ/LH/JD + 3 基线保持 M/P/SR），34 GREEN
 - **Phase 12（2026-08-21）**：BU 组合协变量 `calendar_cyclical+hourly_slope` 固化（PF=1.01 边际 GREEN）
 - 新口径经济表与信用档：见上表 g005e（Phase 11/12 后协变量已刷新）；运维细节见 [vol-risk.md](./vol-risk.md) 与 `STATE.md`
-- **Praxist 三环（2026-09-09）**：方案 A 已上线；监督环有序停机、目标=1 星过门 ≥4。架构 [praxist.md](./praxist.md)，现场快照见 `STATE.md`
+- **Praxist 三环（2026-09-11 磁盘）**：方案 A 已上线；`phase=fast`，`cycles_done=1`。过期以 `data/cache/supervisor_state.json` 为准。架构 [praxist.md](./praxist.md)，现场快照见 `STATE.md`

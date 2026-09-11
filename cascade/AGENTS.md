@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-11 -->
 
 # cascade
 
@@ -20,7 +20,7 @@
 | `vol_gating_replay.py` | 离线 thr 重算（不重跑 TimesFM） |
 | `neutral_ab_report.py` | **Neutral A/B 唯一评分源** |
 | `neutral_ab_render.py` | Neutral 报告 Markdown 渲染 |
-| `lgbm_features.py` | A2 LGBM 特征矩阵（bar 级防穿越设计） |
+| `lgbm_features.py` | **归档**（A2 Track B 已关）。生产入口 `cascade_predict` / `monthly_backtest` / `copilot` 不 import；仅 A2 脚本与测试仍引用 |
 | `walk_forward.py` | Regime 协变量 IS/OOS 优化器（IR 体系，非 PF/EV） |
 | `regime_features.py` / `regime_classifier.py` | Regime 特征与 KMeans |
 | `prediction_tracker.py` | 历史预测 JSON 追踪 |
@@ -67,6 +67,6 @@ python -m unittest tests.test_vol_scaled_mae tests.test_neutral_ab_report tests.
 
 ### External
 
-- TimesFM 2.5、PyTorch、pandas/numpy、LightGBM（A2 路径）
+- TimesFM 2.5、PyTorch、pandas/numpy；LightGBM 仅 A2 归档路径，生产入口不依赖
 
 <!-- MANUAL: -->

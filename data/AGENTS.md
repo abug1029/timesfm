@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-11 -->
 
 # data
 
@@ -29,19 +29,24 @@
 - 禁止自动改 `config.py`。
 - 幽灵 K 线清理只走 `future_bar_guard.run_guard`，勿散落 purge。
 - `db/` 只增不删；不手改生产 `.db` 结构。
-- 回测截断契约：`BacktestDataStore(symbol, cutoff)` 当前 **cutoff 为日期字符串**。
+- 回测截断契约：`BacktestDataStore(symbol, cutoff)` 的 **cutoff 是 bar 完整 datetime**。
 
-### Critical: BacktestDataStore Cutoff Semantics (P0)
+### Critical: BacktestDataStore Cutoff Semantics
+
+**现行（`ee1f176` 已修）**：cutoff 是评估 bar 的完整时刻，不是仅日期。
+
+- 1H / 主力合约 OI：截到 `cutoff_ts`（含该时刻 bar）
+- 日线：`hour >= 15`（含夜盘）则包含当日日线；15:00 前退到前一日历日
+- 仅日期字符串按 **当日 00:00:00** 处理并打警告，不再扩成 23:59
 
 ```text
-monthly / A2 scheme path:
-  dt = str(all_1h["dt"].iloc[idx])[:10]   # 仅日历日
-  BacktestDataStore(symbol, dt)
-  get_main_contract_1h → end_date = cutoff + " 23:59"
+monthly:
+  cutoff = bar_ts.strftime("%Y-%m-%d %H:%M:%S")   # 完整时刻
+  BacktestDataStore(symbol, cutoff)
+  get_main_contract_1h → end_date = cutoff_ts
 ```
 
-**问题**：评估点若在日盘 10:00，上下文仍可包含同日 23:59 前全部 1H bar → **同日 lookahead**。  
-**修复方向**（需人工确认后改）：cutoff 改为 bar 精确 datetime；合约 OI 也按该时刻选取。
+~~旧行为（date-only + 23:59 → 同日 1H lookahead）~~ 已在 `ee1f176` 移除。
 
 ### Contract Series Mismatch
 

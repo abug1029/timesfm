@@ -1,5 +1,7 @@
 # TimesFM compile 跳过与效率审计第一批 Implementation Plan
 
+> **文档状态（2026-09-11）**：历史施工单。已落地 master。**勿再执行**。空勾选框不表示未实现。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 配置没变时跳过 TimesFM `compile()` 重建解码闭包，并落地 F-001 / F-010 / F-011 / F-005 四条小修。

@@ -9,8 +9,11 @@ short_horizon. This is what backtests score and what reports must label as
 **日线 regime 标签** = daily_slope vs trend_threshold_pct — secondary only,
 never overrides trade position. Shown as 「日线状态」 not as the trade call.
 
-Production (cascade_predict / copilot) and monthly / A2 / vol scheme legs MUST
-call ``position_from_forecast``. Endpoint-only sign(pred[T+24]-base) is legacy.
+Production cascade_predict / monthly / A2 / vol scheme legs MUST call
+``position_from_forecast``. Endpoint-only sign(pred[T+24]-base) is legacy.
+
+Copilot currently does NOT call ``position_from_forecast``; the card
+direction is daily ``_compute_direction_v2`` (known fork vs CF-01 A).
 """
 from __future__ import annotations
 

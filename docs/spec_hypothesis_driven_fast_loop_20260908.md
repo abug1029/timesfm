@@ -11,6 +11,7 @@
 > - 与设计的偏差：§4.3"合格未入队提案结转 pending-proposals 索引"未实现（下一 cycle 直接重扫 proposals/，dead/in-flight 去重已防重复入队）。
 > - 事件可靠性修复：signal/atexit handler 改为 `main()` 启动时才武装（import 本模块当库用不再误发 unexpected_exit）；测试经 `_patch_paths` 隔离 EVENTS_PATH。
 > - 当前运行口径（host 迁移）：WSL2 Ubuntu-22.04 `/home/abug/timesfm`，`.praxist-venv` CPython 3.11，7.7 GiB RAM。
+> - harvest glob（2026-09-11）：**不是**「仅本 run」。代码每 cycle 重扫 `task_FM/experiments/run_*/results/**/proposals/*.json`，靠 dead/passing/in-flight/seen 去重。
 
 ---
 
@@ -140,7 +141,7 @@ n=3 时方向准确率标准误 ≈ sqrt(0.25/3) ≈ 0.29，PF/EV 噪声极大�
 ### 4.3 编辑 `scripts/praxist_supervisor.py`
 - `load_covariate_pool()`：读池供排序/校验
 - `harvest_proposals(root, snapshot, dead, existing, pool, top_k, aligned_max_points)`（镜像 harvest_survivors L398-459）：
-  - glob `run_*/results/**/proposals/*.json`（仅本 run）
+  - glob `run_*/results/**/proposals/*.json`（设计稿写「仅本 run」；**现行：全部 run**，见文首 2026-09-11 增补）
   - 拒绝：schema 不符 / symbol∉ALLOWED / cov∉active / mechanism 空或<40字 / family 缺 → reject 计数 + log（fail visibly）
   - 去重：dead / pass_variants / in_flight / seen
   - 排序：① 正交族多样性（沿用 two-pass seat-fill）② 协变量履历（近门优先）③ 机制完备度 ④ 新颖性（未测组合优先）

@@ -1,6 +1,8 @@
 # 1 星 + PTA 品种协变量优化设计
 
-**Status**: Approved (Phase 1 in progress)
+> **文档状态（2026-09-11）**：**历史战役**。正文当考古。活 SCHEMES 以 `config/prediction_scheme.py` 为准。不要按本文改生产方案表。
+
+**Status**: 历史战役（2026-09-11 标注；原 Approved / Phase 1 in progress）
 **Date**: 2026-07-28
 **Author**: Claude + chong pu
 **Skill**: superpowers:brainstorming

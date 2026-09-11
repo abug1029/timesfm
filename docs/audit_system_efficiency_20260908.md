@@ -51,6 +51,7 @@ TimesFM 期货量化预测系统，核心组件：
 - **文件**: `scripts/monthly_backtest.py:164-169`
 - **类别**: robustness
 - **工作量**: S
+- **状态 (2026-09-11): 已落地** — `run_symbol_backtest` 已用 `with DataStore(symbol) as store:`；覆盖 `tests/test_monthly_datastore_close.py`。下文描述为审计当时的问题。
 
 **描述**: `DataStore(symbol)` 在 `run_symbol_backtest` 中创建时未使用上下文管理器。如果 `get_main_contract_1h`（165行）或 `get_main_continuous`（168行）抛出异常，`store.close()`（169行）永远不会执行，泄漏 SQLite 连接。在 20 品种 walk-forward 回测下，会累积泄漏连接。
 
@@ -93,6 +94,7 @@ TimesFM 期货量化预测系统，核心组件：
 - **文件**: `cascade/daily_model.py:69`, `cascade/hourly_model.py:117`
 - **类别**: performance
 - **工作量**: M
+- **状态 (2026-09-11): 已落地** — `ensure_compiled` 按 `ForecastConfig` 指纹跳过重复 compile（`cascade/daily_model.py`）；覆盖 `tests/test_compile_skip.py`。下文描述为审计当时的问题。
 
 **描述**: 两个模型在每次 `predict()` 调用时都重新编译 TimesFM 配置（`self.model.compile(self._DAILY_CONFIG)` / `self.model.compile(self._XREG_CONFIG)`）。注释承认另一个模型可能已用不同设置重新编译。在 walk-forward 回测中数百个评估点 × 20 品种 = 1000+ 次无效重编译。
 
@@ -192,7 +194,7 @@ TimesFM 期货量化预测系统，核心组件：
 
 | 优先级 | ID | 修复内容 |
 |:---:|------|---------|
-| 1 | F-001 | DataStore 改用 `with` 上下文管理器 |
+| 1 | F-001 | DataStore 改用 `with` 上下文管理器（**已落地**） |
 | 2 | F-003 | Checkpoint JSONL 添加 `fcntl.flock` 文件锁 |
 | 3 | F-006 | cascade_predict.py 添加定期 `torch.cuda.empty_cache()` |
 | 4 | F-010 | features.py sklearn 移到模块级 import |
@@ -203,7 +205,7 @@ TimesFM 期货量化预测系统，核心组件：
 | 优先级 | ID | 修复内容 |
 |:---:|------|---------|
 | 6 | F-002 | hourly_model.py 收窄异常类型 + 添加 failure_reason |
-| 7 | F-004 | 模型 compile 添加配置变更检测，避免重复编译 |
+| 7 | F-004 | 模型 compile 添加配置变更检测，避免重复编译（**已落地**） |
 | 8 | F-005 | 测试文件路径改用 `Path(__file__)` 动态解析 |
 
 ### Phase 3: 可观测性 + 数据质量（6-8h）

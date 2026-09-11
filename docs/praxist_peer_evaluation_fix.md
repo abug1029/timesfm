@@ -1,7 +1,9 @@
 # Praxist Peer 评估失败诊断与解决方案
 
 > 日期: 2026-09-08
-> 状态: 待执行
+> 状态: **失效（方案 A）**。禁止按本文给 peer 加评估、放宽 writable_roots、或加 `run_evaluation` 工具。
+> 取代：`docs/spec_hypothesis_driven_fast_loop_20260908.md`（peer = 假设作者，只写 `proposals/*.json`；TimesFM 仅慢环）。
+> 保留原因：解释诊断 PF 不可信、delete guard 与 `python -c` 冲突。不要当施工单。
 
 ---
 

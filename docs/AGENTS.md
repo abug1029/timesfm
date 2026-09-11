@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-09-09 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-11 -->
 
 # docs
 
@@ -51,7 +51,7 @@
 
 ### Note on EV unit
 
-monthly stdout 打印的 `EV=` 实际是 **EV_ratio**（无量纲）。文档中的 EV 案例多为该尺度，勿与 `evaluation_metrics["EV"]` 价格点混淆。
+monthly stdout 打印 **`EV_ratio=`**（无量纲）。文档中的 EV 案例多为该尺度，勿与 `evaluation_metrics["EV"]` 价格点混淆。历史日志可能仍出现 `EV=` 别名（`phase4d_parse_results` 二者同语义）。
 
 ## Dependencies
 

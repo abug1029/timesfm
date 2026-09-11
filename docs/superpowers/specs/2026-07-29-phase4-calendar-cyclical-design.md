@@ -1,6 +1,8 @@
 # Phase 4: JD 日历周期协变量设计 (calendar_cyclical)
 
-> 状态: 待用户审核
+> **文档状态（2026-09-11）**：**历史战役**。正文当考古。活 SCHEMES 以 `config/prediction_scheme.py` 为准。不要按本文改生产方案表。
+
+> 状态: 历史战役（2026-09-11 标注；活 SCHEMES 见 prediction_scheme.py）
 > 涉及品种: JD (鸡蛋)为首个验证品种，后续全品种通用
 > 依赖: 无(独立协变量类型)
 

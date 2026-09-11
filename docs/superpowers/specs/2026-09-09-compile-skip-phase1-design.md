@@ -1,7 +1,9 @@
 # TimesFM compile 跳过与效率审计第一批 (Spec)
 
+> **文档状态（2026-09-11）**：**已落地**（`ensure_compiled`，自 `a8b0b6b`）。状态栏「待审阅」过期。勿当待开工。空验收框不表示未实现。
+
 日期: 2026-09-09
-状态: 待审阅
+状态: 已落地（2026-09-11 标注；原「待审阅」过期）
 前序文档:
 - `docs/audit_system_efficiency_20260908.md`（22 条发现；本 spec 只落地其中 5 条）
 - `docs/host_environment_assessment.md`（WSL2，7.7 GiB，无 GPU）

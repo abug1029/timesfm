@@ -1,5 +1,7 @@
 # System Hardening Implementation Plan
 
+> **文档状态（2026-09-11）**：历史施工单。已随 `243693d` merge 进 master。**勿再执行**。空勾选框不表示未实现。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement 10 SPEC items (SPEC-004~013) that upgrade FM_a from "usable" to "trustworthy" — fixing statistical rigor, prediction decision closure, report consistency, and data layer integrity.

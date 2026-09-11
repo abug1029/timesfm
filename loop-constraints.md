@@ -49,6 +49,7 @@
 - **方案 A（2026-09-08 起）：peers 不再跑任何评估/加载 TimesFM**，只写机制化提案 `results/**/proposals/*.json`（schema `fm.hypothesis_proposal.v1`，mechanism ≥40 字）；慢环 `aligned_slow_loop.py` 是唯一验证器，诊断小样本 PF 不作数
 - 契约权威文件：`config/praxist_task.yaml`（校验器 `scripts/praxist_validate_task.py`，违规 exit 2）
 - PRAXIST peers 唯一可写区：run 目录下 `results/`（proposals/findings）；新协变量想法只能进 `task_FM/config/covariate_backlog.jsonl`。SCHEMES/cascade/data.config 固化、features.py 加协变量仍须人工（宿主）执行
+- 429 failover：同提供商 resume 同一 run；**model id 不同允许开新 run_dir**（`scripts/praxist_supervisor.py` 的 `_failover_can_resume_same_run`）
 
 ---
 <!-- 在下方添加自定义规则。Loop 会原样读取。 -->

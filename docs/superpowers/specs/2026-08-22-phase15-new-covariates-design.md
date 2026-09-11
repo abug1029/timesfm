@@ -1,7 +1,9 @@
 # Phase 15: 新协变量开发设计文档
 
+> **文档状态（2026-09-11）**：晋升进 SCHEMES 的目标 **失效**。`STATE.md`：24 tests **0 GREEN**。NVI / QSTICK / VWAP / StdDev 函数仍留在 `cascade/features.py` 池内。**不要写入** `config/prediction_scheme.py`。
+
 > **日期**: 2026-08-22
-> **状态**: 待审核 (v2 — 已合并 review 意见)
+> **状态**: 固化目标失效（2026-09-11 标注；原「待审核」过期）
 > **前置**: Phase 11-13 穷举结论 (协变量组合优化触顶)
 > **来源**: 知乎交易指标综合研究报告
 

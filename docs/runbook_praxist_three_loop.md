@@ -77,9 +77,10 @@ praxist stop <run_id>
 2. **解封且当前配额窗剩余 ≥ run_budget_hours + quota_margin_min** →  
    `praxist resume <run_dir_or_run_id> --daemonize --json`（**positional** target，不是 `--run-dir`）。
 3. 窗剩余不足 → `wait_quota`，sleep 到下一窗起点（`reset + N * quota_window_hours`）。
-4. **禁止** 429 后对同一中断 run `praxist start` 新 run；须 resume 同一 `last_run_dir` / `last_run_id`。
+4. **同提供商、同 model id**：禁止 429 后对同一中断 run `praxist start` 新 run；须 resume 同一 `last_run_dir` / `last_run_id`。
+5. **model id 不同**（例：Ark `claude-opus-4-7` → DashScope `qwen3.7-plus`）：Praxist resume 拒改模型身份，**允许** 新 `run_dir`。已配置 failover 时走 `run_failover_llm`，不是只 `wait_quota`。
 
-`paused_429` 期间不 harvest、不 start。仅在 stop/resume 的 praxist 调用成功时才改该标志。
+`paused_429` 期间：**仍** `harvest_proposals`（提案是本地文件，不烧 token）；不 start 同一提供商、同 model id 的新 run。仅在 stop/resume/failover 的 praxist 调用成功时才改该标志。
 
 ---
 
@@ -120,7 +121,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 
 ## Harvest 与 Known verdicts（方案 A：机制化假设作者，2026-09-08 起）
 
-- Peer **不跑评估**，只写机制优先的结构化提案：`task_FM/experiments/run_*/results/gen_*/<peer>/proposals/<symbol>_<cov>.json`（schema `fm.hypothesis_proposal.v1`，`mechanism` ≥40 字）。监督环在活 run 结束且非 `paused_429` 时由 `harvest_proposals` 收割（旧 `harvest_survivors` 仅留作回滚，读 `evaluation_summary.json`）。
+- Peer **不跑评估**，只写机制优先的结构化提案：`task_FM/experiments/run_*/results/gen_*/<peer>/proposals/<symbol>_<cov>.json`（schema `fm.hypothesis_proposal.v1`，`mechanism` ≥40 字）。监督环在**活 run 已结束**时由 `harvest_proposals` 收割：`paused_429` / `wait_quota` / failover **不挡** harvest（提案是本地文件）。每 cycle 重扫全部 `run_*/results/**/proposals/*.json`，dead/passing/in-flight 去重。旧 `harvest_survivors`（读 `evaluation_summary.json`）仅留作回滚，不是现行源。
 - **拒绝计数（fail visibly）**：`missing_symbol_or_cov` / `symbol_not_allowed` / `cov_archived` / `cov_not_in_active_pool` / `mechanism_too_short` / `dedup`（dead / 已过门 / in-flight / 本批重复）/ `backlog_dup`。
 - **新协变量想法** `new_cov_<name>.json`（`cov_override=null`）→ 追加 `task_FM/config/covariate_backlog.jsonl`（按 name 去重），**不入队**；宿主在 `features.py` 实现并入池后才可测。
 - **选座（top_k = `survivors_per_cycle`，当前 3）**：先按 tier 排序再两遍 QD——
@@ -136,9 +137,9 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 - **红线：** 只有 `aligned_slow_loop.py` 可写 `aligned_verdicts.jsonl`。
 - **已知语义瑕疵（待修）：** 硬门只判 n+ic，`i_oi` 曾 gate_pass=True 但 ev=−2.46（dir=0.467 的空头方向）；成功条件（ev>0、PF 比>1.05）正确排除，但 materializer 仍把它写成 `gate_pass=True … do NOT re-propose`，对 peer 有误导，需区分"过门"与"过硬门但亏钱"。
 
-### 当前 goal（2026-09-09 扩目标后）
+### 当前 goal（以 `scripts/praxist_goal.yaml` 为准）
 
-成功条件：1 星品种集命中 ≥4（`len(symbols_hit & {'m','ss','sr','cj','jd','lh','eg','rb'}) >= 4`）+ 过门变体 PF/incumbent 最小比 >1.05 + ≥1 个协变量族。预算 max_cycles=20 / cpu_hours=30 / token 增量 80M / deadline 2026-09-20；cadence：survivors=3、aligned_max_points=600、quota 窗 5h、run 预算 1.5h。首个过门策略 ss_vor（n=396 PF=1.123 ev=+11.06，2026-09-09）。
+成功条件仍是：1 星品种集命中 ≥4（`len(symbols_hit & {'m','ss','sr','cj','jd','lh','eg','rb'}) >= 4`）+ 过门变体 PF/incumbent 最小比 >1.05 + ≥1 个协变量族。**预算已无限制**（`max_cycles`/`cpu_hours`/`token_budget_m`=999999，`deadline`=2099-12-31）。cadence：survivors=3、aligned_max_points=600、quota 窗 5h、run 预算 1.5h。经济过门实质仅 `ss_vor`（n=396 PF=1.123 ev=+11.06）；`i_oi`/`m_ccl` 为 `gate_pass` 但 ev<0。
 
 ---
 
@@ -170,7 +171,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 | `another supervisor holds the lock` | 已有实例；查 `supervisor.lock` / 进程 |
 | `another slow loop instance holds the lock` | 同上，慢环锁 |
 | harvest 空但 run 已结束 | 方案 A 后看 `results/**/proposals/*.json`：缺提案、机制 <40 字、cov 不在 active 池、symbol 非法都会 reject；看决策日志 `proposal_scan` 的 `reject_reasons` |
-| 429 后开了新 run | 违规；应 resume `last_run_dir`；查 `paused_429` |
+| 429 后开了新 run | 同提供商同 model id 应 resume `last_run_dir`；model id 不同（failover）允许新 run_dir。查 `paused_429` / `llm_provider` |
 | token 预算误停 | `tok_unknown` 时跳过 token 预算；确认 generation_results 是否有 `runtime_usage` |
 | peers 看不到 verdict | 查 `known_verdicts.inc.md` 是否被 materialize；模板 include 是否在 `prompt_base.jinja2` |
 | `no_data` 永久死 | 不应进 `dead_variants`；可重试入队 |

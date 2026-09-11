@@ -1,8 +1,10 @@
 # Praxist 控制面（预见性控制）
 
-> 宿主：8×CPU / 15GiB / 0 Swap / 无 GPU。Owner：FM研；总管做预见性控制，不靠事后报炸再修。  
-> 状态：2026-09-06 **已批准稳妥启动**（用户+总管：eval 硬顶=1，cohort=2）。加压 eval=2 须另批。  
-> 禁止：未获「按新流程启动」前自行 `praxist start` / supervisor 持续跑 / next-session 解卡 / 清 SHUTDOWN 续跑。
+> **2026-09-11 宿主：WSL2 Ubuntu-22.04 `/home/abug/timesfm`，8 vCPU / 7.7 GiB。** Swap 以 `free -h` 为准，勿写死 0。Owner：FM研；总管做预见性控制，不靠事后报炸再修。
+> **任何 TimesFM 现仅慢环加载**（方案 A：peer 零 TimesFM）。禁止按本文给 peer 加评估或并行共载。不要改 `scripts/mem_guard.py` 去贴 15GiB。
+> **仍绑定：** flock≤**1** + `MemAvailable < 2.5GiB` 拒启（`scripts/mem_guard.py` `DEFAULT_MAX_SLOTS=1` / `MIN_AVAIL_BYTES`）。
+> 状态：2026-09-06 稳妥启动已落地；§1「peer eval 作战」被方案 A 部分取代。加压 eval=2 仍须另批（现行不应出现第二份 TimesFM）。
+> 禁止：未获「按新流程启动」前自行 `praxist start` / next-session 解卡 / 清 SHUTDOWN 续跑。
 
 ## 0. 角色与节奏
 
@@ -16,7 +18,9 @@
 
 ---
 
-## 1. 内存 / cgroup 红线（TimesFM eval）
+## 1. 内存 / cgroup 红线（TimesFM 仅慢环）
+
+方案 A 之后 peer 不加载 TimesFM。下表仍约束慢环 `aligned_slow_loop` / `monthly_backtest` / 残留 `fm_eval`，**不是**给 peer 加评估的许可证。flock=1 与 2.5GiB 拒启仍有效。
 
 | 条件 | 动作 | 谁执行 |
 |------|------|--------|
@@ -109,6 +113,8 @@
 | `min_interval_minutes` | **25** | 略低于 30，便于受控推进 |
 
 ### Goal 长跑受控提案（`scripts/praxist_goal.yaml`）
+
+> **2026-09-11 活文件：** 预算已是 999999 / `deadline` 2099-12-31；成功条件仍是 1 星集合 ≥4。下表 20/30/80/2026-09-20 是历史提案，勿回写进 yaml。
 
 | 字段 | 提案 |
 |------|------|

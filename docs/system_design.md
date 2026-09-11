@@ -1,7 +1,13 @@
-# FM_a 系统设计文档：从预测到交易建议
+# FM_a 系统设计文档：从预测到方向性建议
 
-> **版本**: 1.0 (2026-09-10)  
-> **定位**: 完整描述如何利用 TimesFM 预测模型和协变量系统，在任意时间点给出期货品种的开平仓建议。
+> **合同声明（冲突以后者为准）**
+>
+> - 可交易方向以 [`docs/product_positioning.md`](product_positioning.md) **CF-01 A** 为准。
+> - IC / 硬门以 [`loop-constraints.md`](../loop-constraints.md) 为准。
+> - 本文若与上述冲突，以上述为准。不要按本文去改 `signal_contract.py` 或 `evaluator.gate`。
+>
+> **版本**: 1.1 (2026-09-11)
+> **定位**: 方向性建议，不是自动开平仓。描述 TimesFM 两阶段级联如何在任意时刻给出期货品种的方向与置信度。
 
 ---
 
@@ -35,7 +41,7 @@ FM_a 是一个**两阶段级联预测系统**，不是自动交易系统。它�
 │  ─────          ─────              ─────          ─────     │
 │                                                             │
 │  TqSdk ──→ SQLite ──→ 日线模型 ──→ 1H级联 ──→ 方向判断     │
-│  (实时)     (SQLite)   (TimesFM)   (XReg)    (斜率/阈值)   │
+│  (实时)     (SQLite)   (TimesFM)   (XReg)    (见下)        │
 │              │                        │            │        │
 │              ↓                        ↓            ↓        │
 │         技术指标               协变量矩阵      风控熔断      │
@@ -44,8 +50,12 @@ FM_a 是一个**两阶段级联预测系统**，不是自动交易系统。它�
 │              └────────────────────────┴────────────┘        │
 │                               │                             │
 │                               ↓                             │
-│                        交易建议报告                          │
+│                        方向性建议报告                        │
 │                    (方向+置信度+风险提示)                     │
+│                                                             │
+│  方向判断（已知分叉，代码未改）：                              │
+│  · 级联/回测：加权 1H（position_from_forecast）               │
+│  · Copilot 卡面：暂用日线副标签（_compute_direction_v2）      │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -54,11 +64,21 @@ FM_a 是一个**两阶段级联预测系统**，不是自动交易系统。它�
 
 | 原则 | 说明 |
 |------|------|
-| **领航员而非自动驾驶** | 系统输出建议，人类做最终决策 |
+| **领航员而非自动驾驶** | 系统输出方向性建议，人类做最终决策 |
 | **预测永不压平（默认）** | Vol Gating 默认 OFF，仅输出风险标签 |
 | **品种异质化** | 每个品种有独立的协变量配置和信用星级 |
-| **防穿越** | 所有预测严格使用历史数据，不使用未来信息 |
+| **防穿越** | 回测按 cutoff 截断；实盘 `DailyModel.predict` 仍裸读（见 §2.4） |
 | **可复现** | 相同输入产生相同输出，所有随机种子固定 |
+
+### 1.3 已知分叉（2026-09-11，代码未改）
+
+| 路径 | 现在怎样 | 不要写成 |
+|------|----------|----------|
+| `cascade_predict` / `monthly_backtest` | 可交易方向 = `position_from_forecast`（加权 1H） | 日线斜率主方向 |
+| Copilot 卡面 / 研报 / 建议文案 | 仍用 `_compute_direction_v2`（日线 + R² 门） | 已经改成加权 1H |
+| `DailyModel.predict` | 裸读 `get_main_continuous` | 已经走 `get_safe_daily` |
+| `get_safe_daily` | 只接到 `cascade_predict` 报告图 `daily_df` | 预测 context 已防护 |
+| 仓内函数名 | 活函数是 `_compute_direction_v2` | 不存在 `_compute_direction` |
 
 ---
 
@@ -107,13 +127,25 @@ TqSdk API
 | `xreg_factors` | 协变量时间序列 | CCL/OI/RSI 等 |
 | `metadata` | 数据版本/采集时间 | 审计追踪 |
 
+### 2.4 防穿越：回测已截，实盘预测仍裸读
+
+**回测**（`BacktestDataStore.get_main_continuous`）：cutoff 为 bar 时刻。`hour>=15` 才包含当日日线（当天已收盘）；15:00 之前回退到前一日历日。
+
+**实盘**（已知债，代码未改）：
+
+- `DailyModel.predict` 仍裸读 `store.get_main_continuous(limit=context_days)`，无 15:00 掩码，不剔除 `date>today`。
+- `get_safe_daily` 已实现收盘掩码（`date==today` 且 `hour>=15` 才留当日），但只接到 `cascade_predict` 报告图的 `daily_df`，**没有**接到 `DailyModel.predict`。
+- Copilot 同样走 `DailyModel.predict`，盘中日线 context 与回测不同构。
+
+不要把「helper 已 merge」写成「活预测已经防护」。
+
 ---
 
 ## 3. 两阶段级联预测
 
 ### 3.1 Stage 1：日线模型
 
-**目标**：预测未来 22 个交易日的价格走势，提取趋势斜率。
+**目标**：预测未来 22 个交易日的价格走势，提取趋势斜率，作为 **regime 副标签**（不是可交易方向）。
 
 ```
 输入: 250 天历史收盘价
@@ -128,31 +160,40 @@ TimesFM 2.5 (200M 参数)
 线性回归拟合斜率
     │
     ↓
-horizon_slope = 回归系数 / 预测均值  (%/天)
+horizon_slope = 回归系数 / 预测均值   # 存储：分数/天
+展示: horizon_slope × 100 = %/天
+R² < 0.35 → slope_unreliable（副标签改中性）
 ```
 
 **输出**：`DailyResult`
+
 ```python
 @dataclass
 class DailyResult:
     symbol: str
     forecast: np.ndarray           # shape (22,), 22日预测价格
-    horizon_slope: float           # 预测段的百分比斜率 (%/天)
+    horizon_slope: float           # 存储为分数/天（0.0015 = 0.15%/天）
     historical_closes: np.ndarray  # 历史真实日线收盘价
     historical_dates: pd.DatetimeIndex
     quantile_forecast: np.ndarray  # shape (22, 10), P10~P90
+    r_squared: float = 0.0
+    slope_unreliable: bool = False  # R² < 0.35
 ```
 
-**斜率解读**：
+**斜率解读（仅日线状态 / regime，不是仓位）**：
+
 ```
-horizon_slope > +0.1%/天  → 看多 ↑
-horizon_slope < -0.1%/天  → 看空 ↓
-|horizon_slope| <= 0.1%   → 中性 →
+展示斜率 = horizon_slope × 100
+展示斜率 > +0.1%/天 且 R² 可靠  → 日线状态：看多 ↑
+展示斜率 < -0.1%/天 且 R² 可靠  → 日线状态：看空 ↓
+|展示斜率| <= 0.1% 或 slope_unreliable → 日线状态：中性 →
 ```
+
+实现：`cascade/daily_model.py` 的 `_compute_direction_v2`。仓内没有名为 `_compute_direction` 的函数。
 
 ### 3.2 Stage 2：1H 级联模型 (XReg)
 
-**目标**：以日线斜率为条件，结合品种特异协变量，进行 24 小时精细预测。
+**目标**：以日线斜率为条件，结合品种特异协变量，进行 24 小时精细预测。可交易方向从这条 1H 路径出（级联/回测）。
 
 ```
 输入:
@@ -167,12 +208,12 @@ TimesFM 2.5 XReg (forecast_with_covariates)
     └── 分位数预测: quantile_forecast[t, q]
     │
     ↓
-信号生成
+信号生成: position_from_forecast（加权 1H）
 ```
 
 **XReg 协变量矩阵构建**：
 ```python
-# 以 SS (不锈钢) 为例
+# 以 SS (不锈钢) 生产 SCHEMES 为例（不是慢环 ss_vor）
 covariate_types = ["calendar_cyclical"]
 
 # 构建矩阵
@@ -191,6 +232,8 @@ class HourlyResult:
     point_forecast: np.ndarray       # shape (24,), 24H 预测价格
     quantile_forecast: np.ndarray    # shape (24, 10), P10~P90
     covariates: dict                 # {"daily_slope": ..., "ccl_pct": ...}
+    context_len: int
+    horizon: int
     xreg_fallback: bool              # 协变量失败回退标记
 ```
 
@@ -198,13 +241,15 @@ class HourlyResult:
 
 | 阶段 | 时间尺度 | 捕捉信息 | 作用 |
 |------|----------|----------|------|
-| Stage 1 (日线) | 22 天 | 中长期趋势 | 确定大方向 |
-| Stage 2 (1H) | 24 小时 | 短期波动 + 协变量 | 精细化入场时机 |
+| Stage 1 (日线) | 22 天 | 中长期趋势 | **regime 副标签**，不是可交易方向 |
+| Stage 2 (1H) | 24 小时 | 短期波动 + 协变量 | 级联/回测的**可交易方向**（加权 1H） |
 
 **级联优势**：
-- 日线模型不受 1H 噪声干扰，趋势判断更稳
-- 1H 模型以日线斜率为条件，避免与大势矛盾
+- 日线模型不受 1H 噪声干扰，给盘面一个趋势体制提示
+- 1H 模型以日线斜率为 XReg 条件，不把日线阈值写成仓位
 - 协变量在 1H 尺度更有预测力（日内持仓变化 vs 日间）
+
+CF-01 A：日线斜率**不得覆盖** `position_sign`。Copilot 卡面目前仍把日线副标签当主方向，见 §5.3。
 
 ---
 
@@ -221,56 +266,61 @@ class HourlyResult:
 | **trend** | `hourly_slope`, `ao_accel` | 短期动能 | 趋势品种 |
 | **volatility** | `vor`, `bb_squeeze`, `stddev` | 波动率状态 | 突破/压缩 |
 
-### 4.2 品种特异配置
+### 4.2 品种特异配置（生产 SCHEMES）
 
-每个品种有独立的协变量配置，存储在 `config/prediction_scheme.py` 的 `SCHEMES` 字典中。
+每个品种有独立的协变量配置，存储在 `config/prediction_scheme.py` 的 `SCHEMES` 字典中。**生产入口读这里，不读慢环 verdict。**
 
 ```python
-# 示例：不锈钢 (SS)
+# 不锈钢 (SS) — 生产固化，不是 ss_vor
 "ss": VarietyScheme(
     symbol="ss",
     name="不锈钢",
     scheme_type="trend",
-    stars=2,                              # 信用星级
-    covariate_type="calendar_cyclical",   # 主协变量
-    covariate_types=["calendar_cyclical"], # 组合协变量
-    # ... 其他参数
+    stars=2,
+    covariate_type="calendar_cyclical",
+    covariate_types=["calendar_cyclical"],
 )
 
-# 示例：白糖 (SR)
+# 白糖 (SR)
 "sr": VarietyScheme(
     symbol="sr",
     name="白糖",
     scheme_type="stable",
     stars=2,
     covariate_type="rsi_state",
-    covariate_types=["rsi_state", "oi", "calendar_cyclical"],  # 三协变量组合
-    # ...
+    covariate_types=["rsi_state", "oi", "calendar_cyclical"],
 )
 ```
 
-### 4.3 协变量选择依据
+SS 生产协变量是 `calendar_cyclical`。慢环过门的 `ss_vor` **没有**写进 `SCHEMES`。
 
-协变量配置通过**慢环验证**（`aligned_slow_loop.py`）确定：
+### 4.3 慢环验证 vs 固化：拆开写
+
+协变量候选通过**慢环验证**（`aligned_slow_loop.py`）写 `aligned_verdicts.jsonl`。过门 ≠ 已固化。
 
 ```
 慢环验证流程:
     │
-    ├── 1. Peer 提出假设 (symbol × covariate)
+    ├── 1. Peer 提出假设 (symbol × covariate) → proposals/*.json
     │
     ├── 2. 慢环回测验证
-    │   ├── 计算 PF / EV / IC / MaxDD
-    │   └── 硬门判断: n≥350 + IC≥0.05 + EV>0
+    │   ├── 计算 PF / EV / DirAcc；IC = 2×|dir_acc−0.5|
+    │   ├── gate_pass = n≥350 且 IC≥0.05   （不含 EV）
+    │   └── econ_pass = gate_pass and ev>0  （pass_variants()）
     │
-    └── 3. 过门 → 固化到 SCHEMES
+    └── 3. 固化到 SCHEMES：须人工，慢环不过这一步
 ```
 
-**当前过门协变量**（2026-09-10）：
-| 品种 | 协变量 | PF | EV | IC | 状态 |
-|------|--------|----|----|----|------|
-| SS | vor | 1.123 | +11.06 | 0.060 | ✅ 实质性过门 |
-| CJ | oi | 1.133 | +19.46 | 0.080 | ⏳ n 不足 (324<350) |
-| M | vor | 1.303 | +8.71 | 0.048 | ⏳ IC 边际 (0.048<0.05) |
+**磁盘裁决（2026-09-11）**：
+
+| variant | n | PF | EV | IC | gate_pass | econ_pass | 是否进 SCHEMES |
+|---------|---|----|----|----|-----------|-----------|----------------|
+| `ss_vor` | 396 | 1.123 | +11.06 | 0.06 | True | **True** | **否**（生产仍是 `calendar_cyclical`） |
+| `i_oi` | 396 | 0.818 | −2.46 | 0.066 | True | False | 否 |
+| `m_ccl` | 396 | 0.839 | −3.64 | 0.088 | True | False | 否 |
+| `cj_oi` | 324 | 1.133 | +19.46 | 0.08 | False（欠样本） | False | 否 |
+
+`gate_pass=True` 不是「赚钱、已解决」。`i_oi` / `m_ccl` 过硬门但 EV 为负。
 
 ### 4.4 协变量构建细节
 
@@ -279,7 +329,7 @@ class HourlyResult:
 def build_calendar_cyclical(df: pd.DataFrame) -> np.ndarray:
     """
     日历周期协变量：捕捉交割月效应
-    
+
     原理：期货价格在交割月前后可预期地收敛
     计算：month_of_year → sin/cos 变换 → 周期信号
     """
@@ -295,7 +345,7 @@ def build_calendar_cyclical(df: pd.DataFrame) -> np.ndarray:
 def _calc_rsi(closes: np.ndarray, period: int = 14) -> np.ndarray:
     """
     RSI 超买超卖体制
-    
+
     原理：RSI>70 超买(看空), RSI<30 超卖(看多)
     输出：RSI 值 (0~100)，归一化到 [-1, 1]
     """
@@ -307,56 +357,84 @@ def _calc_rsi(closes: np.ndarray, period: int = 14) -> np.ndarray:
 
 ## 5. 信号生成与方向判断
 
-### 5.1 方向判断逻辑
+### 5.1 可交易方向：加权 1H（级联 / 回测）
+
+CF-01 A：**唯一可交易方向** = `sign(weighted_1H − base)`，经 `signal_weight` / `short_horizon`。实现：`cascade/signal_contract.position_from_forecast`。
+
+`cascade_predict` 与 `monthly_backtest` 走这条。日线斜率只填 `regime_direction`，**不得覆盖** `position_sign`。
 
 ```python
-def _compute_direction(horizon_slope: float, scheme: VarietyScheme) -> str:
-    """
-    基于日线斜率判断方向
-    
-    Args:
-        horizon_slope: 日线预测斜率 (%/天)
-        scheme: 品种方案（含阈值配置）
-    
-    Returns:
-        "看多 ↑" / "看空 ↓" / "中性 →"
-    """
-    thr = scheme.trend_threshold_pct  # 默认 0.1%/天
-    
-    if horizon_slope * 100 > thr:     # 转换为百分比
+from cascade.signal_contract import position_from_forecast
+
+sig = position_from_forecast(
+    point_forecast,   # 1H 点预测，shape (horizon,)
+    base_price,       # T0 收盘
+    scheme=scheme,
+    daily_slope=daily_result.horizon_slope,  # 分数/天；只填副标签
+)
+# sig["direction"]        → 可交易方向（加权 1H）
+# sig["regime_direction"] → 日线状态（副标签）
+# sig["position_sign"]    → +1 / -1 / 0
+```
+
+无 scheme 时回退到终点符号 `sign(pred[-1] − base)`（遗留路径）。
+
+### 5.2 日线副标签：`_compute_direction_v2`
+
+活函数在 `cascade/daily_model.py`。仓内**没有** `_compute_direction`。
+
+```python
+def _compute_direction_v2(daily_result, scheme) -> str:
+    """R² 门控的日线状态（副标签，不是仓位）。"""
+    if getattr(daily_result, "slope_unreliable", False):
+        return "中性 → (形态分歧)"
+    if scheme:
+        thr_ratio = scheme.trend_threshold_pct / 100.0  # 0.1%/天 → 0.001
+    else:
+        thr_ratio = 0.001
+    slope = daily_result.horizon_slope  # 分数/天
+    if slope > thr_ratio:
         return "看多 ↑"
-    elif horizon_slope * 100 < -thr:
+    elif slope < -thr_ratio:
         return "看空 ↓"
     else:
         return "中性 →"
 ```
 
-**阈值说明**：
-- `trend_threshold_pct = 0.1` 表示斜率 > 0.1%/天才视为趋势
-- 低于阈值视为震荡/中性，不建议开仓
+**单位**：`horizon_slope` 存储为分数/天；展示乘 100 才是 %/天。阈值比较在分数空间（`thr_ratio`），不要把存储值直接当百分比。
 
-### 5.2 信号权重衰减
+### 5.3 已知分叉：Copilot 卡面仍用日线 v2
 
-不同品种的信号有效时长不同，通过 `decay` 参数控制：
+`scripts/copilot.py` **目前未调用** `position_from_forecast`。卡面「方向」、建议文案、研报主句走 `_compute_direction_v2`（日线）。这与 CF-01 A 分叉，**代码未改**。不要把 Copilot 写成已经用加权 1H。
+
+| 入口 | 主方向 | 日线角色 |
+|------|--------|----------|
+| `scripts/cascade_predict.py` | `position_from_forecast` | `regime_direction` 副标签 |
+| `scripts/monthly_backtest.py` | `position_from_forecast` | 不覆盖仓位 |
+| `scripts/copilot.py` | `_compute_direction_v2`（日线） | **当成卡面主方向** |
+
+### 5.4 信号权重衰减
+
+不同品种的信号有效时长不同，通过 `decay` 参数控制（`config/prediction_scheme.py::signal_weight`）：
 
 ```python
 def signal_weight(horizon: int, scheme: VarietyScheme) -> np.ndarray:
     """
     生成信号权重（远端信号衰减）
-    
+
     trend 品种：衰减慢 (decay=1.35)，信号持续性强
     stable 品种：衰减快 (decay=1.60)，短期有效
     """
     if scheme.use_full_signal and not scheme.short_horizon_only:
-        # 全段信号：指数衰减
         decay = scheme.decay
         t = np.arange(1, horizon + 1)
-        w = decay ** (-t / horizon)  # 权重 = decay^(-t/horizon)
+        w = decay ** (-t / horizon)
         return w
     else:
-        # 短段信号：T+1~T+12 权重 1，T+13~T+24 权重 0
+        # 短段信号：前半段权重 1，其余 0（另有 cosine rolloff，默认关）
         w = np.zeros(horizon)
-        w[:12] = 1.0
+        half = min(horizon // 2, 12)
+        w[:half] = 1.0
         return w
 ```
 
@@ -369,31 +447,9 @@ T+18: 0.71  ██████████████████████�
 T+24: 0.64  ████████████████████████████
 ```
 
-### 5.3 置信区间调整
+### 5.5 置信区间调整
 
-```python
-def confidence_band(quantile_forecast: np.ndarray, scheme: VarietyScheme) -> np.ndarray:
-    """
-    根据品种的 confidence_multiplier 调整置信区间
-    
-    multiplier > 1.0 → 更保守（区间更宽）
-    multiplier = 1.0 → 标准
-    """
-    mult = scheme.confidence_multiplier
-    if mult == 1.0:
-        return quantile_forecast
-    
-    median = quantile_forecast[:, 5:6]  # P50
-    adjusted = quantile_forecast.copy()
-    
-    # 展宽低端和高端
-    for q_idx in [1, 2, 3, 4]:  # P10~P40
-        adjusted[:, q_idx] = median - (median - quantile_forecast[:, q_idx]) * mult
-    for q_idx in [6, 7, 8, 9]:  # P60~P90
-        adjusted[:, q_idx] = median + (quantile_forecast[:, q_idx] - median) * mult
-    
-    return adjusted
-```
+实现见 `config/prediction_scheme.py::confidence_band`：Col 0 是点预测，不展宽；Col 1~9 在 log 空间按 `confidence_multiplier` 展宽。`multiplier > 1.0` 更保守。
 
 ---
 
@@ -480,11 +536,13 @@ def apply_neutral_override_v2(point_forecast, base_price, quantile_forecast,
 
 | 指标 | 公式 | 含义 | 硬门条件 |
 |------|------|------|----------|
-| **PF** | sum(盈利) / sum(亏损) | 盈亏比 | > 1.0 |
-| **EV** | mean(净盈亏) | 每笔期望收益（扣滑点） | > 0 |
-| **IC** | corr(预测, 实际) | 信息系数 | ≥ 0.05 |
+| **PF** | sum(盈利) / sum(亏损) | 盈亏比 | > 1.0（经济层 / 星级，不是 `gate_pass`） |
+| **EV** | mean(净盈亏) | 每笔期望收益（扣滑点） | `econ_pass` 要求 > 0；**不进** `gate_pass` |
+| **IC** | `2×\|dir_acc−0.5\|` | 方向性信息系数（**不是** Pearson） | ≥ 0.05 |
 | **n** | 样本量 | 统计显著性 | ≥ 350 |
 | **MaxDD** | 最大回撤 | 风险控制 | > -40% (建议) |
+
+`cascade/evaluation_metrics.py` 只产出 DirAcc / PF / EV / MaxDD。IC 由 `task_FM/evaluations/fm_eval/evaluator.py::gate` 从 DirAcc 派生。不要把 IC 写成 `corr(预测, 实际)`。
 
 ### 7.2 计算细节
 
@@ -512,6 +570,13 @@ EV = mean(net)  # 所有交易净盈亏的平均值
 # 单位：价格点（如 RB: +0.5 点 = 0.5 元/吨）
 ```
 
+#### IC（方向性，非相关）
+
+```python
+ic = 2 * abs(dir_acc - 0.5)
+# DirAcc=0.53 → IC=0.06；DirAcc=0.467 → IC=0.066
+```
+
 #### MaxDD (Maximum Drawdown)
 
 ```python
@@ -533,18 +598,29 @@ MaxDD = min(drawdown)  # 最大回撤（负值）
 
 ### 7.3 硬门逻辑
 
+`gate_pass` **只判 n 和 IC**，不含 EV。经济过门是另一层。
+
 ```python
-def gate_pass(n: int, ic: float, ev: float) -> bool:
-    """
-    硬门判断：协变量是否可用于生产
-    
-    三个条件必须同时满足：
-    1. n >= 350: 样本量足够（统计显著性）
-    2. ic >= 0.05: 预测有信息量（不是噪声）
-    3. ev > 0: 正期望（长期能赚钱）
-    """
-    return (n >= 350) and (ic >= 0.05) and (ev > 0)
+# task_FM/evaluations/fm_eval/evaluator.py
+def gate(s, min_n=350, min_ic=0.05):
+    """预注册硬门: n 与方向性 IC(=2*|DirAcc-0.5|)"""
+    m = s if "dir_acc" in s else map_summary(s)
+    ic = 2 * abs(m.get("dir_acc", 0.5) - 0.5)
+    return m["n"] >= min_n and ic >= min_ic
+
+# scripts/registry_lib.py
+# econ_pass = gate_pass and ev>0
+def pass_variants(snapshot):
+    out = []
+    for v in snapshot.values():
+        if v.get("status", "ok") != "ok":
+            continue
+        if v.get("gate_pass") and v.get("ev", 0) > 0:
+            out.append(v)
+    return out
 ```
+
+磁盘：`ss_vor` 经济过门（ev=+11.06）。`i_oi`（ev=−2.46）与 `m_ccl`（ev=−3.64）`gate_pass=True` 但 EV 为负，**不算** `pass_variants()`。
 
 ### 7.4 信用星级
 
@@ -554,7 +630,7 @@ def gate_pass(n: int, ic: float, ev: float) -> bool:
 | ⭐⭐ | PF > 1.05 + 多维度 GREEN | 8 | 中等仓位 |
 | ⭐ | PF ~ 1.0 或 underpowered | 13 | 轻仓或观望 |
 
-**2 星品种**（2026-09-10）：SS, SR, M, RB, EG, LH, CJ, JD
+**2 星品种**（SCHEMES，2026-09-10）：SS, SR, M, RB, EG, LH, CJ, JD
 
 ---
 
@@ -562,26 +638,31 @@ def gate_pass(n: int, ic: float, ev: float) -> bool:
 
 ### 8.1 建议框架
 
+级联报告（`cascade_predict`）按 CF-01 A 拆两行。Copilot 报告目前仍把日线方向印成主句。
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    交易建议报告                              │
+│                    方向性建议报告                            │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  品种: SS (不锈钢)                                          │
 │  星级: ⭐⭐ (2星，中等信用)                                  │
-│  时间: 2026-09-10 14:30                                     │
+│  时间: 2026-09-11 14:30                                     │
 │                                                             │
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
 │                                                             │
-│  【方向判断】看多 ↑                                         │
-│  日线斜率: +0.15%/天 (阈值 0.1%)                            │
+│  【可交易方向】看多 ↑   （加权 1H，position_from_forecast）  │
+│  【日线状态】看多 ↑     （斜率 +0.15%/天，副标签）            │
 │  1H 预测: T+1~T+12 均价 14520, T+13~T+24 均价 14580        │
+│                                                             │
+│  注：Copilot 卡面/研报目前仍印日线 _compute_direction_v2，  │
+│      与 CF-01 A 分叉（代码未改）。                            │
 │                                                             │
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
 │                                                             │
 │  【模型底气】                                               │
 │  历史胜率: 51% | 盈亏比(PF): 1.12 | 回测 MaxDD: -35%       │
-│  协变量: calendar_cyclical (日历周期效应)                   │
+│  生产协变量: calendar_cyclical（不是慢环 ss_vor）            │
 │                                                             │
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
 │                                                             │
@@ -600,7 +681,7 @@ def gate_pass(n: int, ic: float, ev: float) -> bool:
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
 │                                                             │
 │  【领航员建议】                                             │
-│  ● 方向看多，但胜率仅 51%，建议轻仓试探                     │
+│  ● 可交易方向看多，但胜率仅 51%，建议轻仓试探               │
 │  ● 短期信号强于长期，建议 T+12 前平仓                       │
 │  ● 止损参考 (多头防线): P10≈14380, 建议止损位 14370        │
 │  ● 止盈参考: P90=14660 (触及则减仓)                        │
@@ -610,47 +691,7 @@ def gate_pass(n: int, ic: float, ev: float) -> bool:
 
 ### 8.2 建议生成逻辑
 
-```python
-def craft_advisory(symbol, kb, direction, delta_pct, vol, scheme_type):
-    """生成领航员建议（多行文案）"""
-    entry = kb_entry(kb, symbol)
-    stars = entry.get("credit_stars", 0)
-    pf = entry.get("historical_pf")
-    dir_acc = entry.get("historical_diracc")
-    high_vol = vol.get("high_vol", False)
-    
-    lines = []
-    
-    # 1. 底气评估
-    if stars >= 2 and pf is not None:
-        lines.append(
-            f"模型底气: 历史胜率 {dir_acc:.0%}，盈亏比(PF) {pf:.2f}。"
-            f"中等信用，仓位适中。"
-        )
-    else:
-        lines.append(
-            f"模型底气: 历史胜率 {dir_acc:.0%}，盈亏比(PF) {pf:.2f}。"
-            f"弱信号品种，轻仓或观望。"
-        )
-    
-    # 2. 方向建议
-    if "多" in direction:
-        lines.append(f"方向看多，建议逢低做多。")
-    elif "空" in direction:
-        lines.append(f"方向看空，建议逢高做空。")
-    else:
-        lines.append(f"方向中性，建议观望或区间操作。")
-    
-    # 3. 风险提示
-    if high_vol:
-        lines.append("⚠️ 极高波动预警，建议减仓或止损。")
-    
-    # 4. 持仓周期
-    hold = entry.get("best_hold_period", "T+1 ~ T+24")
-    lines.append(f"建议持仓周期: {hold}")
-    
-    return lines
-```
+实现见 `scripts/copilot.py::craft_advisory`。`run_one` 传入的 `direction` 来自 `_compute_direction_v2`（日线），**不是** `position_from_forecast`。文案按星级、历史 PF/DirAcc、Vol 雷达标签拼接；高波分支读 `vol_sensitivity`（HELPS / HURTS / MIXED）。级联报告不走这条，信号表直接印加权 1H 的「可交易方向」。
 
 ### 8.3 建议等级
 
@@ -664,7 +705,9 @@ def craft_advisory(symbol, kb, direction, delta_pct, vol, scheme_type):
 
 ## 9. 完整流程示例
 
-### 9.1 场景：2026-09-10 14:30，预测 SS (不锈钢)
+活仓：`/home/abug/timesfm`。虚拟环境：`.praxist-venv`。不要用 `D:/FlyBuddy/FM_a`。
+
+### 9.1 场景：2026-09-11 14:30，预测 SS (不锈钢)
 
 **Step 1: 数据检查**
 ```bash
@@ -672,14 +715,14 @@ python scripts/cascade_predict.py ss --collect-if-stale 1
 # 输出: [DATA] SS 1H 数据时效: 2h, 日线时效: 1d → OK
 ```
 
-**Step 2: Stage 1 日线预测**
+**Step 2: Stage 1 日线预测**（`DailyModel.predict` 仍裸读日线）
 ```
 [Stage 1] 日线预测 (context=250d, horizon=22d)...
   历史窗口: 250 天
   预测天数: 22 天
   预测范围: 14320.5 ~ 14680.2
-  Horizon 斜率: +0.153%/天
-  方向: 看多 ↑
+  Horizon 斜率: +0.153%/天     # 存储分数/天，展示 ×100
+  日线状态: 看多 ↑             # _compute_direction_v2，副标签
 ```
 
 **Step 3: Stage 2 1H 级联预测**
@@ -687,12 +730,13 @@ python scripts/cascade_predict.py ss --collect-if-stale 1
 [Stage 2] 1H 级联预测 (XReg, horizon=24h, cov=calendar_cyclical)...
   Context: 480 bars (20 天)
   Horizon: 24 bars (1 天)
-  协变量: calendar_cyclical (日历周期效应)
-  
+  协变量: calendar_cyclical（生产 SCHEMES；不是 ss_vor）
+
   预测结果:
-    T+1~T+12 均价: 14520 (方向: 多)
-    T+13~T+24 均价: 14580 (方向: 多)
+    T+1~T+12 均价: 14520
+    T+13~T+24 均价: 14580
     分位数: P10=14380, P50=14550, P90=14660
+  可交易方向: 看多 ↑           # position_from_forecast
 ```
 
 **Step 4: 风险评估**
@@ -705,11 +749,12 @@ python scripts/cascade_predict.py ss --collect-if-stale 1
 ```markdown
 # SS (不锈钢) 级联预测报告
 
-## 方向判断: 看多 ↑
+## 可交易方向: 看多 ↑
+## 日线状态: 看多 ↑
 
 | 指标 | 值 |
 |------|-----|
-| 日线斜率 | +0.153%/天 |
+| 日线斜率 | +0.153%/天（副标签） |
 | 1H 预测 (T+1~12) | 14520 |
 | 1H 预测 (T+13~24) | 14580 |
 | 置信区间 P10~P90 | 14380 ~ 14660 |
@@ -721,22 +766,24 @@ python scripts/cascade_predict.py ss --collect-if-stale 1
 | 历史胜率 | 51% |
 | 盈亏比 PF | 1.12 |
 | 回测 MaxDD | -35% |
-| 协变量 | calendar_cyclical |
+| 生产协变量 | calendar_cyclical |
 
 ## 领航员建议
 
-- 方向看多，胜率 51%，建议轻仓试探
+- 可交易方向看多，胜率 51%，建议轻仓试探
 - 短期信号强于长期，建议 T+12 前平仓
 - 止损参考: P10=14380
 - 止盈参考: P90=14660
 ```
 
+Copilot（`python scripts/copilot.py ss`）卡面目前仍只印日线方向，不会出现上面的「可交易方向」行。
+
 ### 9.2 命令行完整流程
 
 ```bash
-# 1. 激活环境
-source D:/FlyBuddy/shared/timesfm/.venv/Scripts/activate
-cd D:/FlyBuddy/FM_a
+# 1. 激活环境（WSL 活仓）
+cd /home/abug/timesfm
+source .praxist-venv/bin/activate
 
 # 2. 单品种预测（自动补采数据）
 python scripts/cascade_predict.py ss --collect-if-stale 1
@@ -747,7 +794,7 @@ python scripts/cascade_predict.py ss rb sr m jd
 # 4. 信用 2 星品种批量预测
 python scripts/cascade_predict.py --three-star
 
-# 5. 主观交易领航员（推荐盘中入口）
+# 5. 主观交易领航员（推荐盘中入口；卡面方向仍是日线 v2）
 python scripts/copilot.py ss fu --no-refresh
 
 # 6. 启用 Vol 熔断（实验性）
@@ -758,7 +805,7 @@ python scripts/cascade_predict.py ss --vol-filter-neutral
 
 ## 10. 附录：关键配置
 
-### 10.1 品种配置速查表
+### 10.1 品种配置速查表（生产 SCHEMES）
 
 | 品种 | 星级 | 主协变量 | 组合 | 类型 | 衰减 | 信号策略 |
 |------|------|----------|------|------|------|----------|
@@ -771,6 +818,8 @@ python scripts/cascade_predict.py ss --vol-filter-neutral
 | CJ | ⭐⭐ | hourly_slope | [hourly_slope] | short_range | 1.47 | 短段 |
 | JD | ⭐⭐ | rsi_state | [rsi_state] | stable | 1.42 | 全段 |
 
+SS 行是 `calendar_cyclical`。`ss_vor` 只出现在慢环裁决，不在本表。
+
 ### 10.2 关键参数
 
 | 参数 | 值 | 来源 | 说明 |
@@ -779,10 +828,13 @@ python scripts/cascade_predict.py ss --vol-filter-neutral
 | `CONTEXT_DAYS` | 250 | backtest_config.py | 日线 context 长度 |
 | `HORIZON` | 24 | backtest_config.py | 1H 预测时域 |
 | `HORIZON_DAYS` | 22 | backtest_config.py | 日线预测天数 |
-| `STEP` | 2 | backtest_config.py | 评估步长（密集） |
+| `STEP` | **2** | backtest_config.py | 评估步长（密集；不是 24） |
 | `EVAL_WINDOW_BARS` | 1200 | backtest_config.py | 评估窗口 (~200 交易日) |
+| 理论 n | **589** | `range(eval_start, total-HORIZON+1, STEP)` | 窗口足够时；磁盘最高 588 |
 | `SLIPPAGE_TICKS` | 2 | backtest_config.py | 双边滑点 tick 数 |
-| `TREND_THRESHOLD_PCT` | 0.1 | prediction_scheme.py | 趋势判断阈值 (%/天) |
+| `TREND_THRESHOLD_PCT` | 0.1 | prediction_scheme.py | 日线副标签阈值（%/天） |
+
+硬门样本量阈值仍是 350，不是 396 也不是 600。
 
 ### 10.3 文件路径
 
@@ -791,12 +843,15 @@ python scripts/cascade_predict.py ss --vol-filter-neutral
 | `config/prediction_scheme.py` | 品种固化方案 SCHEMES |
 | `config/backtest_config.py` | 回测参数配置 |
 | `config/knowledge_base.json` | Copilot 信用背书 |
-| `cascade/daily_model.py` | Stage 1 日线模型 |
+| `cascade/daily_model.py` | Stage 1 日线模型；`_compute_direction_v2` |
 | `cascade/hourly_model.py` | Stage 2 1H 级联模型 |
+| `cascade/signal_contract.py` | 可交易方向合同：`position_from_forecast` |
 | `cascade/features.py` | 协变量构建 |
 | `cascade/vol_risk_filter.py` | 波动率熔断器 |
-| `scripts/cascade_predict.py` | 级联预测主入口 |
-| `scripts/copilot.py` | 主观交易领航员 |
+| `cascade/evaluation_metrics.py` | DirAcc / PF / EV / MaxDD（无 Pearson IC） |
+| `scripts/cascade_predict.py` | 级联预测主入口（加权 1H） |
+| `scripts/monthly_backtest.py` | 慢环回测（加权 1H；`hour>=15` 含当日日线） |
+| `scripts/copilot.py` | 主观交易领航员（卡面仍日线 v2） |
 
 ---
 
@@ -804,18 +859,18 @@ python scripts/cascade_predict.py ss --vol-filter-neutral
 
 FM_a 系统的核心价值在于：
 
-1. **两阶段级联**：日线定方向，1H 定时机，跨周期信息融合
-2. **品种异质化**：每个品种有独立的协变量配置和信用评估
-3. **严格防穿越**：所有预测使用历史数据，回测结果可复现
+1. **两阶段级联**：日线给 regime 副标签，级联/回测的可交易方向来自加权 1H
+2. **品种异质化**：每个品种有独立的生产 SCHEMES；慢环过门不会自动固化
+3. **防穿越分叉**：回测 `hour>=15`；实盘 `DailyModel.predict` 仍裸读
 4. **风险管理**：Vol 熔断（可选）、置信区间、止损止盈参考
-5. **人机协作**：系统输出建议，人类做最终决策
+5. **人机协作**：系统输出方向性建议，人类做最终决策
 
 **使用建议**：
 - 优先关注 2 星品种（SS/SR/M/RB/EG/LH/CJ/JD）
+- 看级联报告的【可交易方向】；不要把 Copilot 卡面日线方向当成已对齐 CF-01 A
 - 轻仓试探，根据实际表现调整仓位
 - 结合基本面和主观判断，不盲从模型
-- 定期回顾预测准确率，持续优化
 
 ---
 
-*文档维护：本文档随系统迭代更新，最新版本见 `docs/system_design.md`*
+*文档维护：本文档随系统迭代更新，最新版本见 `docs/system_design.md`。冲突以 `product_positioning.md` 与 `loop-constraints.md` 为准。*

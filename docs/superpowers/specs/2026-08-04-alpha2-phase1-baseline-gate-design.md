@@ -1,7 +1,9 @@
 # Alpha 2.0 Phase 1 — 评价体系重构 + LGBM 基线门禁
 
+> **文档状态（2026-09-11）**：生产模型条款 **失效**。Track B 已关闭（`STATE.md` A2-P1.1 / A2-P2 **0/5 GO**；`docs/module_freeze.md` CF-13 **A** 永久关闭）。生产入口（copilot / cascade_predict / monthly_backtest / praxist_supervisor）**0 import**。不要按本文把 LGBM 接进生产或启动 A2-P2。评价库残留不是开工许可。
+
 - **日期**: 2026-08-04
-- **状态**: Draft (待用户 review)
+- **状态**: 设计失效（生产路径；2026-09-11 标注。原文 Draft）
 - **Track**: B (模型线 Alpha 2.0)
 - **范围**: 仅 A2-P1。A2-P2（残差叠加架构）/ A2-P3（Copilot 升维）spec 待 A2-P1 门禁结果出来后再做。
 - **北极星指标**: PF / EV / MaxDD。DirAcc 与 Vol-Scaled MAE **仅 logging，永不参与 Go/No-Go**。

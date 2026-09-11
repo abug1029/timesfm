@@ -2,12 +2,12 @@
 
 > **⚠️ 2026-09-09 起宿主再次迁移：以下 Grok Box（Debian/`/workspace`/15GiB/CPython 3.13）结论为历史记录，当前事实以下表为准。**
 >
-> | 项 | 当前值（2026-09-09 实测，WSL） |
+> | 项 | 当前值（2026-09-11 核对，WSL） |
 > |----|-----|
 > | 主机 | **WSL2**（Windows 10，发行版 Ubuntu-22.04.5，kernel 6.18 microsoft-standard） |
-> | 项目根 | **`/home/abug/timesfm`**（GitHub `abug1029/timesfm`，分支 `improve/system_efficiency`） |
+> | 项目根 | **`/home/abug/timesfm`**（GitHub `abug1029/timesfm`，分支 **`master`** HEAD `9653264`） |
 > | Python | 本仓 **`.praxist-venv`（CPython 3.11.15）**，FM_a 与 PRAXIST 共用 |
-> | CPU / 内存 | 8 vCPU / **7.7 GiB total（无 swap 兜底，OOM 风险高于旧盒 15GiB）** |
+> | CPU / 内存 | 8 vCPU / **7.7 GiB total**；Swap 以现场 `free -h` 为准（2026-09-11 测得 2.0Gi，**不要写死 0**） |
 > | GPU | 无 |
 > | 磁盘 | `/` 约 1TB，用量 2% |
 > | 行情库 | **本仓 `db/` 为真实目录**（29 个 `futures_<sym>.db`），不再是 `/workspace` symlink；`.env` 为真实文件 |

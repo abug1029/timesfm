@@ -1,6 +1,8 @@
 # Phase 8a: 跨品种 Crack Spread 协变量框架设计 (PX-TA 首验证)
 
-> 状态: 待用户审核
+> **文档状态（2026-09-11）**：**历史战役**。正文当考古。活 SCHEMES 以 `config/prediction_scheme.py` 为准。不要按本文改生产方案表。
+
+> 状态: 历史战役（2026-09-11 标注；活 SCHEMES 见 prediction_scheme.py）
 > 涉及品种: TA (PTA) 为首验证标的, feedstock = PX (对二甲苯)
 > 依赖: 无新模型; 复用现有 TimesFM XReg + monthly_backtest + covariate_scan
 > 前置约束: SC 原油采集延后至 Phase 8b (独立子任务)

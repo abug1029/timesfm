@@ -53,7 +53,7 @@ CONTEXT_DAYS = 250        # 日线 context 长度 (days)
 HORIZON = 24              # 预测时域 (bars)
 HORIZON_DAYS = 22         # 日线预测天数
 STEP = 2                  # walk-forward 步长 (bars): 每天评估 3 次 (5.5 bars/day ÷ 3 ≈ 2)
-EVAL_WINDOW_BARS = 1200   # 评估窗口 (bars): 600 点 × STEP=2 ≈ 200 交易日 (~1 年)
+EVAL_WINDOW_BARS = 1200   # 评估窗口 (bars): 理论 n = len(range(0, 1200-24+1, 2)) = 589；600 是 goal 上限不是网格点数
 MIN_EVAL_POINTS = 10      # 最少评估点数 (低于此品种标记为"数据不足")
 MIN_1H_BARS = 48          # 最少 1H bars 数量
 

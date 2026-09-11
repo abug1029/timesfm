@@ -29,7 +29,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 | 用途 | 仓库 / 进程 | 权重路径 |
 |------|-------------|----------|
-| 预测岗 | `timesFM_fu` | 其自身路径或该进程的 HF cache；**勿与 PRAXIST 共用 runtime 加载路径** |
+| 预测岗 | **其他仓库** `timesFM_fu`（非本 WSL 树） | 其自身路径或该进程的 HF cache；**勿与本仓 `/home/abug/timesfm` 共用权重** |
 | PRAXIST / FM_a cascade 慢路径 | `timesfm`（本仓，WSL `/home/abug/timesfm`） | **本地目录** `/home/abug/timesfm/models/timesfm-2.5-200m-pytorch` |
 
 - 环境变量（优先）：`FM_TIMESFM_MODEL_PATH`（兼容 `TIMESFM_MODEL_PATH` / `TIMESFM_WEIGHTS_DIR`）

@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-09-09 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-11 -->
 
 # config
 
@@ -12,7 +12,7 @@
 | File | Description |
 |------|-------------|
 | `prediction_scheme.py` | 20 品种 `SCHEMES`：协变量、stars、dir_acc、short_horizon、signal_weight（**高风险，禁止自动改**） |
-| `backtest_config.py` | 回测池、`CONTEXT_BARS=480` / `HORIZON=24` / `STEP=24`、TICK_SIZES、`SLIPPAGE_TICKS=2` |
+| `backtest_config.py` | 回测池、`CONTEXT_BARS=480` / `HORIZON=24` / `STEP=2` / `EVAL_WINDOW_BARS=1200`、TICK_SIZES、`SLIPPAGE_TICKS=2` |
 | `sector_map.py` | agri / chem / black 板块唯一表 |
 | `crack_spread_pairs.py` | 裂解价差配对与 ratio |
 | `knowledge_base.json` | Copilot L1+SCHEMES 信用背书（由 `build_knowledge_base.py` 生成） |
@@ -33,15 +33,16 @@
 |-------|-------|---------|
 | CONTEXT_BARS | 480 | 1H context |
 | HORIZON | 24 | 预测时域 bars |
-| STEP | 24 | 非重叠 walk-forward 步长 |
+| STEP | 2 | walk-forward 步长（约每天 3 次） |
+| EVAL_WINDOW_BARS | 1200 | 评估窗口；理论 n=`len(range(0,1200-24+1,2))`=589；600 是 goal 上限 |
 | CONTEXT_DAYS / HORIZON_DAYS | 250 / 22 | 日线 stage |
 | SLIPPAGE_TICKS | 2 | 双边合计 2 tick |
 | commission | 0 | 默认不计手续费 |
 
-### Known Issues (2026-08-08 audit)
+### Known Issues (2026-09-11)
 
-1. **实盘信号 ≠ 回测信号**：实盘 `cascade_predict` 用 `daily_slope + trend_threshold` 定方向，并用 `signal_weight` 做加权价；回测用 `sign(pred[T+24]-base)`。
-2. **short_horizon_only** 品种实盘 T+13..T+24 权重为 0，回测仍评 T+24 终点。
+1. **级联/回测方向已统一**：`cascade_predict` 与 `monthly_backtest` 都走 `position_from_forecast`（加权 1H）。**Copilot 卡面仍用日线 `_compute_direction_v2`**（已知分叉，代码未改）。
+2. **short_horizon_only** 品种 T+13..T+24 权重为 0；回测经济指标仍按该加权仓位计。
 3. **2026-08-08：系统内无 3 星**；信用≥2 见 `list_by_stars(2)`；全表 `20260808_g005e_results.md`。
 4. `credit_stars` = `scheme.stars`（KB 镜像）；`scheme.context_bars` 与 monthly 默认 480 对齐。
 

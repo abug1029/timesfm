@@ -1,5 +1,7 @@
 # FM_a PRAXIST 三环自治架构 实施计划
 
+> **2026-09-11：历史施工单，已落地，勿再执行。** 空框不表示未实现。活合同见 `docs/praxist.md`、runbook、方案 A spec。绑定解释第 4 条（diagnostic survivors / `evaluation_summary.json`）**作废**，现行 harvest 是 `harvest_proposals` / `proposals/*.json`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
 **Goal:** 落地三环自治系统: 监督环按 goal.yaml 自主编排 praxist 快环与 aligned 慢环, 无人值守直到目标达成或预算耗尽。
@@ -34,7 +36,7 @@ Spec 意图保留; 下列机械描述已被本计划纠正, 执行者不要按 s
 1. cycle 计数: spec「快环一次 + 慢环清队列」= 一次已完成 praxist run。禁止 `sleep(300); cycles += 1`。
 2. 429: spec §6「stop → 重置后 resume 同一 run_dir」。禁止 429 后 `praxist start` 新 run。窗口: 封禁期 (now < reset) 不可 start; 解封后剩余配额窗 (quota_window_hours 默认 5h, 从 reset 起算) >= run_budget_hours+quota_margin_min 才 start/resume; 否则 sleep 到下一重置点。
 3. 慢环队列: spec「取队首并重写剩余」改为 claim/inprogress, 以满足同一节「SIGTERM 0 损失」。
-4. harvest: 身份 (symbol, cov_override); max_points 来自 goal.cadence.aligned_max_points 默认 400, 不用诊断 n; 幸存者 = diagnostic + status=ok + ev>0。源仍是 canonical `results/**/evaluation_summary.json`; 0 份 summary 必须 log harvest_empty, 不得静默当成功。
+4. harvest: **本条旧句作废**（diagnostic survivors / `evaluation_summary.json` 不是现行源）。现行：`harvest_proposals` 收割 `task_FM/experiments/run_*/results/**/proposals/*.json`（每 cycle 重扫全部 run，dead/passing/in-flight 去重）；身份 (symbol, cov_override)；`max_points` 来自 `goal.cadence.aligned_max_points`；0 份合格提案必须 log `harvest_empty`。旧 `harvest_survivors` 仅回滚。
 5. 指纹: 权重 shard 的 (path, size, mtime) 变化即重算, 不是「.model_fp 存在就永不重算」。
 6. incumbent PF: 从 config/knowledge_base.json historical_pf 读 (SCHEMES 无 PF 字段)。
 7. --dry-run: 一轮打印 {action,reason,refs}, 不 sleep、不加 cycle、不写队列/不启进程, 然后退出。

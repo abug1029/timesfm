@@ -1,5 +1,7 @@
 # System Hardening Spec — 统计严谨性与工程质量提升
 
+> **文档状态（2026-09-11）**：**已落地** master merge `243693d`（2026-09-11）。SPEC-004…013 接口仍约束代码。勿当待开工。空勾选框不表示未实现。剩余缺口是实现偏离（日线 `raw_close` 短路、保证金 MaxDD 喂毛 PnL、斜率未走对数回归），见 `docs/superpowers/reports/2026-09-11-audit/spec-alignment/SUMMARY.md`，不是「没开工」。
+
 > **版本**: v1.2-final (2026-09-10, 终审封版)  
 > **基于**: `docs/system_design.md` v2.4 §11.2~§11.11, §4.3  
 > **范围**: 10 项 P1+P2 优化 — 提升统计严谨性与工程质量  
