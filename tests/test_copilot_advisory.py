@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from scripts.copilot import quantize_price, _price_format, generate_risk_bounds
+from scripts.copilot import quantize_price, _price_format, generate_risk_bounds, craft_advisory
 
 
 def test_risk_bounds_long():
@@ -62,3 +62,10 @@ def test_price_format_integer_tick():
 
 def test_price_format_decimal_tick():
     assert _price_format(14500.5, 0.1) == '14500.5'
+
+
+def test_craft_advisory_weighted_not_t24():
+    lines = craft_advisory("xx", {}, "看多 ↑", 1.5, {"high_vol": False}, "trend")
+    joined = "\n".join(lines)
+    assert "加权涨跌" in joined
+    assert "T+24 预期" not in joined

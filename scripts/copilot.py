@@ -284,7 +284,7 @@ def craft_advisory(
     dlt = f"{delta_pct:+.2f}%" if delta_pct is not None else "N/A"
     bias = _direction_bias(direction)
 
-    lines.append(f"时效策略: 建议关注窗口 {hold}；当前方向偏向【{bias}】（T+24 预期 {dlt}）。")
+    lines.append(f"时效策略: 建议关注窗口 {hold}；当前方向偏向【{bias}】（加权涨跌 {dlt}）。")
 
     # 高波差异化指南
     if high_vol:
@@ -653,8 +653,8 @@ def write_markdown(cards: list[CopilotCard], asof: str, path: Path) -> Path:
     # 总览表
     lines.append("## 一、结论面板")
     lines.append("")
-    lines.append("| 品种 | 评级 | 现价 | T+24 | 涨跌 | 可交易方向 | 日线状态 | Vol_Prob | 风险 | 历史PF | 胜率 |")
-    lines.append("|------|:----:|-----:|-----:|-----:|:----------:|:--------:|---------:|:----:|-------:|-----:|")
+    lines.append("| 品种 | 评级 | 现价 | T+24 | 加权涨跌 | 可交易方向 | 日线状态 | Vol_Prob | 风险 | 历史PF | 胜率 |")
+    lines.append("|------|:----:|-----:|-----:|--------:|:----------:|:--------:|---------:|:----:|-------:|-----:|")
     for c in cards:
         stars = int(c.kb.get("credit_stars") or 0)
         vp = c.vol.get("vol_prob")

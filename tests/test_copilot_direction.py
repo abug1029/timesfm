@@ -86,6 +86,10 @@ def test_markdown_prints_tradable_and_regime(tmp_path: Path):
     assert "日线状态" in text
     assert "看多" in text
     assert "中性" in text
+    header = next(line for line in text.splitlines() if line.startswith("| 品种 |"))
+    assert "加权涨跌" in header
+    assert "加权" in header
+    assert "| T+24 | 涨跌 |" not in text
 
 
 def test_cli_plain_prints_tradable_and_regime(capsys):
