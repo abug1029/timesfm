@@ -601,13 +601,15 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             except Exception:
                 _reject("unparseable_json"); continue
             stats["seen"] += 1
-            # 新协变量想法 → backlog
+            # 新协变量想法 → backlog（不要求 hypothesis_proposal schema）
             if p.get("new_covariate") or p.get("new_cov"):
                 if _append_backlog(p, sp):
                     stats["backlog"] += 1
                 else:
                     _reject("backlog_dup")
                 continue
+            if p.get("schema") != "fm.hypothesis_proposal.v1":
+                _reject("schema_mismatch"); continue
             symbol = str(p.get("symbol") or "").lower().strip()
             cov = str(p.get("cov_override") or "").strip()
             mechanism = str(p.get("mechanism") or "").strip()

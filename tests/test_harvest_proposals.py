@@ -173,3 +173,39 @@ def test_new_covariate_dedup_across_harvests(tmproot):
     assert "backlog_dup" in stats2["reject_reasons"]
     recs = [json.loads(l) for l in open(S.BACKLOG_PATH, encoding="utf-8") if l.strip()]
     assert [r["name"] for r in recs].count("term_spread") == 1
+
+def test_missing_schema_rejected(tmproot):
+    p = _prop()
+    del p["schema"]
+    _make_run(tmproot, p)
+    rows, stats = _harvest(tmproot)
+    assert stats["selected"] == 0
+    assert rows == []
+    assert "schema_mismatch" in stats["reject_reasons"]
+
+
+def test_wrong_schema_rejected(tmproot):
+    _make_run(tmproot, _prop(schema="fm.hypothesis_proposal.v0"))
+    rows, stats = _harvest(tmproot)
+    assert stats["selected"] == 0
+    assert rows == []
+    assert "schema_mismatch" in stats["reject_reasons"]
+
+
+def test_new_covariate_without_schema_still_backlog(tmproot):
+    """schema 校验只拦 symbol+cov 收割候选；new_cov 无 schema 仍进 backlog。"""
+    _make_run(tmproot, {"symbol": "m", "cov_override": None,
+                        "new_covariate": {"name": "volume_profile", "formula": "...",
+                                          "mechanism": LONGM, "family": "volume"}},
+              filename="new_cov_volume_profile.json")
+    rows, stats = _harvest(tmproot)
+    assert stats["selected"] == 0
+    assert stats["backlog"] == 1
+    assert "schema_mismatch" not in stats["reject_reasons"]
+    rec = [json.loads(l) for l in open(S.BACKLOG_PATH, encoding="utf-8")][0]
+    assert rec["name"] == "volume_profile"
+
+
+def test_production_goal_survivors_per_cycle_is_3():
+    goal = S.load_goal(os.path.join(ROOT, "scripts", "praxist_goal.yaml"))
+    assert goal["cadence"]["survivors_per_cycle"] == 3
