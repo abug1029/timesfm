@@ -13,6 +13,7 @@ from typing import Optional
 from pathlib import Path
 
 import timesfm
+from data.config import get_timesfm_model_path
 from data.data_store import DataStore, BacktestDataStore
 from .daily_model import DailyResult, ensure_compiled
 from .features import build_covariate_matrix, build_combo_covariate_matrix, visualize_alignment
@@ -82,7 +83,7 @@ class HourlyModel:
             ensure_compiled(self.model, self._XREG_CONFIG)
         else:
             self.model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
-                "google/timesfm-2.5-200m-pytorch"
+                get_timesfm_model_path()
             )
             ensure_compiled(self.model, self._XREG_CONFIG)
 

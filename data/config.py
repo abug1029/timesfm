@@ -1,5 +1,6 @@
 """配置管理"""
 
+import logging
 import os
 from pathlib import Path
 
@@ -18,6 +19,77 @@ def resolve_under_root(path: str | Path, root: Path | None = None) -> Path:
         return p.resolve()
     base = root or FM_ROOT
     return (base / p).resolve()
+
+logger = logging.getLogger(__name__)
+
+TIMESFM_HUB_ID = "google/timesfm-2.5-200m-pytorch"
+TIMESFM_LOCAL_DIRNAME = "timesfm-2.5-200m-pytorch"
+
+
+def _env_nonempty(name: str) -> str | None:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    val = raw.strip()
+    return val or None
+
+
+def _abs_path(path: str | Path) -> Path:
+    p = Path(path).expanduser()
+    if not p.is_absolute():
+        p = FM_ROOT / p
+    return Path(os.path.abspath(str(p)))
+
+
+def _dir_nonempty(path: Path) -> bool:
+    try:
+        return path.is_dir() and any(path.iterdir())
+    except OSError:
+        return False
+
+
+def _has_symlink(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    if path.is_dir():
+        try:
+            return any(child.is_symlink() for child in path.iterdir())
+        except OSError:
+            return False
+    return False
+
+
+def _warn_if_symlink(path: Path) -> None:
+    if _has_symlink(path):
+        logger.warning(
+            "TimesFM weights at %s are a symlink; isolation should copy, not symlink",
+            path,
+        )
+
+
+def get_timesfm_model_path() -> str:
+    """Resolve TimesFM weights: env, local dir if nonempty, else HF hub id."""
+    for key in ("FM_TIMESFM_MODEL_PATH", "TIMESFM_MODEL_PATH"):
+        raw = _env_nonempty(key)
+        if raw is not None:
+            path = _abs_path(raw)
+            _warn_if_symlink(path)
+            return str(path)
+
+    raw = _env_nonempty("TIMESFM_WEIGHTS_DIR")
+    if raw is not None:
+        path = _abs_path(raw)
+        if path.exists():
+            _warn_if_symlink(path)
+            return str(path)
+
+    local = MODELS_DIR / TIMESFM_LOCAL_DIRNAME
+    if _dir_nonempty(local):
+        local = _abs_path(local)
+        _warn_if_symlink(local)
+        return str(local)
+
+    return TIMESFM_HUB_ID
 
 # ── 品种 → 交易所映射 ─────────────────────────────────
 # 仅保留 20 个有 DB 的跟踪品种，新品种由用户手动添加

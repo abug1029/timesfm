@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import timesfm
+from data.config import get_timesfm_model_path
 from data.data_store import DataStore, get_safe_daily
 
 
@@ -96,7 +97,7 @@ class DailyModel:
             self.model = shared_model
         else:
             self.model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
-                "google/timesfm-2.5-200m-pytorch"
+                get_timesfm_model_path()
             )
         # compile 为日线配置 (predict 中也会重新 compile，确保配置正确)
         ensure_compiled(self.model, self._DAILY_CONFIG)
