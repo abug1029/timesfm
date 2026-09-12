@@ -565,11 +565,25 @@ def test_tok_unknown_skips_token_budget(tmp_path, monkeypatch):
 def test_materialize_known_verdicts(tmp_path):
     dest = tmp_path / "known_verdicts.inc.md"
     snap = {"a": _v("m_ccl", gate_pass=True, ev=0.02),
-            "b": _v("m_oi", gate_pass=False, ev=-0.01)}
+            "b": _v("m_oi", gate_pass=False, ev=-0.01),
+            "c": _v("i_oi", gate_pass=True, ev=-2.46)}
     sup.materialize_known_verdicts(snap, str(dest))
     text = dest.read_text(encoding="utf-8")
     assert "m_ccl" in text and "gate_pass=True" in text
     assert "m_oi" in text and "gate_pass=False" in text
+    assert "i_oi" in text
+    # Header must not equate every gate_pass=True with already solved.
+    assert "gate_pass=True: already solved" not in text
+    i_oi_line = next(ln for ln in text.splitlines() if "i_oi" in ln)
+    assert "already solved" not in i_oi_line
+    assert "hard-gate-but-losing" in i_oi_line
+    assert "过硬门但亏钱" in text
+    assert "DEAD" in text
+    assert "already solved" in text
+    m_ccl_line = next(ln for ln in text.splitlines() if "m_ccl" in ln)
+    assert "econ_pass" in m_ccl_line
+    m_oi_line = next(ln for ln in text.splitlines() if "m_oi" in ln)
+    assert "DEAD" in m_oi_line
 
 
 def test_429_failover_resume_not_wait_quota(tmp_path, monkeypatch):

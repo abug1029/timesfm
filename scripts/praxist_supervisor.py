@@ -481,17 +481,29 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
 
 def materialize_known_verdicts(snapshot, dest_path):
     lines = ["## Known aligned verdicts (supervisor snapshot)",
-             "gate_pass=True: already solved, do NOT re-propose.",
-             "gate_pass=False: DEAD, revive only with PI mechanism correction.",
+             "econ pass (gate_pass=True AND ev>0): already solved, do NOT re-propose.",
+             "hard-gate-but-losing (gate_pass=True AND ev<=0): 过硬门但亏钱; not a success; do not re-propose as solved.",
+             "DEAD (gate_pass=False, status=ok): never revive without a mechanism correction.",
              ""]
     items = list(snapshot.values()) if isinstance(snapshot, dict) else []
     items.sort(key=lambda v: (not v.get("gate_pass", False), -float(v.get("ev") or 0)))
     if not items:
         lines.append("(no aligned verdicts yet)")
     for v in items[:20]:
-        lines.append("- {0}: gate_pass={1}, ev={2}, n={3}, status={4}".format(
-            v.get("variant_id"), v.get("gate_pass"), v.get("ev"),
-            v.get("n"), v.get("status", "ok")))
+        gate = bool(v.get("gate_pass", False))
+        ev = float(v.get("ev") or 0)
+        status = v.get("status", "ok")
+        if gate and ev > 0:
+            state = "econ_pass"
+        elif gate:
+            state = "hard-gate-but-losing"
+        elif status == "ok":
+            state = "DEAD"
+        else:
+            state = status
+        lines.append("- {0}: {1}, gate_pass={2}, ev={3}, n={4}, status={5}".format(
+            v.get("variant_id"), state, v.get("gate_pass"), v.get("ev"),
+            v.get("n"), status))
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
     with open(dest_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")

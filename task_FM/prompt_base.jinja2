@@ -64,7 +64,8 @@ positioning, calendar, volume, statistical, price_action.
 
 ## Known verdicts (respect them — wasted proposals are rejected)
 Before proposing, Read `task_FM/config/aligned_verdicts.jsonl` and the snapshot below.
-- gate_pass=True = already solved: do NOT re-propose that variant.
+- econ pass (gate_pass=True AND ev>0) = already solved: do NOT re-propose that variant.
+- hard-gate-but-losing (gate_pass=True AND ev<=0) = 过硬门但亏钱; not a success; do not re-propose as solved.
 - gate_pass=False, status=ok = DEAD: never revive without a mechanism correction.
 - status=no_data = retryable (e.g. cj, lh data gaps), a fresh proposal is fine.
 - A DEAD covariate on one symbol can still be tried on a DIFFERENT symbol with a
