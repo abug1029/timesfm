@@ -989,6 +989,53 @@ def _decay_fill(last_val, horizon, half_life=12.0):
     return last_val * decay
 
 
+def _build_rsi_state_from_daily(
+    historical_daily_closes,
+    predicted_daily_closes,
+    daily_dates,
+    df_1h: pd.DataFrame,
+    context_len: int,
+    horizon: int,
+    rsi_period: int = 14,
+) -> np.ndarray:
+    """日线 RSI 离散状态 forward-fill 到 1H，horizon 从末根 context 衰减.
+
+    单路径与 combo 共用，避免同名 rsi_state 一种走日线、一种走 1H 收盘。
+    predicted_daily 参与全日 RSI 计算，但不映射到 context；horizon 从
+    context 末端连续衰减，避免用远期预测状态在边界跳变。
+    """
+    hist_daily = np.array(historical_daily_closes, dtype=float)
+    pred_daily = np.array(predicted_daily_closes, dtype=float)
+    full_daily = np.concatenate([hist_daily, pred_daily])  # already clipped at top [H-1]
+
+    daily_states = calc_rsi_state(full_daily, rsi_period=rsi_period)
+    n_hist = len(hist_daily)
+    hist_states = daily_states[:n_hist]
+
+    context_states = np.zeros(context_len, dtype=float)
+    if daily_dates is not None and len(daily_dates) == n_hist:
+        state_by_day = {}
+        for i, d in enumerate(daily_dates):
+            if i < len(hist_states):
+                state_by_day[pd.Timestamp(d).normalize()] = hist_states[i]
+        ctx_dates = pd.to_datetime(df_1h["dt"])
+        ctx_day = ctx_dates.dt.normalize()
+        last_s = 0.0
+        for i, d in enumerate(ctx_day):
+            if d in state_by_day:
+                last_s = state_by_day[d]
+            context_states[i] = last_s
+    else:
+        step = max(1, len(hist_states) // context_len)
+        for i in range(context_len):
+            idx = min(i * step, len(hist_states) - 1)
+            context_states[i] = hist_states[idx]
+
+    last_ctx_state = float(context_states[-1]) if len(context_states) > 0 else 0.0
+    horizon_states = _generate_rsi_state_horizon(last_ctx_state, horizon, decay_step=2)
+    return np.concatenate([context_states, horizon_states])
+
+
 def build_covariate_matrix(
     symbol: str,
     store,
@@ -1081,45 +1128,11 @@ def build_covariate_matrix(
         # 使用日线收盘价计算 RSI，再 forward-fill 到 1H 时间轴
         # rsi_state=RSI(14), rsi6=RSI(6), rsi12=RSI(12), rsi24=RSI(24)
         _rsi_period_map = {"rsi_state": 14, "rsi6": 6, "rsi12": 12, "rsi24": 24}
-        _rsi_period = _rsi_period_map[covariate_type]
-        hist_daily = np.array(historical_daily_closes, dtype=float)
-        pred_daily = np.array(predicted_daily_closes, dtype=float)
-        full_daily = np.concatenate([hist_daily, pred_daily])  # already clipped at top [H-1]
-
-        # 计算全序列日线 RSI 状态
-        daily_states = calc_rsi_state(full_daily, rsi_period=_rsi_period)
-        n_hist = len(hist_daily)
-        hist_states = daily_states[:n_hist]
-        pred_states = daily_states[n_hist:]
-
-        # 将日线状态 forward-fill 到 1H context
-        context_states = np.zeros(context_len, dtype=float)
-        if daily_dates is not None and len(daily_dates) == n_hist:
-            state_by_day = {}
-            for i, d in enumerate(daily_dates):
-                if i < len(hist_states):
-                    state_by_day[pd.Timestamp(d).normalize()] = hist_states[i]
-            ctx_dates = pd.to_datetime(df_1h["dt"])
-            ctx_day = ctx_dates.dt.normalize()
-            last_s = 0.0
-            for i, d in enumerate(ctx_day):
-                if d in state_by_day:
-                    last_s = state_by_day[d]
-                context_states[i] = last_s
-        else:
-            # 简化: 最后 n_context 个日线状态直接映射
-            step = max(1, len(hist_states) // context_len)
-            for i in range(context_len):
-                idx = min(i * step, len(hist_states) - 1)
-                context_states[i] = hist_states[idx]
-
-        # Horizon: 从 context 最后一个状态衰减 (防跳变)
-        # 修复: 之前用 valid_pred[-1] 可能取到远期预测中的非零状态，
-        # 导致 context→horizon 边界出现 0→-1 的巨大跳变。
-        # 正确做法: 从 context 末端连续衰减。
-        last_ctx_state = float(context_states[-1]) if len(context_states) > 0 else 0.0
-        horizon_states = _generate_rsi_state_horizon(last_ctx_state, horizon, decay_step=2)
-        covariate_full = np.concatenate([context_states, horizon_states])
+        covariate_full = _build_rsi_state_from_daily(
+            historical_daily_closes, predicted_daily_closes, daily_dates,
+            df_1h, context_len, horizon,
+            rsi_period=_rsi_period_map[covariate_type],
+        )
         covariate_name = covariate_type
     elif covariate_type == "pca_momentum":
         # 多周期 RSI → PCA 复合动量 (一维)
@@ -1486,19 +1499,14 @@ def build_combo_covariate_matrix(
                 oi_pct = pd.Series(np.zeros(len(df_1h)), index=df_1h.index)
             result["oi_pct_change"] = np.concatenate([oi_pct.values, np.zeros(horizon)])
 
-        elif cov_type == "rsi_state":
-            ctx_rsi = calc_rsi_state(hourly_closes, rsi_period=14).astype(float)
-            horizon_rsi = _generate_rsi_state_horizon(
-                float(ctx_rsi[-1]) if len(ctx_rsi) > 0 else 0.0, horizon, decay_step=2)
-            result["rsi_state"] = np.concatenate([ctx_rsi, horizon_rsi])
-
-        elif cov_type in ("rsi6", "rsi12", "rsi24"):
-            # combo 路径补齐 (此前仅单路径 build_covariate_matrix 支持)
-            _rsi_p = {"rsi6": 6, "rsi12": 12, "rsi24": 24}[cov_type]
-            ctx_rsi = calc_rsi_state(hourly_closes, rsi_period=_rsi_p).astype(float)
-            horizon_rsi = _generate_rsi_state_horizon(
-                float(ctx_rsi[-1]) if len(ctx_rsi) > 0 else 0.0, horizon, decay_step=2)
-            result[cov_type] = np.concatenate([ctx_rsi, horizon_rsi])
+        elif cov_type in ("rsi_state", "rsi6", "rsi12", "rsi24"):
+            # 与单路径同一函数: 日线 RSI ffill 到 1H + 末根 context 衰减
+            _rsi_period_map = {"rsi_state": 14, "rsi6": 6, "rsi12": 12, "rsi24": 24}
+            result[cov_type] = _build_rsi_state_from_daily(
+                historical_daily_closes, predicted_daily_closes, daily_dates,
+                df_1h, context_len, horizon,
+                rsi_period=_rsi_period_map[cov_type],
+            )
 
         elif cov_type == "hurst":
             hurst = calc_rolling_hurst(hourly_closes, window=120, step=6)
