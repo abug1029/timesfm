@@ -759,6 +759,11 @@ def write_markdown(cards: list[CopilotCard], asof: str, path: Path) -> Path:
 # Main
 # ─────────────────────────────────────────────────────────
 
+def select_copilot_symbols(requested: list[str], valid: list[str]) -> list[str]:
+    """Freshness result: valid only. Empty valid never falls back to requested."""
+    return list(valid)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="FM_a 主观交易领航员 (Copilot) — 预测不压平，Vol 仅预警"
@@ -806,7 +811,10 @@ def main() -> int:
         valid, skipped = ensure_fresh_data(symbols, auto_collect=True)
         if skipped:
             print(f"  [SKIP] {skipped}")
-        symbols = valid or symbols
+        symbols = select_copilot_symbols(symbols, valid)
+        if not symbols:
+            print("无有效品种可预测 (全部数据校验失败)")
+            return 1
 
     if not args.no_refresh:
         print("[Copilot] 盘中 1H 刷新 ...")
