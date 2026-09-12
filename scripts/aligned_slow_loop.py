@@ -14,8 +14,16 @@ from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
 from cascade.evaluation_metrics import calc_margin_maxdd_robust
 from config.prediction_scheme import get_scheme
+from config.backtest_config import TICK_SIZES, SLIPPAGE_TICKS
 
 _MODELS = None
+
+def _net_pnl_pts(points, symbol):
+    """Gross p['pnl'] minus tick_size * SLIPPAGE_TICKS (same cost as calc_net_metrics)."""
+    tick = TICK_SIZES.get(str(symbol).lower(), 1.0)
+    slip = float(tick) * float(SLIPPAGE_TICKS)
+    return np.array([float(p["pnl"]) - slip for p in points], dtype=float)
+
 _METRICS_PATH = os.path.join(FM_ROOT, "data", "cache", "slow_loop_metrics.jsonl")
 
 def _get_models():
@@ -106,7 +114,7 @@ def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path):
             v["n_eff_method"] = "bartlett_full_kernel_rho0.9"
             # SPEC-008: margin-based MaxDD with non-overlapping stride
             _ok_pts = [p for p in data["points"] if "error" not in p]
-            _pnl_arr = np.array([p["pnl"] for p in _ok_pts])
+            _pnl_arr = _net_pnl_pts(_ok_pts, row["symbol"])
             _base_arr = np.array([p["base"] for p in _ok_pts])
             _scheme_obj = get_scheme(row["symbol"].upper())
             _cm = getattr(_scheme_obj, "contract_multiplier", 10.0) if _scheme_obj else 10.0

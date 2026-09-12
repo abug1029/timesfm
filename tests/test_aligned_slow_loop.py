@@ -15,7 +15,8 @@ class _FakeResult:
 def _fake_data():
     return {"contract": "M", "points": [{"n": 400, "PF": 1.2, "EV": 0.02,
                                          "MaxDD": -0.1, "DirAcc": 0.55,
-                                         "delta_pred": 1, "delta_real": 1}]}
+                                         "delta_pred": 1, "delta_real": 1,
+                                         "pnl": 10, "base": 3000}]}
 
 def test_run_aligned_candidate(tmp_path, monkeypatch):
     import monthly_backtest as mb
@@ -133,3 +134,43 @@ def test_run_aligned_candidate_real_data(tmp_path, monkeypatch):
     assert cp.exists() and cp.stat().st_size > 0
     v2 = asl.run_aligned_candidate(row, **kw)
     assert v2["status"] == "ok" and rl.validate_verdict(v2) == []
+
+
+def test_net_pnl_pts_subtracts_slippage_ticks():
+    """gross pnl=10, m tick=1, SLIPPAGE_TICKS=2 -> net 8 (no TimesFM)."""
+    from config.backtest_config import TICK_SIZES, SLIPPAGE_TICKS
+    assert TICK_SIZES["m"] == 1.0
+    assert SLIPPAGE_TICKS == 2
+    arr = asl._net_pnl_pts([{"pnl": 10}, {"pnl": 10}], "m")
+    assert list(arr) == [8.0, 8.0]
+
+
+def test_net_pnl_pts_missing_tick_defaults():
+    arr = asl._net_pnl_pts([{"pnl": 10}], "not_a_listed_symbol")
+    assert list(arr) == [8.0]
+
+
+def test_margin_maxdd_receives_net_pnl(tmp_path, monkeypatch):
+    captured = {}
+    def _cap(net_pnl_pts=None, base_prices=None, **kw):
+        captured["net"] = [float(x) for x in net_pnl_pts]
+        return -0.05
+    monkeypatch.setattr(asl, "calc_margin_maxdd_robust", _cap)
+    import monthly_backtest as mb
+    monkeypatch.setattr(mb, "run_symbol_backtest", lambda *a, **k: {
+        "contract": "M",
+        "points": [{"pnl": 10, "base": 3000}, {"pnl": 10, "base": 3000}],
+    })
+    monkeypatch.setattr(mb, "summarize", lambda data: {
+        "n": 400, "PF": 1.2, "EV": 0.02, "MaxDD": -0.1, "DirAcc": 0.55,
+    })
+    monkeypatch.setattr(asl, "_MODELS", (object(), object()))
+    monkeypatch.setattr(asl, "_METRICS_PATH", str(tmp_path / "metrics.jsonl"))
+    monkeypatch.setattr(asl, "build_summary",
+                        lambda s, c: {"status": "ok", "gate_pass": True, "ev": 0.02,
+                                      "pf": 1.2, "n": 400, "maxdd": -0.1, "dir_acc": 0.55})
+    asl.run_aligned_candidate(
+        _row(), daily_cache_dir=str(tmp_path / "dc"),
+        checkpoint_dir=str(tmp_path / "cp"),
+        registry_path=str(tmp_path / "verdicts.jsonl"))
+    assert captured["net"] == [8.0, 8.0]
