@@ -389,7 +389,9 @@ class DataStore:
         """读取主力连续数据
 
         [H4 fix] LIMIT 返回最近 N 条，不是最旧 N 条
-        [SPEC-011] 主力连续加载后自动检测换月事件并执行向量ized向后复权
+        [C10] Live daily reads are NOT backward-adjusted. Schema always has
+        raw_close, so the short-circuit below skips roll adj on every
+        production SELECT *. 1H get_klines_1h never adjusts either.
         """
         if limit:
             # 子查询: 先倒序取最近 N 条，再正序返回
@@ -413,8 +415,10 @@ class DataStore:
             sql += " ORDER BY dt"
             df = pd.read_sql_query(sql, self.conn, params=params)
 
-        # [SPEC-011] Roll adjustment: detect & adjust if not already adjusted
-        # Use price-gap detection (main_continuous_1d may lack real contract_code)
+        # [C10] Presence of raw_close skips roll adj. main_continuous_1d schema
+        # always includes this column (values may be all NULL), so production
+        # SELECT * never calls apply_backward_adjustment_robust. 1H reads
+        # (get_klines_1h) never apply roll adj either. Do not delete the column.
         if not df.empty and "raw_close" not in df.columns:
             roll_records = detect_rolls_from_price_gaps(df)
             if roll_records:

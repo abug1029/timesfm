@@ -129,6 +129,8 @@ TqSdk API
 | `xreg_factors` | 协变量时间序列 | CCL/OI/RSI 等 |
 | `metadata` | 数据版本/采集时间 | 审计追踪 |
 
+**换月后复权（C10）**：日线与 1H 活读取都未做截面后复权。`get_main_continuous` 见 `raw_close` 列即跳过（生产 schema 恒有此列）；`get_klines_1h` 从不复权。列保留，不要当已复权。
+
 ### 2.4 防穿越：回测 hour>=15；实盘 predict 走 get_safe_daily
 
 **回测**（`BacktestDataStore.get_main_continuous`）：cutoff 为 bar 时刻。`hour>=15` 才包含当日日线（当天已收盘）；15:00 之前回退到前一日历日。

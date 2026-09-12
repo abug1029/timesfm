@@ -57,6 +57,10 @@ monthly:
 
 连续价与具体合约价可能不一致 → `delta_pred` 与 `delta_real` 尺度扭曲。
 
+### Roll Adjustment (SPEC-011 / C10)
+
+日线 `get_main_continuous` 只要帧里有 `raw_close` 列就**不**做换月后复权。`main_continuous_1d` 建表恒有该列（生产值常全 NULL），`SELECT *` 必带列，活路径等于永不调用 `apply_backward_adjustment_robust`。1H `get_klines_1h` 从未复权。活读到的是未后复权名义价。禁止未确认列语义就删 `raw_close`；截面比后复权未实现（现有检测是相邻价差比）。
+
 ### Testing Requirements
 
 ```bash

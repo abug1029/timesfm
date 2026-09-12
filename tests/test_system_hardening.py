@@ -435,6 +435,47 @@ class TestSPEC011RollAdjustment:
         result = apply_backward_adjustment_robust(df, [])
         np.testing.assert_allclose(result["close"], 100.0)
 
+    def test_get_main_continuous_skips_adj_when_raw_close_present(self, monkeypatch):
+        """C10: a frame with raw_close is not multiplied by roll adj."""
+        from data import data_store as ds_mod
+
+        n = 30
+        dates = pd.date_range("2026-01-01", periods=n, freq="D")
+        closes = np.concatenate([np.linspace(100.0, 110.0, 20), np.full(10, 200.0)])
+        frame = pd.DataFrame({
+            "dt": dates.strftime("%Y-%m-%d"),
+            "contract_code": "ZZ_CONT",
+            "close_price": closes,
+            "open_price": closes,
+            "high": closes + 1.0,
+            "low": closes - 1.0,
+            "raw_close": np.full(n, np.nan),
+        })
+        monkeypatch.setattr(ds_mod.pd, "read_sql_query", lambda *a, **k: frame.copy())
+        applied = []
+        orig = ds_mod.apply_backward_adjustment_robust
+
+        def spy(kline_df, roll_records):
+            applied.append(len(roll_records))
+            return orig(kline_df, roll_records)
+
+        monkeypatch.setattr(ds_mod, "apply_backward_adjustment_robust", spy)
+        detect_calls = []
+        orig_detect = ds_mod.detect_rolls_from_price_gaps
+
+        def detect_spy(df, *a, **k):
+            detect_calls.append(True)
+            return orig_detect(df, *a, **k)
+
+        monkeypatch.setattr(ds_mod, "detect_rolls_from_price_gaps", detect_spy)
+        store = ds_mod.DataStore.__new__(ds_mod.DataStore)
+        store.symbol = "zz"
+        store.conn = object()
+        out = store.get_main_continuous(limit=n)
+        assert detect_calls == [], "raw_close present must skip roll detection"
+        assert applied == []
+        np.testing.assert_allclose(out["close_price"].to_numpy(dtype=float), closes)
+
     def test_detect_roll_events_basic(self):
         from data.tqsdk_fetcher import detect_roll_events
         df = pd.DataFrame({
