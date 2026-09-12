@@ -28,5 +28,5 @@ audit:
     - id: result_ownership
       severity: blocking
       criteria:
-        - Every scheduled evaluator command must write one evaluation_summary.json under the peer-owned output dir.
+        - Peer outputs are proposal files under results/**/proposals/*.json (schema fm.hypothesis_proposal.v1).
 

@@ -52,19 +52,19 @@ evaluation:
     safety_factor: 1.5
   staged_protocols:
     diagnostic:
-      launch_allowed: true
+      launch_allowed: false
       ranking_allowed: false
       mature_allowed: false
       parent_allowed: false
       close_allowed: false
     aligned:
-      launch_allowed: true
+      launch_allowed: false
       ranking_allowed: true
       mature_allowed: true
       parent_allowed: true
       close_allowed: false
     complete:
-      launch_allowed: true
+      launch_allowed: false
       ranking_allowed: true
       mature_allowed: true
       parent_allowed: true
