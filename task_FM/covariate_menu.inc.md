@@ -53,25 +53,25 @@ archived covariates are RETIRED: do NOT propose them.
 
 ### symbol sample ceiling (valid aligned points now; hard gate n>=350)
 BELOW GATE symbols cannot pass today regardless of covariate (1H bars accrue over time; supervisor auto-retests near-misses):
-- ao: n=? unknown
-- bu: n=? unknown
-- cf: n=? unknown
-- cj: n=? unknown
-- eg: n=? unknown
-- fg: n=? unknown
-- fu: n=? unknown
-- i: n=? unknown
-- jd: n=? unknown
-- jm: n=? unknown
-- lh: n=? unknown
-- m: n=? unknown
-- ma: n=? unknown
-- p: n=? unknown
-- rb: n=? unknown
-- sh: n=? unknown
-- sp: n=? unknown
-- sr: n=? unknown
-- ss: n=? unknown
-- ta: n=? unknown
-- ur: n=? unknown
+- ao: n=2457 gate-reachable
+- bu: n=4748 gate-reachable
+- cf: n=4748 gate-reachable
+- cj: n=3886 gate-reachable
+- eg: n=4748 gate-reachable
+- fg: n=4748 gate-reachable
+- fu: n=4748 gate-reachable
+- i: n=4748 gate-reachable
+- jd: n=4749 gate-reachable
+- jm: n=4748 gate-reachable
+- lh: n=2853 gate-reachable
+- m: n=4748 gate-reachable
+- ma: n=4748 gate-reachable
+- p: n=4748 gate-reachable
+- rb: n=4748 gate-reachable
+- sh: n=1700 gate-reachable
+- sp: n=4748 gate-reachable
+- sr: n=4748 gate-reachable
+- ss: n=4747 gate-reachable
+- ta: n=4748 gate-reachable
+- ur: n=3713 gate-reachable
 

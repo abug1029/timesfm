@@ -67,6 +67,9 @@ task_FM/docs/praxist_reports/*.pdf
 # Aligned verdict registry (runtime / slow-loop writable)
 task_FM/config/aligned_verdicts.jsonl
 
+# Local evaluator dumps (invalid/probe summaries)
+task_FM/evaluations/output/
+
 # mem_guard install artifacts inside venv (venv dir already ignored; belt+suspenders)
 **/.praxist-venv/**/zz_fm_mem_guard*
 **/.praxist-venv/**/*.pth
