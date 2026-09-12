@@ -6,7 +6,7 @@
 > - IC / 硬门以 [`loop-constraints.md`](../loop-constraints.md) 为准。
 > - 本文若与上述冲突，以上述为准。不要按本文去改 `signal_contract.py` 或 `evaluator.gate`。
 >
-> **版本**: 1.1 (2026-09-11)
+> **版本**: 1.2 (2026-09-12)
 > **定位**: 方向性建议，不是自动开平仓。描述 TimesFM 两阶段级联如何在任意时刻给出期货品种的方向与置信度。
 
 ---
@@ -53,9 +53,9 @@ FM_a 是一个**两阶段级联预测系统**，不是自动交易系统。它�
 │                        方向性建议报告                        │
 │                    (方向+置信度+风险提示)                     │
 │                                                             │
-│  方向判断（已知分叉，代码未改）：                              │
-│  · 级联/回测：加权 1H（position_from_forecast）               │
-│  · Copilot 卡面：暂用日线副标签（_compute_direction_v2）      │
+│  可交易方向（CF-01 A；级联/回测/Copilot 已对齐）：            │
+│  · 加权 1H（position_from_forecast / copilot_trade_signal）  │
+│  · 日线斜率只填 regime_direction（副标签）                    │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -67,18 +67,20 @@ FM_a 是一个**两阶段级联预测系统**，不是自动交易系统。它�
 | **领航员而非自动驾驶** | 系统输出方向性建议，人类做最终决策 |
 | **预测永不压平（默认）** | Vol Gating 默认 OFF，仅输出风险标签 |
 | **品种异质化** | 每个品种有独立的协变量配置和信用星级 |
-| **防穿越** | 回测按 cutoff 截断；实盘 `DailyModel.predict` 仍裸读（见 §2.4） |
+| **防穿越** | 回测按 cutoff 截断；实盘 `DailyModel.predict` 经 `read_daily_frame` 走 `get_safe_daily`（见 §2.4） |
 | **可复现** | 相同输入产生相同输出，所有随机种子固定 |
 
-### 1.3 已知分叉（2026-09-11，代码未改）
+### 1.3 当前接线（2026-09-12；C1 / C3 已落地）
 
 | 路径 | 现在怎样 | 不要写成 |
 |------|----------|----------|
 | `cascade_predict` / `monthly_backtest` | 可交易方向 = `position_from_forecast`（加权 1H） | 日线斜率主方向 |
-| Copilot 卡面 / 研报 / 建议文案 | 仍用 `_compute_direction_v2`（日线 + R² 门） | 已经改成加权 1H |
-| `DailyModel.predict` | 裸读 `get_main_continuous` | 已经走 `get_safe_daily` |
-| `get_safe_daily` | 只接到 `cascade_predict` 报告图 `daily_df` | 预测 context 已防护 |
-| 仓内函数名 | 活函数是 `_compute_direction_v2` | 不存在 `_compute_direction` |
+| Copilot 卡面 / 研报 / 建议文案 | `copilot_trade_signal` → `position_from_forecast`（加权 1H）；日线只填 `regime_direction` | 卡面仍用日线 `_compute_direction_v2` 当主方向 |
+| `DailyModel.predict` | 活 store 走 `read_daily_frame` → `get_safe_daily`；`BacktestDataStore` 仍 `get_main_continuous` | 实盘仍裸读 `get_main_continuous` |
+| `get_safe_daily` | 接到活 `DailyModel.predict`（收盘掩码） | 只接到 cascade 报告图 |
+| 仓内函数名 | 日线副标签活函数仍是 `_compute_direction_v2` | 不存在 `_compute_direction` |
+
+C9–C12（ALIGN 合约、SPEC-011 复权、权重路径、rsi_state 分名）本轮未做，不要写成已落地。
 
 ---
 
@@ -127,17 +129,17 @@ TqSdk API
 | `xreg_factors` | 协变量时间序列 | CCL/OI/RSI 等 |
 | `metadata` | 数据版本/采集时间 | 审计追踪 |
 
-### 2.4 防穿越：回测已截，实盘预测仍裸读
+### 2.4 防穿越：回测 hour>=15；实盘 predict 走 get_safe_daily
 
 **回测**（`BacktestDataStore.get_main_continuous`）：cutoff 为 bar 时刻。`hour>=15` 才包含当日日线（当天已收盘）；15:00 之前回退到前一日历日。
 
-**实盘**（已知债，代码未改）：
+**实盘**（C1，HEAD 已接线）：
 
-- `DailyModel.predict` 仍裸读 `store.get_main_continuous(limit=context_days)`，无 15:00 掩码，不剔除 `date>today`。
-- `get_safe_daily` 已实现收盘掩码（`date==today` 且 `hour>=15` 才留当日），但只接到 `cascade_predict` 报告图的 `daily_df`，**没有**接到 `DailyModel.predict`。
-- Copilot 同样走 `DailyModel.predict`，盘中日线 context 与回测不同构。
+- `DailyModel.predict` 经 `read_daily_frame`：无 `cutoff_date` 的活 store 调 `get_safe_daily`；有 `cutoff_date` 的 `BacktestDataStore` 仍 `get_main_continuous`。
+- `get_safe_daily` 收盘掩码：`date==today` 且 `hour>=15` 才留当日；`date>today` 剔除。
+- Copilot 同样走 `DailyModel.predict`，盘中日线 context 与这条活路径同构。
 
-不要把「helper 已 merge」写成「活预测已经防护」。
+不要把「回测 cutoff」写成「活预测仍裸读」。
 
 ---
 
@@ -193,7 +195,7 @@ class DailyResult:
 
 ### 3.2 Stage 2：1H 级联模型 (XReg)
 
-**目标**：以日线斜率为条件，结合品种特异协变量，进行 24 小时精细预测。可交易方向从这条 1H 路径出（级联/回测）。
+**目标**：以日线斜率为条件，结合品种特异协变量，进行 24 小时精细预测。可交易方向从这条 1H 路径出（级联 / 回测 / Copilot）。
 
 ```
 输入:
@@ -357,11 +359,11 @@ def _calc_rsi(closes: np.ndarray, period: int = 14) -> np.ndarray:
 
 ## 5. 信号生成与方向判断
 
-### 5.1 可交易方向：加权 1H（级联 / 回测）
+### 5.1 可交易方向：加权 1H（级联 / 回测 / Copilot）
 
 CF-01 A：**唯一可交易方向** = `sign(weighted_1H − base)`，经 `signal_weight` / `short_horizon`。实现：`cascade/signal_contract.position_from_forecast`。
 
-`cascade_predict` 与 `monthly_backtest` 走这条。日线斜率只填 `regime_direction`，**不得覆盖** `position_sign`。
+`cascade_predict`、`monthly_backtest` 与 Copilot 卡面（`copilot_trade_signal`）走这条。日线斜率只填 `regime_direction`，**不得覆盖** `position_sign`。
 
 ```python
 from cascade.signal_contract import position_from_forecast
@@ -403,15 +405,15 @@ def _compute_direction_v2(daily_result, scheme) -> str:
 
 **单位**：`horizon_slope` 存储为分数/天；展示乘 100 才是 %/天。阈值比较在分数空间（`thr_ratio`），不要把存储值直接当百分比。
 
-### 5.3 已知分叉：Copilot 卡面仍用日线 v2
+### 5.3 Copilot 卡面：可交易方向 = 加权 1H（C3）
 
-`scripts/copilot.py` **目前未调用** `position_from_forecast`。卡面「方向」、建议文案、研报主句走 `_compute_direction_v2`（日线）。这与 CF-01 A 分叉，**代码未改**。不要把 Copilot 写成已经用加权 1H。
+`scripts/copilot.py::run_one` 调 `copilot_trade_signal` → `position_from_forecast`。卡面「可交易方向」、建议文案、研报主句、止损跟加权 1H。日线斜率只填 `regime_direction`（「日线状态」）。
 
 | 入口 | 主方向 | 日线角色 |
 |------|--------|----------|
-| `scripts/cascade_predict.py` | `position_from_forecast` | `regime_direction` 副标签 |
+| `scripts/cascade_predict.py` | `position_from_forecast` | `regime_direction` 副标签（`_compute_direction_v2`） |
 | `scripts/monthly_backtest.py` | `position_from_forecast` | 不覆盖仓位 |
-| `scripts/copilot.py` | `_compute_direction_v2`（日线） | **当成卡面主方向** |
+| `scripts/copilot.py` | `position_from_forecast`（经 `copilot_trade_signal`） | `regime_direction` 副标签 |
 
 ### 5.4 信号权重衰减
 
@@ -638,7 +640,7 @@ def pass_variants(snapshot):
 
 ### 8.1 建议框架
 
-级联报告（`cascade_predict`）按 CF-01 A 拆两行。Copilot 报告目前仍把日线方向印成主句。
+级联报告（`cascade_predict`）按 CF-01 A 拆两行。Copilot 卡面同样：【可交易方向】加权 1H，【日线状态】副标签。
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -655,8 +657,8 @@ def pass_variants(snapshot):
 │  【日线状态】看多 ↑     （斜率 +0.15%/天，副标签）            │
 │  1H 预测: T+1~T+12 均价 14520, T+13~T+24 均价 14580        │
 │                                                             │
-│  注：Copilot 卡面/研报目前仍印日线 _compute_direction_v2，  │
-│      与 CF-01 A 分叉（代码未改）。                            │
+│  注：Copilot 卡面「可交易方向」同样走加权 1H。                │
+│      日线只印「日线状态」，不覆盖仓位。                        │
 │                                                             │
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
 │                                                             │
@@ -691,7 +693,7 @@ def pass_variants(snapshot):
 
 ### 8.2 建议生成逻辑
 
-实现见 `scripts/copilot.py::craft_advisory`。`run_one` 传入的 `direction` 来自 `_compute_direction_v2`（日线），**不是** `position_from_forecast`。文案按星级、历史 PF/DirAcc、Vol 雷达标签拼接；高波分支读 `vol_sensitivity`（HELPS / HURTS / MIXED）。级联报告不走这条，信号表直接印加权 1H 的「可交易方向」。
+实现见 `scripts/copilot.py::craft_advisory`。`run_one` 传入的 `direction` 来自 `copilot_trade_signal` / `position_from_forecast`（加权 1H）。日线只进 `regime_direction`。文案按星级、历史 PF/DirAcc、Vol 雷达标签拼接；高波分支读 `vol_sensitivity`（HELPS / HURTS / MIXED）。级联报告不走这条，信号表直接印加权 1H 的「可交易方向」。
 
 ### 8.3 建议等级
 
@@ -715,7 +717,7 @@ python scripts/cascade_predict.py ss --collect-if-stale 1
 # 输出: [DATA] SS 1H 数据时效: 2h, 日线时效: 1d → OK
 ```
 
-**Step 2: Stage 1 日线预测**（`DailyModel.predict` 仍裸读日线）
+**Step 2: Stage 1 日线预测**（活路径 `read_daily_frame` → `get_safe_daily`）
 ```
 [Stage 1] 日线预测 (context=250d, horizon=22d)...
   历史窗口: 250 天
@@ -851,7 +853,7 @@ SS 行是 `calendar_cyclical`。`ss_vor` 只出现在慢环裁决，不在本表
 | `cascade/evaluation_metrics.py` | DirAcc / PF / EV / MaxDD（无 Pearson IC） |
 | `scripts/cascade_predict.py` | 级联预测主入口（加权 1H） |
 | `scripts/monthly_backtest.py` | 慢环回测（加权 1H；`hour>=15` 含当日日线） |
-| `scripts/copilot.py` | 主观交易领航员（卡面仍日线 v2） |
+| `scripts/copilot.py` | 主观交易领航员（卡面加权 1H；日线为 regime） |
 
 ---
 
@@ -859,15 +861,15 @@ SS 行是 `calendar_cyclical`。`ss_vor` 只出现在慢环裁决，不在本表
 
 FM_a 系统的核心价值在于：
 
-1. **两阶段级联**：日线给 regime 副标签，级联/回测的可交易方向来自加权 1H
+1. **两阶段级联**：日线给 regime 副标签，级联/回测/Copilot 的可交易方向来自加权 1H
 2. **品种异质化**：每个品种有独立的生产 SCHEMES；慢环过门不会自动固化
-3. **防穿越分叉**：回测 `hour>=15`；实盘 `DailyModel.predict` 仍裸读
+3. **防穿越**：回测 `hour>=15`；实盘 `DailyModel.predict` 走 `get_safe_daily`
 4. **风险管理**：Vol 熔断（可选）、置信区间、止损止盈参考
 5. **人机协作**：系统输出方向性建议，人类做最终决策
 
 **使用建议**：
 - 优先关注 2 星品种（SS/SR/M/RB/EG/LH/CJ/JD）
-- 看级联报告的【可交易方向】；不要把 Copilot 卡面日线方向当成已对齐 CF-01 A
+- 看【可交易方向】（加权 1H）；【日线状态】只是副标签
 - 轻仓试探，根据实际表现调整仓位
 - 结合基本面和主观判断，不盲从模型
 

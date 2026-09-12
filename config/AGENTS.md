@@ -41,7 +41,7 @@
 
 ### Known Issues (2026-09-11)
 
-1. **级联/回测方向已统一**：`cascade_predict` 与 `monthly_backtest` 都走 `position_from_forecast`（加权 1H）。**Copilot 卡面仍用日线 `_compute_direction_v2`**（已知分叉，代码未改）。
+1. **级联/回测/Copilot 方向已统一**：`cascade_predict`、`monthly_backtest` 与 Copilot 卡面都走 `position_from_forecast`（加权 1H）。日线只填 `regime_direction`。
 2. **short_horizon_only** 品种 T+13..T+24 权重为 0；回测经济指标仍按该加权仓位计。
 3. **2026-08-08：系统内无 3 星**；信用≥2 见 `list_by_stars(2)`；全表 `20260808_g005e_results.md`。
 4. `credit_stars` = `scheme.stars`（KB 镜像）；`scheme.context_bars` 与 monthly 默认 480 对齐。

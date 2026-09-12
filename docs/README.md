@@ -103,8 +103,8 @@ setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.ya
 ## 当前生产姿态（2026-09-11）
 
 - **Neutral / Absolute Risk Overlay：默认 OFF**（全宇宙经济门禁未过）
-- **Copilot：预警-only**，不改变预测数值。卡面「方向」仍是日线 `_compute_direction_v2`（与 CF-01 A 加权 1H 分叉，代码未改）
-- **级联/回测可交易方向** = `position_from_forecast`（加权 1H）；见 [product_positioning.md](./product_positioning.md)
+- **Copilot：预警-only**，不改变预测数值。卡面「可交易方向」= `position_from_forecast`（加权 1H）；日线只作 `regime_direction`
+- **级联/回测/Copilot 可交易方向** = `position_from_forecast`（加权 1H）；见 [product_positioning.md](./product_positioning.md)
 - **无真实 3 星**；`--three-star` = 信用≥2 星列表
 - **Phase 11（2026-08-21 结案）**：12 品种协变量替换固化（SS/SP/FU/I/RB/TA/EG/CJ/LH/JD + 3 基线保持 M/P/SR），34 GREEN
 - **Phase 12（2026-08-21）**：BU 组合协变量 `calendar_cyclical+hourly_slope` 固化（PF=1.01 边际 GREEN）

@@ -28,11 +28,11 @@ python scripts/copilot.py ss --no-vol-radar  # 关闭波动雷达
 
 日线特征用库内收盘；盘中不重算日线。
 
-## 卡面方向（已知分叉）
+## 卡面方向（CF-01 A）
 
 产品合同 CF-01 A：可交易方向 = `position_from_forecast`（加权 1H）。见 [product_positioning.md](./product_positioning.md)。
 
-**Copilot 卡面「方向」列目前仍是日线 `_compute_direction_v2`**（`horizon_slope` vs `trend_threshold_pct`，R² 低则中性），**未调用** `position_from_forecast`。`cascade_predict` / `monthly_backtest` 已走加权 1H。代码未改，不要把卡面方向当成已对齐的交易主句。
+Copilot 卡面「可交易方向」走 `copilot_trade_signal` → `position_from_forecast`。日线斜率只填「日线状态」（`regime_direction`），不覆盖仓位。`cascade_predict` / `monthly_backtest` 同一合同。
 
 ## 信用背书（knowledge_base）
 
@@ -67,7 +67,7 @@ python scripts/paper_loop.py health
 ```
 
 不要用 `--three-star` 当纸面入口（会带上边界 EG/RB）。  
-面板「方向」目前仍是日线 `_compute_direction_v2`（与 CF-01 A 分叉）；账本对账的是 T+24 终点符号。
+面板「可交易方向」是加权 1H；账本对账的是 T+24 终点符号。
 
 ## 注意
 

@@ -121,7 +121,7 @@ Peer 第一件事：至少写 2 份假设到
 - `last_run_id=run_2026-09-10_03-06-50_primary_task_FM`
 - `last_harvested_run_id=run_2026-09-10_00-44-51_primary_task_FM`
 - 经济意义上过门的实质只有 `ss_vor`（n=396，ic=0.06，ev=+11.06，PF=1.123）
-- `gate_pass=True` 但 ev<0：`i_oi`（−2.46）、`m_ccl`（−3.64）。materializer 仍写成 `gate_pass=True … do NOT re-propose`，对 peer 有误导（代码未改）
+- `gate_pass=True` 但 ev<0：`i_oi`（−2.46）、`m_ccl`（−3.64）。materializer 三态：`econ_pass` / `hard-gate-but-losing` / `DEAD`。过硬门但亏钱 **不是** already solved，peer 不得当已解决再提。
 - `cj_oi` n=324 ic=0.08 ev=+19.46 `gate_pass=false`（欠样本，近失误复测候选）
 
 重启：
