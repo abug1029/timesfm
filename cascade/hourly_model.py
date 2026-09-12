@@ -177,6 +177,7 @@ class HourlyModel:
                 feedstock_cache=feedstock_cache,
                 fill_strategy=fill_strategy,
                 half_life=half_life,
+                df_1h=df_1h,
             )
         else:
             # 单协变量模式 (向后兼容)
@@ -192,6 +193,7 @@ class HourlyModel:
                 feedstock_cache=feedstock_cache,
                 fill_strategy=fill_strategy,
                 half_life=half_life,
+                df_1h=df_1h,
             )
 
         slope_arr = covariates["daily_slope"]

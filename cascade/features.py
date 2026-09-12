@@ -1001,6 +1001,7 @@ def build_covariate_matrix(
     feedstock_cache: Optional[Dict] = None,
     fill_strategy: str = "default",
     half_life: float = 12.0,
+    df_1h: Optional[pd.DataFrame] = None,
 ) -> dict:
     """
     构建完整的 XReg 协变量矩阵
@@ -1011,6 +1012,7 @@ def build_covariate_matrix(
         covariate_type: "ccl" (仓单量价) 或 "oi" (持仓变化率)
         feedstock_cache: 跨品种原料缓存 {symbol: DataFrame} (crack_spread 用)
         fill_strategy: Horizon 填充策略, "default" (常数填充) 或 "decay" (12-bar 半衰期衰减)
+        df_1h: 已读 1H 帧 (ALIGN 路径传入, None 时仍走 get_main_contract_1h)
     """
     # [H-1 fix] Clip prediction drift at the top, before any covariate uses it
     hist_daily_arr = np.array(historical_daily_closes, dtype=float)
@@ -1018,8 +1020,9 @@ def build_covariate_matrix(
         hist_daily_arr, np.array(predicted_daily_closes, dtype=float)
     )
 
-    # 读取 1H 数据
-    df_1h = store.get_main_contract_1h(limit=limit)
+    # 读取 1H 数据 (传入则复用, 避免 ALIGN 帧与 MAIN 分叉)
+    if df_1h is None:
+        df_1h = store.get_main_contract_1h(limit=limit)
     if df_1h.empty:
         raise ValueError(f"{symbol}: 无 1H 数据")
 
@@ -1419,6 +1422,7 @@ def build_combo_covariate_matrix(
     feedstock_cache: Optional[Dict] = None,
     fill_strategy: str = "default",
     half_life: float = 12.0,
+    df_1h: Optional[pd.DataFrame] = None,
 ) -> dict:
     """
     正交协变量组合构建
@@ -1431,6 +1435,7 @@ def build_combo_covariate_matrix(
                          daily_slope 自动包含，无需指定
         feedstock_cache: 跨品种原料缓存 {symbol: DataFrame} (crack_spread 用)
         fill_strategy: Horizon 填充策略, "default" (常数填充) 或 "decay" (12-bar 半衰期衰减)
+        df_1h: 已读 1H 帧 (ALIGN 路径传入, None 时仍走 get_main_contract_1h)
 
     Returns:
         dict: {"daily_slope": arr, "rsi_state": arr, "oi_pct_change": arr, ...}
@@ -1444,8 +1449,9 @@ def build_combo_covariate_matrix(
         hist_daily_arr, np.array(predicted_daily_closes, dtype=float)
     )
 
-    # 读取 1H 数据 (只加载一次)
-    df_1h = store.get_main_contract_1h(limit=limit)
+    # 读取 1H 数据 (传入则复用, 避免 ALIGN 帧与 MAIN 分叉)
+    if df_1h is None:
+        df_1h = store.get_main_contract_1h(limit=limit)
     if df_1h.empty:
         raise ValueError(f"{symbol}: 无 1H 数据")
 
