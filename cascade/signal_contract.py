@@ -12,8 +12,9 @@ never overrides trade position. Shown as 「日线状态」 not as the trade cal
 Production cascade_predict / monthly / A2 / vol scheme legs MUST call
 ``position_from_forecast``. Endpoint-only sign(pred[T+24]-base) is legacy.
 
-Copilot currently does NOT call ``position_from_forecast``; the card
-direction is daily ``_compute_direction_v2`` (known fork vs CF-01 A).
+Copilot card direction calls ``position_from_forecast`` via
+``scripts.copilot.copilot_trade_signal`` (CF-01 A): tradable direction
+is weighted 1H; daily slope is ``regime_direction`` only.
 """
 from __future__ import annotations
 

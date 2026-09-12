@@ -341,6 +341,36 @@ def craft_advisory_v2(symbol, kb, direction, delta_pct, vol, scheme_type):
     return lines
 
 
+def copilot_trade_signal(fc, last_close, scheme, daily_slope):
+    """Copilot card trade fields from 1H forecast (CF-01 A).
+
+    Tradable direction = weighted 1H via position_from_forecast.
+    Daily slope only fills regime_direction. delta_pct is weighted vs last_close.
+    """
+    from cascade.signal_contract import position_from_forecast
+
+    arr = np.asarray(fc, dtype=float).ravel() if fc is not None else np.zeros(0)
+    if arr.size == 0:
+        return {
+            "direction": "中性 →",
+            "regime_direction": "",
+            "weighted_pred": float(last_close or 0.0),
+            "delta_pct": 0.0,
+        }
+    sig = position_from_forecast(
+        arr, float(last_close), scheme=scheme, daily_slope=daily_slope,
+    )
+    weighted = float(sig["weighted_pred"])
+    base = float(last_close) if last_close else 0.0
+    delta_pct = (weighted / base - 1.0) * 100.0 if base else 0.0
+    return {
+        "direction": sig["direction"],
+        "regime_direction": sig.get("regime_direction") or "",
+        "weighted_pred": weighted,
+        "delta_pct": delta_pct,
+    }
+
+
 # ─────────────────────────────────────────────────────────
 # 预测核心（永不压平）
 # ─────────────────────────────────────────────────────────
@@ -368,6 +398,7 @@ class CopilotCard:
     context_len: int = 0
     covariates: dict = field(default_factory=dict)
     xreg_fallback: bool = False
+    regime_direction: str = ""
 
 
 def run_one(
@@ -381,7 +412,7 @@ def run_one(
     from data.data_store import DataStore
     from data.config import get_name
     from config.prediction_scheme import get_scheme
-    from cascade.daily_model import DailyModel, _compute_direction_v2
+    from cascade.daily_model import DailyModel
     from cascade.hourly_model import HourlyModel
 
     symbol = symbol.lower()
@@ -431,10 +462,12 @@ def run_one(
             p90 = [float(q[i, 9]) for i in range(len(fc))]
 
         d_slope = float(daily_result.horizon_slope)
-        direction = _compute_direction_v2(daily_result, scheme)
-        # 终点涨跌：用 T+h 点 vs 当前（更直观）；加权作补充
+        # 可交易涨跌：加权 1H vs 当前（CF-01 A）；T+24 终点仅作轨迹展示
         t24 = float(fc[-1]) if len(fc) else last_close
-        delta_pct = (t24 / last_close - 1.0) * 100.0 if last_close else 0.0
+        sig = copilot_trade_signal(fc, last_close, scheme, d_slope)
+        direction = sig["direction"]
+        regime_direction = sig["regime_direction"]
+        delta_pct = sig["delta_pct"]
 
         def _at(i: int) -> float:
             if len(fc) == 0:
@@ -469,6 +502,7 @@ def run_one(
             context_len=int(hourly_result.context_len or 0),
             covariates=dict(hourly_result.covariates or {}),
             xreg_fallback=bool(hourly_result.xreg_fallback),
+            regime_direction=regime_direction,
         )
 
 
@@ -525,7 +559,9 @@ def render_cli(cards: list[CopilotCard], asof: str) -> None:
             f"T+12 [{c.t12:,.0f}] {_arrow(c.t4, c.t12)} "
             f"T+24 [{c.t24:,.0f}]"
         )
-        body.add_row("当前价", f"{c.current_price:,.2f}  →  预测终点: {c.t24:,.2f}  (T+24: {c.delta_pct:+.2f}%)")
+        body.add_row("当前价", f"{c.current_price:,.2f}  →  预测终点: {c.t24:,.2f}  (加权: {c.delta_pct:+.2f}%)")
+        body.add_row("可交易方向", c.direction)
+        body.add_row("日线状态", c.regime_direction or "—")
         body.add_row("核心轨迹", arrow_path)
         body.add_row(
             "协变量",
@@ -582,7 +618,9 @@ def _render_cli_plain(cards: list[CopilotCard], asof: str) -> None:
         stars = int(c.kb.get("credit_stars") or 0)
         print(f"\n[{i}/{len(cards)}]  {c.symbol.upper()} ({c.name}) | 综合评级: {stars_label(stars)}")
         print("-" * 80)
-        print(f"▶ 当前价: {c.current_price:,.2f}  →  预测终点: {c.t24:,.2f} (T+24: {c.delta_pct:+.2f}%)")
+        print(f"▶ 当前价: {c.current_price:,.2f}  →  预测终点: {c.t24:,.2f} (加权: {c.delta_pct:+.2f}%)")
+        print(f"▶ 可交易方向: {c.direction}")
+        print(f"▶ 日线状态: {c.regime_direction or '—'}")
         print(
             f"▶ 核心轨迹: T+4 [{c.t4:,.0f}] {_arrow(c.current_price, c.t4)} "
             f"T+12 [{c.t12:,.0f}] {_arrow(c.t4, c.t12)} T+24 [{c.t24:,.0f}]"
@@ -615,8 +653,8 @@ def write_markdown(cards: list[CopilotCard], asof: str, path: Path) -> Path:
     # 总览表
     lines.append("## 一、结论面板")
     lines.append("")
-    lines.append("| 品种 | 评级 | 现价 | T+24 | 涨跌 | 方向 | Vol_Prob | 风险 | 历史PF | 胜率 |")
-    lines.append("|------|:----:|-----:|-----:|-----:|:----:|---------:|:----:|-------:|-----:|")
+    lines.append("| 品种 | 评级 | 现价 | T+24 | 涨跌 | 可交易方向 | 日线状态 | Vol_Prob | 风险 | 历史PF | 胜率 |")
+    lines.append("|------|:----:|-----:|-----:|-----:|:----------:|:--------:|---------:|:----:|-------:|-----:|")
     for c in cards:
         stars = int(c.kb.get("credit_stars") or 0)
         vp = c.vol.get("vol_prob")
@@ -626,7 +664,7 @@ def write_markdown(cards: list[CopilotCard], asof: str, path: Path) -> Path:
         da = c.kb.get("historical_diracc")
         lines.append(
             f"| {c.symbol.upper()} | {'⭐'*stars if stars else '☆'} | {c.current_price:,.1f} "
-            f"| {c.t24:,.1f} | {c.delta_pct:+.2f}% | {c.direction} | {vp_s} | {risk} "
+            f"| {c.t24:,.1f} | {c.delta_pct:+.2f}% | {c.direction} | {c.regime_direction or '—'} | {vp_s} | {risk} "
             f"| {pf if pf is not None else '—'} | {f'{da:.0%}' if da is not None else '—'} |"
         )
     lines.append("")
@@ -640,6 +678,8 @@ def write_markdown(cards: list[CopilotCard], asof: str, path: Path) -> Path:
             lines.append(f"- {a}")
         lines.append("")
         lines.append(
+            f"- **可交易方向**: {c.direction}  \n"
+            f"- **日线状态**: {c.regime_direction or '—'}  \n"
             f"- **协变量**: `{c.cov_label}`  \n"
             f"- **方案类型**: {c.scheme_type or '—'}  \n"
             f"- **日线斜率 (Daily_Slope)**: {c.daily_slope:+.4f}% / bar  \n"
