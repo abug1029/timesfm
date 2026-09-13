@@ -40,13 +40,13 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 ## PRAXIST 运行环境（WSL2）
 
 - 宿主：WSL2 Ubuntu-22.04，项目根 `/home/abug/timesfm`，8 vCPU / 7.7 GiB / 无 GPU（旧 Grok 盒 `/workspace` 路径已废弃）
-- praxist venv：本仓 `.praxist-venv`（CPython 3.11，FM_a 与 PRAXIST 共用）；监督环自动解析本仓 `bin/praxist`，可用 `PRAXIST_BIN` 覆盖
+- praxist venv：本仓 `.venv`（Python 3.11，FM_a 与 PRAXIST 共用）；监督环自动解析本仓 `bin/praxist`，可用 `PRAXIST_BIN` 覆盖
 - 规范启动：`set -a; source .env.praxist; set +a` 后 setsid 拉起 supervisor（见 `docs/runbook_praxist_three_loop.md`）。`task_FM/task.yaml` 内 **不要** 放明文 API key
 - 所需环境变量见 `docs/praxist_llm_env.md`
 
 ## PRAXIST 三环（现行合同，2026-09-09）
 
-Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM/` 提供科学合同；外层监督环零 token 调度。架构见 `docs/praxist.md`，运维见 `docs/runbook_praxist_three_loop.md`。**不要改** `.praxist-venv` 里的 Praxist 源码。
+Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM/` 提供科学合同；外层监督环零 token 调度。架构见 `docs/praxist.md`，运维见 `docs/runbook_praxist_three_loop.md`。**不要改** `.venv` 里的 Praxist 源码。
 
 ```
 监督环  scripts/praxist_supervisor.py     0 token
@@ -182,7 +182,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 **必需：**
 ```bash
 cd /home/abug/timesfm
-source .praxist-venv/bin/activate
+source .venv/bin/activate
 # TqSdk 凭证在 .env（真实文件，勿把密钥写入可提交文件）
 ```
 
@@ -192,7 +192,7 @@ source .praxist-venv/bin/activate
 
 ```bash
 # 激活环境
-cd /home/abug/timesfm && source .praxist-venv/bin/activate
+cd /home/abug/timesfm && source .venv/bin/activate
 
 # 采集数据
 python -m data.cli collect cf          # 棉花

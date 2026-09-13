@@ -121,16 +121,16 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="ss",
         name="不锈钢",
         scheme_type="trend",
-        stars=2,  # G005-E: PF=1.15 EV_r=+0.068 n=396 → 升回2星
-        dir_acc=0.510,  # G005-E 396pt
-        mape=1.46,  # G005-E
+        stars=2,  # Praxist 2026-09-09: ss_vor PF=1.123 EV=+11.06 n=396 → 2星
+        dir_acc=0.530,  # ss_vor aligned verdict (n=396)
+        mape=1.46,  # 保留原值
         decay=1.30,  # G005-E
         coverage=0.644,
         use_full_signal=True,
         short_horizon_only=False,
         confidence_multiplier=1.0,
-        covariate_type="calendar_cyclical",  # Phase 11 单协变量穷举 2026-08-20: PF=1.05 EV=+0.027 MaxDD=-22.7%
-        covariate_types=["calendar_cyclical"],  # Phase 11: 3 GREEN (cal/hs/ao), calendar 最稳
+        covariate_type="vor",  # Praxist 2026-09-09: ss_vor PF=1.123 EV=+11.06 MaxDD=-35.25% → 固化替换 calendar_cyclical
+        covariate_types=["vor"],  # Praxist ss_vor: 唯一 econ_pass (PF ratio=1.101 vs incumbent 1.020)
     ),
 
     "ur": VarietyScheme(

@@ -14,13 +14,13 @@ def _resolve_praxist_bin() -> str:
     """Prefer box-local praxist venv; allow PRAXIST_BIN override."""
     candidates = [
         os.environ.get("PRAXIST_BIN"),
-        os.path.join(FM_ROOT, ".praxist-venv", "bin", "praxist"),  # prefer repo venv
-        "/home/box/.praxist-venv/bin/praxist",
+        os.path.join(FM_ROOT, ".venv", "bin", "praxist"),  # prefer repo venv
+        "/home/box/.venv/bin/praxist",
     ]
     for c in candidates:
         if c and os.path.isfile(c) and os.access(c, os.X_OK):
             return c
-    return "/home/box/.praxist-venv/bin/praxist"
+    return "/home/box/.venv/bin/praxist"
 
 PRAXIST = _resolve_praxist_bin()
 QUEUE = os.path.join(FM_ROOT, "data", "cache", "aligned_pending.jsonl")
@@ -742,7 +742,7 @@ def _valid_n_for_symbol(symbol):
     try:
         import bisect
         from config.backtest_config import (
-            CONTEXT_BARS, HORIZON, STEP, CONTEXT_DAYS, HORIZON_DAYS)
+            CONTEXT_BARS, HORIZON, STEP, CONTEXT_DAYS, HORIZON_DAYS, EVAL_WINDOW_BARS)
         from data.data_store import DataStore
         store = DataStore(symbol)
         try:
@@ -755,7 +755,8 @@ def _valid_n_for_symbol(symbol):
         need = max(CONTEXT_DAYS - HORIZON_DAYS, 100)
         dates = sorted(daily["dt"].astype(str).str[:10].tolist())
         n_ok = 0
-        for idx in range(CONTEXT_BARS, len(h1) - HORIZON + 1, STEP):
+        eval_start = max(CONTEXT_BARS, len(h1) - EVAL_WINDOW_BARS)
+        for idx in range(eval_start, len(h1) - HORIZON + 1, STEP):
             if bisect.bisect_right(dates, str(h1["dt"].iloc[idx])[:10]) >= need:
                 n_ok += 1
         return n_ok
@@ -1298,7 +1299,10 @@ def _harvest_rows(goal):
     cad = goal.get("cadence") or {}
     snap_now = rl.load_snapshot(REGISTRY)
     dead = rl.dead_variants(snap_now)
-    existing = rl.in_flight_ids(QUEUE, INPROGRESS)
+    # 修复：existing 包含历史 verdicts（避免重复入队）
+    in_flight = rl.in_flight_ids(QUEUE, INPROGRESS)
+    historical = set(snap_now.keys())  # 所有历史 verdicts
+    existing = in_flight | historical
     pool = load_covariate_pool()
     rows, pstats = harvest_proposals(
         FM_ROOT, snap_now, dead, existing, pool,

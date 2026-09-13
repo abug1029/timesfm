@@ -2,17 +2,17 @@
 
 > **⚠️ 2026-09-09 起宿主再次迁移：以下 Grok Box（Debian/`/workspace`/15GiB/CPython 3.13）结论为历史记录，当前事实以下表为准。**
 >
-> | 项 | 当前值（2026-09-11 核对，WSL） |
+> | 项 | 当前值（2026-09-13 核对，WSL） |
 > |----|-----|
 > | 主机 | **WSL2**（Windows 10，发行版 Ubuntu-22.04.5，kernel 6.18 microsoft-standard） |
 > | 项目根 | **`/home/abug/timesfm`**（GitHub `abug1029/timesfm`，分支 **`master`** HEAD `9653264`） |
-> | Python | 本仓 **`.praxist-venv`（CPython 3.11.15）**，FM_a 与 PRAXIST 共用 |
+> | Python | 本仓 **`.venv`（Python 3.11.15）**，FM_a 与 PRAXIST 共用 |
 > | CPU / 内存 | 8 vCPU / **7.7 GiB total**；Swap 以现场 `free -h` 为准（2026-09-11 测得 2.0Gi，**不要写死 0**） |
 > | GPU | 无 |
 > | 磁盘 | `/` 约 1TB，用量 2% |
 > | 行情库 | **本仓 `db/` 为真实目录**（29 个 `futures_<sym>.db`），不再是 `/workspace` symlink；`.env` 为真实文件 |
 > | 权重 | 本仓 `models/timesfm-2.5-200m-pytorch/` |
-> | Praxist CLI | 本仓 `.praxist-venv/bin/praxist` |
+> | Praxist CLI | 本仓 `.venv/bin/praxist` |
 >
 > 旧盒的 N=4≈8.53GiB 结论在 7.7GiB WSL 上更不可持续；flock≤2 / `MemAvailable<2GiB` 拒启的硬顶继续有效。旧 `/workspace` 硬编码残留会报 `assets_archive_error: Permission denied: '/workspace'`（已 catch，非阻塞，待清理）。
 
@@ -31,10 +31,10 @@
 | GPU | **无**（无 nvidia 设备 / 无 `nvidia-smi`） |
 | 磁盘 | overlay ≈ 126G，评估当日 Used ≈ 17G / Avail ≈ 104G |
 | 项目根 | `/workspace/repos/timesfm-abug1029`（GitHub `abug1029/timesfm`） |
-| Python（FM_a） | `/home/abug/timesfm/.praxist-venv`（CPython 3.13） |
+| Python（FM_a） | `/home/abug/timesfm/.venv`（CPython 3.13） |
 | 行情 SSOT | `db` → symlink → `/workspace/repos/timesFM_fu/db`（由「行情」岗维护） |
 | TQSDK / `.env` | `.env` → symlink → `timesFM_fu/.env`（gitignore，不复制密钥） |
-| Praxist CLI | 独立 venv（目标 `/home/box/.praxist-venv` 或本仓 `.praxist-venv`），与 FM_a `.venv` 隔离 |
+| Praxist CLI | 独立 venv（目标 `/home/box/.venv` 或本仓 `.venv`），与 FM_a `.venv` 隔离 |
 | Praxist LLM | 火山方舟 Anthropic 兼容：`ANTHROPIC_BASE_URL` + `ANTHROPIC_API_KEY`（gitignore `.env.praxist`） |
 | TimesFM（Praxist） | **独立权重目录**（本仓 `models/`）；磁盘可有副本；**容量试跑阶段允许并行加载**（旧「加载互斥」已解除，见 §3） |
 
@@ -78,7 +78,7 @@
 | 单次评估耗时 | **≈ 6.6–6.7 s** wall（单品种 `fu`，`--no-auto-collect`，串行冷/热加载各次独立进程） |
 | 连续 N 次是否稳定 | **是**（N=3，exit 0，无 OOM；与「预测」岗无共驻冲突） |
 
-**三次串行明细**（`.praxist-venv/bin/python /tmp/timed_run.py .praxist-venv/bin/python scripts/cascade_predict.py fu --no-auto-collect`；`RUSAGE_CHILDREN`；GNU `/usr/bin/time` 未安装）：
+**三次串行明细**（`.venv/bin/python /tmp/timed_run.py .venv/bin/python scripts/cascade_predict.py fu --no-auto-collect`；`RUSAGE_CHILDREN`；GNU `/usr/bin/time` 未安装）：
 
 | Run | Wall | Peak RSS | OOM? | log |
 |-----|------|----------|------|-----|
@@ -121,7 +121,7 @@
 2. **RSS shed**：`rss_shed_once` / `check_and_shed` / `rss_shed_watch` — 单进程 RSS > ~**3.5 GiB** 或 `MemAvailable < 2 GiB` 时对匹配进程（`fm_eval|batch_runner|eval_wrapper|aligned_slow_loop|HourlyModel`）发 **TERM**；日志 → `data/cache/capacity_actions.log`（及 e2e 目录副本）。
 3. **cgroup（若启用）**：优先 `memory.max` / `memory.high`（物理），不要单独靠 `RLIMIT_AS`。
 4. **RLIMIT_AS**：可选，**默认 OFF**（`apply_limit=False`）。旧「默认 3.5GiB AS / slow_loop 强制 10GiB AS」路径已撤回。
-5. **praxist 挂钩（强制，不靠 prompt）**：`scripts/praxist_mem_guard_hook.py` monkeypatch `protected_pids.launch_command`（subprocess.run / Popen 两路径）；经 `scripts/install_praxist_mem_guard_hook.py` 写入 `.praxist-venv` / `~/.praxist-venv` 的 `zz_fm_mem_guard.pth` + loader，使 peer Bash/batch_runner/fm_eval 启动前必走 flock+MemAvailable+RSS shed。`PRAXIST_MAX_PARALLEL_RUNS_PER_PEER` 仅为 per-peer；**GLOBAL≤2 由 flock 保证**。
+5. **praxist 挂钩（强制，不靠 prompt）**：`scripts/praxist_mem_guard_hook.py` monkeypatch `protected_pids.launch_command`（subprocess.run / Popen 两路径）；经 `scripts/install_praxist_mem_guard_hook.py` 写入 `.venv` / `~/.venv` 的 `zz_fm_mem_guard.pth` + loader，使 peer Bash/batch_runner/fm_eval 启动前必走 flock+MemAvailable+RSS shed。`PRAXIST_MAX_PARALLEL_RUNS_PER_PEER` 仅为 per-peer；**GLOBAL≤2 由 flock 保证**。
 6. `aligned_slow_loop.py`：仅 `apply_mem_guard(apply_limit=False)`（slot+MemAvailable）；候选之间轻量 `check_and_shed` + `self_rss_ok`。
 7. `task_FM/task.yaml` → `compute_budget.max_concurrent_evals: 2`。
 8. 依据 §4b：N=4 合计峰值 ≈ **8.53 GiB**（batch_runner / fm_eval 并行压测）不可持续；N=2 为舒适区。**e2e round complete**（fast + harvest + slow）。

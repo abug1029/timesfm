@@ -62,14 +62,29 @@ DIFFERENT from the current best / your other proposal (e.g. not two volatility
 ideas). Spread across families: volatility, trend, structure, oscillator,
 positioning, calendar, volume, statistical, price_action.
 
-## Known verdicts (respect them — wasted proposals are rejected)
-Before proposing, Read `task_FM/config/aligned_verdicts.jsonl` and the snapshot below.
+## Known verdicts (MANDATORY: read before proposing — wasted proposals are auto-rejected)
+**YOUR FIRST STEP BEFORE ANY PROPOSAL**: Read 
+and the snapshot below. **This is MANDATORY, not optional.** 70% of past proposals
+were rejected as duplicates — do NOT be part of that statistic.
+
+**NEVER re-propose any of these**:
 - econ pass (gate_pass=True AND ev>0) = already solved: do NOT re-propose that variant.
-- hard-gate-but-losing (gate_pass=True AND ev<=0) = 过硬门但亏钱; not a success; do not re-propose as solved.
+- hard-gate-but-losing (gate_pass=True AND ev<=0) = 过硬门但亏钱; not a success;
+  examples: ss_oi (ev=-29.29), lh_oi (ev=-58.69), lh_ha_body (ev=-58.69),
+  jd_ha_body (ev=-10.71), m_nvi (ev=-4.18). **These are DEAD economically.**
 - gate_pass=False, status=ok = DEAD: never revive without a mechanism correction.
+  examples: cj_calendar_cyclical (ic=0.04<0.05), eg_vor (ic=0.03<0.05),
+  jd_rsi_state (ic=0.022<0.05). **These failed the IC gate.**
 - status=no_data = retryable (e.g. cj, lh data gaps), a fresh proposal is fine.
 - A DEAD covariate on one symbol can still be tried on a DIFFERENT symbol with a
-  distinct mechanism — but never repeat the exact dead variant_id.
+  distinct mechanism — but **never repeat the exact dead variant_id**
+  (e.g. ss_oi, lh_oi, lh_ha_body, cj_oi, m_nvi are ALL forbidden).
+
+**FOCUS ON WHAT WORKS**: Historical data shows volatility family (vor, bb_squeeze,
+stddev) is the ONLY profitable family (ss_vor econ_pass with PF=1.123, ev=+11.06).
+Other families (positioning, price_action, trend) have consistently lost money.
+**Prioritize volatility family proposals** unless you have a strong mechanism for
+why another family would work on a specific symbol.
 {% include 'known_verdicts.inc.md' ignore missing %}
 
 ## Proposing a NEW covariate (not yet in the pool)

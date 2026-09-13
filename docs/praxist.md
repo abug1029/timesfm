@@ -12,7 +12,7 @@
 | 机器状态 / 裁决 | `data/cache/supervisor_state.json`、`task_FM/config/aligned_verdicts.jsonl` |
 | 目标与预算 | `scripts/praxist_goal.yaml` |
 
-**不要改** `.praxist-venv` 里的 Praxist 源码（升级会丢）。本仓只通过任务包、提示词和外层监督环适配。
+**不要改** `.venv` 里的 Praxist 源码（升级会丢）。本仓只通过任务包、提示词和外层监督环适配。
 
 ---
 
@@ -46,7 +46,7 @@ Praxist（[Sapient Intelligence](https://github.com/sapientinc/PRAXIST)，本仓
 
 一代闭环：任务契约 + 已提交议程 → 并行 peers → 结果物化成 findings → PI/Chair 综合 → 更新 frontier / incubator / Gems → 写下一代议程。
 
-CLI：`praxist start|resume|stop|status|monitor|doctor|resolve`。本仓入口是 `.praxist-venv/bin/praxist`。
+CLI：`praxist start|resume|stop|status|monitor|doctor|resolve`。本仓入口是 `.venv/bin/praxist`。
 
 证据角色（规划只信当前可信状态）：`canonical_state` / `validation_signal` / `derived_view` / `audit_snapshot` / `partial_output`。排行榜和报告是派生视图，不能反过来改裁决。代际关闭后晚到的结果不能重写本代。
 
@@ -129,7 +129,7 @@ Peer 第一件事：至少写 2 份假设到
 ```bash
 cd /home/abug/timesfm
 set -a && source .env.praxist && set +a
-setsid nohup .praxist-venv/bin/python scripts/praxist_supervisor.py \
+setsid nohup .venv/bin/python scripts/praxist_supervisor.py \
   --goal scripts/praxist_goal.yaml \
   >> data/cache/supervisor.out 2>&1 < /dev/null &
 ```

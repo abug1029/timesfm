@@ -1,0 +1,7 @@
+{
+  "symbol": "ss",
+  "cov_override": "vor",
+  "cov_combo": ["vor", "oi"],
+  "max_points": 100,
+  "stage": "aligned"
+}

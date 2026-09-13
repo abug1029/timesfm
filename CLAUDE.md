@@ -26,7 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## PRAXIST 三环（现行合同，2026-09-09）
 
-Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM/` 提供科学合同；外层监督环零 token 调度。架构见 `docs/praxist.md`，运维见 `docs/runbook_praxist_three_loop.md`。**不要改** `.praxist-venv` 里的 Praxist 源码。
+Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM/` 提供科学合同；外层监督环零 token 调度。架构见 `docs/praxist.md`，运维见 `docs/runbook_praxist_three_loop.md`。**不要改 .venv 里的 Praxist 源码（升级会丢）。
 
 - 快环：peer 只写机制化假设（方案 A），不加载 TimesFM
 - 慢环：`scripts/aligned_slow_loop.py` 是唯一验证器，唯一可写 `aligned_verdicts.jsonl`
@@ -36,7 +36,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 
 ## 目录结构
 
-> **运行环境（2026-09-09 起）**：WSL2 Ubuntu-22.04，仓库根 `/home/abug/timesfm`（GitHub `abug1029/timesfm`），venv `.praxist-venv`（CPython 3.11）。下文 Windows `D:\FlyBuddy\...` 路径为历史遗留，已不适用；宿主事实见 `docs/host_environment_assessment.md` 顶部迁移表，PRAXIST 运维见 `docs/runbook_praxist_three_loop.md`。
+> **运行环境（2026-09-09 起）**：WSL2 Ubuntu-22.04，仓库根 `/home/abug/timesfm`（GitHub `abug1029/timesfm`），venv `.venv`（Python 3.11）。下文 Windows `D:\FlyBuddy\...` 路径为历史遗留，已不适用；宿主事实见 `docs/host_environment_assessment.md` 顶部迁移表，PRAXIST 运维见 `docs/runbook_praxist_three_loop.md`。
 
 ```
 /home/abug/timesfm/
@@ -115,8 +115,8 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 TQSDK_ACCOUNT=your_account
 TQSDK_PASSWORD=your_password
 
-# 激活环境 (WSL2, 本仓 .praxist-venv, CPython 3.11)
-source .praxist-venv/bin/activate
+# 激活环境 (WSL2, 本仓 .venv, Python 3.11)
+source .venv/bin/activate
 cd /home/abug/timesfm
 ```
 
@@ -126,7 +126,7 @@ cd /home/abug/timesfm
 
 ```bash
 # 激活环境
-source .praxist-venv/bin/activate
+source .venv/bin/activate
 cd /home/abug/timesfm
 
 # 采集数据

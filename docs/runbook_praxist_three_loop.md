@@ -9,8 +9,8 @@
 | 项 | 值 |
 |----|-----|
 | 项目根 | `/home/abug/timesfm`（WSL2 Ubuntu-22.04；FM_a / PRAXIST 同仓） |
-| Python | `.praxist-venv/bin/python`（CPython 3.11） |
-| praxist | 本仓 `.praxist-venv/bin/praxist`（`PRAXIST_BIN` 可覆盖；supervisor 自动解析） |
+| Python | `.venv/bin/python`（Python 3.11） |
+| praxist | 本仓 `.venv/bin/praxist`（`PRAXIST_BIN` 可覆盖；supervisor 自动解析） |
 | Goal | `scripts/praxist_goal.yaml` |
 | 监督状态 | `data/cache/supervisor_state.json` |
 | 监督锁 | `data/cache/supervisor.lock` |
@@ -34,16 +34,16 @@ cd /home/abug/timesfm
 
 # 启动监督环（规范方式：注入 LLM 环境 + setsid 孤儿化 + 显式 goal）
 set -a && source .env.praxist && set +a
-setsid nohup .praxist-venv/bin/python scripts/praxist_supervisor.py \
+setsid nohup .venv/bin/python scripts/praxist_supervisor.py \
   --goal scripts/praxist_goal.yaml \
   >> data/cache/supervisor.out 2>&1 < /dev/null &
 
 # 干跑：一轮打印 action JSON 后立即退出
 # 不 sleep、不起 praxist/慢环、不写队列、不加 cycle、不 materialize known_verdicts
-.praxist-venv/bin/python scripts/praxist_supervisor.py --dry-run
+.venv/bin/python scripts/praxist_supervisor.py --dry-run
 
 # 单步：允许真启进程 / harvest / 启慢环，仍不 sleep，一轮后退出
-.praxist-venv/bin/python scripts/praxist_supervisor.py --once
+.venv/bin/python scripts/praxist_supervisor.py --once
 
 # 优雅停止监督环：SIGTERM 只置标志，主循环最迟下一个 tick（≤300s sleep）退出
 # 退出码 0，事件 reason=signal_received；慢环 start_new_session 是孤儿，继续跑完当前候选
@@ -97,10 +97,10 @@ praxist stop <run_id>
 
 ```bash
 # 手动单候选（启动时先 queue_recover，再 claim → 评估 → ack）
-.praxist-venv/bin/python scripts/aligned_slow_loop.py --once
+.venv/bin/python scripts/aligned_slow_loop.py --once
 
 # 清空队列前持续跑
-.praxist-venv/bin/python scripts/aligned_slow_loop.py
+.venv/bin/python scripts/aligned_slow_loop.py
 
 # 监控
 tail -f data/cache/slow_loop.out

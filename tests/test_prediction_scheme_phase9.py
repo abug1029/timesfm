@@ -20,7 +20,7 @@ from config.prediction_scheme import SCHEMES, get_scheme
 
 PHASE9_SNAPSHOT = {
     # ── 2★ ──
-    "ss": ("calendar_cyclical", ["calendar_cyclical"], 0.510, 2),  # Phase 11
+    "ss": ("vor", ["vor"], 0.530, 2),  # Praxist 2026-09-09: ss_vor → 固化
     "sr": ("rsi_state", ["rsi_state", "oi", "calendar_cyclical"], 0.550, 2),
     "lh": ("rsi_state", ["rsi_state"], 0.500, 2),  # Phase 11
     "cj": ("hourly_slope", ["hourly_slope"], 0.520, 2),  # Phase 11
