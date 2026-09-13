@@ -120,6 +120,11 @@ source .venv/bin/activate
 cd /home/abug/timesfm
 ```
 
+
+**Praxist 安装后必须执行**（允许 qwen 模型通过兼容性检查）：
+```bash
+bash scripts/patch_praxist_qwen.sh .venv
+```
 **数据库位置：** `db/futures_<symbol>.db` (SQLite，每品种独立，本仓真实目录)
 
 ## 快速使用
