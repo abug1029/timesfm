@@ -26,11 +26,12 @@ def _make_point(i: int, base: float = 100.0) -> dict:
     sign = 1.0 if i % 2 == 0 else -1.0
     delta_pred = sign * 2.0
     delta_real = sign * (1.5 + 0.1 * i)
+    _base = base + i
     return {
         "cutoff": f"2026-01-{(i % 28) + 1:02d}",
-        "base": base + i,
-        "pred_end": base + i + delta_pred,
-        "real_end": base + i + delta_real,
+        "base": _base,
+        "pred_end": _base + delta_pred,
+        "real_end": _base + delta_real,
         "delta_pred": delta_pred,
         "delta_real": delta_real,
         "dir_ok": True,
@@ -42,6 +43,9 @@ def _make_point(i: int, base: float = 100.0) -> dict:
         "coverage": 12,
         "pnl": float(np.sign(delta_pred) * delta_real),
         "real_range": abs(delta_real) + 1.0,
+        "endpoint_mape": abs(delta_pred - delta_real) / _base * 100,
+        "endpoint_bias_pct": (delta_pred - delta_real) / _base * 100,
+        "path_corr": None,
     }
 
 

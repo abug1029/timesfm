@@ -46,7 +46,7 @@ THRESHOLDS["min_eval_points"] = MIN_EVAL_POINTS
 from data.data_store import DataStore
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
-from cascade.evaluation_metrics import metrics_from_backtest_points
+from cascade.evaluation_metrics import metrics_from_backtest_points, calc_prediction_quality, fallback_n_eff, safe_path_corr
 from cascade.signal_contract import position_from_forecast
 from config.prediction_scheme import get_scheme
 from data.data_store import BacktestDataStore
@@ -61,6 +61,7 @@ _CHECKPOINT_POINT_KEYS = (
     "cutoff", "base", "pred_end", "real_end",
     "delta_pred", "delta_real", "dir_ok", "dir12_ok",
     "mae", "mape", "mae_h1", "mae_h2", "coverage", "pnl", "real_range",
+    "endpoint_mape", "endpoint_bias_pct", "path_corr",
 )
 
 _DAILY_CACHE_VER = "v2"  # v2 = dates 为 tz-naive ISO 列表, 不再 pickle DailyResult
@@ -340,7 +341,7 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 delta_real = float(np.clip(delta_real_raw, -max_move, max_move))
             else:
                 delta_real = delta_real_raw
-            dir_ok = bool(np.sign(delta_pred) == np.sign(delta_real_raw)) if delta_real_raw != 0 else True
+            dir_ok = bool(np.sign(delta_pred) == np.sign(delta_real_raw)) if abs(delta_real_raw) >= 1e-8 else False
             if i < 3:
                 print(f" dir_ok", end="", flush=True)
             mae = float(np.mean(np.abs(pred - real)))
@@ -374,8 +375,13 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
             if i < 3:
                 print(f" cov={cov}", end="", flush=True)
 
+            # Per-point prediction-quality metrics
+            _ep_mape = float(abs(pred[-1] - real[-1]) / base * 100) if base else 0.0
+            _ep_bias = float((delta_pred - delta_real_raw) / base * 100) if base else 0.0
+            _pc = safe_path_corr(pred, real)
+
             point = {
-                "cutoff": dt, "base": base,
+                "cutoff": cutoff, "cutoff_date": dt, "base": base,
                 "pred_end": float(pred[-1]), "real_end": float(real[-1]),
                 "delta_pred": float(delta_pred), "delta_real": float(delta_real),
                 "dir_ok": dir_ok, "dir12_ok": dir12_ok,
@@ -384,6 +390,9 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 "coverage": cov,
                 "pnl": pnl,
                 "real_range": float(real.max() - real.min()),
+                "endpoint_mape": _ep_mape,
+                "endpoint_bias_pct": _ep_bias,
+                "path_corr": _pc,
             }
             points.append(point)
             # ── checkpoint: 完整 point 字段 (resume 可重建 summarize) ──
@@ -428,13 +437,33 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
 def summarize(data):
     """从逐点数据计算汇总指标。
 
-    净 PF / EV / MaxDD / DirAcc 统一走 cascade.evaluation_metrics（全项目唯一秤）。
+    DirAcc / endpoint_mape / endpoint_bias_pct / weighted_dir_acc
+        → calc_prediction_quality（预测质量秤，零变动算错）
+    净 PF / EV / MaxDD → metrics_from_backtest_points（经济秤）
     """
     ok = [p for p in data["points"] if "error" not in p]
     if not ok:
         return None
 
     n = len(ok)
+
+    # ── 预测质量秤 (calc_prediction_quality) ──
+    pred_ends = [p["pred_end"] for p in ok]
+    real_ends = [p["real_end"] for p in ok]
+    bases = [p["base"] for p in ok]
+    pq = calc_prediction_quality(pred_ends, real_ends, bases)
+
+    # point_dir_ok_list: 逐点 (cutoff, dir_ok) — 用完整 cutoff 时间戳
+    point_dir_ok_list = [(p["cutoff"], bool(p["dir_ok"])) for p in ok]
+
+    # n_eff: Bartlett 有效样本量
+    n_eff = fallback_n_eff(n, HORIZON, STEP)
+
+    # path_corr: 聚合逐点值 (如有)
+    _pc_vals = [p["path_corr"] for p in ok if p.get("path_corr") is not None]
+    path_corr_agg = float(np.mean(_pc_vals)) if _pc_vals else None
+
+    # ── 传统逐点统计 ──
     dir_acc_legacy = np.mean([p["dir_ok"] for p in ok])
     dir12_acc = np.mean([p["dir12_ok"] for p in ok])
     mae = np.mean([p["mae"] for p in ok])
@@ -445,6 +474,7 @@ def summarize(data):
     coverage = np.mean([p["coverage"] / HORIZON for p in ok])
     vol_pct = np.mean([p["real_range"] for p in ok]) / np.mean([p["base"] for p in ok]) * 100
 
+    # ── 经济秤 (metrics_from_backtest_points) — PF/EV/MaxDD ──
     symbol = data["symbol"].lower()
     tick = TICK_SIZES.get(symbol, 1.0)
     net = metrics_from_backtest_points(
@@ -461,12 +491,18 @@ def summarize(data):
         "contract": data["contract"],
         "bars": data["total_bars"],
         "n": n,
+        "n_eff": n_eff,
         "mae": round(mae, 1),
         "mape": round(mape, 2),
-        # DirAcc: 优先用统一秤；保留逐点 dir_ok 作对照
-        "dir_acc": round(float(net["DirAcc"]), 3),
+        # DirAcc: 来自 calc_prediction_quality (零变动=错)
+        "dir_acc": round(pq["dir_acc"], 3),
         "dir_acc_points": round(float(dir_acc_legacy), 3),
         "dir12_acc": round(dir12_acc, 3),
+        "weighted_dir_acc": round(pq["weighted_dir_acc"], 3),
+        "endpoint_mape": round(pq["endpoint_mape"], 2),
+        "endpoint_bias_pct": round(pq["endpoint_bias_pct"], 2),
+        "path_corr": round(path_corr_agg, 3) if path_corr_agg is not None else None,
+        "point_dir_ok_list": point_dir_ok_list,
         "mae_h1": round(mae_h1, 1),
         "mae_h2": round(mae_h2, 1),
         "decay": round(decay, 2),
