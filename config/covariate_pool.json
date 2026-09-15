@@ -1,0 +1,16 @@
+{
+  "covariates": [
+    {"name": "rsi_state", "family": "momentum"},
+    {"name": "rsi_slope", "family": "momentum"},
+    {"name": "hourly_slope", "family": "momentum"},
+    {"name": "rsi6", "family": "momentum"},
+    {"name": "rsi12", "family": "momentum"},
+    {"name": "rsi24", "family": "momentum"},
+    {"name": "ha_body", "family": "momentum"},
+    {"name": "reversal_shadow", "family": "momentum"},
+    {"name": "oi", "family": "inventory"},
+    {"name": "ccl", "family": "inventory"},
+    {"name": "basis_momentum", "family": "term_structure"},
+    {"name": "calendar_cyclical", "family": "calendar"}
+  ]
+}
