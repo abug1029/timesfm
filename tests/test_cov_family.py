@@ -17,15 +17,16 @@ def test_unknown_fallback():
 
 
 def test_pool_format_pool_key():
-    """Test dict format with 'pool' key"""
-    pool_data = {"pool": [{"name": "test_atr", "family": "volatility"}]}
-    assert resolve_cov_family({"cov_override": "test_atr"}, pool_data) == "volatility"
+    """Test dict format with 'pool' key (using name that heuristic can't match)"""
+    pool_data = {"pool": [{"name": "custom_x", "family": "calendar"}]}
+    # Level 1 should match "custom_x" -> "calendar" (no heuristic keyword matches)
+    assert resolve_cov_family({"cov_override": "custom_x"}, pool_data) == "calendar"
 
 
 def test_pool_format_list():
-    """Test list format (wrapped in covariates)"""
-    pool_data = {"covariates": [{"name": "test_rsi", "family": "momentum"}]}
-    assert resolve_cov_family({"cov_override": "test_rsi"}, pool_data) == "momentum"
+    """Test list format (using name that heuristic can't match)"""
+    pool_data = [{"name": "custom_y", "family": "term_structure"}]
+    assert resolve_cov_family({"cov_override": "custom_y"}, pool_data) == "term_structure"
 
 
 def test_level1_invalid_family_fallback():

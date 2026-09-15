@@ -82,6 +82,7 @@ def resolve_cov_family(verdict: dict, covariate_pool: Optional[dict] = None) -> 
 
     Three-level fallback:
     1. Exact match: pool contains covariate with name == cov_override
+       - Supports 'covariates', 'pool', or list format
     2. Heuristic: match name hints in cov_override or variant_id
     3. Fallback: "unknown"
 
@@ -100,7 +101,18 @@ def resolve_cov_family(verdict: dict, covariate_pool: Optional[dict] = None) -> 
     variant_id = verdict.get("variant_id", "")
 
     # Level 1: Exact match in pool
-    covariates = covariate_pool.get("covariates", [])
+    # Support 'covariates', 'pool', or list format (consistent with load_covariate_pool)
+    if isinstance(covariate_pool, dict):
+        if "covariates" in covariate_pool:
+            covariates = covariate_pool["covariates"]
+        elif "pool" in covariate_pool:
+            covariates = covariate_pool["pool"]
+        else:
+            covariates = []
+    elif isinstance(covariate_pool, list):
+        covariates = covariate_pool
+    else:
+        covariates = []
     for cov in covariates:
         if cov.get("name") == cov_override:
             family = cov.get("family", "unknown")
