@@ -353,3 +353,22 @@ def calc_margin_maxdd_robust(
         sub_dd_list.append(max_dd)
 
     return float(np.mean(sub_dd_list)) if sub_dd_list else 0.0
+
+
+def safe_path_corr(
+    pred_path: Optional[np.ndarray] | Optional[Sequence[float]],
+    real_path: Optional[np.ndarray] | Optional[Sequence[float]],
+    eps: float = 1e-8,
+) -> Optional[float]:
+    if pred_path is None or real_path is None:
+        return None
+    p = np.asarray(pred_path, dtype=float).ravel()
+    r = np.asarray(real_path, dtype=float).ravel()
+    if len(p) < 2 or len(r) < 2 or len(p) != len(r):
+        return None
+    if not (np.all(np.isfinite(p)) and np.all(np.isfinite(r))):
+        return 0.0
+    if np.std(p) < eps or np.std(r) < eps:
+        return 0.0
+    corr = np.corrcoef(p, r)[0, 1]
+    return float(corr) if np.isfinite(corr) else 0.0
