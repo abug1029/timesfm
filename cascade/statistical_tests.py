@@ -4,6 +4,9 @@ from __future__ import annotations
 import numpy as np
 from datetime import datetime
 from typing import Optional, Union, Sequence
+from zoneinfo import ZoneInfo
+
+SHANGHAI_TZ = ZoneInfo('Asia/Shanghai')
 
 
 def safe_normalize_cutoff(ts: Union[str, int, float, None]) -> Optional[int]:
@@ -20,8 +23,8 @@ def safe_normalize_cutoff(ts: Union[str, int, float, None]) -> Optional[int]:
     if ts is None:
         return None
     
-    # Handle numpy scalars
-    if hasattr(ts, 'item'):
+    # Handle numpy scalars (0-d arrays)
+    if hasattr(ts, 'ndim') and ts.ndim == 0:
         ts = ts.item()
     
     # Handle numeric types
@@ -44,23 +47,21 @@ def safe_normalize_cutoff(ts: Union[str, int, float, None]) -> Optional[int]:
         
         # Parse datetime string
         try:
-            # Remove trailing Z
-            ts_clean = ts.replace('Z', '+00:00')
+            # Handle trailing Z (UTC indicator)
+            if ts.endswith('Z'):
+                ts_clean = ts[:-1] + '+00:00'
+            else:
+                ts_clean = ts
             
-            # Try parsing with timezone
-            if '+' in ts_clean or ts_clean.count('-') > 2:
-                dt = datetime.fromisoformat(ts_clean)
-                # Convert to Asia/Shanghai
-                from zoneinfo import ZoneInfo
-                shanghai_tz = ZoneInfo('Asia/Shanghai')
-                dt_shanghai = dt.astimezone(shanghai_tz)
+            dt = datetime.fromisoformat(ts_clean)
+            
+            if dt.tzinfo is not None:
+                # tz-aware: convert to Asia/Shanghai
+                dt_shanghai = dt.astimezone(SHANGHAI_TZ)
                 return int(dt_shanghai.timestamp())
             else:
                 # Naive datetime - assume Asia/Shanghai
-                dt = datetime.fromisoformat(ts_clean)
-                from zoneinfo import ZoneInfo
-                shanghai_tz = ZoneInfo('Asia/Shanghai')
-                dt = dt.replace(tzinfo=shanghai_tz)
+                dt = dt.replace(tzinfo=SHANGHAI_TZ)
                 return int(dt.timestamp())
         except (ValueError, TypeError):
             return None
@@ -83,14 +84,22 @@ def pair_dir_ok_series(
     """
     def extract(point):
         if isinstance(point, dict):
-            return point.get('cutoff'), point.get('dir_ok')
+            cutoff = point.get('cutoff')
+            dir_ok = point.get('dir_ok')
+            if cutoff is None or dir_ok is None:
+                return None, None
+            return cutoff, dir_ok
         else:
+            if len(point) < 2:
+                return None, None
             return point[0], point[1]
     
     # Build {normalized_ts: dir_ok} for both
     variant_map = {}
     for pt in variant_points:
         cutoff, dir_ok = extract(pt)
+        if cutoff is None:
+            continue
         ts = safe_normalize_cutoff(cutoff)
         if ts is not None:
             variant_map[ts] = int(dir_ok)
@@ -98,12 +107,14 @@ def pair_dir_ok_series(
     baseline_map = {}
     for pt in baseline_points:
         cutoff, dir_ok = extract(pt)
+        if cutoff is None:
+            continue
         ts = safe_normalize_cutoff(cutoff)
         if ts is not None:
             baseline_map[ts] = int(dir_ok)
     
     # Inner join on common timestamps
-    common_ts = sorted(set(variant_map.keys()) & set(baseline_map.keys()))
+    common_ts = sorted(variant_map.keys() & baseline_map.keys())
     
     variant_series = [variant_map[ts] for ts in common_ts]
     baseline_series = [baseline_map[ts] for ts in common_ts]
