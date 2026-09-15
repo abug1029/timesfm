@@ -150,15 +150,33 @@ def test_diebold_mariano_p_length_or_short():
 
 
 def test_diebold_mariano_p_clear_improvement():
-    baseline = [0] * 200
-    variant = [1] * 200
-    p = diebold_mariano_p(variant, baseline, horizon=24, step=24)
-    assert 0.0 <= p < 0.01
+    # Cannot use all-1 vs all-0 (zero variance, spec requires p=1.0)
+    # Use half points variant better, half tied
+    baseline = [0, 1] * 100  # 50% correct
+    variant = [1, 1] * 100   # 100% correct
+    p = diebold_mariano_p(variant, baseline)
+    assert 0.0 <= p < 0.05  # should be significant
 
 
 def test_diebold_mariano_p_zero_variance_ones():
     ones = [1] * 200
     assert diebold_mariano_p(ones, ones) == 1.0
+
+def test_diebold_mariano_p_constant_diff_is_one():
+    # Constant difference (zero variance) must return 1.0
+    baseline = [0] * 200
+    variant = [1] * 200  # constant diff d=1
+    assert diebold_mariano_p(variant, baseline) == 1.0
+
+
+def test_diebold_mariano_p_default_from_config():
+    # Verify defaults read from backtest_config
+    from config import backtest_config
+    # Don't pass horizon/step, should use backtest_config values
+    v = [1, 0, 1, 0] * 50
+    b = [0, 1, 0, 1] * 50
+    p = diebold_mariano_p(v, b)
+    assert 0.0 <= p <= 1.0
 
 from cascade.statistical_tests import bh_fdr_promote
 
@@ -223,3 +241,21 @@ def test_bh_fdr_duplicate_keeps_last():
     updates = bh_fdr_promote(verdicts)
     assert set(updates) == {"var_0", "var_1", "var_2"}
     assert updates["var_0"]["fdr_pass"] is False  # p=0.90 Bonferroni
+
+
+def test_bh_fdr_gate_fail_pollutes_truncation():
+    """C2 fix: gate_pass=False variants use safe_p=1.0 in sort, preventing small p from pushing truncation."""
+    verdicts = [
+        _v("fail_tiny", "p", 0.001, gate=False),  # gate_fail, small p -> safe_p=1.0
+        _v("ok_med", "p", 0.04, gate=True),
+        _v("c", "p", 0.20, gate=True),
+        _v("d", "p", 0.20, gate=True),
+    ]
+    updates = bh_fdr_promote(verdicts, fdr_q=0.10)
+    # K=4, q=0.10, sorted: ok_med(0.04), c(0.20), d(0.20), fail_tiny(1.0)
+    # thresholds: k=1->0.025, k=2->0.05, k=3->0.075, k=4->0.10
+    # ok_med p=0.04 > 0.025, so k*=0, nobody passes
+    assert updates["ok_med"]["fdr_pass"] is False
+    assert updates["fail_tiny"]["fdr_pass"] is False
+    assert updates["c"]["fdr_pass"] is False
+    assert updates["d"]["fdr_pass"] is False

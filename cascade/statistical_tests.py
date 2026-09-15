@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from datetime import datetime
 from typing import Optional, Union, Sequence
 from zoneinfo import ZoneInfo
@@ -11,62 +12,70 @@ SHANGHAI_TZ = ZoneInfo('Asia/Shanghai')
 
 def safe_normalize_cutoff(ts: Union[str, int, float, None]) -> Optional[int]:
     """Normalize cutoff timestamp to Unix seconds (Asia/Shanghai).
-    
+
     Handles:
-    - str: "2024-06-15 09:00:00", "2024-06-15T09:00:00", Unix timestamp string
+    - pd.Timestamp / datetime: naive->localize to Asia/Shanghai, aware->tz_convert
+    - str: ISO format, or numeric string (unix seconds/ms, length>=9)
     - int/float: Unix seconds or milliseconds
     - numpy scalars
-    - tz-aware strings (converts to Asia/Shanghai)
     - None -> None
     - Invalid -> None
+
+    Spec 9.4: Use pd.Timestamp, naive->localize to Asia/Shanghai, aware->tz_convert.
     """
     if ts is None:
         return None
-    
+
     # Handle numpy scalars (0-d arrays)
-    if hasattr(ts, 'ndim') and ts.ndim == 0:
+    if hasattr(ts, "ndim") and ts.ndim == 0:
         ts = ts.item()
-    
+
+    # Handle pd.Timestamp / datetime
+    if isinstance(ts, (pd.Timestamp, datetime)):
+        ts_pd = pd.Timestamp(ts)
+        if ts_pd.tzinfo is None:
+            # Naive -> localize to Asia/Shanghai
+            ts_pd = ts_pd.tz_localize("Asia/Shanghai")
+        else:
+            # Aware -> convert to Asia/Shanghai
+            ts_pd = ts_pd.tz_convert("Asia/Shanghai")
+        return int(ts_pd.timestamp())
+
     # Handle numeric types
     if isinstance(ts, (int, float)):
-        # Detect milliseconds vs seconds
-        if ts > 1e12:  # milliseconds
+        if ts > 1e11:  # milliseconds
             return int(ts / 1000)
         return int(ts)
-    
+
     # Handle string
     if isinstance(ts, str):
-        # Try numeric string first
-        try:
-            numeric = float(ts)
-            if numeric > 1e12:
-                return int(numeric / 1000)
-            return int(numeric)
-        except ValueError:
-            pass
-        
-        # Parse datetime string
+        ts_stripped = ts.strip()
+
+        # Check if numeric string: isdigit and length >= 9
+        if ts_stripped.isdigit() and len(ts_stripped) >= 9:
+            numeric = int(ts_stripped)
+            if numeric > 1e11:  # milliseconds
+                return numeric // 1000
+            return numeric
+
+        # Try parsing as datetime via pd.Timestamp
         try:
             # Handle trailing Z (UTC indicator)
-            if ts.endswith('Z'):
-                ts_clean = ts[:-1] + '+00:00'
+            ts_parse = ts_stripped
+            if ts_parse.endswith("Z"):
+                ts_parse = ts_parse[:-1] + "+00:00"
+
+            ts_pd = pd.Timestamp(ts_parse)
+            if ts_pd.tzinfo is None:
+                ts_pd = ts_pd.tz_localize("Asia/Shanghai")
             else:
-                ts_clean = ts
-            
-            dt = datetime.fromisoformat(ts_clean)
-            
-            if dt.tzinfo is not None:
-                # tz-aware: convert to Asia/Shanghai
-                dt_shanghai = dt.astimezone(SHANGHAI_TZ)
-                return int(dt_shanghai.timestamp())
-            else:
-                # Naive datetime - assume Asia/Shanghai
-                dt = dt.replace(tzinfo=SHANGHAI_TZ)
-                return int(dt.timestamp())
+                ts_pd = ts_pd.tz_convert("Asia/Shanghai")
+            return int(ts_pd.timestamp())
         except (ValueError, TypeError):
             return None
-    
+
     return None
+
 
 
 def pair_dir_ok_series(
@@ -126,89 +135,80 @@ from scipy.stats import t as student_t
 
 
 def diebold_mariano_p(
-    variant_losses: Sequence[float],
-    baseline_losses: Sequence[float],
-    horizon: int = 24,
-    step: int = 24,
+    variant_dir_ok_list: Sequence[float],
+    baseline_dir_ok_list: Sequence[float],
+    horizon: int = None,
+    step: int = None,
 ) -> float:
     """Diebold-Mariano test for predictive accuracy (one-sided).
     
     H0: variant is NOT better than baseline
-    H1: variant IS better than baseline
+    H1: variant IS better than baseline (higher dir_ok)
     
-    For dir_ok 0/1 values: higher = better (more correct predictions)
-    Internally converts to losses: loss = 1 - value
-    
-    Returns p-value in [0, 1]. 
+    Returns p-value in [0, 1].
     - p < alpha → reject H0, variant is significantly better
     - p >= alpha → fail to reject H0
     
-    Args:
-        variant_losses: Performance series for variant (e.g., dir_ok 0/1, higher=better)
-        baseline_losses: Performance series for baseline
-        horizon: Forecast horizon (default 24, matches backtest_config.HORIZON)
-        step: Walk-forward step (default 24, matches backtest_config.STEP)
-    
-    Returns:
-        float: One-sided p-value
+    Implementation follows Harvey, Leybourne, Newbold (1997) and
+    the project spec §4.2.2.
     """
-    v_raw = np.asarray(variant_losses, dtype=float).ravel()
-    b_raw = np.asarray(baseline_losses, dtype=float).ravel()
+    # Default values from backtest_config
+    if horizon is None or step is None:
+        from config import backtest_config
+        if horizon is None:
+            horizon = backtest_config.HORIZON
+        if step is None:
+            step = backtest_config.STEP
+    
+    v = np.asarray(variant_dir_ok_list, dtype=float).ravel()
+    b = np.asarray(baseline_dir_ok_list, dtype=float).ravel()
     
     # Length check
-    if len(v_raw) != len(b_raw) or len(v_raw) < 100:
+    if len(v) != len(b) or len(v) < 100:
         return 1.0
     
-    T = len(v_raw)
+    T = len(v)
     
-    # Convert to losses: higher input values -> lower losses
-    # For dir_ok: loss = 1 - dir_ok (1=correct->loss=0, 0=incorrect->loss=1)
-    v = 1.0 - v_raw
-    b = 1.0 - b_raw
-    
-    # Loss differential (variant - baseline)
-    # If variant is better (higher accuracy, lower loss), d should be negative
+    # Spec differential: d = v_ok - b_ok (larger is better)
     d = v - b
     d_bar = np.mean(d)
     
-    # If variant is worse (d_bar > 0), return 1.0 immediately
-    if d_bar > 0:
+    # Variant worse or no difference → conservative return 1.0
+    if d_bar <= 0:
         return 1.0
     
-    # If no difference, return 1.0
-    if abs(d_bar) < 1e-12:
-        return 1.0
+    # Lag order: q = max(1, horizon//step - 1)
+    q = max(1, horizon // max(1, step) - 1)
     
-    # Newey-West HAC variance estimator
-    h = max(1, horizon // max(1, step))
+    # Newey-West HAC variance estimator (using /T, positive semi-definite)
+    gamma = np.zeros(q + 1)
+    for j in range(q + 1):
+        # γ_j = sum_{t=j+1}^{T} (d_t - d_bar)(d_{t-j} - d_bar) / T
+        gamma[j] = np.sum((d[j:] - d_bar) * (d[:-j] - d_bar)) / T if j > 0 else np.sum((d - d_bar) ** 2) / T
     
-    # Autocovariances
-    gamma = np.zeros(h)
-    for j in range(h):
-        gamma[j] = np.mean((d[j:] - d_bar) * (d[:-j] - d_bar)) if j > 0 else np.mean((d - d_bar) ** 2)
-    
-    # Newey-West weights (Bartlett kernel)
+    # Bartlett kernel weights
     V = gamma[0]
-    for j in range(1, h):
-        weight = 1.0 - j / h
+    for j in range(1, q + 1):
+        weight = 1.0 - j / (q + 1)
         V += 2.0 * weight * gamma[j]
-    V = V / T
     
-    # Special case: if variance is very small but mean difference is clearly negative,
-    # return 0.0 (perfect significance)
+    # Variance degeneration → conservative return 1.0 (spec requirement)
     if V <= 1e-12:
-        if d_bar < -1e-12:
-            return 0.0
         return 1.0
     
-    # HLN statistic
-    dm_adj = d_bar / np.sqrt(V)
+    # DM statistic
+    dm_stat = d_bar / np.sqrt(V)
     
-    # One-sided p-value
-    p_value = student_t.sf(-dm_adj, df=T - 1)
+    # HLN adjustment factor (Harvey, Leybourne, Newbold 1997)
+    h = horizon // max(1, step)
+    k_hln = np.sqrt((T + 1 - 2*h + h*(h-1)/T) / T)
+    dm_adj = dm_stat * k_hln
     
+    # One-sided p-value (right-tail, since d_bar > 0 and larger is better)
+    p_value = student_t.sf(dm_adj, df=T - 1)
+    
+    # Clamp to [0, 1]
     return float(np.clip(p_value, 0.0, 1.0))
-
 
 def bh_fdr_promote(
     verdicts: Sequence[dict],
@@ -259,6 +259,9 @@ def bh_fdr_promote(
 
         # Sort by (safe_p, variant_id) for deterministic ordering
         def safe_p(v):
+            """Return p_value, but 1.0 if gate_pass=False (spec 4.2.3)."""
+            if not v.get("gate_pass", False):
+                return 1.0  # gate_fail variants sort to end
             p = v.get("p_value")
             return 1.0 if p is None else float(p)
 
