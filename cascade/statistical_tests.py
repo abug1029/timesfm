@@ -208,3 +208,86 @@ def diebold_mariano_p(
     p_value = student_t.sf(-dm_adj, df=T - 1)
     
     return float(np.clip(p_value, 0.0, 1.0))
+
+
+def bh_fdr_promote(
+    verdicts: Sequence[dict],
+    fdr_q: float = 0.10,
+    min_batch_size: int = 4,
+    bonferroni_alpha: float = 0.025,
+) -> dict[str, dict]:
+    """Per-symbol BH-FDR correction for variant promotion.
+
+    Args:
+        verdicts: List of dicts with keys: variant_id, symbol, p_value, gate_pass
+        fdr_q: FDR q-value (default 0.10)
+        min_batch_size: Minimum batch size for BH; below uses Bonferroni (default 4)
+        bonferroni_alpha: Bonferroni alpha threshold (default 0.025)
+
+    Returns:
+        Dict mapping variant_id -> {"fdr_pass": bool}
+        - gate_pass=False -> fdr_pass=False (never passes)
+        - K < min_batch_size -> Bonferroni correction
+        - K >= min_batch_size -> BH-FDR correction
+        - Duplicate variant_id: last write wins
+    """
+    if not verdicts:
+        return {}
+
+    # Group by symbol
+    by_symbol: dict[str, list[dict]] = {}
+    for v in verdicts:
+        symbol = v.get("symbol", "unknown")
+        if symbol not in by_symbol:
+            by_symbol[symbol] = []
+        by_symbol[symbol].append(v)
+
+    all_updates: dict[str, dict] = {}
+
+    for symbol, group in by_symbol.items():
+        # Deduplicate by variant_id (last write wins)
+        seen: dict[str, dict] = {}
+        for v in group:
+            vid = v.get("variant_id")
+            if vid is not None:
+                seen[vid] = v
+        deduped = list(seen.values())
+
+        K = len(deduped)
+        if K == 0:
+            continue
+
+        # Sort by (safe_p, variant_id) for deterministic ordering
+        def safe_p(v):
+            p = v.get("p_value")
+            return 1.0 if p is None else float(p)
+
+        sorted_group = sorted(deduped, key=lambda v: (safe_p(v), v.get("variant_id", "")))
+
+        # Determine threshold
+        if K < min_batch_size:
+            # Bonferroni correction
+            threshold = bonferroni_alpha
+            for v in sorted_group:
+                vid = v.get("variant_id")
+                gate_pass = v.get("gate_pass", False)
+                p = safe_p(v)
+                fdr_pass = gate_pass and (p <= threshold)
+                all_updates[vid] = {"fdr_pass": fdr_pass}
+        else:
+            # BH-FDR correction
+            # Find largest k such that p_(k) <= k/K * q
+            thresholds = [(i + 1) / K * fdr_q for i in range(K)]
+            max_pass_idx = -1
+            for i, v in enumerate(sorted_group):
+                p = safe_p(v)
+                if p <= thresholds[i]:
+                    max_pass_idx = i
+
+            for i, v in enumerate(sorted_group):
+                vid = v.get("variant_id")
+                gate_pass = v.get("gate_pass", False)
+                fdr_pass = gate_pass and (i <= max_pass_idx)
+                all_updates[vid] = {"fdr_pass": fdr_pass}
+
+    return all_updates

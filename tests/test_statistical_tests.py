@@ -159,3 +159,67 @@ def test_diebold_mariano_p_clear_improvement():
 def test_diebold_mariano_p_zero_variance_ones():
     ones = [1] * 200
     assert diebold_mariano_p(ones, ones) == 1.0
+
+from cascade.statistical_tests import bh_fdr_promote
+
+
+def _v(vid, symbol, p, gate=True):
+    return {"variant_id": vid, "symbol": symbol, "p_value": p, "gate_pass": gate}
+
+
+def test_bh_fdr_promote_empty():
+    assert bh_fdr_promote([]) == {}
+
+
+def test_bh_fdr_small_batch_bonferroni():
+    updates = bh_fdr_promote([
+        _v("var_0", "p", 0.01),
+        _v("var_1", "p", 0.02),
+        _v("var_2", "p", 0.03),
+    ])
+    assert updates["var_0"]["fdr_pass"] is True
+    assert updates["var_1"]["fdr_pass"] is True
+    assert updates["var_2"]["fdr_pass"] is False
+
+
+def test_bh_fdr_gate_fail_never_passes():
+    updates = bh_fdr_promote([
+        _v("ok", "p", 0.001, True),
+        _v("bad", "p", 0.001, False),
+        _v("c", "p", 0.20),
+        _v("d", "p", 0.20),
+    ], fdr_q=0.10)
+    assert updates["ok"]["fdr_pass"] is True
+    assert updates["bad"]["fdr_pass"] is False
+
+
+def test_bh_fdr_per_symbol_independent():
+    # 每品种 4 个独立 id
+    verdicts = []
+    for i in range(4):
+        verdicts.append(_v(f"p_{i}", "p", 0.01 + i * 0.01))
+        verdicts.append(_v(f"cu_{i}", "cu", 0.20))
+    updates = bh_fdr_promote(verdicts, fdr_q=0.10)
+    assert any(updates[f"p_{i}"]["fdr_pass"] for i in range(4))
+    assert not any(updates[f"cu_{i}"]["fdr_pass"] for i in range(4))
+
+
+def test_bh_fdr_monotonic():
+    verdicts = [_v(f"var_{i}", "p", 0.01 + i * 0.01) for i in range(10)]
+    updates = bh_fdr_promote(verdicts, fdr_q=0.10)
+    passed = [updates[f"var_{i}"]["fdr_pass"] for i in range(10)]
+    for i in range(9):
+        if passed[i + 1]:
+            assert passed[i] is True
+
+
+def test_bh_fdr_duplicate_keeps_last():
+    verdicts = [
+        _v("var_0", "p", 0.01),
+        _v("var_0", "p", 0.90),  # 后写
+        _v("var_1", "p", 0.02),
+        _v("var_2", "p", 0.03),
+    ]
+    updates = bh_fdr_promote(verdicts)
+    assert set(updates) == {"var_0", "var_1", "var_2"}
+    assert updates["var_0"]["fdr_pass"] is False  # p=0.90 Bonferroni
