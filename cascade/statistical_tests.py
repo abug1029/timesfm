@@ -51,8 +51,13 @@ def safe_normalize_cutoff(ts: Union[str, int, float, None]) -> Optional[int]:
     if isinstance(ts, str):
         ts_stripped = ts.strip()
 
+        # Reject all-digit strings that are too short to be unix timestamps
+        # (e.g. "20240615" must NOT be parsed as a date by pd.Timestamp)
+        if ts_stripped.isdigit() and len(ts_stripped) < 9:
+            return None
+
         # Check if numeric string: isdigit and length >= 9
-        if ts_stripped.isdigit() and len(ts_stripped) >= 9:
+        if ts_stripped.isdigit():
             numeric = int(ts_stripped)
             if numeric > 1e11:  # milliseconds
                 return numeric // 1000
