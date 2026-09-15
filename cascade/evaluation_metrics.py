@@ -372,3 +372,74 @@ def safe_path_corr(
         return 0.0
     corr = np.corrcoef(p, r)[0, 1]
     return float(corr) if np.isfinite(corr) else 0.0
+
+
+def fallback_n_eff(n: int, horizon: int = 24, step: int = 24) -> int:
+    n = int(n)
+    if n <= 0:
+        return 0
+    h = max(1, int(horizon) // max(1, int(step)))
+    factor = 1.0 + 2.0 * sum((1.0 - j / h) ** 2 for j in range(1, h))
+    return max(1, int(n / factor))
+
+
+def calc_prediction_quality(
+    pred_endpoints,
+    real_endpoints,
+    base_prices,
+    pred_paths=None,
+    real_paths=None,
+) -> dict:
+    p_end = np.asarray(pred_endpoints, dtype=float).ravel()
+    r_end = np.asarray(real_endpoints, dtype=float).ravel()
+    base_raw = np.asarray(base_prices, dtype=float).ravel()
+    if not (len(p_end) == len(r_end) == len(base_raw)):
+        raise ValueError("pred/real/base length mismatch")
+    base = np.maximum(base_raw, 1.0)
+    n = len(p_end)
+    delta_pred = p_end - base_raw
+    delta_real = r_end - base_raw
+    eps = 1e-8
+    dir_ok = np.where(
+        np.abs(delta_real) < eps,
+        False,
+        np.sign(delta_pred) == np.sign(delta_real),
+    )
+    dir_acc = float(np.mean(dir_ok)) if n > 0 else 0.0
+    endpoint_mape = float(np.mean(np.abs(p_end - r_end) / base) * 100) if n else 0.0
+    endpoint_bias_pct = float(np.mean((delta_pred - delta_real) / base * 100)) if n else 0.0
+    abs_delta_real = np.abs(delta_real)
+    denom = float(np.sum(abs_delta_real))
+    if denom < 1e-8:
+        weighted_dir_acc = 0.5
+    else:
+        weighted_dir_acc = float(np.sum(abs_delta_real * dir_ok) / denom)
+    path_corr = mae = mape = decay = None
+    if pred_paths is not None and real_paths is not None:
+        p_paths = np.asarray(pred_paths, dtype=float)
+        r_paths = np.asarray(real_paths, dtype=float)
+        corrs = []
+        for i in range(n):
+            c = safe_path_corr(p_paths[i], r_paths[i])
+            if c is not None:
+                corrs.append(c)
+        path_corr = float(np.mean(corrs)) if corrs else None
+        mae = float(np.mean(np.abs(p_paths - r_paths)))
+        mape = float(np.mean(
+            np.abs(p_paths - r_paths) / np.maximum(np.abs(r_paths), 1.0)
+        ) * 100)
+        mid = p_paths.shape[-1] // 2 if p_paths.ndim > 1 else len(p_paths) // 2
+        mae_h1 = float(np.mean(np.abs(p_paths[..., :mid] - r_paths[..., :mid])))
+        mae_h2 = float(np.mean(np.abs(p_paths[..., mid:] - r_paths[..., mid:])))
+        decay = float(mae_h2 / max(mae_h1, 1e-6))
+    return {
+        "dir_acc": dir_acc,
+        "endpoint_mape": endpoint_mape,
+        "endpoint_bias_pct": endpoint_bias_pct,
+        "path_corr": path_corr,
+        "weighted_dir_acc": weighted_dir_acc,
+        "mae": mae,
+        "mape": mape,
+        "decay": decay,
+        "n": n,
+    }
