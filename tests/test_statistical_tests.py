@@ -300,24 +300,39 @@ def test_bh_fdr_gate_fail_pollutes_truncation():
 
 
 def test_diebold_mariano_p_5pp_power():
-    """Spec §4.2.2: T=588, step=2, +5pp should give p ≈ 0.011.
-    
-    使用 seed=84 使得样本 d_bar 接近理论值 0.05，
-    验证 DM 检验在规格功效段的表现。
+    """Spec §4.2.2: +5pp improvement should be significant.
+
+    Constructed paired sequence: 588 points.
+    Baseline: 50% correct (alternating blocks of 10 ones and 10 zeros)
+    Variant:  55% correct (in each 20-point block, 11 ones then 9 zeros)
+    Difference: +5pp on average, deterministic — no random seed needed.
     """
-    import numpy as np
-    np.random.seed(84)
     T = 588
-    # baseline: 50% 正确率
-    baseline = np.random.binomial(1, 0.50, T).tolist()
-    # variant: 55% 正确率（+5pp）
-    variant = np.random.binomial(1, 0.55, T).tolist()
-    
-    # WSL 默认 horizon=24, step=2
+    baseline = []
+    variant = []
+
+    # Each 20-point block: baseline 10 correct, variant 11 correct
+    for _ in range(T // 20):
+        baseline.extend([1] * 10 + [0] * 10)
+        variant.extend([1] * 11 + [0] * 9)
+
+    # Handle remainder (588 % 20 == 8)
+    remainder = T % 20
+    if remainder > 0:
+        r_half = remainder // 2  # 4
+        baseline.extend([1] * r_half + [0] * (remainder - r_half))
+        # variant gets one extra correct in remainder
+        variant.extend([1] * (r_half + 1) + [0] * (remainder - r_half - 1))
+
+    assert len(baseline) == T
+    assert len(variant) == T
+    baseline_acc = sum(baseline) / T
+    variant_acc = sum(variant) / T
+    assert abs(baseline_acc - 0.50) < 0.01, f"baseline acc {baseline_acc}"
+    assert abs(variant_acc - 0.55) < 0.01, f"variant acc {variant_acc}"
+
     p = diebold_mariano_p(variant, baseline)
-    # Spec expects p ≈ 0.011, allow some tolerance
     assert p < 0.05, f"+5pp should be significant, got p={p}"
-    # Stricter: should be close to 0.011
     assert p < 0.02, f"+5pp should give p ≈ 0.011, got p={p}"
 
 
