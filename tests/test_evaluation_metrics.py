@@ -77,6 +77,42 @@ def test_calc_prediction_quality_length_mismatch_raises():
         return
     raise AssertionError("expected ValueError")
 
+
+def test_calc_prediction_quality_path_length_mismatch():
+    """Path count != endpoint count should raise ValueError, not IndexError"""
+    pred_paths = np.arange(100.0, 124.0).reshape(1, 24)  # 1 path
+    real_paths = pred_paths + 0.5
+    try:
+        calc_prediction_quality(
+            [123.0, 123.0],  # 2 endpoints
+            [123.5, 123.5],
+            [100.0, 100.0],
+            pred_paths,  # 1 path != 2 endpoints
+            real_paths,
+        )
+    except ValueError as e:
+        assert "pred_paths length" in str(e)
+        return
+    raise AssertionError("expected ValueError for path length mismatch")
+
+
+def test_calc_prediction_quality_real_path_length_mismatch():
+    """real_paths count != endpoint count should raise ValueError"""
+    pred_paths = np.arange(100.0, 124.0).reshape(2, 12)  # 2 paths
+    real_paths = np.arange(100.0, 112.0).reshape(1, 12)  # 1 path
+    try:
+        calc_prediction_quality(
+            [123.0, 123.0],  # 2 endpoints
+            [123.5, 123.5],
+            [100.0, 100.0],
+            pred_paths,
+            real_paths,  # 1 path != 2 endpoints
+        )
+    except ValueError as e:
+        assert "real_paths length" in str(e)
+        return
+    raise AssertionError("expected ValueError for real_paths length mismatch")
+
 def test_calc_prediction_quality_with_paths():
     pred_paths = np.tile(np.arange(100.0, 124.0), (2, 1))
     real_paths = pred_paths + 0.5

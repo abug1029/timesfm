@@ -418,6 +418,15 @@ def calc_prediction_quality(
     if pred_paths is not None and real_paths is not None:
         p_paths = np.asarray(pred_paths, dtype=float)
         r_paths = np.asarray(real_paths, dtype=float)
+        # I4 fix: validate path count matches endpoint count
+        if p_paths.shape[0] != n:
+            raise ValueError(
+                f'pred_paths length {p_paths.shape[0]} != endpoint count {n}'
+            )
+        if r_paths.shape[0] != n:
+            raise ValueError(
+                f'real_paths length {r_paths.shape[0]} != endpoint count {n}'
+            )
         corrs = []
         for i in range(n):
             c = safe_path_corr(p_paths[i], r_paths[i])

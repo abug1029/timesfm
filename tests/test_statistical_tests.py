@@ -1,5 +1,7 @@
 """Tests for statistical tests module."""
 import numpy as np
+import pandas as pd
+from datetime import datetime
 from cascade.statistical_tests import safe_normalize_cutoff, pair_dir_ok_series
 
 
@@ -209,6 +211,42 @@ def test_bh_fdr_gate_fail_never_passes():
     ], fdr_q=0.10)
     assert updates["ok"]["fdr_pass"] is True
     assert updates["bad"]["fdr_pass"] is False
+
+
+
+
+def test_safe_normalize_cutoff_pd_timestamp():
+    """pd.Timestamp naive should localize to Asia/Shanghai."""
+    ts = safe_normalize_cutoff(pd.Timestamp("2024-06-15 09:00:00"))
+    assert ts is not None
+    expected = int(pd.Timestamp("2024-06-15 09:00:00", tz="Asia/Shanghai").timestamp())
+    assert ts == expected
+
+
+def test_safe_normalize_cutoff_pd_timestamp_tz_aware():
+    """UTC and Asia/Shanghai representing same instant should give same unix."""
+    utc = safe_normalize_cutoff(pd.Timestamp("2024-06-15 01:00:00", tz="UTC"))
+    local = safe_normalize_cutoff(pd.Timestamp("2024-06-15 09:00:00", tz="Asia/Shanghai"))
+    assert utc == local
+
+
+def test_safe_normalize_cutoff_datetime():
+    """datetime naive should localize to Asia/Shanghai."""
+    dt = datetime(2024, 6, 15, 9, 0, 0)
+    ts = safe_normalize_cutoff(dt)
+    assert ts is not None
+    expected = int(pd.Timestamp("2024-06-15 09:00:00", tz="Asia/Shanghai").timestamp())
+    assert ts == expected
+
+
+def test_safe_normalize_cutoff_numeric_string_not_date():
+    """Short numeric strings should not be treated as unix timestamps."""
+    # "20240615" is 8 digits (< 9), should NOT be parsed as unix ts
+    assert safe_normalize_cutoff("20240615") is None
+    # 10-digit numeric string is valid unix seconds
+    assert safe_normalize_cutoff("1718413200") == 1718413200
+    # 13-digit numeric string is valid unix milliseconds
+    assert safe_normalize_cutoff("1718413200000") == 1718413200
 
 
 def test_bh_fdr_per_symbol_independent():
