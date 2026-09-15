@@ -129,3 +129,33 @@ def test_pair_dir_ok_series_short_tuple():
     v, b = pair_dir_ok_series(variant, baseline)
     assert v == [1]
     assert b == [0]
+
+from cascade.statistical_tests import diebold_mariano_p
+
+
+def test_diebold_mariano_p_identical_is_one():
+    x = [1, 0, 1, 0] * 50  # T=200
+    assert diebold_mariano_p(x, x) == 1.0
+
+
+def test_diebold_mariano_p_worse_is_one():
+    baseline = [1] * 200
+    variant = [0] * 200
+    assert diebold_mariano_p(variant, baseline) == 1.0
+
+
+def test_diebold_mariano_p_length_or_short():
+    assert diebold_mariano_p([1, 0, 1], [1, 0]) == 1.0
+    assert diebold_mariano_p([1, 0] * 40, [0, 1] * 40) == 1.0  # T=80 < 100
+
+
+def test_diebold_mariano_p_clear_improvement():
+    baseline = [0] * 200
+    variant = [1] * 200
+    p = diebold_mariano_p(variant, baseline, horizon=24, step=24)
+    assert 0.0 <= p < 0.01
+
+
+def test_diebold_mariano_p_zero_variance_ones():
+    ones = [1] * 200
+    assert diebold_mariano_p(ones, ones) == 1.0
