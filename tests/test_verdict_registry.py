@@ -4,6 +4,8 @@ from registry_lib import (
     append_verdict, load_snapshot, pass_variants, dead_variants,
     queue_enqueue, queue_claim, queue_ack, queue_recover, queue_load,
     in_flight_ids, validate_verdict,
+    read_verdicts, update_batch_verdicts,
+    make_error_tombstone, make_timeout_tombstone,
 )
 
 def _v(vid, **kw):
@@ -97,3 +99,97 @@ def test_tolerates_partial_line(tmp_path):
         f.write('{"variant_id": "hal')
     assert [r["variant_id"] for r in queue_load(q)] == ["v1"]
     assert queue_enqueue(q, [_row()], dead=set(), existing=set()) == 0
+
+
+# ---------------------------------------------------------------------------
+# v2 tests
+# ---------------------------------------------------------------------------
+
+def test_read_verdicts_skips_bad_line(tmp_path):
+    p = tmp_path / "v.jsonl"
+    p.write_text(
+        '{"variant_id": "v1", "batch_id": "b1"}\n'
+        "not json\n"
+        '{"variant_id": "v2", "batch_id": "b1"}\n',
+        encoding="utf-8",
+    )
+    recs = read_verdicts(str(p))
+    assert [r["variant_id"] for r in recs] == ["v1", "v2"]
+
+
+def test_append_verdict_path_dedup(tmp_path):
+    p = str(tmp_path / "v.jsonl")
+    append_verdict(p, {"variant_id": "v1", "batch_id": "b1", "schema": "fm.aligned_verdict.v2"})
+    append_verdict(p, {"variant_id": "v1", "batch_id": "b1", "schema": "fm.aligned_verdict.v2"})
+    assert len(read_verdicts(p)) == 1
+
+
+def test_update_batch_verdicts_metrics_sync(tmp_path):
+    p = str(tmp_path / "v.jsonl")
+    append_verdict(
+        p,
+        {
+            "variant_id": "v1",
+            "batch_id": "b1",
+            "schema": "fm.aligned_verdict.v2",
+            "metrics": {"dir_acc": 0.5},
+            "fdr_pass": None,
+        },
+    )
+    update_batch_verdicts(p, "b1", {"v1": {"fdr_pass": True}})
+    rec = read_verdicts(p)[0]
+    assert rec["fdr_pass"] is True
+    assert rec["metrics"]["fdr_pass"] is True
+    assert rec["metrics"]["dir_acc"] == 0.5
+
+
+def test_update_batch_no_metrics_key_does_not_invent(tmp_path):
+    p = str(tmp_path / "v.jsonl")
+    append_verdict(
+        p,
+        {
+            "variant_id": "v1",
+            "batch_id": "b1",
+            "schema": "fm.aligned_verdict.v2",
+            "fdr_pass": None,
+        },
+    )
+    update_batch_verdicts(p, "b1", {"v1": {"fdr_pass": True}})
+    rec = read_verdicts(p)[0]
+    assert rec["fdr_pass"] is True
+    assert "metrics" not in rec  # do not invent if missing
+
+
+def test_pass_variants_v2_needs_fdr(tmp_path):
+    snap = {
+        "a": {
+            "variant_id": "a",
+            "schema": "fm.aligned_verdict.v2",
+            "status": "ok",
+            "gate_pass": True,
+            "fdr_pass": True,
+        },
+        "b": {
+            "variant_id": "b",
+            "schema": "fm.aligned_verdict.v2",
+            "status": "ok",
+            "gate_pass": True,
+            "fdr_pass": False,
+        },
+        "c": {
+            "variant_id": "c",
+            "schema": "fm.aligned_verdict.v2",
+            "status": "ok",
+            "gate_pass": True,
+            "migrated_pass": True,
+            "fdr_pass": True,
+        },
+    }
+    assert {v["variant_id"] for v in pass_variants(snap)} == {"a", "c"}
+
+
+def test_error_tombstone_has_metrics():
+    t = make_error_tombstone("m", "m_rsi", "b1", RuntimeError("boom"))
+    assert t["schema"] == "fm.aligned_verdict.v2"
+    assert t["status"] == "error" and t["gate_pass"] is False and t["p_value"] == 1.0
+    assert t["metrics"]["batch_id"] == "b1"
