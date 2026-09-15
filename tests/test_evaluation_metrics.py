@@ -122,3 +122,10 @@ def test_calc_prediction_quality_with_paths():
     )
     assert result["path_corr"] is not None
     assert result["mae"] is not None and result["decay"] is not None
+
+
+def test_fallback_n_eff_default_from_config():
+    """Default should read from backtest_config (WSL: STEP=2)"""
+    # WSL: HORIZON=24, STEP=2 → h=12, factor≈8.03, n_eff≈73
+    n_eff = fallback_n_eff(588)
+    assert 70 <= n_eff <= 75, f"Expected n_eff≈73 for STEP=2, got {n_eff}"

@@ -374,7 +374,20 @@ def safe_path_corr(
     return float(corr) if np.isfinite(corr) else 0.0
 
 
-def fallback_n_eff(n: int, horizon: int = 24, step: int = 24) -> int:
+def fallback_n_eff(n: int, horizon: int = None, step: int = None) -> int:
+    """Bartlett effective sample size estimate.
+    
+    Defaults: Read from config.backtest_config if not provided.
+    WSL production: HORIZON=24, STEP=2 (overlapping windows).
+    """
+    # 默认值从 backtest_config 读
+    if horizon is None or step is None:
+        from config import backtest_config
+        if horizon is None:
+            horizon = backtest_config.HORIZON
+        if step is None:
+            step = backtest_config.STEP
+    
     n = int(n)
     if n <= 0:
         return 0
