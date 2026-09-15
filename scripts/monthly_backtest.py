@@ -416,11 +416,11 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
             if i < 3 or i % 50 == 0:
                 print(f" done")
         except Exception as e:
-            points.append({"cutoff": dt, "error": str(e)})
+            points.append({"cutoff": cutoff, "error": str(e)})
             if checkpoint_fp is not None:
                 import json as _json
                 checkpoint_fp.write(_json.dumps({
-                    "symbol": sym_lower, "idx": int(idx), "error": str(e), "cutoff": dt,
+                    "symbol": sym_lower, "idx": int(idx), "error": str(e), "cutoff": cutoff,
                 }, ensure_ascii=False) + "\n")
                 checkpoint_fp.flush()
             if i < 3 or i % 50 == 0:
