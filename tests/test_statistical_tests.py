@@ -297,3 +297,28 @@ def test_bh_fdr_gate_fail_pollutes_truncation():
     assert updates["fail_tiny"]["fdr_pass"] is False
     assert updates["c"]["fdr_pass"] is False
     assert updates["d"]["fdr_pass"] is False
+
+
+def test_diebold_mariano_p_5pp_power():
+    """T=588, 重叠抽样 step=2, variant 比 baseline 高 5pp，应该 p < 0.05"""
+    import numpy as np
+    np.random.seed(42)
+    T = 588
+    # baseline: 50% 正确率
+    baseline = np.random.binomial(1, 0.50, T).tolist()
+    # variant: 55% 正确率（+5pp）
+    variant = np.random.binomial(1, 0.55, T).tolist()
+    
+    # WSL 默认 horizon=24, step=2
+    p = diebold_mariano_p(variant, baseline)
+    assert p < 0.05, f"+5pp improvement should be significant, got p={p}"
+
+
+def test_safe_normalize_cutoff_float_string():
+    """Float unix timestamp string should work"""
+    assert safe_normalize_cutoff("1718413200.0") == 1718413200
+
+
+def test_safe_normalize_cutoff_nat():
+    """pd.NaT should return None, not raise"""
+    assert safe_normalize_cutoff(pd.NaT) is None

@@ -32,6 +32,8 @@ def safe_normalize_cutoff(ts: Union[str, int, float, None]) -> Optional[int]:
 
     # Handle pd.Timestamp / datetime
     if isinstance(ts, (pd.Timestamp, datetime)):
+        if pd.isna(ts):  # pd.NaT
+            return None
         ts_pd = pd.Timestamp(ts)
         if ts_pd.tzinfo is None:
             # Naive -> localize to Asia/Shanghai
@@ -62,6 +64,16 @@ def safe_normalize_cutoff(ts: Union[str, int, float, None]) -> Optional[int]:
             if numeric > 1e11:  # milliseconds
                 return numeric // 1000
             return numeric
+
+        # Try float unix string (e.g. "1718413200.0")
+        try:
+            numeric = float(ts_stripped)
+            if numeric > 1e11:  # milliseconds
+                return int(numeric / 1000)
+            elif len(ts_stripped) >= 9 and ts_stripped.replace(".", "", 1).isdigit():
+                return int(numeric)
+        except ValueError:
+            pass
 
         # Try parsing as datetime via pd.Timestamp
         try:
@@ -191,13 +203,12 @@ def diebold_mariano_p(
         # γ_j = sum_{t=j+1}^{T} (d_t - d_bar)(d_{t-j} - d_bar) / T
         gamma[j] = np.sum((d[j:] - d_bar) * (d[:-j] - d_bar)) / T if j > 0 else np.sum((d - d_bar) ** 2) / T
     
-    # Bartlett kernel weights
+    # Bartlett 核权重
     V = gamma[0]
     for j in range(1, q + 1):
         weight = 1.0 - j / (q + 1)
         V += 2.0 * weight * gamma[j]
-    
-    # Variance degeneration → conservative return 1.0 (spec requirement)
+    V /= T  # 均值的方差（规格 §4.2.2 要求）
     if V <= 1e-12:
         return 1.0
     
@@ -206,7 +217,7 @@ def diebold_mariano_p(
     
     # HLN adjustment factor (Harvey, Leybourne, Newbold 1997)
     h = horizon // max(1, step)
-    k_hln = np.sqrt((T + 1 - 2*h + h*(h-1)/T) / T)
+    k_hln = np.sqrt(max(1e-6, (T + 1 - 2*h + h*(h-1)/T) / T))  # max 防护
     dm_adj = dm_stat * k_hln
     
     # One-sided p-value (right-tail, since d_bar > 0 and larger is better)

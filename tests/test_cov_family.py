@@ -52,3 +52,12 @@ def test_no_substring_false_positives():
     assert resolve_cov_family({"cov_override": "cabbage"}) == "unknown"
     # "std" should NOT match "standard"
     assert resolve_cov_family({"cov_override": "standard"}) == "unknown"
+
+
+def test_spec_9_3_keywords():
+    """Spec §9.3 name_hints should match"""
+    # Empty pool, rely on heuristic
+    assert resolve_cov_family({"cov_override": "roc_x"}) == "momentum"
+    assert resolve_cov_family({"cov_override": "ema_cross"}) == "momentum"
+    assert resolve_cov_family({"cov_override": "holiday"}) == "calendar"
+    assert resolve_cov_family({"cov_override": "spread_x"}) == "term_structure"

@@ -30,12 +30,13 @@ def _wb(keyword: str) -> str:
 
 
 # Heuristic keywords for each family (word boundary matching)
+# Spec §9.3 name_hints
 NAME_HINTS = {
-    "momentum": [_wb(k) for k in ["rsi", "slope", "ha_body", "reversal", "momentum"]],
+    "momentum": [_wb(k) for k in ["rsi", "slope", "ha_body", "reversal", "momentum", "roc", "roc_x", "ema_cross"]],
     "volatility": [_wb(k) for k in ["atr", "vol", "volatility", "bb", "std", "range"]],
     "inventory": [_wb(k) for k in ["oi", "ccl", "inventory", "open_interest", "commitment"]],
-    "calendar": [_wb(k) for k in ["calendar", "cyclical", "seasonal", "monthly"]],
-    "term_structure": [_wb(k) for k in ["basis", "term", "structure", "contango", "backwardation"]],
+    "calendar": [_wb(k) for k in ["calendar", "cyclical", "seasonal", "monthly", "holiday"]],
+    "term_structure": [_wb(k) for k in ["basis", "term", "structure", "contango", "backwardation", "spread", "spread_x"]],
     "macro_sentiment": [_wb(k) for k in ["macro", "sentiment", "vix", "dxy", "correlation"]],
 }
 
