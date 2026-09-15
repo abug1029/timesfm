@@ -7,8 +7,8 @@ VERDICT_FIELDS = {"variant_id", "symbol", "cov_override", "max_points", "n",
                   "schema"}
 
 VERDICT_FIELDS_V2 = {
-    "schema", "variant_id", "symbol", "cov_override", "status", "stage",
-    "batch_id", "n", "n_eff", "dir_acc", "gate_pass",
+    "schema", "variant_id", "symbol", "cov_override", "cov_family", "status", "stage",
+    "batch_id", "n", "n_eff", "dir_acc", "weighted_dir_acc", "gate_pass",
     "p_value", "fdr_pass", "migrated_pass",
     "endpoint_mape", "endpoint_bias_pct", "path_corr", "mae", "mape", "decay",
     "checkpoint_path", "slow_loop_pid", "git_rev", "decided_at",
@@ -16,6 +16,7 @@ VERDICT_FIELDS_V2 = {
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
     "fdr_pass", "migrated_pass", "endpoint_mape", "endpoint_bias_pct",
+    "cov_family", "weighted_dir_acc",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",
@@ -171,7 +172,7 @@ def validate_verdict_v2(v):
     nullable_ok = missing - VERDICT_FIELDS_V2_NULLABLE
     if nullable_ok:
         errs.append(f"missing v2 fields: {sorted(nullable_ok)}")
-    for k in ("n", "n_eff", "dir_acc", "p_value"):
+    for k in ("n", "n_eff", "dir_acc", "weighted_dir_acc", "p_value"):
         if k in v and v.get(k) is not None and not isinstance(v[k], (int, float)):
             errs.append(f"{k} must be numeric")
     return errs
@@ -200,32 +201,51 @@ def read_verdicts(path):
         lock_f.close()
 
 
+def _is_duplicate_unlocked(path, verdict):
+    """Check if verdict already exists (by batch_id+variant_id). Lock must be held."""
+    new_bid = verdict.get("batch_id")
+    new_vid = verdict.get("variant_id")
+    if new_bid is None or new_vid is None:
+        return False
+    for e in _iter_jsonl(str(path)):
+        if e.get("batch_id") == new_bid and e.get("variant_id") == new_vid:
+            return True
+    return False
+
+
 def append_verdict_path(registry, verdict):
-    """Append verdict to path (str|Path) with exclusive lock, dedup by (batch_id, variant_id)."""
+    """Append verdict to path (str|Path) with exclusive lock + fsync.
+
+    True append mode - reads only for dedup check, never rewrites the file.
+    Validates schema before writing.
+    """
     p = str(registry)
     parent = os.path.dirname(p)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    lock_f = open(p + ".lock", "a")
+
+    # Schema validation before any IO
+    errs = validate_verdict(verdict)
+    if errs:
+        raise ValueError(f"invalid verdict: {errs}")
+
+    lock_path = p + ".lock"
+    lock_f = open(lock_path, "a")
     try:
         fcntl.flock(lock_f, fcntl.LOCK_EX)
-        existing = list(_iter_jsonl(p)) if os.path.exists(p) else []
-        new_bid = verdict.get("batch_id")
-        new_vid = verdict.get("variant_id")
-        if new_bid is not None and new_vid is not None:
-            for e in existing:
-                if e.get("batch_id") == new_bid and e.get("variant_id") == new_vid:
-                    return  # first-write-wins
-        tmp = f"{p}.{os.getpid()}.{time.time_ns()}.tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            for row in existing:
-                f.write(json.dumps(row, ensure_ascii=False) + "\n")
-            f.write(json.dumps(verdict, ensure_ascii=False) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, p)
+        try:
+            # Dedup check under lock
+            if _is_duplicate_unlocked(p, verdict):
+                return  # first-write-wins
+
+            # True append + fsync
+            with open(p, "a", encoding="utf-8") as f:
+                f.write(json.dumps(verdict, ensure_ascii=False) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+        finally:
+            fcntl.flock(lock_f, fcntl.LOCK_UN)
     finally:
-        fcntl.flock(lock_f, fcntl.LOCK_UN)
         lock_f.close()
 
 
@@ -289,17 +309,19 @@ def make_error_tombstone(symbol, variant_id, batch_id, exception):
         "symbol": symbol,
         "batch_id": batch_id,
         "cov_override": None,
+        "cov_family": "unknown",
         "status": "error",
         "stage": "aligned",
         "n": 0,
         "n_eff": 0,
         "dir_acc": 0.0,
+        "weighted_dir_acc": 0.5,
         "gate_pass": False,
         "p_value": 1.0,
         "fdr_pass": False,
         "migrated_pass": False,
-        "endpoint_mape": None,
-        "endpoint_bias_pct": None,
+        "endpoint_mape": 0.0,
+        "endpoint_bias_pct": 0.0,
         "path_corr": None,
         "mae": None,
         "mape": None,
@@ -308,16 +330,18 @@ def make_error_tombstone(symbol, variant_id, batch_id, exception):
         "slow_loop_pid": None,
         "git_rev": None,
         "decided_at": None,
-        "error": msg,
+        "error_message": msg,
         "metrics": {
             "batch_id": batch_id,
-            "variant_id": variant_id,
             "symbol": symbol,
+            "n": 0,
+            "n_eff": 0,
+            "dir_acc": 0.0,
+            "endpoint_mape": 0.0,
+            "endpoint_bias_pct": 0.0,
+            "path_corr": None,
+            "weighted_dir_acc": 0.5,
             "status": "error",
-            "gate_pass": False,
-            "p_value": 1.0,
-            "fdr_pass": False,
-            "migrated_pass": False,
         },
     }
 
@@ -330,17 +354,19 @@ def make_timeout_tombstone(symbol, variant_id, batch_id):
         "symbol": symbol,
         "batch_id": batch_id,
         "cov_override": None,
+        "cov_family": "unknown",
         "status": "timeout",
         "stage": "aligned",
         "n": 0,
         "n_eff": 0,
         "dir_acc": 0.0,
+        "weighted_dir_acc": 0.5,
         "gate_pass": False,
         "p_value": 1.0,
         "fdr_pass": False,
         "migrated_pass": False,
-        "endpoint_mape": None,
-        "endpoint_bias_pct": None,
+        "endpoint_mape": 0.0,
+        "endpoint_bias_pct": 0.0,
         "path_corr": None,
         "mae": None,
         "mape": None,
@@ -351,13 +377,15 @@ def make_timeout_tombstone(symbol, variant_id, batch_id):
         "decided_at": None,
         "metrics": {
             "batch_id": batch_id,
-            "variant_id": variant_id,
             "symbol": symbol,
+            "n": 0,
+            "n_eff": 0,
+            "dir_acc": 0.0,
+            "endpoint_mape": 0.0,
+            "endpoint_bias_pct": 0.0,
+            "path_corr": None,
+            "weighted_dir_acc": 0.5,
             "status": "timeout",
-            "gate_pass": False,
-            "p_value": 1.0,
-            "fdr_pass": False,
-            "migrated_pass": False,
         },
     }
 

@@ -341,7 +341,15 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 delta_real = float(np.clip(delta_real_raw, -max_move, max_move))
             else:
                 delta_real = delta_real_raw
-            dir_ok = bool(np.sign(delta_pred) == np.sign(delta_real_raw)) if abs(delta_real_raw) >= 1e-8 else False
+            # dir_ok uses endpoint (pred[-1]-base) — consistent with calc_prediction_quality
+            # weighted delta_pred still used for pnl / economic scale below
+            _delta_pred_endpoint = float(pred[-1] - base)
+            _delta_real_endpoint = float(real[-1] - base)
+            _eps = 1e-8
+            if abs(_delta_real_endpoint) < _eps:
+                dir_ok = False  # zero move = wrong
+            else:
+                dir_ok = bool(np.sign(_delta_pred_endpoint) == np.sign(_delta_real_endpoint))
             if i < 3:
                 print(f" dir_ok", end="", flush=True)
             mae = float(np.mean(np.abs(pred - real)))
@@ -376,8 +384,8 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 print(f" cov={cov}", end="", flush=True)
 
             # Per-point prediction-quality metrics
-            _ep_mape = float(abs(pred[-1] - real[-1]) / base * 100) if base else 0.0
-            _ep_bias = float((delta_pred - delta_real_raw) / base * 100) if base else 0.0
+            _ep_mape = float(abs(pred[-1] - real[-1]) / max(base, 1.0) * 100)
+            _ep_bias = float((_delta_pred_endpoint - _delta_real_endpoint) / max(base, 1.0) * 100)
             _pc = safe_path_corr(pred, real)
 
             point = {

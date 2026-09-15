@@ -117,25 +117,50 @@ def test_read_verdicts_skips_bad_line(tmp_path):
     assert [r["variant_id"] for r in recs] == ["v1", "v2"]
 
 
+def _v2_complete(vid="v1", bid="b1", **kw):
+    """Complete v2 verdict with all required fields."""
+    base = {
+        "schema": "fm.aligned_verdict.v2",
+        "variant_id": vid,
+        "symbol": "m",
+        "cov_override": None,
+        "cov_family": "unknown",
+        "status": "ok",
+        "stage": "aligned",
+        "batch_id": bid,
+        "n": 100,
+        "n_eff": 80,
+        "dir_acc": 0.55,
+        "weighted_dir_acc": 0.6,
+        "gate_pass": True,
+        "p_value": 0.01,
+        "fdr_pass": None,
+        "migrated_pass": None,
+        "endpoint_mape": None,
+        "endpoint_bias_pct": None,
+        "path_corr": None,
+        "mae": None,
+        "mape": None,
+        "decay": None,
+        "checkpoint_path": None,
+        "slow_loop_pid": None,
+        "git_rev": None,
+        "decided_at": None,
+    }
+    base.update(kw)
+    return base
+
+
 def test_append_verdict_path_dedup(tmp_path):
     p = str(tmp_path / "v.jsonl")
-    append_verdict(p, {"variant_id": "v1", "batch_id": "b1", "schema": "fm.aligned_verdict.v2"})
-    append_verdict(p, {"variant_id": "v1", "batch_id": "b1", "schema": "fm.aligned_verdict.v2"})
+    append_verdict(p, _v2_complete("v1", "b1"))
+    append_verdict(p, _v2_complete("v1", "b1"))
     assert len(read_verdicts(p)) == 1
 
 
 def test_update_batch_verdicts_metrics_sync(tmp_path):
     p = str(tmp_path / "v.jsonl")
-    append_verdict(
-        p,
-        {
-            "variant_id": "v1",
-            "batch_id": "b1",
-            "schema": "fm.aligned_verdict.v2",
-            "metrics": {"dir_acc": 0.5},
-            "fdr_pass": None,
-        },
-    )
+    append_verdict(p, _v2_complete("v1", "b1", metrics={"dir_acc": 0.5}))
     update_batch_verdicts(p, "b1", {"v1": {"fdr_pass": True}})
     rec = read_verdicts(p)[0]
     assert rec["fdr_pass"] is True
@@ -145,15 +170,7 @@ def test_update_batch_verdicts_metrics_sync(tmp_path):
 
 def test_update_batch_no_metrics_key_does_not_invent(tmp_path):
     p = str(tmp_path / "v.jsonl")
-    append_verdict(
-        p,
-        {
-            "variant_id": "v1",
-            "batch_id": "b1",
-            "schema": "fm.aligned_verdict.v2",
-            "fdr_pass": None,
-        },
-    )
+    append_verdict(p, _v2_complete("v1", "b1"))
     update_batch_verdicts(p, "b1", {"v1": {"fdr_pass": True}})
     rec = read_verdicts(p)[0]
     assert rec["fdr_pass"] is True

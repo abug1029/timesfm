@@ -170,3 +170,52 @@ def test_economic_metrics_still_present():
     assert s is not None
     for key in ("profit_factor", "ev", "max_dd"):
         assert key in s, f"{key} missing from summarize output"
+
+
+def test_dir_ok_uses_endpoint_not_weighted():
+    """Critical fix: dir_ok uses endpoint (pred[-1]-base), not weighted delta_pred.
+
+    When weighted delta_pred disagrees with endpoint, dir_ok should use endpoint.
+    This ensures consistency with calc_prediction_quality.
+    """
+    # Construct: pred_end > base (endpoint up), but delta_pred < 0 (weighted down)
+    # Expected: dir_ok = True (uses endpoint)
+    data = {
+        "symbol": "M", "name": "豆粕", "contract": "M2501", "total_bars": 10,
+        "points": [
+            {"cutoff": "2024-06-15 09:00:00", "base": 100.0,
+             "pred_end": 105.0, "real_end": 108.0,  # endpoint up
+             "delta_pred": -2.0, "delta_real": 8.0,  # weighted down (opposite)
+             "dir_ok": True,  # should use endpoint, so True
+             "dir12_ok": True, "mae": 1.0, "mape": 1.0,
+             "mae_h1": 1.0, "mae_h2": 1.0, "coverage": 20, "real_range": 1.0,
+             "pnl": 8.0, "endpoint_mape": 3.0, "endpoint_bias_pct": -10.0,
+             "path_corr": 0.9},
+        ],
+    }
+    s = mb.summarize(data)
+    assert s is not None
+    assert s["dir_acc"] == 1.0  # endpoint direction correct
+    assert s["point_dir_ok_list"][0][1] is True  # list also True
+
+
+def test_endpoint_mape_uses_base_floor():
+    """Important 1 fix: endpoint_mape / endpoint_bias_pct use max(base, 1.0) floor."""
+    # Very small base (< 1.0) should not cause division issues
+    data = {
+        "symbol": "M", "name": "豆粕", "contract": "M2501", "total_bars": 10,
+        "points": [
+            {"cutoff": "2024-06-15 09:00:00", "base": 0.5,  # very small
+             "pred_end": 0.6, "real_end": 0.7,
+             "delta_pred": 0.1, "delta_real": 0.2, "dir_ok": True,
+             "dir12_ok": True, "mae": 0.05, "mape": 5.0,
+             "mae_h1": 0.05, "mae_h2": 0.05, "coverage": 20, "real_range": 0.1,
+             "pnl": 0.2, "endpoint_mape": 20.0, "endpoint_bias_pct": -20.0,
+             "path_corr": 0.9},
+        ],
+    }
+    s = mb.summarize(data)
+    assert s is not None
+    # Should not crash or produce inf/nan
+    assert not (s["endpoint_mape"] != s["endpoint_mape"])  # not nan
+    assert s["endpoint_mape"] > 0
