@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -17,14 +18,31 @@ ALLOWED_FAMILIES = {
     "macro_sentiment",
 }
 
-# Heuristic keywords for each family (from spec §9.3)
+# Word-boundary lookarounds that treat underscore as a separator
+# (Python \b treats _ as a word char, which causes false negatives on names like "new_atr_x")
+_WB_BEFORE = r"(?<![a-zA-Z0-9])"
+_WB_AFTER = r"(?![a-zA-Z0-9])"
+
+
+def _wb(keyword: str) -> str:
+    """Wrap keyword in boundary assertions (underscore-safe)."""
+    return f"{_WB_BEFORE}{re.escape(keyword)}{_WB_AFTER}"
+
+
+# Heuristic keywords for each family (word boundary matching)
 NAME_HINTS = {
-    "momentum": ["rsi", "slope", "ha_body", "reversal", "momentum"],
-    "volatility": ["atr", "vol", "volatility", "bb", "std", "range"],
-    "inventory": ["oi", "ccl", "inventory", "open_interest", "commitment"],
-    "calendar": ["calendar", "cyclical", "seasonal", "monthly"],
-    "term_structure": ["basis", "term", "structure", "contango", "backwardation"],
-    "macro_sentiment": ["macro", "sentiment", "vix", "dxy", "correlation"],
+    "momentum": [_wb(k) for k in ["rsi", "slope", "ha_body", "reversal", "momentum"]],
+    "volatility": [_wb(k) for k in ["atr", "vol", "volatility", "bb", "std", "range"]],
+    "inventory": [_wb(k) for k in ["oi", "ccl", "inventory", "open_interest", "commitment"]],
+    "calendar": [_wb(k) for k in ["calendar", "cyclical", "seasonal", "monthly"]],
+    "term_structure": [_wb(k) for k in ["basis", "term", "structure", "contango", "backwardation"]],
+    "macro_sentiment": [_wb(k) for k in ["macro", "sentiment", "vix", "dxy", "correlation"]],
+}
+
+# Pre-compile patterns for performance
+_COMPILED_HINTS = {
+    family: [re.compile(p) for p in patterns]
+    for family, patterns in NAME_HINTS.items()
 }
 
 
@@ -72,7 +90,8 @@ def resolve_cov_family(verdict: dict, covariate_pool: Optional[dict] = None) -> 
         covariate_pool: Pre-loaded pool dict. If None, loads default.
 
     Returns:
-        Family name from ALLOWED_FAMILIES, or "unknown"
+        Family name from ALLOWED_FAMILIES, or "unknown".
+        Note: Caller must filter "unknown" when computing families_hit count.
     """
     if covariate_pool is None:
         covariate_pool = load_covariate_pool()
@@ -89,11 +108,11 @@ def resolve_cov_family(verdict: dict, covariate_pool: Optional[dict] = None) -> 
                 return family
             # Family not in controlled vocabulary, continue to heuristic
 
-    # Level 2: Heuristic keyword matching
+    # Level 2: Heuristic keyword matching (boundary-aware, underscore-safe)
     search_text = f"{cov_override} {variant_id}".lower()
-    for family, keywords in NAME_HINTS.items():
-        for keyword in keywords:
-            if keyword in search_text:
+    for family, compiled_patterns in _COMPILED_HINTS.items():
+        for pattern in compiled_patterns:
+            if pattern.search(search_text):
                 return family
 
     # Level 3: Fallback

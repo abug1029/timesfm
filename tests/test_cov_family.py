@@ -14,3 +14,40 @@ def test_name_heuristic():
 
 def test_unknown_fallback():
     assert resolve_cov_family({"cov_override": "zzz", "variant_id": "foo"}) == "unknown"
+
+
+def test_pool_format_pool_key():
+    """Test dict format with 'pool' key"""
+    pool_data = {"pool": [{"name": "test_atr", "family": "volatility"}]}
+    assert resolve_cov_family({"cov_override": "test_atr"}, pool_data) == "volatility"
+
+
+def test_pool_format_list():
+    """Test list format (wrapped in covariates)"""
+    pool_data = {"covariates": [{"name": "test_rsi", "family": "momentum"}]}
+    assert resolve_cov_family({"cov_override": "test_rsi"}, pool_data) == "momentum"
+
+
+def test_level1_invalid_family_fallback():
+    """Level 1 match but invalid family should fall through to Level 2"""
+    pool = {"covariates": [{"name": "test_cov", "family": "invalid_family"}]}
+    # Should skip Level 1 (invalid family) and match via heuristic (atr -> volatility)
+    assert resolve_cov_family({"cov_override": "test_cov_atr"}, pool) == "volatility"
+
+
+def test_empty_inputs():
+    """Empty cov_override and variant_id"""
+    assert resolve_cov_family({}) == "unknown"
+    assert resolve_cov_family({"cov_override": "", "variant_id": ""}) == "unknown"
+
+
+def test_no_substring_false_positives():
+    """Short keywords should not match substrings"""
+    # "oi" should NOT match "point" or "voice"
+    assert resolve_cov_family({"cov_override": "point", "variant_id": "voice"}) == "unknown"
+    # "vol" should NOT match "evolve"
+    assert resolve_cov_family({"cov_override": "evolve"}) == "unknown"
+    # "bb" should NOT match "cabbage"
+    assert resolve_cov_family({"cov_override": "cabbage"}) == "unknown"
+    # "std" should NOT match "standard"
+    assert resolve_cov_family({"cov_override": "standard"}) == "unknown"
