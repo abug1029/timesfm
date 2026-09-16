@@ -75,3 +75,13 @@ task_FM/evaluations/output/
 **/.praxist-venv/**/*.pth
 **/zz_fm_mem_guard.pth
 **/zz_fm_mem_guard_loader.py
+
+# Runtime logs and guards (added 2026-09-16)
+logs/
+task_FM/.runtime_guards/
+
+# Local backup files
+task_FM/config/*.bak
+*.bak
+*.bak_*
+*.bak.*
