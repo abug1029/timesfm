@@ -57,10 +57,20 @@ def generate(symbol: str, cov: str, root: str):
         print(f"[Start] Baseline generation for {sym_upper} with cov={cov}")
 
         # 调用 monthly_backtest.run_symbol_backtest
+        # 加载真实模型 (基线约定: 用生产模型, 不用 None)
+        try:
+            from cascade.daily_model import DailyModel
+            from cascade.hourly_model import HourlyModel
+            daily_m = DailyModel()
+            hourly_m = HourlyModel(shared_model=daily_m.model)
+        except Exception as e:
+            print(f"[WARN] baseline generate: model load failed ({e}); falling back to None", file=sys.stderr)
+            daily_m, hourly_m = None, None
+
         result = mb.run_symbol_backtest(
             symbol=sym_upper,
-            daily_model=None,
-            hourly_model=None,
+            daily_model=daily_m,
+            hourly_model=hourly_m,
             cov_override=cov,
         )
 

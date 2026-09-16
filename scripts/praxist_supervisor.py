@@ -547,10 +547,9 @@ def _load_evaluator():
 
 # ── v2 预注册宇宙 (evaluator 预注册品种) ──────────────────────────
 _ev_mod_for_goal = _load_evaluator()
-GOAL_SYMBOLS_SET = frozenset(getattr(_ev_mod_for_goal, "ALLOWED_SYMBOLS", set())) if _ev_mod_for_goal else frozenset()
+# 8 个信用品种 (1★ 过门目标); 不跟随 evaluator.ALLOWED_SYMBOLS 膨胀
+GOAL_SYMBOLS_SET = frozenset({"m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"})
 del _ev_mod_for_goal
-if not GOAL_SYMBOLS_SET:
-    print("[WARN] GOAL_SYMBOLS_SET is empty — goal 1-star gating disabled", file=sys.stderr)
 
 def _proposal_priority_score(prop, cov, symbol, snapshot):
     """机制化排序 (替代噪声小样本 EV)。确定性可复现。
@@ -1401,7 +1400,7 @@ def ensure_baselines(symbols, root):
         met = metrics.get(sym_lower, {})
         if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
             try:
-                gbp.generate(sym_lower, "default", root)
+                gbp.generate(sym_lower, "ccl", root)
             except Exception as e:
                 print(f"[ERROR] ensure_baselines: generate failed for {sym_lower}: {e}", file=sys.stderr)
             continue
@@ -1420,7 +1419,7 @@ def ensure_baselines(symbols, root):
                 pass
         if n_lines < 100:
             try:
-                gbp.generate(sym_lower, "default", root)
+                gbp.generate(sym_lower, "ccl", root)
             except Exception as e:
                 print(f"[ERROR] ensure_baselines: generate failed for {sym_lower} (n_lines={n_lines}): {e}", file=sys.stderr)
 
@@ -1461,21 +1460,17 @@ def wait_for_batch(batch_id, batch_records, registry_path, timeout=7200):
         time.sleep(5)
     missing = needed - set(found.keys())
     if missing:
-        try:
-            with open(registry_path, "a", encoding="utf-8") as f:
-                for r in batch_records:
-                    if r["variant_id"] in missing:
-                        tomb = {
-                            "variant_id": r["variant_id"],
-                            "symbol": r.get("symbol", ""),
-                            "batch_id": batch_id,
-                            "status": "timeout",
-                            "schema": "fm.aligned_verdict.v2",
-                            "decided_at": _now_iso(),
-                        }
-                        f.write(json.dumps(tomb, ensure_ascii=False) + "\n")
-        except OSError:
-            pass
+        for r in batch_records:
+            if r["variant_id"] in missing:
+                tomb = rl.make_timeout_tombstone(
+                    r.get("symbol", ""), r["variant_id"], batch_id
+                )
+                try:
+                    rl.append_verdict(registry_path, tomb)
+                except Exception as e:
+                    _vid = r["variant_id"]
+                    print(f"[WARN] wait_for_batch tombstone write failed "
+                          f"for {_vid}: {e}", file=sys.stderr)
     return list(found.values())
 
 
