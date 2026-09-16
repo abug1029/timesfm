@@ -12,13 +12,9 @@ sys.path.insert(0, FM_ROOT)
 sys.path.insert(0, os.path.join(FM_ROOT, "task_FM", "evaluations", "fm_eval"))
 import monthly_backtest as mb
 import registry_lib as rl
-import numpy as np
 from evaluator import build_summary, effective_sample_size, load_baseline_points
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
-from cascade.evaluation_metrics import calc_margin_maxdd_robust
-from config.prediction_scheme import get_scheme
-from config.backtest_config import TICK_SIZES, SLIPPAGE_TICKS
 
 try:
     import torch
@@ -27,12 +23,6 @@ except ImportError:
     pass
 
 _MODELS = None
-
-def _net_pnl_pts(points, symbol):
-    """Gross p['pnl'] minus tick_size * SLIPPAGE_TICKS (same cost as calc_net_metrics)."""
-    tick = TICK_SIZES.get(str(symbol).lower(), 1.0)
-    slip = float(tick) * float(SLIPPAGE_TICKS)
-    return np.array([float(p["pnl"]) - slip for p in points], dtype=float)
 
 _METRICS_PATH = os.path.join(FM_ROOT, "data", "cache", "slow_loop_metrics.jsonl")
 
@@ -147,21 +137,16 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
         else:
             s = dict(s)
             baseline_pts = load_baseline_points(row["symbol"])
+            baseline_dir_acc = None
+            if baseline_pts:
+                ok_count = sum(1 for pt in baseline_pts if pt.get("dir_ok"))
+                baseline_dir_acc = ok_count / len(baseline_pts)
             v = build_summary(s, {"symbol": row["symbol"], "cov_override": row["cov_override"],
                                   "max_points": row["max_points"], "stage": "aligned"},
-                              batch_id=bid, baseline_points=baseline_pts)
+                              batch_id=bid, baseline_points=baseline_pts,
+                              baseline_dir_acc=baseline_dir_acc)
             v["variant_id"] = row["variant_id"]
             v.setdefault("decided_at", _now())
-            # SPEC-008: margin-based MaxDD with non-overlapping stride
-            _ok_pts = [p for p in data["points"] if "error" not in p]
-            _pnl_arr = _net_pnl_pts(_ok_pts, row["symbol"])
-            _base_arr = np.array([p["base"] for p in _ok_pts])
-            _scheme_obj = get_scheme(row["symbol"].upper())
-            _cm = getattr(_scheme_obj, "contract_multiplier", 10.0) if _scheme_obj else 10.0
-            v["margin_maxdd"] = calc_margin_maxdd_robust(
-                net_pnl_pts=_pnl_arr, base_prices=_base_arr,
-                contract_multiplier=_cm, horizon=24, step=2,
-            )
     v["checkpoint_path"] = cp
     v["slow_loop_pid"] = os.getpid()
     v["git_rev"] = _git_rev()

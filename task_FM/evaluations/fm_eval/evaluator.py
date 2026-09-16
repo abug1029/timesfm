@@ -258,7 +258,7 @@ def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
     """Hard gate for variant promotion."""
     n = s.get("n")
     n_eff = s.get("n_eff")
-    dir_acc = s.get("dir_acc")
+    dir_acc = s.get("dir_acc", s.get("DirAcc"))
     if n is None or n_eff is None or dir_acc is None:
         return False
     if n < min_n or n_eff < min_n_eff:

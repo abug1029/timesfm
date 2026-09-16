@@ -34,6 +34,12 @@ def test_gate_unilateral_dir_acc():
     assert fm.gate({**ok, "n_eff": 10}) is False
 
 
+def test_gate_accepts_DirAcc_alias():
+    """D1b: gate 兼容慢环 summarize 的旧键 DirAcc."""
+    assert fm.gate({"n": 400, "n_eff": 400, "DirAcc": 0.56}) is True
+    assert fm.gate({"n": 400, "n_eff": 400, "DirAcc": 0.40}) is False
+
+
 def test_gate_adaptive_baseline_lowers_floor():
     s = {"n": 400, "n_eff": 400, "dir_acc": 0.51}
     assert fm.gate(s, baseline_dir_acc=0.51) is True

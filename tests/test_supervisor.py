@@ -1041,6 +1041,28 @@ def test_wait_for_batch_timeout_writes_tombstone(tmp_path, monkeypatch):
     assert recs[0]["variant_id"] == "m_rsi"
 
 
+def boom(*_a):
+    raise AssertionError("wait_for_batch must not sleep when timeout=0")
+
+
+def test_wait_for_batch_zero_timeout_single_scan(tmp_path, monkeypatch):
+    """Drain 已完成后: timeout=0 只扫一轮 registry — 已有裁决直接返回, 缺记录立即写墓碑, 不轮询."""
+    monkeypatch.setattr(sup.time, "sleep", boom)
+    reg = tmp_path / "verdicts.jsonl"
+    rec = {"variant_id": "m_rsi", "symbol": "m", "batch_id": "b1", "status": "ok"}
+    reg.write_text(json.dumps(rec) + chr(10), encoding="utf-8")
+    out = sup.wait_for_batch("b1", [{"variant_id": "m_rsi", "symbol": "m"}], str(reg), timeout=0)
+    assert len(out) == 1 and out[0]["variant_id"] == "m_rsi"
+
+    # 缺记录: 单轮扫描后立即判超时写墓碑 (sleep 必须未被调用)
+    reg2 = tmp_path / "v2.jsonl"
+    reg2.write_text("", encoding="utf-8")
+    out2 = sup.wait_for_batch("b2", [{"variant_id": "m_oi", "symbol": "m"}], str(reg2), timeout=0)
+    assert out2 == []
+    recs = [json.loads(l) for l in reg2.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert recs[0]["status"] == "timeout" and recs[0]["variant_id"] == "m_oi"
+
+
 def test_build_snapshot_scalars_v2(tmp_path):
     reg = tmp_path / "v.jsonl"
     rec = {"variant_id": "m_rsi_state", "symbol": "m", "cov_family": "momentum",

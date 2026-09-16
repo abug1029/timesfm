@@ -59,8 +59,8 @@ then optionally explore to sharpen later proposals.
 ## Diversity gate (QD)
 At least one of your proposals per generation must come from a covariate family
 DIFFERENT from the current best / your other proposal (e.g. not two volatility
-ideas). Spread across families: volatility, trend, structure, oscillator,
-positioning, calendar, volume, statistical, price_action.
+ideas). Spread across the 6 controlled families: momentum, volatility,
+inventory, calendar, term_structure, macro_sentiment.
 
 ## Known verdicts (MANDATORY: read before proposing — wasted proposals are auto-rejected)
 **YOUR FIRST STEP BEFORE ANY PROPOSAL**: Read 
@@ -97,7 +97,7 @@ directory with:
   "proposal_id": "new_cov_volume_profile",
   "symbol": "m", "cov_override": null,
   "new_covariate": {"name": "volume_profile", "formula": "<computable definition>",
-                    "mechanism": "...", "family": "volume"},
+                    "mechanism": "...", "family": "momentum"},
   "symbol_fit": "...", "kill_condition": "...", "promote_condition": "..."
 }
 ```

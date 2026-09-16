@@ -1,16 +1,124 @@
 {
   "covariates": [
-    {"name": "rsi_state", "family": "momentum"},
-    {"name": "rsi_slope", "family": "momentum"},
-    {"name": "hourly_slope", "family": "momentum"},
-    {"name": "rsi6", "family": "momentum"},
-    {"name": "rsi12", "family": "momentum"},
-    {"name": "rsi24", "family": "momentum"},
-    {"name": "ha_body", "family": "momentum"},
-    {"name": "reversal_shadow", "family": "momentum"},
-    {"name": "oi", "family": "inventory"},
-    {"name": "ccl", "family": "inventory"},
-    {"name": "basis_momentum", "family": "term_structure"},
-    {"name": "calendar_cyclical", "family": "calendar"}
+    {
+      "name": "rsi_state",
+      "family": "momentum"
+    },
+    {
+      "name": "rsi6",
+      "family": "momentum"
+    },
+    {
+      "name": "rsi12",
+      "family": "momentum"
+    },
+    {
+      "name": "rsi24",
+      "family": "momentum"
+    },
+    {
+      "name": "rsi_slope",
+      "family": "momentum"
+    },
+    {
+      "name": "qstick",
+      "family": "momentum"
+    },
+    {
+      "name": "oi",
+      "family": "inventory"
+    },
+    {
+      "name": "ccl",
+      "family": "inventory"
+    },
+    {
+      "name": "basis_momentum",
+      "family": "term_structure"
+    },
+    {
+      "name": "crack_spread_level",
+      "family": "term_structure"
+    },
+    {
+      "name": "crack_spread_slope",
+      "family": "term_structure"
+    },
+    {
+      "name": "crack_spread_zscore",
+      "family": "term_structure"
+    },
+    {
+      "name": "vwap_deviation",
+      "family": "momentum"
+    },
+    {
+      "name": "ha_body",
+      "family": "momentum"
+    },
+    {
+      "name": "reversal_shadow",
+      "family": "momentum"
+    },
+    {
+      "name": "reversal_shadow_gated_02",
+      "family": "momentum"
+    },
+    {
+      "name": "reversal_shadow_gated_03",
+      "family": "momentum"
+    },
+    {
+      "name": "reversal_shadow_gated_05",
+      "family": "momentum"
+    },
+    {
+      "name": "calendar_cyclical",
+      "family": "calendar"
+    },
+    {
+      "name": "pca_momentum",
+      "family": "momentum"
+    },
+    {
+      "name": "hurst",
+      "family": "momentum"
+    },
+    {
+      "name": "regime_gated",
+      "family": "momentum"
+    },
+    {
+      "name": "stddev",
+      "family": "volatility"
+    },
+    {
+      "name": "vor",
+      "family": "volatility"
+    },
+    {
+      "name": "bb_squeeze",
+      "family": "volatility"
+    },
+    {
+      "name": "nvi",
+      "family": "inventory"
+    },
+    {
+      "name": "hourly_slope",
+      "family": "momentum"
+    },
+    {
+      "name": "gated_slope",
+      "family": "momentum"
+    },
+    {
+      "name": "sar_dist",
+      "family": "momentum"
+    },
+    {
+      "name": "ao_accel",
+      "family": "momentum"
+    }
   ]
 }

@@ -9,6 +9,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, FM_ROOT)
 import registry_lib as rl
 from goal_dsl import evaluate_goal
+from cascade.cov_family import ALLOWED_FAMILIES
 try:
     from cascade.statistical_tests import bh_fdr_promote
 except ImportError:
@@ -417,7 +418,7 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
         for v in passing
         if v.get("cov_family")
         and v.get("cov_family") != "unknown"
-    }
+    } & ALLOWED_FAMILIES
     n_one_star_symbols_hit = len(symbols_hit & GOAL_SYMBOLS_SET)
     n_unique_pass_variants = len({v["variant_id"] for v in passing})
     n_families_hit = len(families_hit)
@@ -436,9 +437,9 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
 def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=600):
     """Pick up to top_k diagnostic survivors, preferring symbol×cov diversity.
 
-    Ranking is still by diagnostic EV, but we fill seats in passes:
+    Ranking is by diagnostic dir_acc, but we fill seats in passes:
       1) unique symbols (avoid 3× same symbol)
-      2) remaining by EV (different cov on a seen symbol is OK)
+      2) remaining by dir_acc (different cov on a seen symbol is OK)
     """
     out = []
     seen = set()
@@ -497,8 +498,8 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
 
 def materialize_known_verdicts(snapshot, dest_path):
     lines = ["## Known aligned verdicts (supervisor snapshot)",
-             "econ pass (gate_pass=True AND ev>0): already solved, do NOT re-propose.",
-             "hard-gate-but-losing (gate_pass=True AND ev<=0): 过硬门但亏钱; not a success; do not re-propose as solved.",
+             "v2 pass (gate_pass=True AND (fdr_pass OR migrated_pass)): already solved, do NOT re-propose.",
+             "hard-gate-but-losing (gate_pass=True but not (fdr_pass or migrated_pass)): 过硬门但亏钱; not a success; do not re-propose as solved.",
              "DEAD (gate_pass=False, status=ok): never revive without a mechanism correction.",
              ""]
     items = list(snapshot.values()) if isinstance(snapshot, dict) else []
@@ -509,7 +510,9 @@ def materialize_known_verdicts(snapshot, dest_path):
         gate = bool(v.get("gate_pass", False))
         ev = float(v.get("ev") or 0)
         status = v.get("status", "ok")
-        if gate and ev > 0:
+        v2 = v.get("schema") == "fm.aligned_verdict.v2"
+        promoted = (bool(v.get("fdr_pass")) or bool(v.get("migrated_pass"))) if v2 else (ev > 0)
+        if gate and promoted:
             state = "econ_pass"
         elif gate:
             state = "hard-gate-but-losing"
@@ -1424,22 +1427,18 @@ def ensure_baselines(symbols, root):
                 print(f"[ERROR] ensure_baselines: generate failed for {sym_lower} (n_lines={n_lines}): {e}", file=sys.stderr)
 
 
-def get_batch_timeout(goal):
-    """Get batch timeout from goal cadence, default 7200s."""
-    cad = (goal or {}).get("cadence") or {}
-    return int(cad.get("batch_timeout_s", 7200))
-
-
 def wait_for_batch(batch_id, batch_records, registry_path, timeout=7200):
-    """Poll registry until all batch_records have a verdict or timeout.
+    """Scan registry until all batch_records have a verdict or timeout.
 
     Returns list of records that got a verdict. On timeout, writes timeout
     tombstone entries to registry for records without verdicts.
+    timeout=0: single scan, no polling — missing variants are tombstoned
+    immediately (used after slow-loop drain is complete).
     """
     start = time.monotonic()
     needed = {r["variant_id"] for r in batch_records}
     found = {}
-    while time.monotonic() - start < timeout:
+    while True:
         try:
             with open(registry_path, encoding="utf-8") as f:
                 for line in f:
@@ -1456,6 +1455,10 @@ def wait_for_batch(batch_id, batch_records, registry_path, timeout=7200):
         except OSError:
             pass
         if needed <= set(found.keys()):
+            break
+        # timeout=0: single scan, no polling (post-drain finalize: missing
+        # variants are tombstoned immediately instead of waiting 7200s)
+        if time.monotonic() - start >= timeout:
             break
         time.sleep(5)
     missing = needed - set(found.keys())
@@ -1515,7 +1518,9 @@ def _maybe_start_slow_loop(goal, log):
         # Persist batch_id for FDR promotion on completion
         fresh = load_state()
         fresh["current_batch_id"] = batch_id
-        fresh["current_batch_variant_ids"] = [r.get("variant_id") for r in batch_records if r.get("variant_id")]
+        fresh["current_batch_records"] = [
+            {"variant_id": r.get("variant_id"), "symbol": r.get("symbol", "") or ""}
+            for r in batch_records if r.get("variant_id")]
         save_state(fresh)
     finally:
         out_fp.close()
@@ -1531,11 +1536,23 @@ def _maybe_finish_slow(goal, log):
     batch_id = st.get("current_batch_id")
     if batch_id:
         try:
-            batch_vids = st.get("current_batch_variant_ids") or []
-            batch_records = [{"variant_id": vid, "symbol": ""} for vid in batch_vids if vid]
+            saved = st.get("current_batch_records")
+            if not isinstance(saved, list) or not saved:
+                # legacy state: variant_ids only — resolve symbols from registry verdicts
+                sym_by_vid = {}
+                try:
+                    for vrec in rl.read_verdicts(REGISTRY):
+                        vid = vrec.get("variant_id")
+                        if vid and vid not in sym_by_vid:
+                            sym_by_vid[vid] = vrec.get("symbol", "")
+                except Exception:
+                    sym_by_vid = {}
+                saved = [{"variant_id": vid, "symbol": sym_by_vid.get(vid, "")}
+                         for vid in (st.get("current_batch_variant_ids") or []) if vid]
+            batch_records = saved
             if batch_records:
-                timeout = get_batch_timeout(goal)
-                wait_for_batch(batch_id, batch_records, REGISTRY, timeout=timeout)
+                # drain already complete: single scan, tombstone missing immediately
+                wait_for_batch(batch_id, batch_records, REGISTRY, timeout=0)
         except Exception as e:
             _log_decision(log, "wait_for_batch_error", str(e))
     # Batch completion: apply FDR promotion to batch verdicts
@@ -1558,7 +1575,8 @@ def _maybe_finish_slow(goal, log):
         # Clear batch tracking from state
         fresh = load_state()
         fresh.pop("current_batch_id", None)
-        fresh.pop("current_batch_variant_ids", None)
+        fresh.pop("current_batch_records", None)
+        fresh.pop("current_batch_variant_ids", None)  # legacy key
         save_state(fresh)
     snap = rl.load_snapshot(REGISTRY)
     materialize_known_verdicts(snap, VERDICTS_INC)

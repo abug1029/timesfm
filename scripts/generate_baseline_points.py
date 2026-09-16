@@ -64,8 +64,8 @@ def generate(symbol: str, cov: str, root: str):
             daily_m = DailyModel()
             hourly_m = HourlyModel(shared_model=daily_m.model)
         except Exception as e:
-            print(f"[WARN] baseline generate: model load failed ({e}); falling back to None", file=sys.stderr)
-            daily_m, hourly_m = None, None
+            print(f"[WARN] baseline generate: model load failed ({e}); aborting", file=sys.stderr)
+            raise
 
         result = mb.run_symbol_backtest(
             symbol=sym_upper,
