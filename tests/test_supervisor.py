@@ -73,18 +73,18 @@ def test_quota_gate_banned_and_remaining(monkeypatch):
     ok5, sl5 = sup.quota_gate(goal, now=now5)
     assert ok5 is True and sl5 == 0
 
-def _eval_summary(symbol, cov, ev, n=6, pf=1.3, max_points=None):
+def _eval_summary(symbol, cov, ev, n=6, pf=1.3, max_points=None, dir_acc=0.55):
     """Canonical build_summary shape: top-level ev + metrics.ev_after_slippage."""
     mp = n if max_points is None else max_points
     return {
         "status": "ok", "usage_unknown": False, "stage": "diagnostic",
         "variant_name": f"{symbol}_{cov}_diagnostic_p{mp}",
         "symbol": symbol, "cov_override": cov,
-        "n": n, "pf": pf, "ev": ev, "maxdd": -0.1, "dir_acc": 0.55,
+        "n": n, "pf": pf, "ev": ev, "maxdd": -0.1, "dir_acc": dir_acc,
         "gate_pass": False,
         "metrics": {
             "ev_after_slippage": ev, "pf": pf, "maxdd": -0.1,
-            "n": n, "dir_acc": 0.55, "gate_pass": False,
+            "n": n, "dir_acc": dir_acc, "gate_pass": False,
         },
     }
 
@@ -104,23 +104,23 @@ def test_harvest_survivors(tmp_path):
     d3 = run / "results" / "gen_0" / "p2" / "m_oi_diagnostic_p6" / "diagnostic"
     d3.mkdir(parents=True)
     (d3 / "evaluation_summary.json").write_text(json.dumps(
-        _eval_summary("m", "oi", ev=-0.02, n=6, pf=0.8)))
-    # ev==0 同样丢弃
+        _eval_summary("m", "oi", ev=-0.02, n=6, pf=0.8, dir_acc=0.30)))
+    # dir_acc<0.50 同样丢弃
     d0 = run / "results" / "gen_0" / "p3" / "m_ha_body_diagnostic_p6" / "diagnostic"
     d0.mkdir(parents=True)
     (d0 / "evaluation_summary.json").write_text(json.dumps(
-        _eval_summary("m", "ha_body", ev=0.0, n=6, pf=1.0)))
+        _eval_summary("m", "ha_body", ev=0.0, n=6, pf=1.0, dir_acc=0.40)))
     rows = sup.harvest_survivors(str(tmp_path), snapshot={}, dead=set(),
                                  existing=set(), top_k=5, aligned_max_points=400)
     vids = [r["variant_id"] for r in rows]
-    assert vids == ["m_ccl", "m_rsi_state"]  # ev 降序; oi/ha_body 被过滤
+    assert vids == ["m_ccl", "m_rsi_state"]  # dir_acc 降序; oi/ha_body 被过滤 (dir_acc<0.50)
     assert all(r["max_points"] == 400 for r in rows)
     # 同 cov 的 p3 不得再占 top_k
     run2 = tmp_path / "task_FM" / "experiments" / "run_2026-09-02_12-00-00_y"
     d4 = run2 / "results" / "gen_0" / "p0" / "m_rsi_state_diagnostic_p3" / "diagnostic"
     d4.mkdir(parents=True)
     (d4 / "evaluation_summary.json").write_text(json.dumps(
-        _eval_summary("m", "rsi_state", ev=0.99, n=3, pf=2.0)))
+        _eval_summary("m", "rsi_state", ev=0.99, n=3, pf=2.0, dir_acc=0.70)))
     os.utime(run2, (2e9, 2e9))
     rows2 = sup.harvest_survivors(str(tmp_path), snapshot={}, dead=set(),
                                   existing=set(), top_k=5, aligned_max_points=400)
@@ -1028,3 +1028,27 @@ def test_production_goal_yaml_tier1_expansion():
     ok3, _ = sup.evaluate_goal(conds, snap3)
     assert ok3 is False
 
+def test_wait_for_batch_timeout_writes_tombstone(tmp_path, monkeypatch):
+    monkeypatch.setattr(sup.time, "sleep", lambda *_: None)
+    times = iter([0.0, 99999.0])
+    monkeypatch.setattr(sup.time, "monotonic", lambda: next(times, 99999.0))
+    reg = tmp_path / "verdicts.jsonl"
+    reg.write_text("", encoding="utf-8")
+    out = sup.wait_for_batch("b1", [{"variant_id": "m_rsi", "symbol": "m"}], str(reg), timeout=1)
+    assert out == []
+    recs = [json.loads(l) for l in reg.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert recs[0]["status"] == "timeout"
+    assert recs[0]["variant_id"] == "m_rsi"
+
+
+def test_build_snapshot_scalars_v2(tmp_path):
+    reg = tmp_path / "v.jsonl"
+    rec = {"variant_id": "m_rsi_state", "symbol": "m", "cov_family": "momentum",
+           "schema": "fm.aligned_verdict.v2", "status": "ok",
+           "gate_pass": True, "fdr_pass": True, "pf": 1.2, "ev": 0.05}
+    reg.write_text(json.dumps(rec) + "\n", encoding="utf-8")
+    snap = sup.build_snapshot(str(reg), 0, 0, 0)
+    assert snap["n_unique_pass_variants"] == 1
+    assert snap["n_one_star_symbols_hit"] >= 1
+    assert snap["n_families_hit"] == 1
+    assert "unknown" not in snap["families_hit"]

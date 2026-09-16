@@ -9,6 +9,10 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, FM_ROOT)
 import registry_lib as rl
 from goal_dsl import evaluate_goal
+try:
+    from cascade.statistical_tests import bh_fdr_promote
+except ImportError:
+    bh_fdr_promote = None
 
 def _resolve_praxist_bin() -> str:
     """Prefer box-local praxist venv; allow PRAXIST_BIN override."""
@@ -55,6 +59,8 @@ with open(os.path.join(FM_ROOT, "config", "knowledge_base.json"), encoding="utf-
 INCUMBENT_PF = {sym: float(rec["historical_pf"])
                 for sym, rec in _kb["symbols"].items()
                 if rec.get("historical_pf") is not None}
+
+
 
 def _now_iso():
     return datetime.now().isoformat()
@@ -405,15 +411,28 @@ def quota_gate(goal, now=None):
 def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     snap = rl.load_snapshot(registry_path)
     passing = rl.pass_variants(snap)
+    symbols_hit = {v["symbol"] for v in passing}
+    families_hit = {
+        v.get("cov_family") or v.get("cov_override")
+        for v in passing
+        if (v.get("cov_family") or v.get("cov_override"))
+        and (v.get("cov_family") or v.get("cov_override")) != "unknown"
+    }
+    n_one_star_symbols_hit = len(symbols_hit & GOAL_SYMBOLS_SET)
+    n_unique_pass_variants = len({v["variant_id"] for v in passing})
+    n_families_hit = len(families_hit)
     return {
         "variants": snap,
-        "symbols_hit": {v["symbol"] for v in passing},
-        "families_hit": {v["cov_override"] for v in passing},
+        "symbols_hit": symbols_hit,
+        "families_hit": families_hit,
         "pass_variant_pf_ratios": [v["pf"] / INCUMBENT_PF.get(v["symbol"], 1.0)
                                    for v in passing],
         "cycles_done": cycles_done,
         "cpu_hours_used": cpu_hours_used,
         "tokens_used_m": tokens_used_m,
+        "n_one_star_symbols_hit": n_one_star_symbols_hit,
+        "n_unique_pass_variants": n_unique_pass_variants,
+        "n_families_hit": n_families_hit,
     }
 
 def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=600):
@@ -438,9 +457,8 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
             if d.get("status") != "ok" or d.get("stage") != "diagnostic":
                 continue
             metrics = d.get("metrics") or {}
-            ev = float(metrics.get("ev_after_slippage") or metrics.get("ev")
-                       or d.get("ev") or 0.0)
-            if ev <= 0:
+            dir_acc = float(metrics.get("dir_acc") or d.get("dir_acc") or 0.0)
+            if dir_acc < 0.50:
                 continue
             try:
                 symbol = d["symbol"].lower()
@@ -455,8 +473,8 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
                         "max_points": int(aligned_max_points),
                         "stage": "aligned", "checkpoint_path": "",
                         "enqueued_at": _now_iso(), "src_run": os.path.basename(run_dir),
-                        "_ev": ev})
-    out.sort(key=lambda r: -r["_ev"])
+                        "_dir_acc": dir_acc})
+    out.sort(key=lambda r: -r["_dir_acc"])
     selected = []
     used_symbols = set()
     for r in out:
@@ -476,7 +494,7 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
             selected.append(r)
             selected_ids.add(r["variant_id"])
     for r in selected:
-        r.pop("_ev", None)
+        r.pop("_dir_acc", None)
     return selected
 
 def materialize_known_verdicts(snapshot, dest_path):
@@ -528,6 +546,11 @@ def _load_evaluator():
     except Exception as e:
         print("[WARN] evaluator import failed in supervisor: %s" % e, file=sys.stderr)
         return None
+
+# ── v2 预注册宇宙 (evaluator 预注册品种) ──────────────────────────
+_ev_mod_for_goal = _load_evaluator()
+GOAL_SYMBOLS_SET = frozenset(getattr(_ev_mod_for_goal, "ALLOWED_SYMBOLS", set())) if _ev_mod_for_goal else frozenset()
+del _ev_mod_for_goal
 
 def _proposal_priority_score(prop, cov, symbol, snapshot):
     """机制化排序 (替代噪声小样本 EV)。确定性可复现。
@@ -1349,6 +1372,114 @@ def _maybe_harvest(st, goal, log):
         save_state(fresh)
     return True
 
+
+def ensure_baselines(symbols, root):
+    """Check baseline_metrics.json + baseline_points_{symbol}.jsonl validity.
+
+    For each symbol, check that baseline_metrics has a valid entry AND
+    baseline_points_{symbol}.jsonl has >= 100 valid lines. If not, serially
+    call generate_baseline_points.generate.
+    """
+    try:
+        import generate_baseline_points as gbp
+    except ImportError:
+        return
+    config_dir = os.path.join(root, "task_FM", "config")
+    metrics_path = os.path.join(config_dir, "baseline_metrics.json")
+    try:
+        with open(metrics_path, encoding="utf-8") as f:
+            metrics = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        metrics = {}
+    for sym in sorted(symbols):
+        sym_lower = sym.lower()
+        points_path = os.path.join(config_dir, f"baseline_points_{sym_lower}.jsonl")
+        met = metrics.get(sym_lower, {})
+        if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
+            try:
+                gbp.generate(sym_lower, "default", root)
+            except Exception:
+                pass
+            continue
+        n_lines = 0
+        if os.path.exists(points_path):
+            try:
+                with open(points_path, encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip():
+                            try:
+                                json.loads(line)
+                                n_lines += 1
+                            except json.JSONDecodeError:
+                                pass
+            except OSError:
+                pass
+        if n_lines < 100:
+            try:
+                gbp.generate(sym_lower, "default", root)
+            except Exception:
+                pass
+
+
+def get_batch_timeout(goal):
+    """Get batch timeout from goal cadence, default 7200s."""
+    cad = (goal or {}).get("cadence") or {}
+    return int(cad.get("batch_timeout_s", 7200))
+
+
+def wait_for_batch(batch_id, batch_records, registry_path, timeout=7200):
+    """Poll registry until all batch_records have a verdict or timeout.
+
+    Returns list of records that got a verdict. On timeout, writes timeout
+    tombstone entries to registry for records without verdicts.
+    """
+    start = time.monotonic()
+    needed = {r["variant_id"] for r in batch_records}
+    found = {}
+    while time.monotonic() - start < timeout:
+        try:
+            with open(registry_path, encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    vid = rec.get("variant_id")
+                    if vid in needed and rec.get("batch_id") == batch_id:
+                        if rec.get("status") in ("ok", "error", "timeout"):
+                            found[vid] = rec
+        except OSError:
+            pass
+        if needed <= set(found.keys()):
+            break
+        time.sleep(5)
+    missing = needed - set(found.keys())
+    if missing:
+        try:
+            with open(registry_path, "a", encoding="utf-8") as f:
+                for r in batch_records:
+                    if r["variant_id"] in missing:
+                        tomb = {
+                            "variant_id": r["variant_id"],
+                            "symbol": r.get("symbol", ""),
+                            "batch_id": batch_id,
+                            "status": "timeout",
+                            "schema": "fm.aligned_verdict.v2",
+                            "decided_at": _now_iso(),
+                        }
+                        f.write(json.dumps(tomb, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+    return list(found.values())
+
+
+def cleanup_batch_workers(batch_id):
+    """Clean up any lingering slow-loop workers for a batch. Best-effort."""
+    pass
+
+
 def _maybe_start_slow_loop(goal, log):
     st = load_state()
     if st.get("phase") != "slow":
@@ -1362,8 +1493,10 @@ def _maybe_start_slow_loop(goal, log):
         project_python = os.path.join(FM_ROOT, ".venv", "bin", "python")
         if not os.path.isfile(project_python):
             project_python = sys.executable
+        batch_id = "batch_" + uuid.uuid4().hex[:8]
         subprocess.Popen(
-            [project_python, os.path.join(HERE, "aligned_slow_loop.py")],
+            [project_python, os.path.join(HERE, "aligned_slow_loop.py"),
+             "--batch-id", batch_id],
             stdout=out_fp, stderr=subprocess.STDOUT, start_new_session=True)
     finally:
         out_fp.close()

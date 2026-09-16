@@ -2,14 +2,15 @@ import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 from goal_dsl import evaluate_goal
 
-SNAP = {"symbols_hit": {"m", "rb"}, "families_hit": {"rsi_state", "ccl"},
-        "pass_variant_pf_ratios": [1.2, 1.08],
-        "variants": {"a": {"pf": 1.2}},
+SNAP = {"symbols_hit": {"m", "rb"}, "families_hit": {"momentum"},
+        "n_one_star_symbols_hit": 2, "n_unique_pass_variants": 2,
+        "n_families_hit": 1,
+        "variants": {"a": {"dir_acc": 0.56}},
         "cycles_done": 1, "cpu_hours_used": 4.0, "tokens_used_m": 12.0}
 
 def test_all_conditions_met():
     ok, _ = evaluate_goal(["len(symbols_hit) >= 2",
-                           "min(pass_variant_pf_ratios) > 1.05"], SNAP)
+                           "n_unique_pass_variants >= 2"], SNAP)
     assert ok is True
 
 def test_condition_unmet():
