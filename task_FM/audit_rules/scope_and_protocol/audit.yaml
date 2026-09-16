@@ -19,12 +19,12 @@ audit:
     - id: pre_registered_gate
       severity: blocking
       criteria:
-        - GREEN requires full walk-forward with n>=350, IC>=0.05, EV>0 after slippage.
+        - GREEN requires full walk-forward with n>=350, n_eff>=50, DirAcc>=0.52 (BH-FDR corrected).
         - Diagnostic results (max_points<=6) can never satisfy the mature gate.
     - id: single_ev_predicate
       severity: blocking
       criteria:
-        - ev_after_slippage is the only primary metric; diagnostics never rank.
+        - dir_acc is the only primary metric; diagnostics never rank.
     - id: result_ownership
       severity: blocking
       criteria:

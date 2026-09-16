@@ -29,8 +29,8 @@ cat > {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0
   "mechanism": "VOR(波动率范围)压缩后突破：豆粕在低波区积蓄动能后常随放量突破,该机制在 m 上的微观结构支撑是...(≥40字,禁模板)",
   "symbol_fit": "为何是 m 这个品种: m 受持仓资金/季节性影响,VOR 压缩与 m 的趋势启动高度相关...",
   "predicted_direction": "low_vol_compression -> long_breakout",
-  "kill_condition": "aligned ev<0 或 ic<0.02 即放弃",
-  "promote_condition": "aligned gate_pass 且 PF>1.05 且 ev>0"
+  "kill_condition": "aligned dir_acc<0.52 或 endpoint_mape 未改善即放弃",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)"
 }
 JSON
 ```
@@ -68,21 +68,20 @@ and the snapshot below. **This is MANDATORY, not optional.** 70% of past proposa
 were rejected as duplicates — do NOT be part of that statistic.
 
 **NEVER re-propose any of these**:
-- econ pass (gate_pass=True AND ev>0) = already solved: do NOT re-propose that variant.
-- hard-gate-but-losing (gate_pass=True AND ev<=0) = 过硬门但亏钱; not a success;
+- gate_pass=True (v23 DirAcc 门) = already solved: do NOT re-propose that variant.
+- 历史经济深亏 (gate_pass=True 但历史 EV 深亏; v23 已退役 EV 为裁决口径) = not a success;
   examples: ss_oi (ev=-29.29), lh_oi (ev=-58.69), lh_ha_body (ev=-58.69),
-  jd_ha_body (ev=-10.71), m_nvi (ev=-4.18). **These are DEAD economically.**
+  jd_ha_body (ev=-10.71), m_nvi (ev=-4.18). **These are DEAD (v23 口径).**
 - gate_pass=False, status=ok = DEAD: never revive without a mechanism correction.
-  examples: cj_calendar_cyclical (ic=0.04<0.05), eg_vor (ic=0.03<0.05),
-  jd_rsi_state (ic=0.022<0.05). **These failed the IC gate.**
+  examples: cj_calendar_cyclical, eg_vor, jd_rsi_state. **These failed the DirAcc gate.**
 - status=no_data = retryable (e.g. cj, lh data gaps), a fresh proposal is fine.
 - A DEAD covariate on one symbol can still be tried on a DIFFERENT symbol with a
   distinct mechanism — but **never repeat the exact dead variant_id**
   (e.g. ss_oi, lh_oi, lh_ha_body, cj_oi, m_nvi are ALL forbidden).
 
 **FOCUS ON WHAT WORKS**: Historical data shows volatility family (vor, bb_squeeze,
-stddev) is the ONLY profitable family (ss_vor econ_pass with PF=1.123, ev=+11.06).
-Other families (positioning, price_action, trend) have consistently lost money.
+stddev) is the strongest family (ss_vor 已过门: gate_pass=True, DirAcc>=0.52).
+Other families (positioning, price_action, trend) have consistently failed the aligned gate.
 **Prioritize volatility family proposals** unless you have a strong mechanism for
 why another family would work on a specific symbol.
 {% include 'known_verdicts.inc.md' ignore missing %}
@@ -115,6 +114,6 @@ them in features.py). Do NOT assume they will be tested this cycle.
 ## Domain guidance
 - Mechanism first: never propose a combination you cannot articulate a mechanism for.
 - Baselines: the fixed schemes in config/prediction_scheme.py are the incumbents;
-  beating them requires the aligned gate AND economic superiority (PF and EV).
+  beating them requires the aligned gate (n>=350, n_eff>=50, DirAcc>=0.52) and BH-FDR survival.
 - Never edit evaluator, cascade/, config/prediction_scheme.py, data/config.py, db/.
   You only WRITE proposal/finding files under the results tree.

@@ -50,15 +50,6 @@ def load_snapshot(path):
             continue
     return snap
 
-def pass_variants(snapshot):
-    out = []
-    for v in snapshot.values():
-        if v.get("status", "ok") != "ok":
-            continue
-        if v.get("gate_pass") and v.get("ev", 0) > 0:
-            out.append(v)
-    return out
-
 def dead_variants(snapshot):
     return {vid for vid, v in snapshot.items()
             if v.get("status", "ok") == "ok" and v.get("gate_pass") is False}
@@ -162,7 +153,6 @@ def in_flight_ids(pending_path, inprogress_path):
 
 _v1_validate_verdict = validate_verdict
 _v1_append_verdict = append_verdict
-_v1_pass_variants = pass_variants
 
 
 def validate_verdict_v2(v):

@@ -37,6 +37,7 @@
 
 - **禁止自动改**（见 `loop-constraints.md`）：`daily_model.py`、`hourly_model.py`、`features.py`。
 - 经济指标只从 `evaluation_metrics.calc_net_metrics` 出；禁止在 scripts 内复制 PF/EV 公式。
+- PRAXIST aligned 主指标从 `evaluation_metrics.calc_prediction_quality` 出（DirAcc/MAPE 口径）；`calc_net_metrics` 仍是月报/vol/A2 的经济秤。
 - Neutral/R1 裁决只从 `neutral_ab_report` 出；禁止旁路算分。
 - 改指标语义必须同步：`tests/test_vol_scaled_mae.py`、`test_neutral_ab_report.py`、stdout 打印口径。
 

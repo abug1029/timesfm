@@ -9,4 +9,4 @@
 
 合同：schema `fm.hypothesis_proposal.v1`；`mechanism` ≥40 字（禁模板）；必须有 `symbol_fit` 与预注册 kill/promote。只许提议 `task_FM/config/covariate_pool.json` 中 **active** 的协变量。新指标写 `new_cov_<name>.json`（`cov_override=null`），进 backlog，不入评估队列。
 
-慢环 `aligned_slow_loop.py` 是唯一验证器（walk-forward n=350–600；硬门 n≥350 且 IC≥0.05 且扣滑点 EV>0）。诊断档小样本 PF 不作数。架构见仓库 `docs/praxist.md`。
+慢环 `aligned_slow_loop.py` 是唯一验证器（walk-forward n=350–600；硬门 n≥350 且 n_eff≥50 且 DirAcc≥0.52，BH-FDR 多重比较校正）。诊断档小样本不做数（PF/EV 已退役为经济报表口径）。架构见仓库 `docs/praxist.md`。

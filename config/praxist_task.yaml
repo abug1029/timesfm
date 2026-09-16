@@ -1,15 +1,15 @@
-# PRAXIST 任务包契约 (P0a, 2026-09-01) — 预注册: 评估口径先于任何实验锁定
-# 依据: docs/praxist_integration_plan.md §2; B1/Phase13/15 教训 (诊断 PF 不作数)
+# PRAXIST 任务包契约 (P0a, 2026-09-01; v23 重构 2026-09-16) — 预注册: 评估口径先于任何实验锁定
+# 依据: docs/praxist_integration_plan.md §2; v23 纯预测质量重构 (DirAcc/MAPE + DM + BH-FDR)
 objective:
-  primary: ev_after_slippage          # 主指标: 扣滑点 EV
-  secondary: profit_factor
+  primary: dir_acc                    # 主指标: 方向准确率 (纯预测质量口径, PF/EV 退役)
   green_requires_full_walkforward: true
 
 constraints:
-  min_samples: 350
-  min_ic: 0.05
-  multiple_comparison: bonferroni
-  maxdd_caliber: cumprod_clamp        # cascade/evaluation_metrics.py 2026-08-21 修复后口径
+  min_samples: 350                    # 有效样本数硬门
+  min_dir_acc: 0.52                   # DirAcc 硬门 (实际过门 0.52; gate 执行层基线自适应下限 0.50, 见 evaluator.gate effective_min)
+  min_n_eff: 50                       # Bartlett 有效样本量硬门
+  multiple_comparison: bh_fdr         # BH-FDR (Per-Symbol), 保留 benjamini-hochberg 别名
+  maxdd_caliber: cumprod_clamp        # 可选: cascade/evaluation_metrics.py 2026-08-21 修复后口径
 
 baseline_provenance: reports/backtest_registry.md
 
@@ -17,7 +17,7 @@ evidence_maturity:
   - stage: diagnostic                 # 诊断级: 短窗口, 只产 incubator 证据
     gate: []
   - stage: full_walkforward           # 只有全量 WF 过硬门才可成为 Gem 候选
-    gate: ["n>=350", "ic>=0.05", "ev>0"]
+    gate: ["n>=350", "n_eff>=50", "dir_acc>=0.52"]
 
 generation_close_policy: sealed       # 代际关闭后晚到结果不重写裁决
 

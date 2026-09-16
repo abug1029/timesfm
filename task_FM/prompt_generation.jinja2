@@ -28,7 +28,7 @@ JSON files (schema fm.hypothesis_proposal.v1) and publish each via share_finding
 ## Frontier state (parent-eligible entries)
 {% if frontier_summary %}
 {% for f in frontier_summary[:6] %}
-- {{ f.get("variant_id", f.get("variant_name", "?")) }}: {{ f.get("ev_after_slippage", "?") }}
+- {{ f.get("variant_id", f.get("variant_name", "?")) }}: {{ f.get("dir_acc", "?") }}
 {% endfor %}
 {% else %}
 Empty frontier - be the first to feed hypotheses whose slow-loop verdicts populate it.

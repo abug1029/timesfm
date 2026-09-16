@@ -23,8 +23,8 @@ Write each proposal with a heredoc (`cat > path <<'JSON' ... JSON`) or the Write
   "mechanism": ">=40字, 具体的微观结构/经济机制, 禁模板。必须把协变量菜单的机制延伸到该品种。",
   "symbol_fit": "为什么这个协变量适配该品种(positioning/calendar/structure)。",
   "predicted_direction": "e.g. low_vol_compression -> long_breakout",
-  "kill_condition": "aligned ev<0 或 ic<0.02 即放弃 (可证伪)",
-  "promote_condition": "aligned gate_pass 且 PF>1.05 且 ev>0"
+  "kill_condition": "aligned dir_acc<0.52 或 endpoint_mape 未改善即放弃 (可证伪)",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)"
 }
 ```
 

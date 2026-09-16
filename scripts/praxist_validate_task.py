@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PRAXIST 任务包契约校验器 (P0a, 2026-09-01)
+"""PRAXIST 任务包契约校验器 (P0a, 2026-09-01; v23 重构 2026-09-16)
 
 用法: python scripts/praxist_validate_task.py [contract.yaml]
 默认校验 config/praxist_task.yaml。exit 0=通过, 2=违规。
@@ -12,7 +12,7 @@ import yaml
 
 FM_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOWED_WRITE_PATHS = {"scripts/praxist_ws", "reports/praxist"}
-ALLOWED_MC = {"bonferroni", "holm", "benjamini-hochberg"}
+ALLOWED_MC = {"bonferroni", "holm", "benjamini-hochberg", "bh_fdr"}
 
 
 def validate(path):
@@ -23,22 +23,23 @@ def validate(path):
         return ["contract: 必须是非空映射"]
 
     obj = d.get("objective") or {}
-    if obj.get("primary") != "ev_after_slippage":
-        errors.append("objective.primary 必须是 ev_after_slippage (预注册经济口径)")
-    if obj.get("secondary") != "profit_factor":
-        errors.append("objective.secondary 必须是 profit_factor")
+    if obj.get("primary") != "dir_acc":
+        errors.append("objective.primary 必须是 dir_acc (预注册纯预测质量口径)")
     if obj.get("green_requires_full_walkforward") is not True:
         errors.append("green_requires_full_walkforward 必须为 true (B1 教训)")
 
     c = d.get("constraints") or {}
     if not (isinstance(c.get("min_samples"), int) and c["min_samples"] >= 350):
         errors.append("constraints.min_samples 必须 >= 350")
-    if not (isinstance(c.get("min_ic"), (int, float)) and c["min_ic"] >= 0.05):
-        errors.append("constraints.min_ic 必须 >= 0.05")
+    if not (isinstance(c.get("min_dir_acc"), (int, float)) and c["min_dir_acc"] >= 0.50):
+        errors.append("constraints.min_dir_acc 必须 >= 0.50")
+    if not (isinstance(c.get("min_n_eff"), int) and c["min_n_eff"] >= 50):
+        errors.append("constraints.min_n_eff 必须 >= 50")
     if c.get("multiple_comparison") not in ALLOWED_MC:
         errors.append(f"constraints.multiple_comparison 必须是 {sorted(ALLOWED_MC)} 之一")
-    if c.get("maxdd_caliber") != "cumprod_clamp":
-        errors.append("constraints.maxdd_caliber 必须是 cumprod_clamp")
+    # v23: maxdd_caliber 可选 (PF/EV/MaxDD 不再是裁决口径); 存在时仍须合法
+    if c.get("maxdd_caliber") is not None and c.get("maxdd_caliber") != "cumprod_clamp":
+        errors.append("constraints.maxdd_caliber 若存在必须是 cumprod_clamp")
 
     wp = d.get("write_paths") or []
     if not set(wp) <= ALLOWED_WRITE_PATHS:

@@ -9,6 +9,9 @@ goal:
     # 1 星品种集 = m/ss/sr/cj/jd/lh/eg/rb (见 task.yaml research_direction)；ss_vor 已占一席，还需 3 个。
     - "n_one_star_symbols_hit >= 4"
     - "n_unique_pass_variants >= 4"
+    # v23: 过门变体全体 (v2: gate_pass 且 fdr/migrated) 的 min dir_acc 必须 > 0.52;
+    # 无过门变体时 build_snapshot 产出 None → is not None 防护使其判 unmet 而非 eval error。
+    - "min_pass_variant_dir_acc is not None and min_pass_variant_dir_acc > 0.52"
     - "n_families_hit >= 1"
   budgets:
     max_cycles: 999999  # 无限制（持续运行直到目标达成）

@@ -145,6 +145,7 @@ def test_build_snapshot_metrics(tmp_path):
                               tokens_used_m=10.0)
     assert snap["symbols_hit"] == {"m"}
     assert "a" in snap["variants"]
+    assert snap["min_pass_variant_dir_acc"] == 0.55
     # pass_variant_pf_ratios removed in v23 (pf no longer in v2 verdicts)
     assert snap["cycles_done"] == 2
 
@@ -564,9 +565,9 @@ def test_tok_unknown_skips_token_budget(tmp_path, monkeypatch):
 
 def test_materialize_known_verdicts(tmp_path):
     dest = tmp_path / "known_verdicts.inc.md"
-    snap = {"a": _v("m_ccl", gate_pass=True, ev=0.02),
+    snap = {"a": _v("m_ccl", gate_pass=True, ev=0.02, dir_acc=0.55),
             "b": _v("m_oi", gate_pass=False, ev=-0.01),
-            "c": _v("i_oi", gate_pass=True, ev=-2.46)}
+            "c": _v("i_oi", gate_pass=True, ev=-2.46, dir_acc=0.60)}
     sup.materialize_known_verdicts(snap, str(dest))
     text = dest.read_text(encoding="utf-8")
     assert "m_ccl" in text and "gate_pass=True" in text
@@ -577,13 +578,20 @@ def test_materialize_known_verdicts(tmp_path):
     i_oi_line = next(ln for ln in text.splitlines() if "i_oi" in ln)
     assert "already solved" not in i_oi_line
     assert "hard-gate-but-losing" in i_oi_line
-    assert "过硬门但亏钱" in text
+    # v23 口径: hard-gate-but-losing 指未过 fdr/migrated, 不再用亏钱描述.
+    assert "过硬门但未过 v23 统计检验" in text
+    assert "过硬门但亏钱" not in text
     assert "DEAD" in text
     assert "already solved" in text
+    # v23 口径: pass 标签区分 v2 与 v1 legacy (ev>0); m_ccl 为 v1 schema.
+    assert "v1 legacy" in text
     m_ccl_line = next(ln for ln in text.splitlines() if "m_ccl" in ln)
-    assert "econ_pass" in m_ccl_line
+    assert "v1_legacy_pass" in m_ccl_line
     m_oi_line = next(ln for ln in text.splitlines() if "m_oi" in ln)
     assert "DEAD" in m_oi_line
+    # v23 口径: 排序键 dir_acc 降序 (gate_pass=True 内 i_oi 0.60 > m_ccl 0.55).
+    body_lines = text.splitlines()
+    assert body_lines.index(i_oi_line) < body_lines.index(m_ccl_line)
 
 
 def test_429_failover_resume_not_wait_quota(tmp_path, monkeypatch):
@@ -1014,17 +1022,17 @@ def test_production_goal_yaml_tier1_expansion():
     conds = goal["success_condition"]
     # 当前生产状态: 仅 ss_vor 过门 → 扩目标后未达成
     snap = {"n_one_star_symbols_hit": 1, "n_unique_pass_variants": 1,
-            "n_families_hit": 1}
+            "n_families_hit": 1, "min_pass_variant_dir_acc": 0.56}
     ok, why = sup.evaluate_goal(conds, snap)
     assert ok is False and any("n_one_star_symbols_hit" in w for w in why)
     # 4 个 1 星品种过门 → 达成
     snap2 = {"n_one_star_symbols_hit": 4, "n_unique_pass_variants": 4,
-             "n_families_hit": 2}
+             "n_families_hit": 2, "min_pass_variant_dir_acc": 0.56}
     ok2, _ = sup.evaluate_goal(conds, snap2)
     assert ok2 is True
     # 只有 2 个 1 星 → 仍未达成
     snap3 = {"n_one_star_symbols_hit": 2, "n_unique_pass_variants": 1,
-             "n_families_hit": 1}
+             "n_families_hit": 1, "min_pass_variant_dir_acc": 0.56}
     ok3, _ = sup.evaluate_goal(conds, snap3)
     assert ok3 is False
 
@@ -1067,10 +1075,20 @@ def test_build_snapshot_scalars_v2(tmp_path):
     reg = tmp_path / "v.jsonl"
     rec = {"variant_id": "m_rsi_state", "symbol": "m", "cov_family": "momentum",
            "schema": "fm.aligned_verdict.v2", "status": "ok",
-           "gate_pass": True, "fdr_pass": True, "pf": 1.2, "ev": 0.05}
+           "gate_pass": True, "fdr_pass": True, "pf": 1.2, "ev": 0.05, "dir_acc": 0.56}
     reg.write_text(json.dumps(rec) + "\n", encoding="utf-8")
     snap = sup.build_snapshot(str(reg), 0, 0, 0)
     assert snap["n_unique_pass_variants"] == 1
     assert snap["n_one_star_symbols_hit"] >= 1
     assert snap["n_families_hit"] == 1
     assert "unknown" not in snap["families_hit"]
+    assert snap["min_pass_variant_dir_acc"] == 0.56
+
+
+def test_build_snapshot_min_dir_acc_none_when_no_pass(tmp_path):
+    reg = tmp_path / "v.jsonl"
+    rec = {"variant_id": "m_oi", "symbol": "m", "status": "ok",
+           "gate_pass": False, "dir_acc": 0.61}
+    reg.write_text(json.dumps(rec) + "\n", encoding="utf-8")
+    snap = sup.build_snapshot(str(reg), 0, 0, 0)
+    assert snap["min_pass_variant_dir_acc"] is None

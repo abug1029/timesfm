@@ -46,3 +46,15 @@ def test_set_intersection_tier_condition():
     snap2["symbols_hit"] = {"ss", "ao", "bu"}
     ok2, why2 = evaluate_goal([expr], snap2)
     assert ok2 is False and "unmet" in why2[0]
+
+def test_min_dir_acc_none_guard():
+    """v23 标量语义: None = 无过门变体 → 条件判 unmet 而非 eval error (goal.yaml 写法)。"""
+    expr = "min_pass_variant_dir_acc is not None and min_pass_variant_dir_acc > 0.52"
+    snap = dict(SNAP)
+    snap["min_pass_variant_dir_acc"] = None
+    ok, why = evaluate_goal([expr], snap)
+    assert ok is False and any("unmet" in w and "eval error" not in w for w in why)
+    snap2 = dict(SNAP)
+    snap2["min_pass_variant_dir_acc"] = 0.55
+    ok2, _ = evaluate_goal([expr], snap2)
+    assert ok2 is True

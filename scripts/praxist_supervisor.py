@@ -422,6 +422,12 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     n_one_star_symbols_hit = len(symbols_hit & GOAL_SYMBOLS_SET)
     n_unique_pass_variants = len({v["variant_id"] for v in passing})
     n_families_hit = len(families_hit)
+    # v23: v2 过门变体的 min dir_acc (pass_variants = gate_pass 且 (fdr_pass 或 migrated_pass);
+    # v1 legacy: gate_pass 且 ev>0);
+    # 无过门变体 (或无数值 dir_acc) 时为 None, goal 条件用 is not None 防护判 unmet 而非 eval error。
+    pass_dir_accs = [float(v["dir_acc"]) for v in passing
+                     if isinstance(v.get("dir_acc"), (int, float))]
+    min_pass_variant_dir_acc = min(pass_dir_accs) if pass_dir_accs else None
     return {
         "variants": snap,
         "symbols_hit": symbols_hit,
@@ -432,6 +438,7 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
         "n_one_star_symbols_hit": n_one_star_symbols_hit,
         "n_unique_pass_variants": n_unique_pass_variants,
         "n_families_hit": n_families_hit,
+        "min_pass_variant_dir_acc": min_pass_variant_dir_acc,
     }
 
 def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=600):
@@ -499,11 +506,18 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
 def materialize_known_verdicts(snapshot, dest_path):
     lines = ["## Known aligned verdicts (supervisor snapshot)",
              "v2 pass (gate_pass=True AND (fdr_pass OR migrated_pass)): already solved, do NOT re-propose.",
-             "hard-gate-but-losing (gate_pass=True but not (fdr_pass or migrated_pass)): 过硬门但亏钱; not a success; do not re-propose as solved.",
+             "v1 legacy: pass by ev>0 (legacy econ caliber, schema=v1 entries only).",
+             "hard-gate-but-losing (gate_pass=True but not (fdr_pass or migrated_pass)): 过硬门但未过 v23 统计检验; not a success; do not re-propose as solved.",
              "DEAD (gate_pass=False, status=ok): never revive without a mechanism correction.",
              ""]
     items = list(snapshot.values()) if isinstance(snapshot, dict) else []
-    items.sort(key=lambda v: (not v.get("gate_pass", False), -float(v.get("ev") or 0)))
+
+    def _da_key(v):
+        da = v.get("dir_acc")
+        # v23: 排序键 dir_acc 降序, 数值缺失排最后; ev 仅作展示列
+        return -(float(da) if isinstance(da, (int, float)) else float("-inf"))
+
+    items.sort(key=lambda v: (not v.get("gate_pass", False), _da_key(v)))
     if not items:
         lines.append("(no aligned verdicts yet)")
     for v in items[:20]:
@@ -513,7 +527,7 @@ def materialize_known_verdicts(snapshot, dest_path):
         v2 = v.get("schema") == "fm.aligned_verdict.v2"
         promoted = (bool(v.get("fdr_pass")) or bool(v.get("migrated_pass"))) if v2 else (ev > 0)
         if gate and promoted:
-            state = "econ_pass"
+            state = "v2_pass" if v2 else "v1_legacy_pass"
         elif gate:
             state = "hard-gate-but-losing"
         elif status == "ok":

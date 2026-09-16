@@ -29,10 +29,9 @@ def test_contract_file_exists_and_parses():
 def test_objective_pre_registered():
     d = _load()
     obj = d["objective"]
-    # 预注册主指标: 扣滑点 EV 为主, PF 为次 (G004/Phase 11 裁决口径)
-    assert obj["primary"] == "ev_after_slippage"
-    assert obj["secondary"] == "profit_factor"
-    # GREEN 必须全量 WF + 经济口径 (B1/Phase13/15 教训)
+    # 预注册主指标: DirAcc (v23 重构: 纯预测质量口径, PF/EV 退役)
+    assert obj["primary"] == "dir_acc"
+    # GREEN 必须全量 WF (B1/Phase13/15 教训)
     assert obj["green_requires_full_walkforward"] is True
 
 
@@ -40,9 +39,15 @@ def test_constraints_thresholds():
     d = _load()
     c = d["constraints"]
     assert c["min_samples"] >= 350
-    assert c["min_ic"] >= 0.05
-    assert c["multiple_comparison"] in ("bonferroni", "holm", "benjamini-hochberg")
-    assert c["maxdd_caliber"] == "cumprod_clamp"
+    assert c["min_dir_acc"] >= 0.50
+    assert c["min_n_eff"] >= 50
+    assert c["multiple_comparison"] in ("bonferroni", "holm", "benjamini-hochberg", "bh_fdr")
+
+
+def test_maxdd_caliber_optional():
+    d = _load()
+    # v23: maxdd_caliber 可选 (PF/EV/MaxDD 不再是裁决口径); 存在时仍须合法
+    assert d["constraints"].get("maxdd_caliber") in (None, "cumprod_clamp")
 
 
 def test_write_paths_within_redlines():
@@ -56,13 +61,28 @@ def test_evidence_maturity_gates():
     stages = {s["stage"]: s for s in d["evidence_maturity"]}
     assert "diagnostic" in stages
     assert "full_walkforward" in stages
-    # 全量阶段必须有硬门
-    assert stages["full_walkforward"]["gate"]
+    # 全量阶段必须有硬门 (v23: n/n_eff/DirAcc)
+    assert stages["full_walkforward"]["gate"] == ["n>=350", "n_eff>=50", "dir_acc>=0.52"]
 
 
 def test_generation_close_policy_sealed():
     d = _load()
     assert d["generation_close_policy"] == "sealed"
+
+
+def test_gate_defaults_match_yaml_contract():
+    """evaluator.gate 默认参数与 YAML gate 三条对账 (防两处手工同步漂移)."""
+    import inspect
+
+    eval_dir = os.path.join(FM_ROOT, "task_FM", "evaluations", "fm_eval")
+    sys.path.insert(0, eval_dir)
+    import evaluator
+
+    sig = inspect.signature(evaluator.gate)
+    c = _load()["constraints"]
+    assert sig.parameters["min_n"].default == c["min_samples"] == 350
+    assert sig.parameters["min_n_eff"].default == c["min_n_eff"] == 50
+    assert sig.parameters["min_dir_acc"].default == c["min_dir_acc"] == 0.52
 
 
 def test_validator_passes_real_contract():

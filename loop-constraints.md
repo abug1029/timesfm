@@ -15,8 +15,9 @@
 - `cascade/features.py` — 协变量构建逻辑，需人工确认
 - `data/config.py` — 品种配置，需人工确认
 - `.omc/` — OMC 内部状态
-- aligned_verdicts.jsonl 唯一写入方: aligned_slow_loop.py (慢环 flock 持有者)。
-  peers/supervisor/人工写 verdict = 破坏预注册纪律, 视同数据造假。
+- aligned_verdicts.jsonl 行追加只允许 aligned_slow_loop.py（慢环 flock 持有者）。
+  Supervisor 只允许批次结算时通过 update_batch_verdicts 回写 fdr_pass 及写 timeout 墓碑。
+  禁止 peers/人工手写; 违者 = 破坏预注册纪律, 视同数据造假。
   status=no_data 不是死亡; 只有 status=ok 且 gate_pass=false 为 DEAD。
   verdict 注册表为 canonical 证据源, reports/ 均为衍生视图。
 
@@ -45,7 +46,7 @@
 - 如果 STATE.md 无待处理事项，快速退出（不要空跑）
 
 ## 预注册评估契约 (2026-09-01, P0a；2026-09-08 方案 A 修订)
-- **最终裁决口径不变**：全量 walk-forward（n≥350）、IC≥0.05（ic=2×|dir_acc−0.5|）、扣滑点 EV>0、PF/incumbent>1.05
+- **最终裁决口径（v23，2026-09-16 起）**：全量 walk-forward（n≥350）、n_eff≥50、DirAcc≥0.52 + DM 检验 + BH-FDR(Per-Symbol)；PF/EV/MaxDD 退役为经济报表口径
 - **方案 A（2026-09-08 起）：peers 不再跑任何评估/加载 TimesFM**，只写机制化提案 `results/**/proposals/*.json`（schema `fm.hypothesis_proposal.v1`，mechanism ≥40 字）；慢环 `aligned_slow_loop.py` 是唯一验证器，诊断小样本 PF 不作数
 - 契约权威文件：`config/praxist_task.yaml`（校验器 `scripts/praxist_validate_task.py`，违规 exit 2）
 - PRAXIST peers 唯一可写区：run 目录下 `results/`（proposals/findings）；新协变量想法只能进 `task_FM/config/covariate_backlog.jsonl`。SCHEMES/cascade/data.config 固化、features.py 加协变量仍须人工（宿主）执行
