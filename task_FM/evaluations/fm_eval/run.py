@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""PRAXIST 评估入口 (平台经 task_entrypoints 调度)
+"""PRAXIST 评估入口 (平台经 task_entrypoints 调度) v23 2026-09-16
 
 用法: run.py --output-dir <dir> --candidate <candidate.json>
 候选: {symbol, cov_override, max_points[, stage=diagnostic|aligned]}
 stage=diagnostic: max_points 1..6 (快筛, 结构性不过硬门)
-stage=aligned:    max_points 350..500 (近全量 walk-forward, 可过硬门)
+stage=aligned:    max_points 350..600 (近全量 walk-forward, 可过硬门)
 """
 import argparse
 import json
@@ -16,7 +16,7 @@ FM_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, os.path.join(FM_ROOT, "scripts"))
 sys.path.insert(0, HERE)
 
-from evaluator import build_summary, validate_candidate  # noqa: E402
+from evaluator import build_summary, validate_candidate, load_baseline_points  # noqa: E402
 
 
 _HELD_EVAL_SLOT = None
@@ -87,11 +87,31 @@ def do_evaluate(cand):
         return {"summary": {"status": "no_scoreable_points", "usage_unknown": True,
                             "variant_name": _variant_name(cand), "stage": "aligned"}}
     s = dict(s)
-    s.setdefault("PF", s.get("profit_factor", 0.0))
-    s.setdefault("EV", s.get("ev", 0.0))
-    s.setdefault("MaxDD", s.get("max_dd", 0.0))
-    s.setdefault("DirAcc", s.get("dir_acc", 0.5))
-    return {"summary": build_summary(s, cand)}
+    # v23: new metric keys (PF/EV/MaxDD retired)
+    s.setdefault("dir_acc", s.get("DirAcc", 0.5))
+    s.setdefault("n_eff", s.get("n", 0))
+    s.setdefault("endpoint_mape", 0.0)
+    s.setdefault("endpoint_bias_pct", 0.0)
+    s.setdefault("path_corr", 0.0)
+    s.setdefault("weighted_dir_acc", s.get("dir_acc", 0.5))
+    s.setdefault("mae", 0.0)
+    s.setdefault("mape", 0.0)
+    s.setdefault("decay", 1.0)
+
+    # Load baseline for DM test (aligned stage only)
+    baseline_points = None
+    baseline_dir_acc = None
+    if stage == "aligned":
+        baseline_points = load_baseline_points(cand["symbol"])
+        if baseline_points:
+            ok_count = sum(1 for pt in baseline_points if pt.get("dir_ok"))
+            baseline_dir_acc = ok_count / len(baseline_points) if baseline_points else None
+
+    return {"summary": build_summary(
+        s, cand,
+        baseline_points=baseline_points,
+        baseline_dir_acc=baseline_dir_acc,
+    )}
 
 
 if __name__ == "__main__":

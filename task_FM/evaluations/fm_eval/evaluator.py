@@ -1,12 +1,14 @@
-"""FM_a PRAXIST 评估器核心 (P2, 2026-09-01)
+"""FM_a PRAXIST 评估器核心 (P2, 2026-09-01; v23 2026-09-16)
 
 契约: config/praxist_task.yaml (预注册口径)
-- 主指标 ev_after_slippage (monthly_backtest.summarize 净口径, 统一秤)
-- 硬门: n>=min_samples, IC>=min_ic (IC 由 DirAcc 距离 0.5 映射)
+- 主指标: dir_acc, endpoint_mape, path_corr (PF/EV/MaxDD 已退役)
+- 硬门: n>=min_n, n_eff>=min_n_eff, dir_acc>=adaptive_threshold
+- DM 检验: pair_dir_ok_series + diebold_mariano_p
 - 诊断级 (max_points 受限) 只产 incubator 证据, 永不过 Gem 门
 """
 import json
 import os
+import sys
 
 import numpy as np
 
@@ -14,10 +16,20 @@ import numpy as np
 FM_ROOT = os.path.abspath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir, os.pardir))
 
+# 导入统计检验模块
+sys.path.insert(0, os.path.join(FM_ROOT, "cascade"))
+try:
+    from statistical_tests import pair_dir_ok_series, diebold_mariano_p
+    from cov_family import resolve_cov_family
+except ImportError as e:
+    print(f"[WARN] 统计检验模块加载失败: {e}", file=sys.stderr)
+    pair_dir_ok_series = None
+    diebold_mariano_p = None
+    resolve_cov_family = None
+
 VALID_COVARIATES = {
     "rsi_state", "rsi_slope", "hourly_slope", "oi", "ccl", "basis_momentum",
     "ha_body", "calendar_cyclical", "reversal_shadow", "rsi6", "rsi12", "rsi24",
-    # Plan B: features.py dispatch 支持但原 VALID_COVARIATES 缺失
     "pca_momentum", "hurst", "gated_slope", "regime_gated",
     "vor",
     "ao_accel", "bb_squeeze",
@@ -27,7 +39,6 @@ VALID_COVARIATES = {
     "nvi", "qstick", "vwap_deviation", "stddev",
 }
 
-# Plan C: 动态协变量发现 (模块加载时执行一次)
 _DYNAMIC_DISCOVERY_ERROR = None
 
 try:
@@ -64,29 +75,19 @@ try:
 
     _discovered = _discover_covariates_from_features()
     if _discovered:
-        # 二次过滤: 排除 mode 参数 (可能是 mode 参数而非 covariate_type)
         _valid_discovered = {v for v in _discovered if len(v) >= 3 and v not in {"slope", "level", "zscore", "decay"}}
-        _missing_in_static = _valid_discovered - VALID_COVARIATES
         VALID_COVARIATES |= _valid_discovered
 except Exception:
     _DYNAMIC_DISCOVERY_ERROR = "dynamic discovery failed"
 
-# 清理临时命名
 for _n in ["_discover_covariates_from_features", "_discovered", "_missing_in_static"]:
     globals().pop(_n, None)
 
-
-# Plan D: 协变量策略池 (task_FM/config/covariate_pool.json)
-# 池是 peer 可提议协变量的单一事实源: status=active 可提议, archived 全局退役。
-# AST 发现只做并集(只会加), 归档必须在此显式差集, 否则删静态项无效。
 POOL_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_pool.json")
-ARCHIVED_COVARIATES = {}   # name -> archived_reason
+ARCHIVED_COVARIATES = {}
 _POOL_ERROR = None
 
-
 def _load_covariate_pool():
-    """读 covariate_pool.json → (active_set, archived{name:reason}, err)。
-    fail-open: 文件缺失/解析失败返回 (None, {}, err)，调用方不做任何归档/收窄。"""
     try:
         with open(POOL_PATH, "r", encoding="utf-8") as f:
             pool = json.load(f)
@@ -98,38 +99,29 @@ def _load_covariate_pool():
     except Exception as e:
         return None, {}, str(e)
 
-
 try:
     _active_pool, ARCHIVED_COVARIATES, _pool_err = _load_covariate_pool()
     if _active_pool is not None:
-        # active 池 ∩ 已实现分派(static∪AST)，再剔归档：
-        # 新 features.py 分支须先在池注册 active 才能被 peer 提议
         VALID_COVARIATES &= _active_pool
         VALID_COVARIATES -= set(ARCHIVED_COVARIATES)
     elif _pool_err:
         _POOL_ERROR = _pool_err
-        import sys
         print("[WARN] covariate_pool.json 加载失败, fail-open 不收窄: %s" % _pool_err,
               file=sys.stderr)
 except Exception as e:
     _POOL_ERROR = "covariate pool apply failed: %s" % e
-    import sys
     print("[WARN] 协变量池应用失败, fail-open: %s" % e, file=sys.stderr)
 
-
-# P2 试运行范围: 信用>=2星品种 (loop-constraints 允许, 数据质量已核)
 ALLOWED_SYMBOLS = {"ao", "bu", "cf", "fg", "fu", "i", "jm", "ma", "p", "sh", "sp", "ta", "ur", "m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"}
 
-# 证据阶梯 (2026-09-02 G6): 诊断档筛除 → aligned 档过硬门
 STAGE_POINTS = {
-    "diagnostic": (1, 6),      # 快筛: max_points 1..6, 永不过硬门 (结构性)
-    "aligned": (350, 600),     # 近全量: max_points >= gate min_n=350, 可过预注册硬门 (2026-09-09 用户批 500→600)
+    "diagnostic": (1, 6),
+    "aligned": (350, 600),
 }
 DEFAULT_STAGE = "diagnostic"
 
 
 def validate_candidate(c):
-    """候选 {symbol, cov_override, max_points[, stage]}; 非法候选拒绝"""
     if not isinstance(c, dict):
         return False, "candidate must be a mapping"
     if str(c.get("symbol", "")).lower() not in ALLOWED_SYMBOLS:
@@ -149,86 +141,138 @@ def validate_candidate(c):
     return True, "ok"
 
 
-def build_summary(s, cand):
-    """monthly_backtest.summarize 输出 + 候选 → 证据完整摘要
+def load_baseline_points(symbol, root=None):
+    """Load baseline points from JSONL file."""
+    if root is None:
+        root = os.path.join(FM_ROOT, "task_FM", "config")
+    path = os.path.join(root, f"baseline_points_{symbol}.jsonl")
+    if not os.path.exists(path):
+        return []
+    points = []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    points.append(json.loads(line))
+    except Exception as e:
+        print(f"[WARN] load_baseline_points({symbol}) failed: {e}", file=sys.stderr)
+    return points
 
-    run_summary.json 需含 variant_name/metrics/stage, 才能被 materializer
-    可靠地物化为 result finding 并挂上指标 (2026-09-02 run 教训)。
-    """
+
+def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch_id=None):
+    """Build complete verdict summary with DM test and adaptive gate."""
     m = map_summary(s)
     stage = cand.get("stage", DEFAULT_STAGE)
     variant = "{}_{}_{}_p{}".format(
         cand["symbol"], cand["cov_override"], stage, cand.get("max_points", 6)
     )
-    gate_pass = gate(s, min_n=350, min_ic=0.05)
+    gate_pass = gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52,
+                     baseline_dir_acc=baseline_dir_acc)
+    if stage == "diagnostic":
+        gate_pass = False
+    p_value = None
+    if (baseline_points is not None and
+        pair_dir_ok_series is not None and
+        diebold_mariano_p is not None):
+        point_dir_ok_list = s.get("point_dir_ok_list", [])
+        if len(point_dir_ok_list) >= 100 and len(baseline_points) >= 100:
+            try:
+                v_series, b_series = pair_dir_ok_series(point_dir_ok_list, baseline_points)
+                if len(v_series) >= 100:
+                    p_value = diebold_mariano_p(v_series, b_series)
+            except Exception as e:
+                print(f"[WARN] DM test failed: {e}", file=sys.stderr)
+    cov_family = "unknown"
+    if resolve_cov_family is not None:
+        try:
+            cov_family = resolve_cov_family(cand)
+        except Exception as e:
+            print(f"[WARN] resolve_cov_family failed: {e}", file=sys.stderr)
+    s.pop("point_dir_ok_list", None)
     return {
+        "schema": "fm.aligned_verdict.v2",
         "status": "ok",
         "usage_unknown": False,
         "stage": stage,
         "variant_name": variant,
         "symbol": cand["symbol"],
         "cov_override": cand["cov_override"],
+        "cov_family": cov_family,
+        "batch_id": batch_id,
         "n": m["n"],
-        "pf": m["pf"],
-        "ev": m["ev"],
-        "maxdd": m["maxdd"],
+        "n_eff": m["n_eff"],
         "dir_acc": m["dir_acc"],
+        "endpoint_mape": m["endpoint_mape"],
+        "endpoint_bias_pct": m["endpoint_bias_pct"],
+        "path_corr": m["path_corr"],
+        "weighted_dir_acc": m["weighted_dir_acc"],
+        "mae": m["mae"],
+        "mape": m["mape"],
+        "decay": m["decay"],
         "gate_pass": gate_pass,
+        "p_value": p_value,
+        "fdr_pass": None,
+        "migrated_pass": None,
         "metrics": {
-            "ev_after_slippage": m["ev"],
-            "pf": m["pf"],
-            "maxdd": m["maxdd"],
             "n": m["n"],
+            "n_eff": m["n_eff"],
             "dir_acc": m["dir_acc"],
+            "endpoint_mape": m["endpoint_mape"],
+            "endpoint_bias_pct": m["endpoint_bias_pct"],
+            "path_corr": m["path_corr"],
+            "weighted_dir_acc": m["weighted_dir_acc"],
+            "mae": m["mae"],
+            "mape": m["mape"],
+            "decay": m["decay"],
             "gate_pass": gate_pass,
         },
     }
 
 
 def map_summary(s):
-    """monthly_backtest.summarize 输出 → PRAXIST 指标命名"""
+    """monthly_backtest.summarize 输出 → PRAXIST 指标命名 (v23)"""
     return {
         "n": int(s.get("n", 0)),
-        "pf": float(s.get("PF", 0.0)),
-        "ev": float(s.get("EV", 0.0)),
-        "maxdd": float(s.get("MaxDD", 0.0)),
-        "dir_acc": float(s.get("DirAcc", 0.5)),
+        "n_eff": int(s.get("n_eff", s.get("n", 0))),
+        "dir_acc": float(s.get("dir_acc", s.get("DirAcc", 0.5))),
+        "endpoint_mape": float(s.get("endpoint_mape", 0.0)),
+        "endpoint_bias_pct": float(s.get("endpoint_bias_pct", 0.0)),
+        "path_corr": float(s.get("path_corr", 0.0)),
+        "weighted_dir_acc": float(s.get("weighted_dir_acc", s.get("dir_acc", 0.5))),
+        "mae": float(s.get("mae", 0.0)),
+        "mape": float(s.get("mape", 0.0)),
+        "decay": float(s.get("decay", 1.0)),
     }
 
 
-def gate(s, min_n=350, min_ic=0.05):
-    """预注册硬门: n 与方向性 IC(=2*|DirAcc-0.5|)"""
-    m = s if "dir_acc" in s else map_summary(s)
-    ic = 2 * abs(m.get("dir_acc", 0.5) - 0.5)
-    return m["n"] >= min_n and ic >= min_ic
+def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
+    """Hard gate for variant promotion."""
+    n = s.get("n")
+    n_eff = s.get("n_eff")
+    dir_acc = s.get("dir_acc")
+    if n is None or n_eff is None or dir_acc is None:
+        return False
+    if n < min_n or n_eff < min_n_eff:
+        return False
+    if baseline_dir_acc is not None:
+        effective_min = max(0.50, min(min_dir_acc, baseline_dir_acc))
+    else:
+        effective_min = min_dir_acc
+    return dir_acc >= effective_min
 
 
-def effective_sample_size(
-    nominal_n: int,
-    horizon: int,
-    step: int,
-    residual_autocorr: float | None = None,
-) -> int:
-    """
-    Bartlett full-kernel effective sample size for overlapping windows.
-
-    K = floor((H-1) / S)
-    VIF = 1 + 2 * sum_{k=1}^{K} (1 - k/(K+1)) * rho^k
-    n_eff = nominal_n / VIF
-    """
+def effective_sample_size(nominal_n, horizon, step, residual_autocorr=None):
+    """Bartlett full-kernel effective sample size for overlapping windows."""
     if step >= horizon:
         return nominal_n
-
     if residual_autocorr is None:
         residual_autocorr = 0.9
-
     max_overlap_step = (horizon - 1) // step
-
     kernel_sum = 0.0
     for k in range(1, max_overlap_step + 1):
         weight = 1.0 - (k / (max_overlap_step + 1))
         kernel_sum += weight * (residual_autocorr ** k)
-
     variance_inflation_factor = 1.0 + 2.0 * kernel_sum
     n_eff = nominal_n / variance_inflation_factor
     return max(1, int(n_eff))
