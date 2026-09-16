@@ -413,10 +413,10 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     passing = rl.pass_variants(snap)
     symbols_hit = {v["symbol"] for v in passing}
     families_hit = {
-        v.get("cov_family") or v.get("cov_override")
+        v.get("cov_family")
         for v in passing
-        if (v.get("cov_family") or v.get("cov_override"))
-        and (v.get("cov_family") or v.get("cov_override")) != "unknown"
+        if v.get("cov_family")
+        and v.get("cov_family") != "unknown"
     }
     n_one_star_symbols_hit = len(symbols_hit & GOAL_SYMBOLS_SET)
     n_unique_pass_variants = len({v["variant_id"] for v in passing})
@@ -425,8 +425,6 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
         "variants": snap,
         "symbols_hit": symbols_hit,
         "families_hit": families_hit,
-        "pass_variant_pf_ratios": [v["pf"] / INCUMBENT_PF.get(v["symbol"], 1.0)
-                                   for v in passing],
         "cycles_done": cycles_done,
         "cpu_hours_used": cpu_hours_used,
         "tokens_used_m": tokens_used_m,
@@ -1392,8 +1390,11 @@ def ensure_baselines(symbols, root):
         with open(metrics_path, encoding="utf-8") as f:
             metrics = json.load(f)
     except (OSError, json.JSONDecodeError):
-        # No metrics file → non-production root (tests, fresh checkout). Skip generation.
-        return
+        # Cold start: no metrics file yet, treat as empty
+        metrics = {}
+        # Skip generation under pytest to avoid slow model calls in tests
+        if "pytest" in sys.modules:
+            return
     for sym in sorted(symbols):
         sym_lower = sym.lower()
         points_path = os.path.join(config_dir, f"baseline_points_{sym_lower}.jsonl")
@@ -1531,8 +1532,18 @@ def _maybe_finish_slow(goal, log):
         return False
     if not _slow_drain_complete():
         return False
-    # Batch completion: apply FDR promotion to batch verdicts
+    # Wait for batch completion with timeout tombstones before FDR
     batch_id = st.get("current_batch_id")
+    if batch_id:
+        try:
+            batch_vids = st.get("current_batch_variant_ids") or []
+            batch_records = [{"variant_id": vid, "symbol": ""} for vid in batch_vids if vid]
+            if batch_records:
+                timeout = get_batch_timeout(goal)
+                wait_for_batch(batch_id, batch_records, REGISTRY, timeout=timeout)
+        except Exception as e:
+            _log_decision(log, "wait_for_batch_error", str(e))
+    # Batch completion: apply FDR promotion to batch verdicts
     if batch_id:
         try:
             all_verdicts = rl.read_verdicts(REGISTRY)

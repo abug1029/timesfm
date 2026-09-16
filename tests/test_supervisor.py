@@ -145,7 +145,7 @@ def test_build_snapshot_metrics(tmp_path):
                               tokens_used_m=10.0)
     assert snap["symbols_hit"] == {"m"}
     assert "a" in snap["variants"]
-    assert abs(snap["pass_variant_pf_ratios"][0] - 1.2 / sup.INCUMBENT_PF["m"]) < 1e-9
+    # pass_variant_pf_ratios removed in v23 (pf no longer in v2 verdicts)
     assert snap["cycles_done"] == 2
 
 def test_dry_run_one_shot_no_sleep(tmp_path, monkeypatch):

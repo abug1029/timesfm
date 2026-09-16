@@ -232,17 +232,25 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
 
 def map_summary(s):
     """monthly_backtest.summarize 输出 → PRAXIST 指标命名 (v23)"""
+    def _f(val, default=None):
+        if val is None:
+            return default
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return default
+
     return {
         "n": int(s.get("n", 0)),
         "n_eff": int(s.get("n_eff", s.get("n", 0))),
-        "dir_acc": float(s.get("dir_acc", s.get("DirAcc", 0.5))),
-        "endpoint_mape": float(s.get("endpoint_mape", 0.0)),
-        "endpoint_bias_pct": float(s.get("endpoint_bias_pct", 0.0)),
-        "path_corr": float(s.get("path_corr", 0.0)),
-        "weighted_dir_acc": float(s.get("weighted_dir_acc", s.get("dir_acc", 0.5))),
-        "mae": float(s.get("mae", 0.0)),
-        "mape": float(s.get("mape", 0.0)),
-        "decay": float(s.get("decay", 1.0)),
+        "dir_acc": _f(s.get("dir_acc", s.get("DirAcc")), 0.5),
+        "endpoint_mape": _f(s.get("endpoint_mape"), 0.0),
+        "endpoint_bias_pct": _f(s.get("endpoint_bias_pct"), 0.0),
+        "path_corr": _f(s.get("path_corr")),
+        "weighted_dir_acc": _f(s.get("weighted_dir_acc", s.get("dir_acc")), 0.5),
+        "mae": _f(s.get("mae"), 0.0),
+        "mape": _f(s.get("mape"), 0.0),
+        "decay": _f(s.get("decay"), 1.0),
     }
 
 

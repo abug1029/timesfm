@@ -107,13 +107,13 @@ def test_evaluator_build_summary_evidence_fields():
     from evaluator import build_summary
 
     s = build_summary(
-        {"n": 380, "PF": 1.12, "EV": 0.02, "MaxDD": -0.18, "DirAcc": 0.54},
+        {"n": 380, "n_eff": 380, "dir_acc": 0.54, "endpoint_mape": 0.02},
         {"symbol": "m", "cov_override": "rsi_state", "max_points": 400, "stage": "aligned"},
     )
     assert s["stage"] == "aligned"
     assert s["variant_name"] == "m_rsi_state_aligned_p400"
     assert s["metrics"]["n"] == 380
-    assert s["metrics"]["ev_after_slippage"] == s["ev"]
+    assert s["metrics"]["dir_acc"] == 0.54
     assert s["gate_pass"] is True
     assert s["usage_unknown"] is False
 
@@ -187,5 +187,5 @@ def test_templates_render_known_verdicts(tmp_path):
         "- m_ccl: gate_pass=True, ev=0.02, n=400, status=ok\n", encoding="utf-8"
     )
     base = _render(str(tpl), _fake_ctx())
-    assert "aligned_verdicts.jsonl" in base
+    assert "Known verdicts" in base
     assert "m_ccl" in base and "gate_pass=True" in base
