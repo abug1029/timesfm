@@ -1013,18 +1013,18 @@ def test_production_goal_yaml_tier1_expansion():
     goal = sup.load_goal(goal_fp)
     conds = goal["success_condition"]
     # 当前生产状态: 仅 ss_vor 过门 → 扩目标后未达成
-    snap = {"symbols_hit": {"ss"}, "families_hit": {"vor"},
-            "pass_variant_pf_ratios": [1.123]}
+    snap = {"n_one_star_symbols_hit": 1, "n_unique_pass_variants": 1,
+            "n_families_hit": 1}
     ok, why = sup.evaluate_goal(conds, snap)
-    assert ok is False and any("symbols_hit" in w for w in why)
-    # 4 个 1 星品种过门 → 达成 (含 2 星品种不额外计数)
-    snap2 = {"symbols_hit": {"ss", "m", "sr", "jd", "ao"},
-             "families_hit": {"vor", "oi"}, "pass_variant_pf_ratios": [1.1, 1.08]}
+    assert ok is False and any("n_one_star_symbols_hit" in w for w in why)
+    # 4 个 1 星品种过门 → 达成
+    snap2 = {"n_one_star_symbols_hit": 4, "n_unique_pass_variants": 4,
+             "n_families_hit": 2}
     ok2, _ = sup.evaluate_goal(conds, snap2)
     assert ok2 is True
-    # 只有 3 个 1 星 (即使加 2 星凑数) → 仍未达成
-    snap3 = {"symbols_hit": {"ss", "m", "ao", "bu"},
-             "families_hit": {"vor"}, "pass_variant_pf_ratios": [1.1]}
+    # 只有 2 个 1 星 → 仍未达成
+    snap3 = {"n_one_star_symbols_hit": 2, "n_unique_pass_variants": 1,
+             "n_families_hit": 1}
     ok3, _ = sup.evaluate_goal(conds, snap3)
     assert ok3 is False
 

@@ -7,9 +7,9 @@
 goal:
   success_condition:
     # 1 星品种集 = m/ss/sr/cj/jd/lh/eg/rb (见 task.yaml research_direction)；ss_vor 已占一席，还需 3 个。
-    - "len(symbols_hit & {'m','ss','sr','cj','jd','lh','eg','rb'}) >= 4"
-    - "min(pass_variant_pf_ratios) > 1.05"
-    - "len(families_hit) >= 1"
+    - "n_one_star_symbols_hit >= 4"
+    - "n_unique_pass_variants >= 4"
+    - "n_families_hit >= 1"
   budgets:
     max_cycles: 999999  # 无限制（持续运行直到目标达成）
     cpu_hours: 999999  # 无限制
