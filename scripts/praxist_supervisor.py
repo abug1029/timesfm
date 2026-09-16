@@ -551,6 +551,8 @@ def _load_evaluator():
 _ev_mod_for_goal = _load_evaluator()
 GOAL_SYMBOLS_SET = frozenset(getattr(_ev_mod_for_goal, "ALLOWED_SYMBOLS", set())) if _ev_mod_for_goal else frozenset()
 del _ev_mod_for_goal
+if not GOAL_SYMBOLS_SET:
+    print("[WARN] GOAL_SYMBOLS_SET is empty — goal 1-star gating disabled", file=sys.stderr)
 
 def _proposal_priority_score(prop, cov, symbol, snapshot):
     """机制化排序 (替代噪声小样本 EV)。确定性可复现。
@@ -1390,7 +1392,8 @@ def ensure_baselines(symbols, root):
         with open(metrics_path, encoding="utf-8") as f:
             metrics = json.load(f)
     except (OSError, json.JSONDecodeError):
-        metrics = {}
+        # No metrics file → non-production root (tests, fresh checkout). Skip generation.
+        return
     for sym in sorted(symbols):
         sym_lower = sym.lower()
         points_path = os.path.join(config_dir, f"baseline_points_{sym_lower}.jsonl")
@@ -1398,8 +1401,8 @@ def ensure_baselines(symbols, root):
         if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
             try:
                 gbp.generate(sym_lower, "default", root)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[ERROR] ensure_baselines: generate failed for {sym_lower}: {e}", file=sys.stderr)
             continue
         n_lines = 0
         if os.path.exists(points_path):
@@ -1417,8 +1420,8 @@ def ensure_baselines(symbols, root):
         if n_lines < 100:
             try:
                 gbp.generate(sym_lower, "default", root)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[ERROR] ensure_baselines: generate failed for {sym_lower} (n_lines={n_lines}): {e}", file=sys.stderr)
 
 
 def get_batch_timeout(goal):
@@ -1476,8 +1479,18 @@ def wait_for_batch(batch_id, batch_records, registry_path, timeout=7200):
 
 
 def cleanup_batch_workers(batch_id):
-    """Clean up any lingering slow-loop workers for a batch. Best-effort."""
-    pass
+    """Best-effort cleanup of batch workers. Kill processes with matching batch_id."""
+    try:
+        result = subprocess.run(
+            ["pkill", "-f", f"--batch-id.*{batch_id}"],
+            capture_output=True, timeout=5
+        )
+        if result.returncode == 0:
+            print(f"[INFO] Cleaned up workers for batch {batch_id}")
+    except FileNotFoundError:
+        pass  # pkill not available
+    except Exception as e:
+        print(f"[WARN] cleanup_batch_workers failed for {batch_id}: {e}", file=sys.stderr)
 
 
 def _maybe_start_slow_loop(goal, log):
@@ -1494,10 +1507,20 @@ def _maybe_start_slow_loop(goal, log):
         if not os.path.isfile(project_python):
             project_python = sys.executable
         batch_id = "batch_" + uuid.uuid4().hex[:8]
+        # Capture current queue records for batch tracking
+        try:
+            batch_records = rl.queue_load(QUEUE) + rl.queue_load(INPROGRESS)
+        except Exception:
+            batch_records = []
         subprocess.Popen(
             [project_python, os.path.join(HERE, "aligned_slow_loop.py"),
              "--batch-id", batch_id],
             stdout=out_fp, stderr=subprocess.STDOUT, start_new_session=True)
+        # Persist batch_id for FDR promotion on completion
+        fresh = load_state()
+        fresh["current_batch_id"] = batch_id
+        fresh["current_batch_variant_ids"] = [r.get("variant_id") for r in batch_records if r.get("variant_id")]
+        save_state(fresh)
     finally:
         out_fp.close()
     _log_decision(log, "slow_loop_started", "phase=slow, queue busy")
@@ -1508,6 +1531,29 @@ def _maybe_finish_slow(goal, log):
         return False
     if not _slow_drain_complete():
         return False
+    # Batch completion: apply FDR promotion to batch verdicts
+    batch_id = st.get("current_batch_id")
+    if batch_id:
+        try:
+            all_verdicts = rl.read_verdicts(REGISTRY)
+            batch_verdicts = [v for v in all_verdicts if v.get("batch_id") == batch_id]
+            if batch_verdicts and bh_fdr_promote is not None:
+                updates = bh_fdr_promote(batch_verdicts)
+                if updates:
+                    rl.update_batch_verdicts(REGISTRY, batch_id, updates)
+                    _log_decision(log, "batch_fdr_promote",
+                                 f"batch={batch_id} promoted={len(updates)}")
+        except Exception as e:
+            _log_decision(log, "batch_fdr_error", str(e))
+        try:
+            cleanup_batch_workers(batch_id)
+        except Exception as e:
+            _log_decision(log, "cleanup_batch_error", str(e))
+        # Clear batch tracking from state
+        fresh = load_state()
+        fresh.pop("current_batch_id", None)
+        fresh.pop("current_batch_variant_ids", None)
+        save_state(fresh)
     snap = rl.load_snapshot(REGISTRY)
     materialize_known_verdicts(snap, VERDICTS_INC)
     materialize_covariate_menu(load_covariate_pool(), MENU_INC)
@@ -1528,6 +1574,11 @@ def _maybe_finish_slow(goal, log):
 def _main_locked(args):
     log = os.path.join(FM_ROOT, ".omc", "supervisor_decisions.jsonl")
     one_shot = args.dry_run or args.once
+    # Pre-flight: ensure baseline metrics/points exist for all goal symbols
+    try:
+        ensure_baselines(GOAL_SYMBOLS_SET, args.root)
+    except Exception as e:
+        print(f"[ERROR] ensure_baselines pre-flight failed: {e}", file=sys.stderr)
     while True:
         _write_heartbeat()
         if _SHUTDOWN_REQUESTED:
