@@ -182,8 +182,9 @@ def test_e2e_main_chain(tmp_path):
     batch_verdicts = [v for v in rl.read_verdicts(reg)
                       if v.get("batch_id") == batch_id]
     updates = bh_fdr_promote(batch_verdicts)
-    # K=4 -> BH: 0.01<=0.025, 0.04<=0.05, 0.05<=0.075 pass; 0.90 fails;
-    # gate_pass=False rows always get fdr_pass=False
+    # K=4 BH: gate_fail rows get safe_p=1.0 -> never pass regardless of raw p
+    # (only m_rsi_state p=0.01<=0.025 passes); genuine multi-p step-up ladder
+    # is covered by test_e2e_tombstone_and_fdr_collection
     assert updates == {"m_rsi_state": {"fdr_pass": True},
                        "m_ha_body": {"fdr_pass": False},
                        "m_ccl": {"fdr_pass": False},
