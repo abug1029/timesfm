@@ -16,7 +16,7 @@ VERDICT_FIELDS_V2 = {
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
     "fdr_pass", "migrated_pass", "endpoint_mape", "endpoint_bias_pct",
-    "cov_family", "weighted_dir_acc",
+    "cov_family", "weighted_dir_acc", "error_message",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",
@@ -260,6 +260,7 @@ def update_batch_verdicts(path, batch_id, updates):
 
     If verdict has a `metrics` sub-dict, mirror the same keys into it.
     Atomic write; lock held throughout; no reentrant flock.
+    Preserves unparseable lines (does not silently drop them).
     """
     p = str(path)
     parent = os.path.dirname(p)
@@ -268,30 +269,35 @@ def update_batch_verdicts(path, batch_id, updates):
     lock_f = open(p + ".lock", "a")
     try:
         fcntl.flock(lock_f, fcntl.LOCK_EX)
-        rows = list(_iter_jsonl(p)) if os.path.exists(p) else []
-        out = []
-        for v in rows:
-            if v.get("batch_id") != batch_id:
-                out.append(v)
-                continue
-            vid = v.get("variant_id")
-            upd = updates.get(vid)
-            if not upd:
-                out.append(v)
-                continue
-            merged = dict(v)
-            for k, val in upd.items():
-                merged[k] = val
-            if "metrics" in merged and isinstance(merged["metrics"], dict):
-                m = dict(merged["metrics"])
-                for k, val in upd.items():
-                    m[k] = val
-                merged["metrics"] = m
-            out.append(merged)
+        # Read all lines, preserving bad ones
+        lines = []
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                for raw_line in f:
+                    raw_line = raw_line.strip()
+                    if not raw_line:
+                        continue
+                    try:
+                        rec = json.loads(raw_line)
+                        # Update matching records
+                        if rec.get("batch_id") == batch_id and rec.get("variant_id") in updates:
+                            upd = updates[rec["variant_id"]]
+                            for k, val in upd.items():
+                                rec[k] = val
+                            # Sync metrics sub-dict
+                            if "metrics" in rec and isinstance(rec["metrics"], dict):
+                                for k, val in upd.items():
+                                    # Mirror all update keys into metrics (original behavior)
+                                    rec["metrics"][k] = val
+                        lines.append(json.dumps(rec, ensure_ascii=False))
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        # Preserve unparseable lines as-is
+                        lines.append(raw_line)
+
         tmp = f"{p}.{os.getpid()}.{time.time_ns()}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            for row in out:
-                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            for line in lines:
+                f.write(line + "\n")
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, p)
@@ -312,17 +318,18 @@ def make_error_tombstone(symbol, variant_id, batch_id, exception):
         "cov_family": "unknown",
         "status": "error",
         "stage": "aligned",
-        "n": 0,
-        "n_eff": 0,
-        "dir_acc": 0.0,
-        "weighted_dir_acc": 0.5,
+        "error_message": msg,
         "gate_pass": False,
         "p_value": 1.0,
         "fdr_pass": False,
         "migrated_pass": False,
-        "endpoint_mape": 0.0,
-        "endpoint_bias_pct": 0.0,
+        "n": 0,
+        "n_eff": 0,
+        "dir_acc": 0.0,
+        "endpoint_mape": None,
+        "endpoint_bias_pct": None,
         "path_corr": None,
+        "weighted_dir_acc": 0.0,
         "mae": None,
         "mape": None,
         "decay": None,
@@ -330,18 +337,24 @@ def make_error_tombstone(symbol, variant_id, batch_id, exception):
         "slow_loop_pid": None,
         "git_rev": None,
         "decided_at": None,
-        "error_message": msg,
         "metrics": {
             "batch_id": batch_id,
             "symbol": symbol,
             "n": 0,
             "n_eff": 0,
             "dir_acc": 0.0,
-            "endpoint_mape": 0.0,
-            "endpoint_bias_pct": 0.0,
+            "endpoint_mape": None,
+            "endpoint_bias_pct": None,
             "path_corr": None,
-            "weighted_dir_acc": 0.5,
+            "weighted_dir_acc": 0.0,
             "status": "error",
+            "gate_pass": False,
+            "p_value": 1.0,
+            "fdr_pass": False,
+            "migrated_pass": False,
+            "mae": None,
+            "mape": None,
+            "decay": None,
         },
     }
 
@@ -357,17 +370,18 @@ def make_timeout_tombstone(symbol, variant_id, batch_id):
         "cov_family": "unknown",
         "status": "timeout",
         "stage": "aligned",
-        "n": 0,
-        "n_eff": 0,
-        "dir_acc": 0.0,
-        "weighted_dir_acc": 0.5,
+        "error_message": "batch timeout",
         "gate_pass": False,
         "p_value": 1.0,
         "fdr_pass": False,
         "migrated_pass": False,
-        "endpoint_mape": 0.0,
-        "endpoint_bias_pct": 0.0,
+        "n": 0,
+        "n_eff": 0,
+        "dir_acc": 0.0,
+        "endpoint_mape": None,
+        "endpoint_bias_pct": None,
         "path_corr": None,
+        "weighted_dir_acc": 0.0,
         "mae": None,
         "mape": None,
         "decay": None,
@@ -381,11 +395,18 @@ def make_timeout_tombstone(symbol, variant_id, batch_id):
             "n": 0,
             "n_eff": 0,
             "dir_acc": 0.0,
-            "endpoint_mape": 0.0,
-            "endpoint_bias_pct": 0.0,
+            "endpoint_mape": None,
+            "endpoint_bias_pct": None,
             "path_corr": None,
-            "weighted_dir_acc": 0.5,
+            "weighted_dir_acc": 0.0,
             "status": "timeout",
+            "gate_pass": False,
+            "p_value": 1.0,
+            "fdr_pass": False,
+            "migrated_pass": False,
+            "mae": None,
+            "mape": None,
+            "decay": None,
         },
     }
 

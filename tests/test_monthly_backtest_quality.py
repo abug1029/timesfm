@@ -203,35 +203,22 @@ def test_dir_ok_uses_endpoint_not_weighted():
     assert s["point_dir_ok_list"][0][1] is True  # list also True
 
 def test_dir_ok_formula_endpoint_not_weighted():
-    """Test the dir_ok formula directly: uses endpoint, not weighted delta.
-    
-    This test verifies the per-point formula at monthly_backtest.py ~line 345:
-    dir_ok uses (pred[-1]-base) vs (real[-1]-base), not weighted delta_pred.
-    """
-    import numpy as np
-    
-    # Construct scenario: pred_end > base (endpoint up), but weighted delta_pred < 0
+    """Test the endpoint_dir_ok function directly."""
+    from monthly_backtest import endpoint_dir_ok
+
+    # Construct scenario: endpoint up
     base = 100.0
-    pred_end = 105.0   # endpoint up
-    real_end = 108.0   # endpoint up
-    delta_pred_weighted = -2.0  # weighted down (opposite direction)
-    delta_real = 8.0
-    
-    # Per-point formula from monthly_backtest.py lines 346-352:
-    _delta_pred_endpoint = float(pred_end - base)   # +5
-    _delta_real_endpoint = float(real_end - base)   # +8
-    _eps = 1e-8
-    if abs(_delta_real_endpoint) < _eps:
-        dir_ok = False
-    else:
-        dir_ok = bool(np.sign(_delta_pred_endpoint) == np.sign(_delta_real_endpoint))
-    
-    # Endpoint direction agrees -> dir_ok = True
-    assert dir_ok is True, f"Expected dir_ok=True (endpoint agrees), got {dir_ok}"
-    
-    # If we had used weighted delta_pred (wrong logic), dir_ok would be False
-    weighted_dir_ok = bool(np.sign(delta_pred_weighted) == np.sign(delta_real))
-    assert weighted_dir_ok is False, "Weighted logic would give wrong answer"
+    pred_end = 105.0  # Endpoint up
+    real_end = 108.0  # Endpoint up
+
+    # Should use endpoint direction, return True
+    assert endpoint_dir_ok(pred_end, real_end, base) is True
+
+    # Zero move returns False
+    assert endpoint_dir_ok(100.0, 100.0, 100.0) is False
+
+    # Opposite direction returns False
+    assert endpoint_dir_ok(95.0, 108.0, 100.0) is False
 
 
 

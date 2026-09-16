@@ -48,6 +48,20 @@ from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
 from cascade.evaluation_metrics import metrics_from_backtest_points, calc_prediction_quality, fallback_n_eff, safe_path_corr
 from cascade.signal_contract import position_from_forecast
+
+
+def endpoint_dir_ok(pred_end: float, real_end: float, base: float, eps: float = 1e-8) -> bool:
+    """Determine direction correctness using endpoint price change.
+
+    Returns True if pred and real move in same direction from base.
+    Returns False if real move is near zero (|delta| < eps).
+    """
+    delta_pred = float(pred_end - base)
+    delta_real = float(real_end - base)
+    if abs(delta_real) < eps:
+        return False
+    return bool(np.sign(delta_pred) == np.sign(delta_real))
+
 from config.prediction_scheme import get_scheme
 from data.data_store import BacktestDataStore
 
@@ -345,11 +359,7 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
             # weighted delta_pred still used for pnl / economic scale below
             _delta_pred_endpoint = float(pred[-1] - base)
             _delta_real_endpoint = float(real[-1] - base)
-            _eps = 1e-8
-            if abs(_delta_real_endpoint) < _eps:
-                dir_ok = False  # zero move = wrong
-            else:
-                dir_ok = bool(np.sign(_delta_pred_endpoint) == np.sign(_delta_real_endpoint))
+            dir_ok = endpoint_dir_ok(pred[-1], real[-1], base)
             if i < 3:
                 print(f" dir_ok", end="", flush=True)
             mae = float(np.mean(np.abs(pred - real)))
