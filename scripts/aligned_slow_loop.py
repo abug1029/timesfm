@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """aligned slow loop: claim-driven, checkpoint resume, verdicts (0 token)"""
-import argparse, fcntl, json, os, sys, time
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("MKL_NUM_THREADS", "4")
+
+import argparse, fcntl, json, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 FM_ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
@@ -9,12 +13,18 @@ sys.path.insert(0, os.path.join(FM_ROOT, "task_FM", "evaluations", "fm_eval"))
 import monthly_backtest as mb
 import registry_lib as rl
 import numpy as np
-from evaluator import build_summary, effective_sample_size
+from evaluator import build_summary, effective_sample_size, load_baseline_points
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
 from cascade.evaluation_metrics import calc_margin_maxdd_robust
 from config.prediction_scheme import get_scheme
 from config.backtest_config import TICK_SIZES, SLIPPAGE_TICKS
+
+try:
+    import torch
+    torch.set_num_threads(4)
+except ImportError:
+    pass
 
 _MODELS = None
 
@@ -51,16 +61,57 @@ def _record_elapsed(variant_id, elapsed_s):
         f.write(json.dumps({"variant_id": variant_id, "elapsed_s": elapsed_s,
                             "ts": _now()}, ensure_ascii=False) + "\n")
 
-def _no_data_verdict(row):
-    return {"variant_id": row["variant_id"], "symbol": row["symbol"],
-            "cov_override": row["cov_override"], "max_points": row["max_points"],
-            "n": 0, "pf": 0.0, "ev": 0.0, "maxdd": 0.0, "dir_acc": 0.5,
-            "gate_pass": False, "ic": 0.0, "decided_at": _now(),
-            "checkpoint_path": "", "slow_loop_pid": os.getpid(),
-            "git_rev": _git_rev(), "schema": "fm.aligned_verdict.v1",
-            "status": "no_data"}  # dead_variants 忽略 no_data
+def _no_data_verdict(row, batch_id=None):
+    bid = batch_id or row.get("batch_id")
+    return {
+        "schema": "fm.aligned_verdict.v2",
+        "variant_id": row["variant_id"],
+        "symbol": row["symbol"],
+        "cov_override": row.get("cov_override"),
+        "cov_family": "unknown",
+        "batch_id": bid,
+        "status": "no_data",
+        "stage": "aligned",
+        "n": 0,
+        "n_eff": 0,
+        "dir_acc": 0.0,
+        "gate_pass": False,
+        "p_value": 1.0,
+        "fdr_pass": False,
+        "migrated_pass": False,
+        "endpoint_mape": None,
+        "endpoint_bias_pct": None,
+        "path_corr": None,
+        "weighted_dir_acc": 0.0,
+        "mae": None,
+        "mape": None,
+        "decay": None,
+        "decided_at": _now(),
+        "checkpoint_path": "",
+        "slow_loop_pid": os.getpid(),
+        "git_rev": _git_rev(),
+        "metrics": {
+            "batch_id": bid,
+            "symbol": row["symbol"],
+            "n": 0,
+            "n_eff": 0,
+            "dir_acc": 0.0,
+            "status": "no_data",
+            "gate_pass": False,
+            "p_value": 1.0,
+        },
+    }
 
-def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path):
+def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path, batch_id=None):
+    bid = batch_id or row.get("batch_id")
+    try:
+        return _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid)
+    except Exception as e:
+        tombstone = rl.make_error_tombstone(row["symbol"], row["variant_id"], bid, e)
+        rl.append_verdict(registry_path, tombstone)
+        return tombstone
+
+def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
     vid = row["variant_id"]
     os.makedirs(checkpoint_dir, exist_ok=True)
     cp = os.path.join(checkpoint_dir, vid + ".jsonl")
@@ -88,30 +139,19 @@ def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path):
             resumed_points=resumed)
     elapsed_s = round(time.time() - t0, 3)
     if data is None:
-        v = _no_data_verdict(row)
+        v = _no_data_verdict(row, batch_id=bid)
     else:
         s = mb.summarize(data)
         if s is None:
-            v = _no_data_verdict(row)
+            v = _no_data_verdict(row, batch_id=bid)
         else:
             s = dict(s)
-            s.setdefault("PF", s.get("profit_factor", 0.0))
-            s.setdefault("EV", s.get("ev", 0.0))
-            s.setdefault("MaxDD", s.get("max_dd", 0.0))
-            s.setdefault("DirAcc", s.get("dir_acc", 0.5))
+            baseline_pts = load_baseline_points(row["symbol"])
             v = build_summary(s, {"symbol": row["symbol"], "cov_override": row["cov_override"],
-                                  "max_points": row["max_points"], "stage": "aligned"})
-            v.setdefault("status", "ok")
+                                  "max_points": row["max_points"], "stage": "aligned"},
+                              batch_id=bid, baseline_points=baseline_pts)
             v["variant_id"] = row["variant_id"]
-            v.setdefault("symbol", row["symbol"])
-            v.setdefault("cov_override", row["cov_override"])
-            v.setdefault("max_points", row["max_points"])
-            v.setdefault("ic", round(2 * abs(float(v.get("dir_acc", 0.5)) - 0.5), 10))
             v.setdefault("decided_at", _now())
-            v.setdefault("schema", "fm.aligned_verdict.v1")
-            # SPEC-004: n_eff integration point
-            v["n_eff"] = effective_sample_size(v.get("n", 0), horizon=24, step=2)
-            v["n_eff_method"] = "bartlett_full_kernel_rho0.9"
             # SPEC-008: margin-based MaxDD with non-overlapping stride
             _ok_pts = [p for p in data["points"] if "error" not in p]
             _pnl_arr = _net_pnl_pts(_ok_pts, row["symbol"])
@@ -126,8 +166,7 @@ def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path):
     v["slow_loop_pid"] = os.getpid()
     v["git_rev"] = _git_rev()
     os.makedirs(os.path.dirname(registry_path) or ".", exist_ok=True)
-    with open(registry_path, "a", encoding="utf-8") as f:
-        rl.append_verdict(f, v)
+    rl.append_verdict(registry_path, v)
     _record_elapsed(row["variant_id"], elapsed_s)
     return v
 
@@ -150,6 +189,7 @@ def main(argv=None):
     ap.add_argument("--registry", default=os.path.join(FM_ROOT, "task_FM", "config", "aligned_verdicts.jsonl"))
     ap.add_argument("--checkpoint-dir", default=os.path.join(FM_ROOT, "data", "cache", "aligned_checkpoints"))
     ap.add_argument("--daily-cache-dir", default=os.path.join(FM_ROOT, "data", "cache", "daily_pred"))
+    ap.add_argument("--batch-id", default=None, help="batch id injected by supervisor")
     args = ap.parse_args(argv)
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     lock_file = os.path.join(os.path.dirname(args.checkpoint_dir), "aligned_slow_loop.lock")
@@ -174,13 +214,9 @@ def main(argv=None):
                     return 1
             except Exception as _e:
                 print(f"mem_guard shed/self-check: {_e}", flush=True)
-            try:
-                verdict = run_aligned_candidate(row, args.daily_cache_dir,
-                                                args.checkpoint_dir, args.registry)
-            except Exception as e:
-                print(json.dumps({"variant_id": row["variant_id"], "error": str(e)}))
-                # 不 ack: inprogress 残留, 下次启动 recover 重试。不写死亡 verdict。
-                return 1
+            verdict = run_aligned_candidate(row, args.daily_cache_dir,
+                                            args.checkpoint_dir, args.registry,
+                                            batch_id=args.batch_id)
             rl.queue_ack(args.queue, args.inprogress, row,
                          os.path.join(os.path.dirname(args.checkpoint_dir), "aligned_pending.done.jsonl"))
             print(json.dumps({"variant_id": verdict["variant_id"],

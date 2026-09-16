@@ -18,6 +18,39 @@ def _fake_data():
                                          "delta_pred": 1, "delta_real": 1,
                                          "pnl": 10, "base": 3000}]}
 
+def _fake_v2_verdict(**overrides):
+    """Complete v2 verdict dict for monkeypatching build_summary."""
+    v = {
+        "schema": "fm.aligned_verdict.v2",
+        "status": "ok",
+        "stage": "aligned",
+        "variant_name": "m_rsi_state_aligned_p400",
+        "symbol": "m",
+        "cov_override": "rsi_state",
+        "cov_family": "state",
+        "batch_id": None,
+        "n": 400,
+        "n_eff": 350,
+        "dir_acc": 0.55,
+        "weighted_dir_acc": 0.55,
+        "gate_pass": True,
+        "p_value": None,
+        "fdr_pass": None,
+        "migrated_pass": None,
+        "endpoint_mape": 0.01,
+        "endpoint_bias_pct": 0.5,
+        "path_corr": 0.3,
+        "mae": 0.5,
+        "mape": 0.02,
+        "decay": 0.95,
+        "metrics": {
+            "n": 400, "n_eff": 350, "dir_acc": 0.55,
+            "gate_pass": True, "status": "ok",
+        },
+    }
+    v.update(overrides)
+    return v
+
 def test_run_aligned_candidate(tmp_path, monkeypatch):
     import monthly_backtest as mb
     monkeypatch.setattr(mb, "run_symbol_backtest", lambda *a, **k: _fake_data())
@@ -26,8 +59,7 @@ def test_run_aligned_candidate(tmp_path, monkeypatch):
     monkeypatch.setattr(asl, "_MODELS", (object(), object()))
     monkeypatch.setattr(asl, "_METRICS_PATH", str(tmp_path / "metrics.jsonl"))
     monkeypatch.setattr(asl, "build_summary",
-                        lambda s, c: {"status": "ok", "gate_pass": True, "ev": 0.02,
-                                      "pf": 1.2, "n": 400, "maxdd": -0.1, "dir_acc": 0.55})
+                        lambda s, c, **kw: _fake_v2_verdict())
     reg = tmp_path / "verdicts.jsonl"
     verdict = asl.run_aligned_candidate(
         _row(), daily_cache_dir=str(tmp_path / "dc"),
@@ -78,7 +110,7 @@ def test_recover_then_claim_after_crash(tmp_path, monkeypatch):
     assert "m_rsi_state" in snap
 
 def test_live_summarize_keys_aliased(tmp_path, monkeypatch):
-    """monthly_backtest.summarize live keys must reach verdict pf/ev/dir_acc/ic."""
+    """monthly_backtest.summarize live keys must reach verdict dir_acc / schema v2."""
     import monthly_backtest as mb
     monkeypatch.setattr(mb, "run_symbol_backtest", lambda *a, **k: _fake_data())
     monkeypatch.setattr(mb, "summarize", lambda data: {
@@ -90,31 +122,26 @@ def test_live_summarize_keys_aliased(tmp_path, monkeypatch):
         _row(), daily_cache_dir=str(tmp_path / "dc"),
         checkpoint_dir=str(tmp_path / "cp"),
         registry_path=str(tmp_path / "verdicts.jsonl"))
-    assert verdict["pf"] == 1.2
-    assert verdict["ev"] == 0.02
     assert verdict["dir_acc"] == 0.55
-    assert verdict["ic"] == 0.1
+    assert verdict["schema"].endswith("v2")
 
-def test_eval_exception_no_ack_no_verdict(tmp_path, monkeypatch):
-    """eval raise: rc=1, inprogress keeps the row, no death verdict written."""
+def test_eval_exception_writes_error_tombstone(tmp_path, monkeypatch):
     pending = tmp_path / "pending.jsonl"
     inflight = tmp_path / "inprogress.jsonl"
     reg = tmp_path / "verdicts.jsonl"
-    with open(pending, "a", encoding="utf-8") as f:
-        f.write(json.dumps(_row()) + "\n")
+    pending.write_text(json.dumps(_row()) + "\n", encoding="utf-8")
     import monthly_backtest as mb
-    def _boom(*a, **k):
-        raise RuntimeError("eval boom")
-    monkeypatch.setattr(mb, "run_symbol_backtest", _boom)
+    monkeypatch.setattr(mb, "run_symbol_backtest", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     monkeypatch.setattr(asl, "_MODELS", (object(), object()))
     monkeypatch.setattr(asl, "_METRICS_PATH", str(tmp_path / "metrics.jsonl"))
     rc = asl.main(["--once", "--queue", str(pending), "--inprogress", str(inflight),
-                   "--registry", str(reg),
+                   "--registry", str(reg), "--batch-id", "b1",
                    "--checkpoint-dir", str(tmp_path / "cp"),
                    "--daily-cache-dir", str(tmp_path / "dc")])
-    assert rc == 1
-    assert [r["variant_id"] for r in rl.queue_load(str(inflight))] == ["m_rsi_state"]
-    assert rl.load_snapshot(str(reg)) == {}
+    snap = rl.load_snapshot(str(reg))
+    assert "m_rsi_state" in snap
+    assert snap["m_rsi_state"]["status"] == "error"
+    assert rc == 0  # 墓碑写完视为该候选已结算，队列 ack
 
 @pytest.mark.slow
 def test_run_aligned_candidate_real_data(tmp_path, monkeypatch):
@@ -167,8 +194,7 @@ def test_margin_maxdd_receives_net_pnl(tmp_path, monkeypatch):
     monkeypatch.setattr(asl, "_MODELS", (object(), object()))
     monkeypatch.setattr(asl, "_METRICS_PATH", str(tmp_path / "metrics.jsonl"))
     monkeypatch.setattr(asl, "build_summary",
-                        lambda s, c: {"status": "ok", "gate_pass": True, "ev": 0.02,
-                                      "pf": 1.2, "n": 400, "maxdd": -0.1, "dir_acc": 0.55})
+                        lambda s, c, **kw: _fake_v2_verdict())
     asl.run_aligned_candidate(
         _row(), daily_cache_dir=str(tmp_path / "dc"),
         checkpoint_dir=str(tmp_path / "cp"),
