@@ -5,7 +5,7 @@
 
 输出:
     task_FM/config/baseline_points_{symbol}.jsonl  每行 {cutoff, dir_ok, delta_pred, delta_real}
-    task_FM/config/baseline_metrics.json           更新 {symbol: {dir_acc, endpoint_mape, n, n_eff}}
+    task_FM/config/baseline_metrics.json          更新 {symbol: {dir_acc, endpoint_mape, n, n_eff}}
 
 约束:
     - 禁止从 evaluator / 慢环调用本脚本
@@ -74,50 +74,79 @@ def generate(symbol: str, cov: str, root: str):
             print(f"[Error] 品种 {sym_upper} summarize 失败")
             return
 
+        # MEDIUM 4: summary 键存在性验证
+        required_keys = {"dir_acc", "endpoint_mape", "n", "n_eff"}
+        if not required_keys.issubset(summary.keys()):
+            missing = required_keys - set(summary.keys())
+            raise ValueError(f"summarize 返回的字典缺少键: {missing}")
+
         points = result.get("points", [])
         total = len(points)
         print(f"[Info] 品种 {sym_upper} 共 {total} 个评估点")
 
-        # 写 JSONL: 只写 {cutoff, dir_ok, delta_pred, delta_real}
+        # MEDIUM 3: 部分写入文件清理 - 写入临时文件，成功后 rename
         jsonl_file = config_dir / f"baseline_points_{sym_lower}.jsonl"
-        with open(jsonl_file, "w", encoding="utf-8") as fp:
-            written = 0
-            for i, pt in enumerate(points):
-                if "error" in pt:
-                    continue
-                rec = {
-                    "cutoff": pt["cutoff"],
-                    "dir_ok": bool(pt["dir_ok"]),
-                    "delta_pred": float(pt["delta_pred"]),
-                    "delta_real": float(pt["delta_real"]),
-                }
-                fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                written += 1
+        temp_file = config_dir / f".baseline_points_{sym_lower}.tmp"
+        try:
+            with open(temp_file, "w", encoding="utf-8") as fp:
+                written = 0
+                for i, pt in enumerate(points):
+                    if "error" in pt:
+                        continue
 
-                # 每 50 点打印进度
-                if written % 50 == 0:
-                    print(f"[Progress] Baseline generation for {sym_upper}: {written}/{total} points done...")
+                    # HIGH: cutoff 时间戳格式验证
+                    cutoff_str = pt["cutoff"]
+                    try:
+                        datetime.strptime(cutoff_str, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        raise ValueError(f"品种 {sym_upper} 的 cutoff 格式错误: {cutoff_str}")
+
+                    rec = {
+                        "cutoff": pt["cutoff"],
+                        "dir_ok": bool(pt["dir_ok"]),
+                        "delta_pred": float(pt["delta_pred"]),
+                        "delta_real": float(pt["delta_real"]),
+                    }
+                    fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    written += 1
+
+                    # 每 50 点打印进度
+                    if written % 50 == 0:
+                        print(f"[Progress] Baseline generation for {sym_upper}: {written}/{total} points done...")
+
+            temp_file.rename(jsonl_file)
+        except Exception:
+            if temp_file.exists():
+                temp_file.unlink()
+            raise
 
         print(f"[Progress] Baseline generation for {sym_upper}: {written}/{total} points done...")
 
-        # 更新 baseline_metrics.json
+        # MEDIUM 1: metrics 文件并发更新保护 - 使用文件锁保护 metrics 更新
         metrics_file = config_dir / "baseline_metrics.json"
-        if metrics_file.exists():
-            metrics = json.loads(metrics_file.read_text(encoding="utf-8"))
-        else:
-            metrics = {}
+        metrics_lock = config_dir / ".metrics.lock"
+        with open(metrics_lock, "w") as m_lock_fp:
+            fcntl.flock(m_lock_fp.fileno(), fcntl.LOCK_EX)
+            try:
+                # MEDIUM 2: 空 metrics 文件处理
+                if metrics_file.exists() and metrics_file.stat().st_size > 0:
+                    metrics = json.loads(metrics_file.read_text(encoding="utf-8"))
+                else:
+                    metrics = {}
 
-        metrics[sym_lower] = {
-            "dir_acc": summary["dir_acc"],
-            "endpoint_mape": summary["endpoint_mape"],
-            "n": summary["n"],
-            "n_eff": summary["n_eff"],
-        }
+                metrics[sym_lower] = {
+                    "dir_acc": summary["dir_acc"],
+                    "endpoint_mape": summary["endpoint_mape"],
+                    "n": summary["n"],
+                    "n_eff": summary["n_eff"],
+                }
 
-        metrics_file.write_text(
-            json.dumps(metrics, ensure_ascii=False, indent=2),
-            encoding="utf-8"
-        )
+                metrics_file.write_text(
+                    json.dumps(metrics, ensure_ascii=False, indent=2),
+                    encoding="utf-8"
+                )
+            finally:
+                fcntl.flock(m_lock_fp.fileno(), fcntl.LOCK_UN)
 
         print(f"[Done] 品种 {sym_upper} 基线生成完成: n={summary['n']}, dir_acc={summary['dir_acc']:.3f}, endpoint_mape={summary['endpoint_mape']:.2f}")
 
