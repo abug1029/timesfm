@@ -85,3 +85,10 @@ task_FM/config/*.bak
 *.bak
 *.bak_*
 *.bak.*
+
+# Runtime artifacts (supervisor-generated, keep on disk only)
+.codegraph/
+task_FM/config/*.lock
+task_FM/config/baseline_metrics.json
+task_FM/config/baseline_points_*.jsonl
+task_FM/docs/praxist_reports/
