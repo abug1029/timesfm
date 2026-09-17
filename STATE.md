@@ -35,7 +35,7 @@
 | 合同 | 方案 A：peer 写假设，慢环唯一验证器 |
 | 目标 | 1 星集合过门 ≥4 + PF 比>1.05 + ≥1 族；`goal.yaml` 预算已 999999 / deadline 2099-12-31 |
 | 监督环 | `phase=fast`，`cycles_done=1`，`paused_429=false`；`last_run_id=run_2026-09-10_03-06-50_primary_task_FM`；`last_harvested_run_id=run_2026-09-10_00-44-51_primary_task_FM` |
-| 过门 | `pass_variants()` 要 `gate_pass and ev>0`：实质仅 `ss_vor`（n=396 PF=1.123 ev=+11.06 ic=0.06；v22 旧口径数字，v23 未复测） |
+| 过门 | `pass_variants()` 要 `gate_pass and ev>0`：实质仅 `ss_vor`（n=396 PF=1.123 ev=+11.06 ic=0.06；v22 旧口径数字，**v23 复测未过 2026-09-17**，ss 已降级 1★） |
 | 硬门但亏钱 | `gate_pass=True` 且 ev<0：`i_oi`（−2.46）、`m_ccl`（−3.64）。硬门只判 n≥350 + ic=2×\|dir_acc−0.5\|≥0.05，**不含 EV** |
 | 近失误 | `cj_oi` n=324 PF=1.133 ic=0.08 ev=+19.46，`gate_pass=false`（欠样本） |
 | n 口径 | 磁盘 396×21 / 588×3 / 324 / 142。396=旧网格或 `max_points` 截断；588≈现行理论 589；600=goal 上限；350=硬门阈值 |

@@ -148,16 +148,16 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="ss",
         name="不锈钢",
         scheme_type="trend",
-        stars=2,  # Praxist 2026-09-09: ss_vor PF=1.123 EV=+11.06 n=396 → 2星
-        dir_acc=0.530,  # ss_vor aligned verdict (n=396)
+        stars=1,  # 2026-09-17 降级 2→1: ss_vor v23 复测未过门（ss_vor_aligned_p600 gate_pass=False dir_acc=0.502 n=588）；2026-09-09 v22 口径 2星作废
+        dir_acc=0.530,  # v2 月度回测口径测量值（历史，v23 复测实测 0.502）
         mape=1.46,  # 保留原值
         decay=1.30,  # G005-E
         coverage=0.644,
         use_full_signal=True,
         short_horizon_only=False,
         confidence_multiplier=1.0,
-        covariate_type="vor",  # Praxist 2026-09-09: ss_vor PF=1.123 EV=+11.06 MaxDD=-35.25% → 固化替换 calendar_cyclical
-        covariate_types=["vor"],  # Praxist ss_vor: 唯一 econ_pass (PF ratio=1.101 vs incumbent 1.020)
+        covariate_type="vor",  # 2026-09-09 固化；2026-09-17 v23 复测未过门，待重新选型（降级保位不换型）
+        covariate_types=["vor"],  # 同上；v22 econ_pass 数字已作废
     ),
 
     "ur": VarietyScheme(

@@ -1,4 +1,10 @@
-# ss_vor 风险登记
+# ss_vor 风险登记（已结案 2026-09-17）
+
+> **结案结论**：ss_vor v23 复测（ss_vor_aligned_p600, gate_pass=False,
+> fdr_pass=False, dir_acc=0.502, n=588）**未过门**。SCHEMES ss 已降级 2★→1★
+> （covariate vor 保留待重新选型）。本登记保留作审计记录。
+
+
 
 > 登记日期: 2026-09-17。性质: **风险敞口披露**，非缺陷修复。
 

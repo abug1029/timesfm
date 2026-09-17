@@ -1,7 +1,7 @@
 {
   "_meta": {
     "version": 1,
-    "built_at": "2026-09-17T14:38:02",
+    "built_at": "2026-09-17T17:45:35",
     "note": "信用星级 credit_stars = scheme.stars（唯一源 CF-10 A）。DirAcc/MAPE/decay 来自 SCHEMES；PF/EV 来自 L1 OFF 基线。Vol 仅预警不压平。产品=主观辅助非自动下单。展示优先 PF/EV/MaxDD，DirAcc 仅附录（CF-23 A）。",
     "mode": "schemes_snapshot_no_L1",
     "l1_source": null,
@@ -481,8 +481,8 @@
       "sector": "black_metals",
       "covariate": "vor",
       "scheme_type": "trend",
-      "scheme_stars": 2,
-      "credit_stars": 2,
+      "scheme_stars": 1,
+      "credit_stars": 1,
       "historical_diracc": 0.53,
       "historical_mape": 1.46,
       "historical_decay": 1.3,
