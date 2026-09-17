@@ -63,6 +63,10 @@ with open(os.path.join(FM_ROOT, "config", "knowledge_base.json"), encoding="utf-
 INCUMBENT_PF = {sym: float(rec["historical_pf"])
                 for sym, rec in _kb["symbols"].items()
                 if rec.get("historical_pf") is not None}
+if not INCUMBENT_PF:
+    print("[degraded] KB PF all null (schemes_snapshot_no_L1): "
+          "retest PF ratio gate denominator falls back to 1.0",
+          file=sys.stderr)
 
 
 

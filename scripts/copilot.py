@@ -333,7 +333,7 @@ def craft_advisory_v2(symbol, kb, direction, delta_pct, vol, scheme_type):
         return lines
 
     if effective_stars >= 2:
-        lines.append(f"模型底气: 盈亏比(PF) {entry.get('historical_pf', 0):.2f}，中等信用，建议标准仓位。")
+        lines.append(f"模型底气: 盈亏比(PF) {(entry.get('historical_pf') or 0):.2f}，中等信用，建议标准仓位。")
     else:
         reason = "（慢环实证退化）" if status == "degraded" else ""
         lines.append(f"模型底气: 弱信号品种{reason}，建议轻仓试探或观望。")

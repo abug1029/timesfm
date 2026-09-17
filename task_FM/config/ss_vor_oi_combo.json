@@ -1,7 +1,12 @@
 {
+  "status": "invalid_archived",
+  "archived_reason": "max_points=100 违反 350-600 硬门约束，曾被判 invalid_candidate；封存待 v23 复测后重定标",
   "symbol": "ss",
   "cov_override": "vor",
-  "cov_combo": ["vor", "oi"],
+  "cov_combo": [
+    "vor",
+    "oi"
+  ],
   "max_points": 100,
   "stage": "aligned"
 }

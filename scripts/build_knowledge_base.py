@@ -45,6 +45,7 @@ def _stars_from_metrics(dir_acc: float, pf: float, scheme_stars: int | None) -> 
 
     DirAcc/PF 公式仅作 ``formula_stars`` 诊断字段，不再覆盖 scheme。
     无 scheme 时才回退公式（兼容仅有 L1 行的符号）。
+    pf 传入 0.0 表示无 PF 数据（L1 降级态），公式路径下既不加分也不罚分。
     """
     if scheme_stars is not None:
         return max(0, min(3, int(scheme_stars)))
@@ -91,14 +92,25 @@ def build(l1_path: Path) -> dict:
     if l1_path.exists():
         raw = json.loads(l1_path.read_text(encoding="utf-8"))
         meta = {
+            "mode": "l1_plus_schemes",
             "l1_source": str(l1_path.as_posix()),
             "l1_generated_at": raw.get("generated_at"),
             "l1_economic_pass": raw.get("pass"),
         }
         for r in raw.get("rows") or []:
             l1_rows[str(r.get("sym", "")).lower()] = r
+        missing_syms = sorted(set(SCHEMES) - set(l1_rows))
+        if missing_syms:
+            meta["mode"] = "schemes_snapshot_no_L1"
+            meta["degraded_reason"] = "L1 缺失品种: " + ",".join(missing_syms)
+            print(f"[degraded] L1 missing rows for: {', '.join(missing_syms)}; PF/EV degraded to null", file=sys.stderr)
     else:
-        meta = {"l1_source": None, "warning": f"missing {l1_path}"}
+        meta = {
+            "mode": "schemes_snapshot_no_L1",
+            "l1_source": None,
+            "degraded_reason": f"L1 经济判决文件缺失: {l1_path}；PF/EV 全表降级为 null，仅保留 SCHEMES 快照",
+        }
+        print(f"[degraded] L1 ECONOMIC_VERDICT missing: {l1_path} -> PF/EV degraded to null (mode=schemes_snapshot_no_L1)", file=sys.stderr)
 
     symbols = sorted(set(list(SCHEMES.keys()) + list(l1_rows.keys())))
     kb: dict = {
@@ -118,13 +130,10 @@ def build(l1_path: Path) -> dict:
 
     for sym in symbols:
         scheme = get_scheme(sym)
-        r = l1_rows.get(sym, {})
-        pf = float(r["pf_off"]) if r.get("pf_off") is not None else (
-            float("nan") if not scheme else max(0.5, scheme.dir_acc * 2.0)
-        )
-        # fallback PF estimate if no L1: rough from dir_acc only for display
-        if pf != pf:  # nan
-            pf = 1.0
+        r = l1_rows.get(sym) or {}
+        # [degrade] L1 行缺失（整文件或单品种）时显式降级：PF/EV 置 null，
+        # 不再用 dir_acc 伪造 PF 估算（旧逻辑 max(0.5, dir_acc*2) -> 1.0）。
+        pf = float(r["pf_off"]) if r.get("pf_off") is not None else None
         ev = float(r["ev_off"]) if r.get("ev_off") is not None else None
         dir_acc = float(scheme.dir_acc) if scheme else 0.5
         mape = float(scheme.mape) if scheme else None
@@ -138,7 +147,7 @@ def build(l1_path: Path) -> dict:
         vol_tag = r.get("tag") or "UNKNOWN"  # HELPS/HURTS/MIXED/NEUTRAL from vol overlay A/B
         # 注意：L1 tag 是「开 vol-filter 后相对 OFF 的经济标签」，不是品种本身波动属性。
         # 作为高波应对指南：HELPS=高波时过滤有利→观望；HURTS=过滤有害→高波可能是趋势机会
-        stars = _stars_from_metrics(dir_acc, pf, scheme.stars if scheme else None)
+        stars = _stars_from_metrics(dir_acc, pf if pf is not None else 0.0, scheme.stars if scheme else None)
         entry = {
             "name": scheme.name if scheme else sym.upper(),
             "sector": r.get("sector") or sector_of(sym),
@@ -150,7 +159,7 @@ def build(l1_path: Path) -> dict:
             "historical_mape": mape,
             "historical_decay": decay,
             "historical_coverage": coverage,
-            "historical_pf": round(pf, 4) if pf == pf else None,
+            "historical_pf": round(pf, 4) if pf is not None else None,
             "historical_ev": round(ev, 4) if ev is not None else None,
             "historical_maxdd": r.get("dd_off"),
             "vol_sensitivity": vol_tag,  # HELPS | HURTS | MIXED | NEUTRAL | UNKNOWN
