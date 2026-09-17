@@ -3,7 +3,7 @@
 > **合同声明（冲突以后者为准）**
 >
 > - 可交易方向以 [`docs/product_positioning.md`](product_positioning.md) **CF-01 A** 为准。
-> - IC / 硬门以 [`loop-constraints.md`](../loop-constraints.md) 为准。
+> - 硬门 / 裁决口径以 [`loop-constraints.md`](../loop-constraints.md)（预注册评估契约，v23）与 [`docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`](superpowers/specs/2026-09-14-prediction-quality-redesign-design.md) 为准。
 > - 本文若与上述冲突，以上述为准。不要按本文去改 `signal_contract.py` 或 `evaluator.gate`。
 >
 > **版本**: 1.3 (2026-09-17，§7 评估门禁切换 v23 裁决口径)
@@ -567,7 +567,7 @@ verdict（`p_value`，`fdr_pass=null` 待结算）。Supervisor 按 `batch_id` �
 `gate_pass` **只判静态质量底线**（n、n_eff、dir_acc），不含任何经济指标：
 
 ```python
-# task_FM/evaluations/fm_eval/evaluator.py (v23)
+# task_FM/evaluations/fm_eval/evaluator.py (v23, 简化示意，以实际代码为准)
 def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
     """静态硬门: n / n_eff / dir_acc（品种自适应，单侧不取 abs）"""
     effective_min = max(0.50, min(min_dir_acc, baseline_dir_acc)) \

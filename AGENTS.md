@@ -58,7 +58,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 - 硬门（v23）：n≥350、n_eff≥50（Bartlett）、dir_acc≥0.52（品种自适应 effective_min = max(0.50, min(0.52, baseline_dir_acc))，单侧不取 abs，反向变体直接拒绝）（`config/praxist_task.yaml`）
 - 裁决链（v23）：DirAcc/MAPE + DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol 多重校正；K<4 时降级固定 Bonferroni α=0.025）；verdict schema `fm.aligned_verdict.v2`（v1 已离线迁移）
 - **Praxist 裁决唯一权威** = `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`；PF/EV/MaxDD/IC 退役出裁决链，仅作经济报表字段
-- 目标：`scripts/praxist_goal.yaml`（1 星集合过门 ≥4 + 过门变体 min dir_acc > 0.52 + ≥1 族）
+- 目标：`scripts/praxist_goal.yaml`（1 星集合过门 ≥4（且独立过门变体 ≥4） + 过门变体 min dir_acc > 0.52 + ≥1 族）
 - 机器状态：`data/cache/supervisor_state.json`；裁决：`task_FM/config/aligned_verdicts.jsonl`
 - `task_FM/task.yaml` 禁止明文 API key；密钥只进 `.env.praxist`
 - Windows 挂载/副本可能过期；读本仓用 `wsl -d Ubuntu-22.04 -- bash -c "..."`
