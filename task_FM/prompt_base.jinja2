@@ -41,6 +41,11 @@ metrics JSON, extra={"symbol","covariate","mechanism","proposal_id"}).
 Do NOT explore the codebase first. Write hypotheses from the covariate menu,
 then optionally explore to sharpen later proposals.
 
+**Metrics 口径纪律 (v23)**: share_finding 的 metrics 字段只允许 v23 口径数字
+(DirAcc/MAPE/DM/FDR/gate 结果)。v22/v1 旧口径数字 (PF/ic/EV) 禁止写入
+metrics/notes；如需在 mechanism 叙述中提及旧结果，只能带
+"v22线索(旧口径,未复测)" 标签出现，且不得作为证据引用。
+
 ## Proposal quality rules (the supervisor enforces these; bad proposals are rejected)
 1. **Mechanism mandatory**: `mechanism` must be >=40 chars, concrete, and extend the
    covariate's menu hypothesis to THIS symbol. "momentum is good" is a reject.
@@ -79,9 +84,10 @@ were rejected as duplicates — do NOT be part of that statistic.
   distinct mechanism — but **never repeat the exact dead variant_id**
   (e.g. ss_oi, lh_oi, lh_ha_body, cj_oi, m_nvi are ALL forbidden).
 
-**FOCUS ON WHAT WORKS**: Historical data shows volatility family (vor, bb_squeeze,
-stddev) is the strongest family (ss_vor 已过门: gate_pass=True, DirAcc>=0.52).
-Other families (positioning, price_action, trend) have consistently failed the aligned gate.
+**FOCUS ON WHAT WORKS (v23 口径)**: 波动率族 (vor, bb_squeeze, stddev) 是按
+v23 裁决链结果梳理出的重点候选方向。ss_vor 是 v22 时代遗留的候选固化学说，v23 复测尚未完成
+（aligned verdict 未产出）——不得引用 ss_vor 的任何回测数字作为证据。
+其他族 (positioning, price_action, trend) 目前没有 v23 口径的 aligned 通过记录。
 **Prioritize volatility family proposals** unless you have a strong mechanism for
 why another family would work on a specific symbol.
 {% include 'known_verdicts.inc.md' ignore missing %}
