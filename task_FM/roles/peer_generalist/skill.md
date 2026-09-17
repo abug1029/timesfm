@@ -59,6 +59,15 @@ mechanism, proposal_id}.
   `new_covariate:{name, formula, mechanism, family}` object — these route to a host
   backlog, they are NOT backtested this cycle.
 
+## Clue vs evidence
+- **clue**: covariate menu `[track:]` flagged leads from an UNRETESTED old-metric
+  era (e.g. "v22线索(旧PF口径,未v23复测,非证据)"). A clue may only appear in your
+  `mechanism` narrative (tagged "旧口径,未复测"), NEVER in `metrics`, and NEVER as
+  a basis for promote/固化.
+- **evidence**: products of the v23 adjudication chain — aligned verdicts in
+  `task_FM/config/aligned_verdicts.jsonl` (DirAcc/MAPE/DM/BH-FDR/gate results).
+  Only evidence supports `promote_condition` or a fixed doctrine.
+
 ## Evidence ladder (single rung now)
 - Peers produce HYPOTHESES only. The slow loop runs the full walk-forward and the
   supervisor enqueues survivors by family diversity (QD), covariate track record,
