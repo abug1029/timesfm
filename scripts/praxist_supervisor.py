@@ -577,14 +577,17 @@ del _ev_mod_for_goal
 
 def _proposal_priority_score(prop, cov, symbol, snapshot):
     """机制化排序 (替代噪声小样本 EV)。确定性可复现。
-    1) 协变量履历 (v23 口径): 同 cov 在其他品种 gate_pass=True 时,
-       dir_acc 超过硬门 0.52 的部分 x200 加分 —— 修正: v2 verdicts 无 pf/ic
-       字段, 旧履历分恒为 0 (死代码)。
+    1) 协变量履历 (v23 口径): 同 cov 任一品种 (含自身; 生产经历史去重同 vid
+       不可达) gate_pass=True 时, dir_acc 超过硬门 0.52 的部分 x200 加分。
+       gate_pass 门槛为有意校准: 过硬门未过 FDR 的高 dir_acc 仍视为有意义信号
+       (v23 完整 pass 定义见 registry_lib.pass_variants, 更严)。评审 M-1 登记。
+       NaN/inf/bool dir_acc 一律不计入。
     2) 机制完备度: symbol_fit/kill/promote 齐全加分
     3) 新颖性: 未测组合加分 +5 (2026-09-17 探索偏置调整, 原 +2)
     4) 探索分: 协变量开发度 —— 该 cov 累计 ok verdicts 越少加分越高
        (0 个 +6 / 1 个 +4 / 2 个 +2 / >=3 个 0), 对冲履历分的利用偏置。
-       平衡点: 其他品种 dir_acc 约 >0.555 的真履历仍胜过全新组合。
+       平衡点 (可达路径: 已测 1 次 + 新组合有新颖分): 其他品种
+       dir_acc > 0.53 的真履历胜过全新组合。评审 M-2 修正 (原误写 0.555)。
     """
     score = 0.0
     n_cov_ok = 0
@@ -593,7 +596,9 @@ def _proposal_priority_score(prop, cov, symbol, snapshot):
             n_cov_ok += 1
             da = v.get("dir_acc")
             if v.get("gate_pass") and isinstance(da, (int, float)) and not isinstance(da, bool):
-                score += max(0.0, float(da) - 0.52) * 200.0
+                da = float(da)
+                if da == da and -1e308 < da < 1e308:
+                    score += max(0.0, da - 0.52) * 200.0
     for key in ("symbol_fit", "kill_condition", "promote_condition"):
         if str(prop.get(key) or "").strip():
             score += 1.0

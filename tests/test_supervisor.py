@@ -1093,31 +1093,71 @@ def test_build_snapshot_min_dir_acc_none_when_no_pass(tmp_path):
     snap = sup.build_snapshot(str(reg), 0, 0, 0)
     assert snap["min_pass_variant_dir_acc"] is None
 def test_proposal_score_exploration_bias():
-    """2026-09-17 exploration bias: novelty 2->5, coverage exploration bonus,
-    track-record term switched to v23 dir_acc caliber."""
+    """2026-09-17 探索偏置调整 + 履历分切 v23 dir_acc 口径 (单测级, 直接调函数)。"""
     prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
     snap = {
         "rb_vor": {"variant_id": "rb_vor", "symbol": "rb", "cov_override": "vor",
                    "status": "ok", "gate_pass": True, "dir_acc": 0.563},
     }
-    # rb_vor in snapshot -> no novelty; vor tested once -> exploration +4
-    # track record (0.563-0.52)*200 = 8.6 -> total 8.6+3+0+4 = 15.6
+    # rb_vor 在 snapshot → 无新颖分; vor 已测 1 次 → 探索 +4; 履历 8.6 → 总 15.6
     tested = sup._proposal_priority_score(prop, "vor", "rb", snap)
     assert abs(tested - 15.6) < 1e-9, tested
 
-    # fresh cov, fresh combo: mechanism 3 + novelty 5 + exploration 6 = 14
+    # 全新 cov + 全新组合: 机制 3 + 新颖 5 + 探索 6 = 14
     fresh = sup._proposal_priority_score(prop, "cci", "hc", snap)
     assert abs(fresh - 14.0) < 1e-9, fresh
 
-    # cov tested twice (exploration +2): 8.6+3+5+2 = 18.6
+    # 同 cov 已测 2 次 (探索 +2): 履历 8.6 + 机制 3 + 新颖 5 + 探索 2 = 18.6
     snap2 = dict(snap)
     snap2["hc_vor"] = {"variant_id": "hc_vor", "symbol": "hc", "cov_override": "vor",
                        "status": "ok", "gate_pass": True, "dir_acc": 0.52}
     two = sup._proposal_priority_score(prop, "vor", "sr", snap2)
     assert abs(two - 18.6) < 1e-9, two
 
-    # weak track record (0.525 -> +1.0): total 8 < 14 -> fresh combo wins
+    # 履历弱 (0.525 → +1.0), 可达路径 (新组合有新颖分): 1+3+5+4 = 13 < 14
     weak_snap = {"rb_vor": {"variant_id": "rb_vor", "symbol": "rb", "cov_override": "vor",
                             "status": "ok", "gate_pass": True, "dir_acc": 0.525}}
-    weak = sup._proposal_priority_score(prop, "vor", "rb", weak_snap)
-    assert abs(weak - 8.0) < 1e-9, weak
+    weak = sup._proposal_priority_score(prop, "vor", "hc", weak_snap)
+    assert abs(weak - 13.0) < 1e-9, weak
+
+
+def test_proposal_score_guards():
+    """评审 M-3: 履历/探索防护分支覆盖。"""
+    prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
+
+    def _vid():
+        return {"variant_id": "x_cci", "symbol": "x", "cov_override": "cci",
+                "status": "ok", "gate_pass": True, "dir_acc": 0.60}
+
+    # (a) gate_pass=False → 履历 0 (0.6 不计): 机制3+新颖5+探索4 = 12
+    a = sup._proposal_priority_score(prop, "cci", "hc",
+                                     {"x_cci": dict(_vid(), gate_pass=False)})
+    assert abs(a - 12.0) < 1e-9, a
+
+    # (b) bool dir_acc → 履历 0: 12
+    b = sup._proposal_priority_score(prop, "cci", "hc",
+                                     {"x_cci": dict(_vid(), dir_acc=True)})
+    assert abs(b - 12.0) < 1e-9, b
+
+    # (c) status=error → 不计探索/履历: 3+5+6 = 14
+    c = sup._proposal_priority_score(prop, "cci", "hc",
+                                     {"x_cci": dict(_vid(), status="error")})
+    assert abs(c - 14.0) < 1e-9, c
+
+    # (d) NaN dir_acc → 履历 0: 12
+    d = sup._proposal_priority_score(prop, "cci", "hc",
+                                     {"x_cci": dict(_vid(), dir_acc=float("nan"))})
+    assert abs(d - 12.0) < 1e-9, d
+
+    # (e) inf dir_acc → 履历 0: 12
+    e = sup._proposal_priority_score(prop, "cci", "hc",
+                                     {"x_cci": dict(_vid(), dir_acc=float("inf"))})
+    assert abs(e - 12.0) < 1e-9, e
+
+    # (f) 探索分饱和: 3 条 ok+gate_pass → 探索 0; 履历 0 (0.52 恰在门上): 3+5 = 8
+    sat = {("s%d_cci" % i): {"variant_id": "s%d_cci" % i, "symbol": "s%d" % i,
+                             "cov_override": "cci", "status": "ok",
+                             "gate_pass": True, "dir_acc": 0.52}
+           for i in range(3)}
+    f = sup._proposal_priority_score(prop, "cci", "hc", sat)
+    assert abs(f - 8.0) < 1e-9, f
