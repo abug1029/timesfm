@@ -248,6 +248,8 @@ python -m unittest tests.test_future_bar_guard tests.test_vol_threshold_contract
 > **无真实 3 星。** 详见 `AGENTS.md` 同节与 `reports/research/20260808_g005e_results.md`。  
 > 可交易方向=加权1H（`docs/product_positioning.md`）。
 
+> **口径声明**：本节 stars 与 PF 源自 2026-08 v2 月度回测口径，v23 复测进行中，裁决以 aligned verdicts（v23）为准。
+
 **≥2★**: CJ SS SR M JD LH（弱正 PF 1.06–1.29）+ EG RB（弱边界 PF 1.04–1.09）  
 **1★**: SP TA FU BU P CF FG JM I AO UR MA  
 （P 已 G004 换 `rsi_state+reversal_shadow`，PF=1.01 刚过线，仍 1★；BU 经 Phase 12 换 `calendar_cyclical+hourly_slope` PF=1.01 边际 GREEN，仍 1★）  
@@ -391,7 +393,7 @@ python scripts/regime_covariate_analysis.py --varieties ss --n-regimes 4
 **关键认知**：
 - Regime 分析的价值在于**动态路由**（预测时实时识别当前 Regime，动态选择协变量）
 - 避免静态绑定（不要把协变量永久写死在 prediction_scheme.py 中）
-- 评估指标必须包含 PF（盈亏比）和 EV（期望值），DirAcc 提升不等于盈利能力提升
+- 评估口径以 v23 裁决链为准（DirAcc/MAPE + DM(Newey-West HAC) + BH-FDR + 自适应门）；PF/EV 仅限经济侧历史叙述，且必须带口径标签，不得作为 v23 证据引用
 
 ## 数据管理策略 (Predict-then-Collect)
 

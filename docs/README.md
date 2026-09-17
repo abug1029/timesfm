@@ -34,6 +34,8 @@ Goal / 运行口径：`scripts/praxist_goal.yaml`（2026-09-09 起目标=1 星�
 
 ### 2026-08-08 新口径 rebaseline（必读）
 
+> **历史口径（v2 PF/星级，2026-08 回测）**：本节数字非 v23 证据，裁决以 v23 裁决链（DirAcc/MAPE + DM + BH-FDR）为准。
+
 | 文件（**均已不在仓内**，历史指针） | 内容 |
 |------|------|
 | `reports/research/20260808_g005e_results.md` | **20 品种全表** PF/星级（bar-exact + signal_weight）；结果文件已清理，裁决口径以 v23 spec 为准 |
@@ -89,6 +91,8 @@ setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.ya
 
 **执行**：5 品种（FG/TA/BU/AO/UR），总耗时 ~90 分钟
 
+> **历史口径（v2 PF/星级，2026-08 回测）**：本节数字非 v23 证据，裁决以 v23 裁决链（DirAcc/MAPE + DM + BH-FDR）为准。
+
 **裁决结果**：**0/5 GO**
 - Stacked PF 全部 < 1.0（0.838-0.937），且低于 scheme PF
 - 残差叠加架构未改善预测质量，**关闭 Track B**
@@ -109,6 +113,6 @@ setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.ya
 - **级联/回测/Copilot 可交易方向** = `position_from_forecast`（加权 1H）；见 [product_positioning.md](./product_positioning.md)
 - **无真实 3 星**；`--three-star` = 信用≥2 星列表
 - **Phase 11（2026-08-21 结案）**：12 品种协变量替换固化（SS/SP/FU/I/RB/TA/EG/CJ/LH/JD + 3 基线保持 M/P/SR），34 GREEN
-- **Phase 12（2026-08-21）**：BU 组合协变量 `calendar_cyclical+hourly_slope` 固化（PF=1.01 边际 GREEN）
-- 新口径经济表与信用档：见上表 g005e（结果文件已不在仓内；Phase 11/12 后协变量已刷新）；运维细节见 [vol-risk.md](./archive/history/vol-risk.md)（已归档）与 `STATE.md`
+- **Phase 12（2026-08-21）**：BU 组合协变量 `calendar_cyclical+hourly_slope` 固化。该 PF=1.01 边际 GREEN 结论属 v2 历史口径（2026-08 月度回测），非 v23 证据；v23 下以 aligned verdicts 为准
+- 经济表与信用档（v2 历史口径）：见上表 g005e（结果文件已不在仓内；Phase 11/12 后协变量已刷新）；v23 裁决以 aligned verdicts 为准（口径见 [praxist.md](./praxist.md) 与 v23 spec）；运维细节见 [vol-risk.md](./archive/history/vol-risk.md)（已归档）与 `STATE.md`
 - **Praxist 三环（2026-09-11 磁盘）**：方案 A 已上线；`phase=fast`，`cycles_done=1`。过期以 `data/cache/supervisor_state.json` 为准。架构 [praxist.md](./praxist.md)，现场快照见 `STATE.md`
