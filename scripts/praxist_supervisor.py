@@ -746,7 +746,7 @@ def materialize_covariate_menu(pool, dest_path):
     for fam in sorted(by_fam):
         lines.append("### family: %s" % fam)
         for n, v in sorted(by_fam[fam]):
-            tr = " [track: %s]" % v["track_record"] if v.get("track_record") else ""
+            tr = " 【旧口径线索·非证据】[track: %s]" % v["track_record"] if v.get("track_record") else ""
             lines.append("- %s: %s%s" % (n, v.get("mechanism", ""), tr))
         lines.append("")
     if experimental:
