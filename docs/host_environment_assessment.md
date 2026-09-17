@@ -34,7 +34,7 @@
 | Python（FM_a） | `/home/abug/timesfm/.venv`（CPython 3.13） |
 | 行情 SSOT | `db` → symlink → `/workspace/repos/timesFM_fu/db`（由「行情」岗维护） |
 | TQSDK / `.env` | `.env` → symlink → `timesFM_fu/.env`（gitignore，不复制密钥） |
-| Praxist CLI | 独立 venv（目标 `/home/box/.venv` 或本仓 `.venv`），与 FM_a `.venv` 隔离 |
+| Praxist CLI | 本仓 `.venv`（2026-09-13 环境统一后唯一 venv；`PRAXIST_BIN` 可覆盖） |
 | Praxist LLM | 火山方舟 Anthropic 兼容：`ANTHROPIC_BASE_URL` + `ANTHROPIC_API_KEY`（gitignore `.env.praxist`） |
 | TimesFM（Praxist） | **独立权重目录**（本仓 `models/`）；磁盘可有副本；**容量试跑阶段允许并行加载**（旧「加载互斥」已解除，见 §3） |
 

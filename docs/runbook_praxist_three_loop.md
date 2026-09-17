@@ -139,7 +139,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 
 ### 当前 goal（以 `scripts/praxist_goal.yaml` 为准）
 
-成功条件仍是：1 星品种集命中 ≥4（`len(symbols_hit & {'m','ss','sr','cj','jd','lh','eg','rb'}) >= 4`）+ 过门变体 PF/incumbent 最小比 >1.05 + ≥1 个协变量族。**预算已无限制**（`max_cycles`/`cpu_hours`/`token_budget_m`=999999，`deadline`=2099-12-31）。cadence：survivors=3、aligned_max_points=600、quota 窗 5h、run 预算 1.5h。经济过门实质仅 `ss_vor`（n=396 PF=1.123 ev=+11.06）；`i_oi`/`m_ccl` 为 `gate_pass` 但 ev<0。
+成功条件（v23，2026-09-16 起）：1 星品种集命中 ≥4（`n_one_star_symbols_hit >= 4`）+ 独立过门变体 ≥4（`n_unique_pass_variants >= 4`）+ 过门变体最小 dir_acc > 0.52（`min_pass_variant_dir_acc`）+ ≥1 个协变量族（`n_families_hit >= 1`）。**预算已无限制**（`max_cycles`/`cpu_hours`/`token_budget_m`=999999，`deadline`=2099-12-31）。cadence：survivors=3、aligned_max_points=600、quota 窗 5h、run 预算 1.5h。经济数值（ss_vor n=396 PF=1.123 ev=+11.06；i_oi/m_ccl gate_pass 但 ev<0）为 2026-09-11 快照，仅经济报表参考，不参与 v23 裁决。
 
 ---
 

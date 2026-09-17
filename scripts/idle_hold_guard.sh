@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # While IDLE_HOLD exists, SIGTERM any praxist.run (not interactive claude / hardcap).
 set -euo pipefail
-HOLD="/workspace/repos/timesfm-abug1029/docs/superpowers/reports/praxist_20260906_ctrl/IDLE_HOLD"
-LOG="/workspace/repos/timesfm-abug1029/docs/superpowers/reports/praxist_20260906_ctrl/idle_hold_guard.log"
+HOLD="/home/abug/timesfm/docs/superpowers/reports/praxist_20260907_ctrl/IDLE_HOLD"
+LOG="/home/abug/timesfm/docs/superpowers/reports/praxist_20260907_ctrl/idle_hold_guard.log"
 INTERVAL=30
 echo "$(date -Is) guard_start pid=$$" >>"$LOG"
 while true; do

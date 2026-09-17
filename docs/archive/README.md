@@ -1,6 +1,6 @@
 # 文档归档（docs/archive）
 
-本目录存放 v23 重构（2026-09-16 合入 master，spec: `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`）后已过时或纯历史的文档。文件保留原名，历史路径引用需改用 `docs/archive/...` 新路径。
+本目录存放 v23 重构（2026-09-16 合入 master，spec: `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`）后已过时或纯历史的文档。文件保留原名，历史路径引用需改用 `docs/archive/...` 新路径。归档文档内部的相对链接按归档前目录层级书写，随移动失效，属历史记录不修复。
 
 ## docs/archive/history/
 

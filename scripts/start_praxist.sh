@@ -8,8 +8,8 @@
 # This script never blocks: it launches the process detached and returns
 # immediately. Safe to run over flaky SSH — no session dependency.
 
-FM_ROOT="/workspace/repos/timesfm-abug1029"
-HOLD="$FM_ROOT/docs/superpowers/reports/praxist_20260906_ctrl/IDLE_HOLD"
+FM_ROOT="/home/abug/timesfm"
+HOLD="$FM_ROOT/docs/superpowers/reports/praxist_20260907_ctrl/IDLE_HOLD"
 PRAXIST_BIN="/home/abug/timesfm/.venv/bin/python3"
 LOG_DIR="$FM_ROOT/data/cache"
 mkdir -p "$LOG_DIR"

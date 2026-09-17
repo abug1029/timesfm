@@ -34,11 +34,11 @@ Goal / 运行口径：`scripts/praxist_goal.yaml`（2026-09-09 起目标=1 星�
 
 ### 2026-08-08 新口径 rebaseline（必读）
 
-| 文档 | 内容 |
+| 文件（**均已不在仓内**，历史指针） | 内容 |
 |------|------|
-| [`../reports/research/20260808_g005e_results.md`](../reports/research/20260808_g005e_results.md) | **20 品种全表** PF/星级（bar-exact + signal_weight） |
-| [`../reports/research/20260808_tradable_alpha_final_score.md`](../reports/research/20260808_tradable_alpha_final_score.md) | 可交易 alpha 健康度 6.7/10 |
-| [`../reports/research/20260808_conflict_debt_register.md`](../reports/research/20260808_conflict_debt_register.md) | 冲突债 CF-01…25 裁决 |
+| `reports/research/20260808_g005e_results.md` | **20 品种全表** PF/星级（bar-exact + signal_weight）；结果文件已清理，裁决口径以 v23 spec 为准 |
+| `reports/research/20260808_tradable_alpha_final_score.md` | 可交易 alpha 健康度 6.7/10 |
+| `reports/research/20260808_conflict_debt_register.md` | 冲突债 CF-01…25 裁决 |
 
 ## 30 秒上手
 

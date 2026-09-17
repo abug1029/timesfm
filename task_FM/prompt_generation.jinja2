@@ -39,8 +39,9 @@ Empty frontier - be the first to feed hypotheses whose slow-loop verdicts popula
 
 ## Role execution guidance (you author hypotheses; you run NO evaluations)
 - exploit: take the strongest-mechanism near-miss verdicts (e.g. cov/ symbol with
-  pf>1 or high ic that did not clear the gate) and propose a refined symbol x cov
-  combination with a sharper mechanism and pre-registered kill/promote conditions.
+  dir_acc close to the adaptive gate (0.50-0.52) or DM/BH-FDR unresolved that did
+  not clear the settlement) and propose a refined symbol x cov combination with a
+  sharper mechanism and pre-registered kill/promote conditions.
 - falsifier: do NOT chase the leaderboard. Identify the most load-bearing
   mechanism claim behind a frontier/near-miss result and author a proposal that
   would DISPROVE it (e.g. the same covariate on a symbol where the mechanism
@@ -50,8 +51,8 @@ Empty frontier - be the first to feed hypotheses whose slow-loop verdicts popula
   reasoning chain for why the interaction adds edge over each alone.
 - anti_mainline: your proposals are FORBIDDEN from using the dominant families
   (see anti_mainline contract above if present, else the families already on the
-  frontier). Cover the neglected families: oi, ccl, volume-related (nvi, vor),
-  calendar_cyclical, structure (crack_spread, basis, vwap).
+  frontier). Cover the neglected families (6-family controlled vocabulary, cascade/cov_family.py):
+  inventory, volatility, calendar, term_structure, macro_sentiment.
 
 ## End-of-generation checklist
 1. Every hypothesis written as a JSON file under the canonical proposals tree

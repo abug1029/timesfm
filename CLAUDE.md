@@ -263,7 +263,7 @@ python scripts/copilot.py --three-star
 
 ## System Hardening v1.2 (2026-09-11)
 
-10 项统计严谨性与工程质量提升，已合并至 master。Spec: `docs/superpowers/specs/2026-09-10-system-hardening-design.md`。
+10 项统计严谨性与工程质量提升，已合并至 master。Spec: `docs/archive/superpowers-specs/2026-09-10-system-hardening-design.md`（已归档）。
 
 | SPEC | 能力 | 关键文件 |
 |------|------|---------|

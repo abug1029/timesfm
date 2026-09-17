@@ -70,7 +70,7 @@ Peer 第一件事：至少写 2 份假设到
 
 `task_FM/experiments/run_*/results/gen_<N>/<peer>/proposals/<symbol>_<cov>.json`
 
-合同：`schema=fm.hypothesis_proposal.v1`，`mechanism` ≥40 字（禁模板）、`symbol_fit`、预注册 kill/promote。只许提议协变量池里 **active** 的项（`task_FM/config/covariate_pool.json`，目前 30 个、9 个族）。新指标写 `new_cov_<name>.json`，进 backlog，不入评估队列。
+合同：`schema=fm.hypothesis_proposal.v1`，`mechanism` ≥40 字（禁模板）、`symbol_fit`、预注册 kill/promote。只许提议协变量池里 **active** 的项（`task_FM/config/covariate_pool.json`，目前 30 个、6 族受控词表（`cascade/cov_family.py`），当前池覆盖 5 族）。新指标写 `new_cov_<name>.json`，进 backlog，不入评估队列。
 
 ### 监督环
 

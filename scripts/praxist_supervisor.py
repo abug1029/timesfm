@@ -16,16 +16,18 @@ except ImportError:
     bh_fdr_promote = None
 
 def _resolve_praxist_bin() -> str:
-    """Prefer box-local praxist venv; allow PRAXIST_BIN override."""
+    """Prefer repo .venv praxist; allow PRAXIST_BIN override."""
     candidates = [
         os.environ.get("PRAXIST_BIN"),
         os.path.join(FM_ROOT, ".venv", "bin", "praxist"),  # prefer repo venv
-        "/home/box/.venv/bin/praxist",
     ]
     for c in candidates:
         if c and os.path.isfile(c) and os.access(c, os.X_OK):
             return c
-    return "/home/box/.venv/bin/praxist"
+    raise RuntimeError(
+        "praxist binary not found (tried PRAXIST_BIN, %s); "
+        "install repo .venv or set PRAXIST_BIN" % (FM_ROOT,)
+    )
 
 PRAXIST = _resolve_praxist_bin()
 QUEUE = os.path.join(FM_ROOT, "data", "cache", "aligned_pending.jsonl")
@@ -49,8 +51,9 @@ _START_TIME = time.time()
 _STOP_EMITTED = False
 POLL_S = 300
 PHASES = ("fast", "slow", "wait_quota")
-# 镜像 evaluator.gate 的预注册硬门 (min_n=350, min_ic=0.05)；宿主侧仅用于识别"仅差样本"的
-# 近失误裁决并安排复测，不改变慢环硬门本身。
+# v1 遗留复测触发判据 (RETEST_GATE_N=350, RETEST_GATE_IC=0.05)；非 v23 gate 镜像
+# （v23 口径见 docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md）。
+# 宿主侧仅用于识别"仅差样本"的近失误裁决并安排复测，不改变慢环硬门本身。
 RETEST_GATE_N = 350
 RETEST_GATE_IC = 0.05
 RETEST_PF_RATIO = 1.05

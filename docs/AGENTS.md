@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-09-11 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-17 -->
 
 # docs
 
@@ -24,7 +24,7 @@
 | `param_hygiene.md` | 参数卫生裁决 |
 | [已归档] `./archive/history/validation_criteria.md` | 固化判据 v2 |
 | `long-task-sop.md` | 长任务 SOP |
-| `superpowers/plans/` | 阶段实现计划 |
+| `superpowers/plans/` | 已清空（历史施工单见 `archive/superpowers-plans/`） |
 | `superpowers/specs/` | 设计规格 |
 
 **新口径经济真相**: g005e 结果文件已不在仓内（原 `../reports/research/20260808_g005e_results.md`；Phase 11/12 后协变量已刷新）

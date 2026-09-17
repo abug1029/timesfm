@@ -88,7 +88,7 @@ def mem_available_gib() -> float:
 def count_claude() -> int:
     try:
         r = subprocess.run(
-            ["pgrep", "-f", r"/home/box/\.local/bin/claude "],
+            ["pgrep", "-f", r"claude_agent_sdk.*_bundled/claude"],  # 2026-09-17 宿主: SDK 自带 claude
             capture_output=True, text=True,
         )
         pids = [p for p in (r.stdout or "").splitlines() if p.strip().isdigit()]
