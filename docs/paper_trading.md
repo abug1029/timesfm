@@ -43,7 +43,7 @@
 
 ```bash
 # 激活共享底座
-# source D:/FlyBuddy/timesfm/.praxist-venv/Scripts/activate
+# source /home/abug/timesfm/.venv/bin/activate
 cd D:/FlyBuddy/FM_a
 ```
 

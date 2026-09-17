@@ -2,6 +2,8 @@
 
 面向人类操作者与下游接手者。AI 会话约定见根目录 `AGENTS.md` / `CLAUDE.md`；**当前门禁与待办以 `STATE.md` 为准**。
 
+> Praxist 裁决口径（v23）见 `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`；过时文档见 docs/archive/README.md。
+
 | 文档 | 内容 |
 |------|------|
 | [runbook.md](./runbook.md) | 环境、采集、幽灵 K 线、单测、故障排查 |
@@ -42,7 +44,7 @@ Goal / 运行口径：`scripts/praxist_goal.yaml`（2026-09-09 起目标=1 星�
 
 ```bash
 cd /home/abug/timesfm
-source .praxist-venv/bin/activate
+source .venv/bin/activate
 
 # 盘中主观（推荐）
 python scripts/copilot.py ss fu

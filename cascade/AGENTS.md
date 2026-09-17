@@ -14,7 +14,7 @@
 | `daily_model.py` | Stage-1 日线预测，产出 `horizon_slope`（高风险，改前需人工确认） |
 | `hourly_model.py` | Stage-2 1H 级联 + 协变量 XReg（高风险） |
 | `features.py` | 协变量构建：`ha_body` / `calendar_cyclical` / `reversal_shadow` 等（高风险） |
-| `evaluation_metrics.py` | **全项目唯一经济指标秤**：PF / EV / MaxDD / DirAcc / net PnL |
+| `evaluation_metrics.py` | 经济报表字段计算器：PF / EV / MaxDD / DirAcc / net PnL（PF/EV/MaxDD 仅报表用途；v23 起慢环裁决不用经济秤，裁决口径见 `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`） |
 | `data_validator.py` | `ensure_fresh_data()` 预测前数据门禁 |
 | `vol_risk_filter.py` | 波动熔断 + ThrPolicy + Neutral override |
 | `vol_gating_replay.py` | 离线 thr 重算（不重跑 TimesFM） |
@@ -43,7 +43,7 @@
 
 ### Known Design Gaps (2026-08-08 audit)
 
-1. **MaxDD** 用 `(cum-peak)/(|peak|+1.0)`，非标准净值回撤；v2 门禁阈值继承此畸变。
+1. **MaxDD（仅报表字段）** 用 `(cum-peak)/(|peak|+1.0)`，非标准净值回撤；v2 门禁阈值继承此畸变（v23 起仅报表，不进裁决）。
 2. **DirAcc** 文档称“仅报告不决策”，但月度分类/星级/KB 仍重度依赖。
 3. `walk_forward.py` 以 **IS IR** 选最优组合 → 与 monthly PF/EV 体系分叉，勿用于固化 SCHEMES。
 

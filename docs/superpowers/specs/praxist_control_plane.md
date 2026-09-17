@@ -25,7 +25,7 @@
 | 条件 | 动作 | 谁执行 |
 |------|------|--------|
 | MemAvailable **&lt; 2.5 GiB** | 预警：记 `mem_guard_watch.log`，报总管（可静默限频 15min/次） | 监控 |
-| MemAvailable **&lt; 2.2 GiB** | **强制**真实 `fm_eval` 并发 ≤ **1**（TERM **最新** `.praxist-venv/bin/python evaluations/fm_eval/run.py`，禁杀 launcher/wrapper） | FM研/监控 |
+| MemAvailable **&lt; 2.2 GiB** | **强制**真实 `fm_eval` 并发 ≤ **1**（TERM **最新** `.venv/bin/python evaluations/fm_eval/run.py`，禁杀 launcher/wrapper） | FM研/监控 |
 | cgroup ratio **≥ 0.85** | **禁止新 eval**（拒启 / flock 不放行）；已有 eval 可跑完或按下行降档 | mem_guard + 监控 |
 | cgroup ratio **≥ 0.90** | **主动停 peer eval**（TERM 全部真实 fm_eval），防 ORCHESTRATOR_SHUTDOWN@~0.94；报总管；**勿**自行清 SHUTDOWN 续跑除非总管授权 | FM研 |
 | 出现 `ORCHESTRATOR_SHUTDOWN` | 立即报总管；默认停干净再议，禁止 peer sleep 空转耗壁钟 | FM研 |
@@ -193,7 +193,7 @@
 |----|----|------|
 | `survivors_per_cycle` | **3** | harvest 每周期最多入队 3 个 |
 | `aligned_max_points` | **600** | aligned 回测深度（原 350） |
-| harvest 选人 | symbol×cov 多样性 | 先占不同品种，再按 EV 补齐；禁止 3 个同品种挤满 |
+| harvest 选人 | symbol×cov 多样性 | 先占不同品种，第二遍按 dir_acc 补齐；pass_variants（gate_pass 且 fdr_pass/migrated_pass）仅作排除——已过门变体不重提（v23 口径见 v23 spec）；禁止 3 个同品种挤满 |
 | wait_quota / paused_429 / failover | **不阻塞** 已入队 aligned | `ensure_phase`：queue/slow 存活 → 强制 `phase=slow`；harvest 不再因 paused_429 跳过 |
 | TimesFM eval 硬顶 | **仍=1** | 慢环与快环共用 flock；禁止双 TimesFM |
 

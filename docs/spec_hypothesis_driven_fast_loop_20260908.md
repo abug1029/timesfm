@@ -2,15 +2,16 @@
 
 > 日期: 2026-09-08
 > 状态: **已实施（2026-09-08 上线，当日首个过门策略 ss_vor 即出自本方案）**
+> 更新: 2026-09-17 起 promote 判据已按 v23 spec 同步（`docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`）
 > 关联文档: archive/history/praxist_peer_evaluation_fix.md（已归档）, audit_system_efficiency_20260908.md, runbook_praxist_three_loop.md
 
 > **实施后增补（2026-09-09）**：
 > - §4.3 选座在 QD 两遍填充之前增加 **tier 分层**（goal `cadence.priority_symbols`）：目标 1 星品种且当前 n≥350 → 目标品种欠样本（cj/lh）→ 其余品种；修复"扩目标后慢环座位全给 2 星"问题。
-> - 新增 **n-不足近失误自动复测**：`plan_sample_retests` / `_maybe_enqueue_retests` 每 tick 扫描 gate 仅差 n 的裁决（n<350, ic≥0.05, ev>0, pf/incumbent>1.05），本地库有效点长到 ≥350 时旁路 dead 去重补队，checkpoint resume 只算新点；goal key `retest_min_new_points`。
+> - 新增 **n-不足近失误自动复测**：`plan_sample_retests` / `_maybe_enqueue_retests` 每 tick 扫描 gate 仅差 n 的裁决（n<350, ic≥0.05, ev>0, pf/incumbent>1.05；判据落地时点，运行时以 supervisor `_retest_candidates` 为准，2026-09-17 起裁决口径见 `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`），本地库有效点长到 ≥350 时旁路 dead 去重补队，checkpoint resume 只算新点；goal key `retest_min_new_points`。
 > - 菜单新增 **symbol sample ceiling** 段（每品种当前可对齐有效点 + BELOW GATE/gate-reachable）。
 > - 与设计的偏差：§4.3"合格未入队提案结转 pending-proposals 索引"未实现（下一 cycle 直接重扫 proposals/，dead/in-flight 去重已防重复入队）。
 > - 事件可靠性修复：signal/atexit handler 改为 `main()` 启动时才武装（import 本模块当库用不再误发 unexpected_exit）；测试经 `_patch_paths` 隔离 EVENTS_PATH。
-> - 当前运行口径（host 迁移）：WSL2 Ubuntu-22.04 `/home/abug/timesfm`，`.praxist-venv` CPython 3.11，7.7 GiB RAM。
+> - 当前运行口径（host 迁移）：WSL2 Ubuntu-22.04 `/home/abug/timesfm`，`.venv` CPython 3.11，7.7 GiB RAM。
 > - harvest glob（2026-09-11）：**不是**「仅本 run」。代码每 cycle 重扫 `task_FM/experiments/run_*/results/**/proposals/*.json`，靠 dead/passing/in-flight/seen 去重。
 
 ---
@@ -31,7 +32,7 @@ n=3 时方向准确率标准误 ≈ sqrt(0.25/3) ≈ 0.29，PF/EV 噪声极大�
 诊断档既不能可靠排除差组合，也不能可靠保留好组合，每次却耗费 60-150s 的 TimesFM 模型加载。
 
 ### 1.2 真正的验证引擎是慢环
-慢环 walk-forward（n=350-600）硬门：n≥350 且 ic≥0.05（ic=2×|dir_acc−0.5|）。
+慢环 walk-forward（n=350-600）硬门（2026-09-08 时点口径；v23 起硬门为 n≥350 / n_eff≥50 / dir_acc≥0.52（见 v23 spec），见 `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`）：n≥350 且 ic≥0.05（ic=2×|dir_acc−0.5|）。
 当前 11 个 aligned 裁决全部 gate=False，搜索面仅打开 2%（30 协变量 × 21 品种 = 630 组合，仅测 11 个）。
 
 ### 1.3 目标
@@ -40,7 +41,7 @@ n=3 时方向准确率标准误 ≈ sqrt(0.25/3) ≈ 0.29，PF/EV 噪声极大�
 3. 假设非随机组合：强制机制论证 + 正交多样性（QD）+ 裁决历史反馈。
 
 ### 1.4 非目标
-- 不改动冻结框架 `.praxist-venv/.../praxist/**`。
+- 不改动冻结框架 `.venv/.../praxist/**`。
 - 不改动慢环 `aligned_slow_loop.py` 与队列库 `registry_lib.py`。
 - 不改动慢环硬门逻辑。
 - 不让 peer 修改 features.py / evaluator.py（安全约束）。
@@ -105,7 +106,7 @@ n=3 时方向准确率标准误 ≈ sqrt(0.25/3) ≈ 0.29，PF/EV 噪声极大�
   "symbol_fit": "必填：为何是这个品种（如 crack_spread 仅对裂解链品种有意义）",
   "predicted_direction": "low_vol_compression→long_breakout",
   "kill_condition": "预注册：aligned ev<0 或 ic<0.02 → 放弃",
-  "promote_condition": "预注册：gate_pass 且 PF>1.05 且 ev>0",
+  "promote_condition": "预注册：gate_pass 且 BH-FDR 结算通过（2026-09-17 起 v23 口径，见 `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`）",
   "peer_id": "gen2_peer0", "gen_id": 2, "proposed_at": "..."
 }
 ```
@@ -209,7 +210,7 @@ free -h            # 确认 TimesFM 内存释放
 ## 7. 验证
 
 ```bash
-cd /home/abug/timesfm && source .praxist-venv/bin/activate
+cd /home/abug/timesfm && source .venv/bin/activate
 python -m pytest tests/test_covariate_pool.py tests/test_harvest_proposals.py tests/test_combo_parity.py -v
 python -m py_compile scripts/praxist_supervisor.py cascade/features.py task_FM/evaluations/fm_eval/evaluator.py
 # 干跑：造 2 提案（1 好 1 空机制），harvest_proposals dry-run

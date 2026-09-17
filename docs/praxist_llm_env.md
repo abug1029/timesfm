@@ -23,7 +23,7 @@ set +a
 | `VOLCENGINE_API_KEY` | Volc 直连时 | 若网关另要 Volc key 再填；否则可空 |
 | `FM_TIMESFM_MODEL_PATH` | TimesFM 本地权重根 | `/home/abug/timesfm/models/timesfm-2.5-200m-pytorch`（WSL 仓内） |
 | `TIMESFM_WEIGHTS_DIR` | 指纹 / 兼容别名 | 可与上者同路径 |
-| `PRAXIST_BIN` | praxist 可执行文件 | supervisor 默认解析本仓 `.praxist-venv/bin/praxist` |
+| `PRAXIST_BIN` | praxist 可执行文件 | supervisor 默认解析本仓 `.venv/bin/praxist` |
 | `CUDA_VISIBLE_DEVICES` | 设备 | task.yaml 默认 `""`（CPU） |
 
 ## 可选

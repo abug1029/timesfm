@@ -41,7 +41,7 @@ Copilot 卡面「可交易方向」走 `copilot_trade_signal` → `position_from
 | 字段用途 | 来源 |
 |----------|------|
 | DirAcc / MAPE / decay / coverage | `prediction_scheme.SCHEMES` |
-| PF / EV / vol_sensitivity | L1 `ECONOMIC_VERDICT`（OFF 基线与 HELPS/HURTS 标签） |
+| PF / EV / vol_sensitivity | L1 `ECONOMIC_VERDICT`（OFF 基线与 HELPS/HURTS 标签）——经济报表参考，Praxist 裁决以 v23 spec 为准（`docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`） |
 | best_hold_period | scheme 类型 + 衰减启发式 |
 
 高波文案按 `vol_sensitivity`：`HELPS` 偏观望、`HURTS` 提示趋势机会（非自动开仓）。

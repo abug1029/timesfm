@@ -130,12 +130,12 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
   3. tier 2：其余 2 星品种。
   同 tier 内按协变量履历分；第一遍每个 family 一席，第二遍按分补满。
 - 0 份合格提案 → `harvest_empty`（仍计 1 cycle）。有入队则 `phase=slow`，cycle 等到慢环抽干再 +1。
-- 每 tick（无论 phase）还跑 `_maybe_enqueue_retests`：对「硬门仅差 n」的近失误裁决（`n<350 且 ic≥0.05 且 ev>0 且 pf/incumbent>1.05`），当本地库有效点长到 ≥350 且比上次裁决多 ≥`retest_min_new_points` 点时，**旁路 dead 去重**补队（`source:"sample_retest"`），checkpoint resume 只算新点。dry-run 中以 `sample_retest_plan` 行展示。
+- 每 tick（无论 phase）还跑 `_maybe_enqueue_retests`：对「硬门仅差 n」的近失误裁决（`n<350 且 ic≥0.05 且 ev>0 且 pf/incumbent>1.05`；2026-09-11 时点判据，运行时以 scripts/praxist_supervisor.py `_retest_candidates` 为准，2026-09-17 起裁决口径见 v23 spec），当本地库有效点长到 ≥350 且比上次裁决多 ≥`retest_min_new_points` 点时，**旁路 dead 去重**补队（`source:"sample_retest"`），checkpoint resume 只算新点。dry-run 中以 `sample_retest_plan` 行展示。
 - 菜单 `covariate_menu.inc.md` 每轮由协变量池 + **品种样本天花板表**（每品种当前可对齐有效点，`BELOW GATE`/`gate-reachable`，`_valid_n_for_symbol` 复刻月度回测有效点计数，fail-open）物化生成。
 - 非 dry-run 每轮会 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`。
 - `prompt_base.jinja2`：`{% include 'known_verdicts.inc.md' ignore missing %}` 与 `covariate_menu.inc.md`；渲染结果含 `variant_id` 与 `gate_pass=`。
 - **红线：** 只有 `aligned_slow_loop.py` 可写 `aligned_verdicts.jsonl`。
-- **已知语义瑕疵（待修）：** 硬门只判 n+ic，`i_oi` 曾 gate_pass=True 但 ev=−2.46（dir=0.467 的空头方向）；成功条件（ev>0、PF 比>1.05）正确排除，但 materializer 仍把它写成 `gate_pass=True … do NOT re-propose`，对 peer 有误导，需区分"过门"与"过硬门但亏钱"。
+- **已知语义瑕疵（待修；2026-09-11 时点观察，本条 n+ic 硬门为旧口径，v23 裁决口径见 v23 spec）：** 硬门只判 n+ic，`i_oi` 曾 gate_pass=True 但 ev=−2.46（dir=0.467 的空头方向）；成功条件（ev>0、PF 比>1.05）正确排除，但 materializer 仍把它写成 `gate_pass=True … do NOT re-propose`，对 peer 有误导，需区分"过门"与"过硬门但亏钱"。
 
 ### 当前 goal（以 `scripts/praxist_goal.yaml` 为准）
 

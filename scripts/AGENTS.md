@@ -57,7 +57,7 @@ CLI 入口与实验编排：预测、月度回测、Vol/Neutral 全链路、A2 L
 - 新指标请 import `cascade.evaluation_metrics`，勿本地重写。
 - 并发写 JSONL 必须锁（参考 A2 `exclusive_result_lock`）；monthly checkpoint 目前**无锁**。
 - 长时 batch 任务必须 `source scripts/_batch_lib.sh` + `batch_init`，禁止手写 `kill -0` Highlander。
-- Praxist：peer 不跑评估；不要改 `.praxist-venv`；verdict 只能由 `aligned_slow_loop.py` 写。import `praxist_supervisor` 当库不会再武装 atexit（handler 仅 `main()` 注册）。
+- Praxist：peer 不跑评估；不要改 `.venv`；verdict 只能由 `aligned_slow_loop.py` 写。import `praxist_supervisor` 当库不会再武装 atexit（handler 仅 `main()` 注册）。
 - **启动顺序**: 先手动 `powershell -File scripts/_kill_batch.ps1` 清残留 → 再 `nohup bash scripts/batch_fX.sh`（batch_init 不自动清场，因 MSYS winpid 与 Win32 进程树不兼容）。
 
 ### Known Bugs / Traps (2026-08-08 audit)
