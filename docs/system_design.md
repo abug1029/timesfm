@@ -6,7 +6,7 @@
 > - IC / 硬门以 [`loop-constraints.md`](../loop-constraints.md) 为准。
 > - 本文若与上述冲突，以上述为准。不要按本文去改 `signal_contract.py` 或 `evaluator.gate`。
 >
-> **版本**: 1.2 (2026-09-12)
+> **版本**: 1.3 (2026-09-17，§7 评估门禁切换 v23 裁决口径)
 > **定位**: 方向性建议，不是自动开平仓。描述 TimesFM 两阶段级联如何在任意时刻给出期货品种的方向与置信度。
 
 ---
@@ -308,9 +308,9 @@ SS 生产协变量是 `calendar_cyclical`。慢环过门的 `ss_vor` **没有**�
     ├── 1. Peer 提出假设 (symbol × covariate) → proposals/*.json
     │
     ├── 2. 慢环回测验证
-    │   ├── 计算 PF / EV / DirAcc；IC = 2×|dir_acc−0.5|
-    │   ├── gate_pass = n≥350 且 IC≥0.05   （不含 EV）
-    │   └── econ_pass = gate_pass and ev>0  （pass_variants()）
+    │   ├── 计算 DirAcc / MAPE / endpoint_mape / n_eff（Bartlett）
+    │   ├── gate_pass = n≥350 且 n_eff≥50 且 dir_acc≥effective_min（品种自适应 0.50~0.52，单侧不取 abs）
+    │   └── Supervisor 批次结算：DM 检验（Newey-West HAC + HLN）p 值 → BH-FDR（per-symbol，K<4 降级 Bonferroni α=0.025）
     │
     └── 3. 固化到 SCHEMES：须人工，慢环不过这一步
 ```
@@ -536,102 +536,60 @@ def apply_neutral_override_v2(point_forecast, base_price, quantile_forecast,
 
 ## 7. 评估指标与门禁
 
-### 7.1 核心指标
+### 7.1 核心指标（v23 纯预测质量口径）
 
-| 指标 | 公式 | 含义 | 硬门条件 |
-|------|------|------|----------|
-| **PF** | sum(盈利) / sum(亏损) | 盈亏比 | > 1.0（经济层 / 星级，不是 `gate_pass`） |
-| **EV** | mean(净盈亏) | 每笔期望收益（扣滑点） | `econ_pass` 要求 > 0；**不进** `gate_pass` |
-| **IC** | `2×\|dir_acc−0.5\|` | 方向性信息系数（**不是** Pearson） | ≥ 0.05 |
-| **n** | 样本量 | 统计显著性 | ≥ 350 |
-| **MaxDD** | 最大回撤 | 风险控制 | > -40% (建议) |
+> 裁决唯一权威：`docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`
+> （硬门 §4.1、统计检验 §4.2、verdict schema v2 §7）。PF/EV/MaxDD/IC 退役出裁决链，保留为经济报表字段。
 
-`cascade/evaluation_metrics.py` 只产出 DirAcc / PF / EV / MaxDD。IC 由 `task_FM/evaluations/fm_eval/evaluator.py::gate` 从 DirAcc 派生。不要把 IC 写成 `corr(预测, 实际)`。
+| 指标 | 定义 | 角色 |
+|------|------|------|
+| **dir_acc** | `mean(dir_ok)`（零变动点判 False，spec §3.5） | **主门控 + 主排序** |
+| **endpoint_mape** | 终点幅度误差 | 副门控（幅度约束） |
+| **n** | 有效评估点数 | 门控（≥350） |
+| **n_eff** | Bartlett 有效样本量 | 门控（≥50） |
+| **p_value** | DM 检验单侧 p 值（Newey-West HAC + HLN） | Supervisor 批次结算 |
+| endpoint_bias_pct / path_corr / weighted_dir_acc / mae / mape / decay | 诊断 | 观察，不参与门控 |
+| PF / EV / MaxDD | 经济报表 | **仅经济报表字段，不参与 Praxist 裁决** |
 
-### 7.2 计算细节
+PF/EV/MaxDD 的计算与经济报表口径仍见 `cascade/evaluation_metrics.py`；`margin_maxdd` 已从回测链路删除（spec §8.2）。
 
-#### PF (Profit Factor)
+### 7.2 统计检验：DM + BH-FDR（v23）
 
-```python
-# 净盈亏（扣滑点）
-slippage = tick_size * SLIPPAGE_TICKS  # 如 RB: 1.0 * 2 = 2 点
-net = (pred_direction * actual_return) - slippage
+变体与 Baseline 面对完全相同的评估时间点，逐点命中差 `d_t = v_ok − b_ok` 构成配对样本。
+DM 检验用 Newey-West HAC（Bartlett 核，`q = horizon//step − 1`）校正 T+24 重叠窗口自相关，
+保留全量评估点（~588 点，不下采样）；HLN 有限样本校正后取单侧 p 值，由慢环逐变体写入
+verdict（`p_value`，`fdr_pass=null` 待结算）。Supervisor 按 `batch_id` 收集本批次全部变体，
+按品种分组执行 BH-FDR（q=0.10）；组内 K<4 时降级为固定 Bonferroni α=0.025。
+伪代码与数值示例见 spec §4.2。
 
-# 分组
-pos_trades = net[net > 0]  # 盈利交易
-neg_trades = net[net < 0]  # 亏损交易
+### 7.3 硬门逻辑（v23）
 
-gross_profit = sum(pos_trades)
-gross_loss = abs(sum(neg_trades))
-
-PF = gross_profit / gross_loss
-```
-
-#### EV (Expected Value)
+`gate_pass` **只判静态质量底线**（n、n_eff、dir_acc），不含任何经济指标：
 
 ```python
-EV = mean(net)  # 所有交易净盈亏的平均值
-# 单位：价格点（如 RB: +0.5 点 = 0.5 元/吨）
+# task_FM/evaluations/fm_eval/evaluator.py (v23)
+def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
+    """静态硬门: n / n_eff / dir_acc（品种自适应，单侧不取 abs）"""
+    effective_min = max(0.50, min(min_dir_acc, baseline_dir_acc)) \
+        if baseline_dir_acc is not None else min_dir_acc
+    return n >= min_n and n_eff >= min_n_eff and dir_acc >= effective_min
 ```
 
-#### IC（方向性，非相关）
+统计显著性由 Supervisor 批次结算的 BH-FDR 判定（`fdr_pass`）。裁决三态
+（`scripts/praxist_supervisor.py::materialize_known_verdicts`）：
 
-```python
-ic = 2 * abs(dir_acc - 0.5)
-# DirAcc=0.53 → IC=0.06；DirAcc=0.467 → IC=0.066
-```
-
-#### MaxDD (Maximum Drawdown)
-
-```python
-# 收益率
-r_t = net / base_price
-
-# 资金曲线（复利）
-equity[0] = 1.0
-equity[t] = equity[t-1] * (1 + r_t)
-
-# 历史峰值
-peak[t] = max(equity[0:t+1])
-
-# 回撤
-drawdown[t] = (equity[t] - peak[t]) / peak[t]
-
-MaxDD = min(drawdown)  # 最大回撤（负值）
-```
-
-### 7.3 硬门逻辑
-
-`gate_pass` **只判 n 和 IC**，不含 EV。经济过门是另一层。
-
-```python
-# task_FM/evaluations/fm_eval/evaluator.py
-def gate(s, min_n=350, min_ic=0.05):
-    """预注册硬门: n 与方向性 IC(=2*|DirAcc-0.5|)"""
-    m = s if "dir_acc" in s else map_summary(s)
-    ic = 2 * abs(m.get("dir_acc", 0.5) - 0.5)
-    return m["n"] >= min_n and ic >= min_ic
-
-# scripts/registry_lib.py
-# econ_pass = gate_pass and ev>0
-def pass_variants(snapshot):
-    out = []
-    for v in snapshot.values():
-        if v.get("status", "ok") != "ok":
-            continue
-        if v.get("gate_pass") and v.get("ev", 0) > 0:
-            out.append(v)
-    return out
-```
-
-磁盘：`ss_vor` 经济过门（ev=+11.06）。`i_oi`（ev=−2.46）与 `m_ccl`（ev=−3.64）`gate_pass=True` 但 EV 为负，**不算** `pass_variants()`。
+| 裁决态 | 条件（v2 schema） |
+|--------|-------------------|
+| `v2_pass` | gate_pass=True 且 (fdr_pass 或 migrated_pass) |
+| `hard-gate-but-losing` | gate_pass=True 但未过统计检验 |
+| `DEAD` | gate_pass=False（status=ok） |
 
 ### 7.4 信用星级
 
 | 星级 | 标准 | 品种数 | 建议仓位 |
 |------|------|--------|----------|
 | ⭐⭐⭐ | 无（系统未达 3 星标准） | 0 | — |
-| ⭐⭐ | PF > 1.05 + 多维度 GREEN | 8 | 中等仓位 |
+| ⭐⭐ | 经济层标准 PF > 1.05 + 多维度 GREEN（经济报表参考，不参与 Praxist 裁决） | 8 | 中等仓位 |
 | ⭐ | PF ~ 1.0 或 underpowered | 13 | 轻仓或观望 |
 
 **2 星品种**（SCHEMES，2026-09-10）：SS, SR, M, RB, EG, LH, CJ, JD
@@ -693,6 +651,8 @@ def pass_variants(snapshot):
 └─────────────────────────────────────────────────────────────┘
 ```
 
+> 注：「模型底气」中的 PF / MaxDD 为经济报表字段（v23 起不参与 Praxist 裁决），仅展示参考。
+
 ### 8.2 建议生成逻辑
 
 实现见 `scripts/copilot.py::craft_advisory`。`run_one` 传入的 `direction` 来自 `copilot_trade_signal` / `position_from_forecast`（加权 1H）。日线只进 `regime_direction`。文案按星级、历史 PF/DirAcc、Vol 雷达标签拼接；高波分支读 `vol_sensitivity`（HELPS / HURTS / MIXED）。级联报告不走这条，信号表直接印加权 1H 的「可交易方向」。
@@ -701,7 +661,7 @@ def pass_variants(snapshot):
 
 | 等级 | 条件 | 建议动作 |
 |------|------|----------|
-| **强建议** | 2 星 + PF>1.1 + 方向明确 | 中等仓位开仓 |
+| **强建议** | 2 星 + 方向明确（PF>1.1 为经济报表参考，不构成仓位依据） | 中等仓位开仓 |
 | **弱建议** | 1 星 或 PF~1.0 | 轻仓试探或观望 |
 | **不建议** | 中性方向 或 Vol 熔断 | 空仓等待 |
 
@@ -709,7 +669,7 @@ def pass_variants(snapshot):
 
 ## 9. 完整流程示例
 
-活仓：`/home/abug/timesfm`。虚拟环境：`.praxist-venv`。不要用 `D:/FlyBuddy/FM_a`。
+活仓：`/home/abug/timesfm`。虚拟环境：`.venv`。不要用 `D:/FlyBuddy/FM_a`。
 
 ### 9.1 场景：2026-09-11 14:30，预测 SS (不锈钢)
 
@@ -787,7 +747,7 @@ Copilot（`python scripts/copilot.py ss`）卡面目前仍只印日线方向，�
 ```bash
 # 1. 激活环境（WSL 活仓）
 cd /home/abug/timesfm
-source .praxist-venv/bin/activate
+source .venv/bin/activate
 
 # 2. 单品种预测（自动补采数据）
 python scripts/cascade_predict.py ss --collect-if-stale 1
@@ -852,7 +812,7 @@ SS 行是 `calendar_cyclical`。`ss_vor` 只出现在慢环裁决，不在本表
 | `cascade/signal_contract.py` | 可交易方向合同：`position_from_forecast` |
 | `cascade/features.py` | 协变量构建 |
 | `cascade/vol_risk_filter.py` | 波动率熔断器 |
-| `cascade/evaluation_metrics.py` | DirAcc / PF / EV / MaxDD（无 Pearson IC） |
+| `cascade/evaluation_metrics.py` | 评估指标：DirAcc 主指标；PF/EV/MaxDD 经济报表字段（不参与裁决） |
 | `scripts/cascade_predict.py` | 级联预测主入口（加权 1H） |
 | `scripts/monthly_backtest.py` | 慢环回测（加权 1H；`hour>=15` 含当日日线） |
 | `scripts/copilot.py` | 主观交易领航员（卡面加权 1H；日线为 regime） |

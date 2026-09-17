@@ -55,8 +55,10 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 ```
 
 - 快环产物：`results/gen_<N>/<peer>/proposals/<symbol>_<cov>.json`（`fm.hypothesis_proposal.v1`，mechanism ≥40 字）
-- 硬门：n≥350 且 IC≥0.05 且扣滑点 EV>0（`config/praxist_task.yaml`）
-- 目标：`scripts/praxist_goal.yaml`（1 星集合过门 ≥4 + PF 比>1.05 + ≥1 族）
+- 硬门（v23）：n≥350、n_eff≥50（Bartlett）、dir_acc≥0.52（品种自适应 effective_min = max(0.50, min(0.52, baseline_dir_acc))，单侧不取 abs，反向变体直接拒绝）（`config/praxist_task.yaml`）
+- 裁决链（v23）：DirAcc/MAPE + DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol 多重校正；K<4 时降级固定 Bonferroni α=0.025）；verdict schema `fm.aligned_verdict.v2`（v1 已离线迁移）
+- **Praxist 裁决唯一权威** = `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`；PF/EV/MaxDD/IC 退役出裁决链，仅作经济报表字段
+- 目标：`scripts/praxist_goal.yaml`（1 星集合过门 ≥4 + 过门变体 min dir_acc > 0.52 + ≥1 族）
 - 机器状态：`data/cache/supervisor_state.json`；裁决：`task_FM/config/aligned_verdicts.jsonl`
 - `task_FM/task.yaml` 禁止明文 API key；密钥只进 `.env.praxist`
 - Windows 挂载/副本可能过期；读本仓用 `wsl -d Ubuntu-22.04 -- bash -c "..."`
@@ -77,7 +79,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 
 | 关切 | 唯一来源 |
 |------|----------|
-| 经济指标 PF/EV/MaxDD | `cascade/evaluation_metrics.py` |
+| 经济报表 PF/EV/MaxDD（仅报表字段，不参与 Praxist 裁决） | `cascade/evaluation_metrics.py` |
 | Neutral A/B 门禁 | `cascade/neutral_ab_report.py` |
 | WF 超参 480/24/24 | `config/backtest_config.py` |
 | 品种协变量/星级 | `config/prediction_scheme.py`（改前人工确认） |
@@ -472,7 +474,7 @@ python scripts/regime_covariate_analysis.py --varieties ss --n-regimes 4
 **关键认知**：
 - Regime 分析的价值在于**动态路由**（预测时实时识别当前 Regime，动态选择协变量）
 - 避免静态绑定（不要把协变量永久写死在 prediction_scheme.py 中）
-- 评估指标必须包含 PF（盈亏比）和 EV（期望值），DirAcc 提升不等于盈利能力提升
+- PF/EV 为经济报表字段（v23 起不参与 Praxist 裁决）；DirAcc 提升不等于盈利能力提升，预测质量先行、经济价值另行验证
 
 ## 数据管理策略 (Predict-then-Collect)
 

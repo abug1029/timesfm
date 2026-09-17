@@ -84,16 +84,17 @@ Peer 第一件事：至少写 2 份假设到
 
 选座（`survivors_per_cycle=3`）：目标 1 星且 n≥350 → 1 星欠样本（cj/lh）→ 其余；同层再按协变量族正交填。
 
-近失误自动复测：裁决只差样本（n<350 但 ic≥0.05、ev>0、PF 比现任好 5%）时，本地库长到 ≥350 就补队，checkpoint 只算新点。首个候选 `cj_oi`（n=324）。
+近失误自动复测（2026-09-09 引入）：裁决只差样本（n<350；2026-09-11 时点触发条件 ic≥0.05、ev>0、PF 比现任好 5%，实现见 `scripts/praxist_supervisor.py::_retest_candidates`，以运行时代码为准）时，本地库长到 ≥350 就补队，checkpoint 只算新点。首个候选 `cj_oi`（n=324）。
 
 ### 慢环
 
-消费队列，跑 `monthly_backtest.py` 全量 walk-forward。硬门预注册在 `config/praxist_task.yaml`：
+消费队列，跑 `monthly_backtest.py` 全量 walk-forward。硬门预注册在 `config/praxist_task.yaml`（v23 纯预测质量口径；裁决唯一权威 = `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`）：
 
 - n ≥ 350
-- IC ≥ 0.05（ic = 2×|dir_acc−0.5|）
-- 扣滑点 EV > 0
-- 主指标 `ev_after_slippage`，PF 为次
+- n_eff ≥ 50（Bartlett 有效样本量）
+- dir_acc ≥ 0.52（品种自适应 effective_min = max(0.50, min(0.52, baseline_dir_acc))，单侧不取 abs）
+- 统计显著性：DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol；K<4 时降级固定 Bonferroni α=0.025）
+- PF/EV/MaxDD/IC 退役出裁决链，仅作经济报表字段
 
 日线预测按 `(symbol, cutoff, 窗口, 模型指纹)` 缓存（日线模型不吃协变量）。队列 claim / inprogress / recover，kill 后零损失。**只有慢环能写** `task_FM/config/aligned_verdicts.jsonl`。伪造 verdict = 破坏预注册纪律。
 
@@ -107,11 +108,11 @@ Peer 第一件事：至少写 2 份假设到
 - 裁决：`task_FM/config/aligned_verdicts.jsonl`（按 `variant_id` 最新行）
 - 目标与预算：`scripts/praxist_goal.yaml`
 
-成功条件（goal.yaml，2026-09-11 仍有效）：
+成功条件（goal.yaml 现行，2026-09-16 校对）：
 
 - 1 星集合 `{m, ss, sr, cj, jd, lh, eg, rb}` 里至少 4 个过门
-- 过门 = `pass_variants()`：`gate_pass` 且 ev>0（硬门 `gate_pass` 只判 n+ic，不含 EV）
-- 过门策略相对现任 PF 比 > 1.05
+- 过门 = `pass_variants()`（v2 schema）：`gate_pass` 且（`fdr_pass` 或 `migrated_pass`）；裁决三态 `v2_pass` / `hard-gate-but-losing` / `DEAD`（`scripts/praxist_supervisor.py::materialize_known_verdicts`）
+- 过门变体 min dir_acc > 0.52
 - 至少 1 个协变量族
 - **预算已无限制**：`max_cycles` / `cpu_hours` / `token_budget_m` = 999999，`deadline` = 2099-12-31
 
@@ -121,7 +122,7 @@ Peer 第一件事：至少写 2 份假设到
 - `last_run_id=run_2026-09-10_03-06-50_primary_task_FM`
 - `last_harvested_run_id=run_2026-09-10_00-44-51_primary_task_FM`
 - 经济意义上过门的实质只有 `ss_vor`（n=396，ic=0.06，ev=+11.06，PF=1.123）
-- `gate_pass=True` 但 ev<0：`i_oi`（−2.46）、`m_ccl`（−3.64）。materializer 三态：`econ_pass` / `hard-gate-but-losing` / `DEAD`。过硬门但亏钱 **不是** already solved，peer 不得当已解决再提。
+- `gate_pass=True` 但 ev<0：`i_oi`（−2.46）、`m_ccl`（−3.64）。materializer 三态：`v2_pass`（2026-09-11 快照时称 `econ_pass`）/ `hard-gate-but-losing` / `DEAD`。过硬门但亏钱 **不是** already solved，peer 不得当已解决再提。
 - `cj_oi` n=324 ic=0.08 ev=+19.46 `gate_pass=false`（欠样本，近失误复测候选）
 
 重启：

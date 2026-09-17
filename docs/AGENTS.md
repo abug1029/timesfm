@@ -39,19 +39,18 @@
 - Praxist：新人读 `praxist.md`；运维读 `runbook_praxist_three_loop.md`。`./archive/history/praxist_integration_plan.md` / `./archive/history/praxist_directive_design.md` 是历史方案（已归档），顶部有取代说明。
 - Praxist 机器状态不在 STATE.md 独占：`data/cache/supervisor_state.json` + `task_FM/config/aligned_verdicts.jsonl`。
 
-### Validation Criteria v2 (summary)
+### Praxist 裁决口径 v23（Validation Criteria v2 已退役）
 
-1. Rule1 MaxDD 相对恶化 >20% → 否决  
-2. Rule2 仅 MAPE 达标且 PF 退化 >2% → 否决  
-3. Rule3 EV 负→正绿通（仍受 R1）  
-4. Rule4 MaxDD 大幅改善 + EV 不显著退化 → 绿通  
-5. Rule5 n<350 负面 → UNDERPOWERED  
+> 固化判据 v2 的 Rule1–Rule5（MaxDD 一票否决 / EV 翻正绿通等）已随 v23 退役出裁决链；旧文见 `./archive/history/validation_criteria.md`（已归档）。现行裁决口径唯一权威 = v23 spec `./superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`：
 
-常规：MAPE 相对降≥3% **或** DirAcc +≥3pp **或** PF 相对 +≥10%。
+- 硬门：n≥350、n_eff≥50（Bartlett）、dir_acc≥0.52（品种自适应 effective_min = max(0.50, min(0.52, baseline_dir_acc))）
+- 统计裁决：DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol 多重校正；K<4 时降级固定 Bonferroni α=0.025）
+- 裁决三态：`v2_pass` / `hard-gate-but-losing` / `DEAD`（`scripts/praxist_supervisor.py::materialize_known_verdicts`）
+- PF/EV/MaxDD/IC：仅经济报表字段，不参与裁决
 
 ### Note on EV unit
 
-monthly stdout 打印 **`EV_ratio=`**（无量纲）。文档中的 EV 案例多为该尺度，勿与 `evaluation_metrics["EV"]` 价格点混淆。历史日志可能仍出现 `EV=` 别名（`phase4d_parse_results` 二者同语义）。
+monthly stdout 打印 **`EV_ratio=`**（无量纲）。文档中的 EV 案例多为该尺度，勿与 `evaluation_metrics["EV"]` 价格点混淆。历史日志可能仍出现 `EV=` 别名（`phase4d_parse_results` 二者同语义）。**EV 为经济报表字段，不参与 Praxist 裁决（v23）。**
 
 ## Dependencies
 

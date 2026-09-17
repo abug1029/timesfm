@@ -26,10 +26,12 @@
 ## PRAXIST 运行快照（2026-09-11）
 
 > Praxist 的**机器事实所有者**是 `data/cache/supervisor_state.json` 与 `task_FM/config/aligned_verdicts.jsonl`，不是本文件。本节省人类交接。过期时以 JSON 为准。停机报告仍落 `docs/superpowers/reports/`。
+>
+> **v23 裁决口径声明 (2026-09-16)**：v23 纯预测质量重构已合入 master（含 2970837/70b75bf 文档治理）。Praxist 裁决口径以 v23 spec（`docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`）为准：硬门 n≥350 / n_eff≥50 / dir_acc≥0.52（品种自适应）+ DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol）；verdict schema `fm.aligned_verdict.v2`。PF/EV/MaxDD/IC 退役出裁决链，仅作经济报表字段。本文件带日期历史快照（含旧经济指标数值）不回写；机器事实以 `supervisor_state.json` / `aligned_verdicts.jsonl` 为准。
 
 | 项 | 值 |
 |----|-----|
-| 宿主 | WSL2 Ubuntu-22.04 `/home/abug/timesfm`，`.praxist-venv` CPython 3.11 |
+| 宿主 | WSL2 Ubuntu-22.04 `/home/abug/timesfm`，`.venv` (Python 3.11) |
 | 合同 | 方案 A：peer 写假设，慢环唯一验证器 |
 | 目标 | 1 星集合过门 ≥4 + PF 比>1.05 + ≥1 族；`goal.yaml` 预算已 999999 / deadline 2099-12-31 |
 | 监督环 | `phase=fast`，`cycles_done=1`，`paused_429=false`；`last_run_id=run_2026-09-10_03-06-50_primary_task_FM`；`last_harvested_run_id=run_2026-09-10_00-44-51_primary_task_FM` |

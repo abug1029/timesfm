@@ -30,7 +30,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 
 - 快环：peer 只写机制化假设（方案 A），不加载 TimesFM
 - 慢环：`scripts/aligned_slow_loop.py` 是唯一验证器，唯一可写 `aligned_verdicts.jsonl`
-- 硬门：n≥350 且 IC≥0.05 且扣滑点 EV>0
+- 硬门（v23）：n≥350、n_eff≥50、dir_acc≥0.52（品种自适应 effective_min = max(0.50, min(0.52, baseline_dir_acc))）；统计裁决 = DM 检验（Newey-West HAC + HLN） + BH-FDR（per-symbol；K<4 降级 Bonferroni α=0.025）；verdict schema `fm.aligned_verdict.v2`。裁决唯一权威 = `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`
 - 目标：`scripts/praxist_goal.yaml`；机器状态：`data/cache/supervisor_state.json`
 - 密钥只进 `.env.praxist`，不要写进 `task_FM/task.yaml`
 
@@ -270,7 +270,7 @@ python scripts/copilot.py --three-star
 | 004 | Bartlett 有效样本量 (n_eff=71 for H=24,S=2,rho=0.9) | `task_FM/evaluations/fm_eval/evaluator.py` |
 | 005 | Col 0 隔离对数置信区间展宽 (P50 恒等) | `config/prediction_scheme.py:confidence_band` |
 | 007 | 余弦滚降信号权重 (`smooth_cutoff=True`) | `config/prediction_scheme.py:signal_weight` |
-| 008 | 非重叠步长保证金口径 MaxDD (stride=12) | `cascade/evaluation_metrics.py:calc_margin_maxdd_robust` |
+| 008 | （历史 SPEC）非重叠步长保证金口径 MaxDD — v23 起回测链路已删 margin_maxdd（spec §8.2），`calc_margin_maxdd_robust` 不再被调用 | `cascade/evaluation_metrics.py` |
 | 006 | 复合主键退役治理 + effective_stars 覆盖 | `scripts/build_knowledge_base.py`, `scripts/copilot.py` |
 | 009 | 品种级半衰期参数化 (17 处原子化重构) | `cascade/features.py`, `VarietyScheme.half_life_bars` |
 | 010 | 交易时段自动嗅探 (5% 频次阈值) | `cascade/data_validator.py:detect_trading_hours` |
@@ -278,7 +278,7 @@ python scripts/copilot.py --three-star
 | 012 | R² 斜率滤网 + 决策闭环 (R²<0.35→中性) | `cascade/daily_model.py:_compute_direction_v2` |
 | 013 | 5% 日度复合漂移截断 | `cascade/features.py:_clip_prediction_drift` |
 
-**不变量**: 硬门阈值不变 (n>=350, IC>=0.05, EV>0)；aligned_verdicts.jsonl 零 diff；后复权预测值=名义价格（严禁除法还原）。
+**不变量**: 硬门阈值不变 (n>=350, n_eff>=50, dir_acc>=0.52) + DM/BH-FDR 统计裁决（v23 spec）；aligned_verdicts.jsonl 零 diff；后复权预测值=名义价格（严禁除法还原）。
 
 
 ## 关键脚本分类
