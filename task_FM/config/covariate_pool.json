@@ -15,7 +15,7 @@
       "family": "momentum",
       "status": "active",
       "mechanism": "RSI(14)超买超卖体制：极端读数后均值回归，体制状态(超买/中性/超卖)引导方向。",
-      "track_record": "ss_rsi_state 经济PF最高1.16/ic0.01；eg_rsi_state PF0.97 近门"
+      "track_record": "v22经济口径: ss_rsi_state 经济PF最高1.16/ic0.01；eg_rsi_state PF0.97 近门；v23未复测"
     },
     "rsi6": {
       "family": "momentum",
@@ -46,13 +46,13 @@
       "family": "inventory",
       "status": "active",
       "mechanism": "持仓量变化率：增仓代表资金流入、趋势可信度高；缩仓代表行情缺乏新资金。",
-      "track_record": "jd_oi PF0.97/ic0.046 近门"
+      "track_record": "v22经济口径: jd_oi PF0.97/ic0.046 近门；v23未复测"
     },
     "ccl": {
       "family": "inventory",
       "status": "active",
       "mechanism": "仓差线(CCL)：主力资金净持仓变化方向，定位主力多空意图。",
-      "track_record": "ss_ccl PF1.02/经济PF1.13"
+      "track_record": "v22经济口径: ss_ccl PF1.02/经济PF1.13；v23未复测"
     },
     "basis_momentum": {
       "family": "term_structure",
@@ -83,7 +83,7 @@
       "family": "momentum",
       "status": "active",
       "mechanism": "Heikin-Ashi实体方向与大小：平滑后的K线实体动能，过滤噪声识别趋势延续。",
-      "track_record": "ss_ha_body 经济PF1.13/ic0.02"
+      "track_record": "v22经济口径: ss_ha_body 经济PF1.13/ic0.02；v23未复测"
     },
     "reversal_shadow": {
       "family": "momentum",
@@ -109,13 +109,13 @@
       "family": "calendar",
       "status": "active",
       "mechanism": "日历周期/季节性：交割月、季节性供需周期效应，对交割敏感品种(农产品)尤强。",
-      "track_record": "sr_calendar_cyclical PF0.97/经济PF1.04 近门"
+      "track_record": "v22经济口径: sr_calendar_cyclical PF0.97/经济PF1.04 近门；v23未复测"
     },
     "pca_momentum": {
       "family": "momentum",
       "status": "active",
       "mechanism": "多品种主成分(PCA)动量：提取市场宽度第一主成分，识别系统性趋势共振。",
-      "track_record": "sp_pca_momentum PF0.87 失败"
+      "track_record": "v22经济口径: sp_pca_momentum PF0.87 失败；v23未复测"
     },
     "hurst": {
       "family": "momentum",
@@ -136,19 +136,19 @@
       "family": "volatility",
       "status": "active",
       "mechanism": "波动率范围(VOR)：真实波幅相对历史的压缩/扩张，低波压缩后突破。",
-      "track_record": "m_vor PF1.30 最高/MaxDD最低/ic0.048近门"
+      "track_record": "v22经济口径: m_vor PF1.30 最高/MaxDD最低/ic0.048近门；v23未复测"
     },
     "bb_squeeze": {
       "family": "volatility",
       "status": "active",
       "mechanism": "布林带挤压：带宽收敛至极窄预示波动即将扩张，突破方向跟随。",
-      "track_record": "ta_bb_squeeze PF1.005/经济PF1.07 近门"
+      "track_record": "v22经济口径: ta_bb_squeeze PF1.005/经济PF1.07 近门；v23未复测"
     },
     "nvi": {
       "family": "inventory",
       "status": "active",
       "mechanism": "负量指标(NVI)：仅在缩量日累计涨跌，跟踪聪明钱在散户离场时的方向。",
-      "track_record": "sh_nvi n142样本不足/PF0.64"
+      "track_record": "v22经济口径: sh_nvi n142样本不足/PF0.64；v23未复测"
     },
     "hourly_slope": {
       "family": "momentum",
@@ -164,7 +164,7 @@
       "family": "momentum",
       "status": "active",
       "mechanism": "抛物线SAR距离：价格与SAR的距离衡量趋势持仓位置与反转距离。",
-      "track_record": "cf_sar_dist PF0.75 失败"
+      "track_record": "v22经济口径: cf_sar_dist PF0.75 失败；v23未复测"
     },
     "ao_accel": {
       "family": "momentum",

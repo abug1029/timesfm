@@ -30,6 +30,7 @@ prompt_layout:
 evaluation:
   primary_metric: dir_acc
   direction: maximize
+  # v23: pf/maxdd 不参与裁决，仅作经济报表留观（裁决口径见 docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md）
   aux_metrics:
   - pf
   - maxdd

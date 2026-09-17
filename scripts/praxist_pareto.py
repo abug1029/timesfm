@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Pareto 前沿展示工具 (P0c, 2026-09-01)
+"""DEPRECATED (v23, 2026-09-17): 本工具为 v22 遗留（PF/EV/MaxDD 支配排序），
+已退役出裁决链，全仓无调用方。保留仅供历史复算，勿新增引用。
+现行裁决口径见 docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md
+
+Pareto 前沿展示工具 (P0c, 2026-09-01)
 
 输入 JSONL (每行 {candidate, pf, ev, maxdd, n}), 按契约门槛过滤后输出 Pareto 前沿。
 目标方向: PF/EV 最大化, MaxDD 最大化 (越接近 0 越好), n 为硬门非目标。

@@ -811,6 +811,11 @@ def _symbol_n_table():
 def _retest_candidates(snapshot):
     """gate 仅因 n 不足而失败的近失误最新裁决 (ic>=0.05, ev>0, pf/incumbent>1.05)。
 
+    注意：这是近失误复测的遗留判据 (v1, 2026-09-09 落地)。v23 主裁决链
+    (DirAcc/MAPE + DM(NW-HAC) + BH-FDR + 自适应门，见 docs/superpowers/specs/
+    2026-09-14-prediction-quality-redesign-design.md) 不使用 ic/ev/pf；
+    本函数仅用于 gate 仅差 n (n < RETEST_GATE_N) 的复测扫描。
+
     语义即 'inconclusive, retest when more data' (cj_oi 2026-09-08: PF1.133/ev19.46/
     ic0.08, 仅 n=324<350)。snapshot 按 variant_id 保留最新裁决。no_data 已被排除
     (status != ok)；gate 因 ic 不足而失败者不入选 (加样本也救不回)。
