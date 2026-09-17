@@ -7,9 +7,11 @@ DEAD (gate_pass=False, status=ok): never revive without a mechanism correction.
 - p_oi: v2_pass, gate_pass=True, ev=None, n=588, status=ok
 - p_calendar_cyclical: v2_pass, gate_pass=True, ev=None, n=588, status=ok
 - cf_rsi6: v2_pass, gate_pass=True, ev=None, n=588, status=ok
+- cj_reversal_shadow_gated_03: hard-gate-but-losing, gate_pass=True, ev=None, n=588, status=ok
 - cj_reversal_shadow: hard-gate-but-losing, gate_pass=True, ev=None, n=588, status=ok
 - m_calendar_cyclical: hard-gate-but-losing, gate_pass=True, ev=None, n=588, status=ok
 - cj_oi: hard-gate-but-losing, gate_pass=True, ev=None, n=588, status=ok
+- cj_reversal_shadow_gated_02: hard-gate-but-losing, gate_pass=True, ev=None, n=588, status=ok
 - sh_rsi6: DEAD, gate_pass=False, ev=None, n=588, status=ok
 - cj_calendar_cyclical: DEAD, gate_pass=False, ev=None, n=588, status=ok
 - i_oi: DEAD, gate_pass=False, ev=None, n=588, status=ok
@@ -22,5 +24,3 @@ DEAD (gate_pass=False, status=ok): never revive without a mechanism correction.
 - cj_ao_accel: DEAD, gate_pass=False, ev=None, n=588, status=ok
 - cj_hurst: DEAD, gate_pass=False, ev=None, n=588, status=ok
 - sh_reversal_shadow_gated_03: DEAD, gate_pass=False, ev=None, n=588, status=ok
-- jd_calendar_cyclical: DEAD, gate_pass=False, ev=None, n=588, status=ok
-- jm_oi: DEAD, gate_pass=False, ev=None, n=588, status=ok
