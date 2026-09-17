@@ -45,11 +45,38 @@
     结论: 3 星不可达 (DirAcc 天花板 ~58%), ha_body 有效但非万能 (AO/JD/CF 有毒)
   2026-07-29 Phase 5 影线门控:
     CJ: reversal_shadow → reversal_shadow_gated_05 (scan MAE 5.49%→4.87%, -11%)
+
+口径声明（2026-09-17）：本表 stars/dir_acc/mape 等数值来自 2026-08 v2 月度回测口径
+  (G003/G004/G005 396pt rebaseline)，独立于 v23 螺旋裁决链
+  (DirAcc/MAPE + DM + BH-FDR + 自适应门)。v23 复测数据由慢环（Praxist 慢环）产出后
+  按品种滚动更新；更新前本表数值不得作为 v23 证据引用，仅供经济侧展示与回测参考。
 """
 
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 import numpy as np
+
+# ─────────────────────────────────────────────────────────
+# v23 复测待完成清单（仅登记，不改动本表任何数值）
+# 来源: task_FM/config/covariate_pool.json 中 track_record 标
+#   "v22线索(旧PF口径,未v23复测,非证据)" 的 10 个条目，品种/协变量组合取自
+#   各条目 v22 经济口径文本（ss/jd/sr/sp/m/ta/sh/cf 品种侧映射）。
+# 维护规则: 慢环 aligned verdict 产出后按品种从该列表移除并同步更新 SCHEMES。
+# 注: pool 中 rsi_state 条目另提及 eg_rsi_state "近门" 二级线索，同属该条目待 v23 复测，
+#     未在此单列。
+# ─────────────────────────────────────────────────────────
+V23_RETEST_PENDING = [
+    ("ss", "rsi_state"),
+    ("jd", "oi"),
+    ("ss", "ccl"),
+    ("ss", "ha_body"),
+    ("sr", "calendar_cyclical"),
+    ("sp", "pca_momentum"),
+    ("m", "vor"),
+    ("ta", "bb_squeeze"),
+    ("sh", "nvi"),
+    ("cf", "sar_dist"),
+]
 
 
 # ─────────────────────────────────────────────────────────
