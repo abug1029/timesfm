@@ -1092,3 +1092,29 @@ def test_build_snapshot_min_dir_acc_none_when_no_pass(tmp_path):
     reg.write_text(json.dumps(rec) + "\n", encoding="utf-8")
     snap = sup.build_snapshot(str(reg), 0, 0, 0)
     assert snap["min_pass_variant_dir_acc"] is None
+def test_proposal_score_exploration_bias():
+    """2026-09-17 探索偏置调整: 新颖性 2→5, 新增协变量开发度探索分。
+
+    平衡校准: 其他品种 ic>=0.03 的真履历仍胜过全新组合 (探索不压过真信号);
+    但履历弱 (ic<0.03) 的 cov 会被未开发的 cov 反超。
+    """
+    prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
+    snap = {
+        "rb_vor": {"variant_id": "rb_vor", "symbol": "rb", "cov_override": "vor",
+                   "status": "ok", "gate_pass": True, "pf": 1.2, "ic": 0.05},
+    }
+    # rb_vor 在 snapshot → 无新颖分; vor 已测 1 次 → 探索 +4
+    # 履历 (1.2-1)*10 + 0.05*200 = 12 → 总 12+3+0+4 = 19
+    tested = sup._proposal_priority_score(prop, "vor", "rb", snap)
+    assert abs(tested - 19.0) < 1e-9, tested
+
+    # 全新 cov + 全新组合: 履历 0 + 机制 3 + 新颖 5 + 探索 6 = 14
+    fresh = sup._proposal_priority_score(prop, "cci", "hc", snap)
+    assert abs(fresh - 14.0) < 1e-9, fresh
+
+    # 同 cov 已测 2 次 (探索 +2) 的新组合: 12+3+5+2 = 22
+    snap2 = dict(snap)
+    snap2["hc_vor"] = {"variant_id": "hc_vor", "symbol": "hc", "cov_override": "vor",
+                       "status": "ok", "gate_pass": True, "pf": 1.0, "ic": 0.0}
+    two = sup._proposal_priority_score(prop, "vor", "sr", snap2)
+    assert abs(two - 22.0) < 1e-9, two

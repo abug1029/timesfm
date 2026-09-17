@@ -579,18 +579,24 @@ def _proposal_priority_score(prop, cov, symbol, snapshot):
     """机制化排序 (替代噪声小样本 EV)。确定性可复现。
     1) 协变量履历: 同协变量在任一品种近门 (pf>1 / ic 高) 加分
     2) 机制完备度: symbol_fit/kill/promote 齐全加分
-    3) 新颖性: 未测组合加分
+    3) 新颖性: 未测组合加分 +5 (2026-09-17 探索偏置调整, 原 +2)
+    4) 探索分: 协变量开发度 —— 该 cov 累计 ok verdicts 越少加分越高
+       (0 个 +6 / 1 个 +4 / 2 个 +2 / >=3 个 0), 对冲履历分的利用偏置,
+       防"围着赢家打转"。平衡点: 其他品种 ic>=0.03 的真履历仍胜过全新组合。
     """
     score = 0.0
+    n_cov_ok = 0
     for v in (snapshot or {}).values():
         if v.get("cov_override") == cov and v.get("status", "ok") == "ok":
+            n_cov_ok += 1
             score += max(0.0, float(v.get("pf") or 0) - 1.0) * 10.0
             score += float(v.get("ic") or 0) * 200.0
     for key in ("symbol_fit", "kill_condition", "promote_condition"):
         if str(prop.get(key) or "").strip():
             score += 1.0
     if "%s_%s" % (symbol, cov) not in (snapshot or {}):
-        score += 2.0
+        score += 5.0
+    score += {0: 6.0, 1: 4.0, 2: 2.0}.get(n_cov_ok, 0.0)
     return score
 
 def _append_backlog(prop, src_path):
