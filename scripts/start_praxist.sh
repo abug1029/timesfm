@@ -10,7 +10,7 @@
 
 FM_ROOT="/workspace/repos/timesfm-abug1029"
 HOLD="$FM_ROOT/docs/superpowers/reports/praxist_20260906_ctrl/IDLE_HOLD"
-PRAXIST_BIN="/home/box/.praxist-venv/bin/python3"
+PRAXIST_BIN="/home/abug/timesfm/.venv/bin/python3"
 LOG_DIR="$FM_ROOT/data/cache"
 mkdir -p "$LOG_DIR"
 
@@ -47,7 +47,7 @@ case "${1:-start}" in
     LOG="$RUN_DIR/logs/launcher.nohup.log"
     mkdir -p "$(dirname "$LOG")"
     echo "[$(date -Is)] Starting praxist (detached) → $RUN_DIR"
-    nohup /home/box/.praxist-venv/bin/praxist start \
+    nohup /home/abug/timesfm/.venv/bin/praxist start \
       --task-path "$FM_ROOT/task_FM" \
       --run-dir "$RUN_DIR" \
       --daemonize \

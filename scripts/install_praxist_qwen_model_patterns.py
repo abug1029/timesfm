@@ -14,8 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CANDIDATES = [
-    Path.home() / ".praxist-venv/lib/python3.13/site-packages/praxist/plugins/model_providers/anthropic_messages/plugin.yaml",
-    ROOT / ".praxist-venv/lib/python3.13/site-packages/praxist/plugins/model_providers/anthropic_messages/plugin.yaml",
+    Path("/home/abug/timesfm/.venv/lib/python3.11/site-packages/praxist/plugins/model_providers/anthropic_messages/plugin.yaml"),
+    ROOT / ".venv/lib/python3.11/site-packages/praxist/plugins/model_providers/anthropic_messages/plugin.yaml",
 ]
 
 OLD = '''  compatible_model_patterns:

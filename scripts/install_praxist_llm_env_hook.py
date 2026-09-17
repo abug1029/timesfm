@@ -9,8 +9,8 @@ FM_ROOT = Path(__file__).resolve().parents[1]
 HOOK_PATH = FM_ROOT / "scripts" / "praxist_llm_env_hook.py"
 
 CANDIDATE_SITE = [
-    Path("/home/box/.praxist-venv/lib/python3.13/site-packages"),
-    FM_ROOT / ".praxist-venv" / "lib" / "python3.13" / "site-packages",
+    Path("/home/abug/timesfm/.venv/lib/python3.11/site-packages"),
+    FM_ROOT / ".venv" / "lib" / "python3.11" / "site-packages",
 ]
 
 LOADER_SRC = '''\

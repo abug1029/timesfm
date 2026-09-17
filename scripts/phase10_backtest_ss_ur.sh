@@ -3,7 +3,7 @@
 # 用法: bash scripts/phase10_backtest_ss_ur.sh
 
 set -e
-source .praxist-venv/bin/activate
+source .venv/bin/activate
 cd D:/FlyBuddy/fm_a
 
 echo "=== Phase 10 SS/UR 完整 backtest ==="

@@ -61,8 +61,8 @@ VENV_EXTENSIONS = {
 VENV_EXCLUDE_PREFIXES = (".omc/",)
 SELF_PATH = "scripts/si_quality_benchmark.py"
 
-# regex: a standalone ".venv" directory token (never matches ".praxist-venv",
-# which does not even contain the substring ".venv").
+# regex: a standalone ".venv" directory token (does not match, e.g., "foo-venv":
+# there is no dot before "venv").
 _VENV_RE = re.compile(r"(?<![\w.-])\.venv(?![\w-])")
 _PRINT_RE = re.compile(r"\bprint\s*\(")
 _IMPORT_LOGGING_RE = re.compile(r"(?m)^\s*import\s+logging\b")
@@ -177,7 +177,7 @@ def count_venv_refs() -> int:
             continue
         if any(rel.startswith(prefix) for prefix in VENV_EXCLUDE_PREFIXES):
             continue
-        if "/.venv/" in rel or "/.praxist-venv/" in rel or rel.startswith(".venv/"):
+        if "/.venv/" in rel or rel.startswith(".venv/"):
             continue
         ext = Path(rel).suffix.lower()
         if ext not in VENV_EXTENSIONS:
