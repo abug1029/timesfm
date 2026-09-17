@@ -38,6 +38,8 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 
 > **运行环境（2026-09-09 起）**：WSL2 Ubuntu-22.04，仓库根 `/home/abug/timesfm`（GitHub `abug1029/timesfm`），venv `.venv`（Python 3.11）。下文 Windows `D:\FlyBuddy\...` 路径为历史遗留，已不适用；宿主事实见 `docs/host_environment_assessment.md` 顶部迁移表，PRAXIST 运维见 `docs/runbook_praxist_three_loop.md`。
 
+**代码图谱（CodeGraph，2026-09-16）**：本仓已建索引（`.codegraph/`，224 文件；`task_FM/experiments/` 按 .gitignore 排除）。查询：`codegraph explore -p . "<英文查询>"`（中文 FTS 不命中）。大改（git pull / 批量编辑）后先 `codegraph sync .` 再查询。二进制在 `/home/abug/.npm-global/bin/`（已入 PATH）。
+
 ```
 /home/abug/timesfm/
 ├── data/             # 期货数据管理系统
