@@ -5,7 +5,7 @@ Phase 9 固化配置防回归测试 (2026-08-03, 更新至 2026-08-21 Phase 11/1
 任何对 config/prediction_scheme.py 的误改都会触发测试失败。
 
 数据来源: Phase 9 实证 + Phase 11 单协变量穷举 + Phase 12 组合测试
-参考: docs/backtest_registry.md
+参考: docs/archive/history/backtest_registry.md（已归档）
 """
 
 import pytest

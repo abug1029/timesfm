@@ -232,8 +232,8 @@ def generate_report(ao_rows, jd_rows, ao_best, jd_best):
         f"- `config/prediction_scheme.py` - 若 PASS 则更新",
         f"- `config/knowledge_base.json` - 方案更新后重建",
         f"- `STATE.md` - 更新 P2 #9 状态",
-        f"- `LOOP.md` - 更新策略变更日志",
-        f"- `docs/superpowers/specs/2026-08-04-phase9-toxic-variety-design.md` - 设计文档",
+        f"- `docs/archive/history/LOOP.md` - 更新策略变更日志（已归档）",
+        f"- `docs/archive/superpowers-specs/2026-08-04-phase9-toxic-variety-design.md` - 设计文档",
     ]
 
     with open(REPORT_PATH, "w", encoding="utf-8") as f:

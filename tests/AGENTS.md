@@ -14,7 +14,7 @@
 | `test_future_bar_guard.py` | 幽灵 K 线防护 |
 | `test_vol_threshold_contract.py` | ThrPolicy 合约 |
 | `test_neutral_ab_report.py` | Neutral 评分唯一源 |
-| `test_validation_criteria.py` | v2 判据 |
+| `test_validation_criteria.py` | v2 判据（测试文件仍在；其文档已归档：`docs/archive/history/validation_criteria.md`） |
 | `test_prediction_scheme_phase9.py` | 20 品种 scheme 快照 |
 | `test_kb_schemes_consistency.py` | KB ↔ SCHEMES 一致性 |
 | `test_ha_body_toxic_blacklist.py` | AO/JD 禁 ha_body |

@@ -1,6 +1,6 @@
 """PRAXIST 任务包契约校验测试 (P0a, TDD 2026-09-01)
 
-契约原则 (docs/praxist_integration_plan.md §2):
+契约原则 (docs/archive/history/praxist_integration_plan.md §2, 已归档):
 - 预注册: 评估口径先于实验锁定, GREEN 必须以全量 walk-forward + 经济口径为准
 - 红线: peers 唯一可写区为 scripts/praxist_ws/ 与 reports/praxist/
 """

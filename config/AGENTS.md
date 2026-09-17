@@ -23,7 +23,7 @@
 ### Working In This Directory
 
 - **`prediction_scheme.py` 禁止自动编辑**；任何 SCHEMES 变更需人工确认 + 完整 walk-forward 证据。
-- 固化门禁真相：`docs/validation_criteria.md` v2 + `scripts/phase4d_parse_results.verdict`。
+- 固化门禁真相：`docs/archive/history/validation_criteria.md` v2（已归档；SCHEMES 固化线，SCHEMES 固化线遗留判据，独立于 v23 Praxist 裁决链） + `scripts/phase4d_parse_results.verdict`。
 - 禁止用 3/7 点 scan 结果改 SCHEMES；只用 `monthly_backtest` 完整 WF。
 - 改 scheme 后跑：`tests/test_prediction_scheme_phase9.py` + `tests/test_kb_schemes_consistency.py`。
 

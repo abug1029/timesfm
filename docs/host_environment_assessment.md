@@ -137,7 +137,7 @@
 
 
 更新本报告时同步修订：
-- `docs/praxist_integration_plan.md` §资源适配
+- `docs/archive/history/praxist_integration_plan.md` §资源适配
 - `docs/runbook_praxist_three_loop.md` 项目根/路径表
 - `docs/runbook.md` 环境表
 - [x] `AGENTS.md` / `CLAUDE.md` / peer prompts 环境配置（已改为 box 路径；旧 `D:/FlyBuddy` 示例已清除）

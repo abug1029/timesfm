@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **数据流：** TqSdk → SQLite(每品种独立) → 技术指标计算 → TimesFM 预测 → 报告生成
 
 **数据管理策略：**
-- `LOOP.md` — 预测驱动采集策略 + 协变量变更日志
+- `docs/archive/history/LOOP.md` — 预测驱动采集策略 + 协变量变更日志（已归档）
 - `STATE.md` — 当前系统状态（回测/门禁/待办）**以磁盘事实为准**
 - `loop-constraints.md` — 高风险路径保护规则
 - `docs/` — 人类可读运维/接入文档（runbook、Copilot、Vol 风控状态）
@@ -105,7 +105,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 │   ├── phase1/                 # Neutral/R1 全链路回测产物
 │   ├── data_ops/               # 采集/审计运维日志
 │   └── ...
-├── STATE.md / LOOP.md / AGENTS.md / CLAUDE.md
+├── STATE.md / AGENTS.md / CLAUDE.md（LOOP.md 已归档至 docs/archive/history/）
 └── tests/            # test_future_bar_guard / test_vol_threshold_contract 等
 ```
 
@@ -189,7 +189,7 @@ python -m unittest tests.test_future_bar_guard tests.test_vol_threshold_contract
 ```
 
 **人类文档：** 见 `docs/README.md`（runbook / Copilot / Vol 风控状态）。
-**回测资产目录：** 见 `docs/backtest_registry.md`（141 实验, 20 品种, 避免重复回测）。
+**回测资产目录：** 见 `docs/archive/history/backtest_registry.md`（已归档；141 实验, 20 品种, 避免重复回测）。
 
 ## 数据库设计
 

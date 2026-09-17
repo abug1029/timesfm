@@ -30,7 +30,7 @@ MAPE_REL_DROP = 0.03   # MAPE 相对下降 >=3% (MAE 代理, stdout 无 MAE)
 DIRACC_DELTA = 3       # DirAcc 绝对提升 >=3pp
 PF_REL_GAIN = 0.10     # PF 相对提升 >=10%
 
-# v2 新判据阈值 (2026-07-30 Phase 4d 升级, 见 docs/validation_criteria.md)
+# v2 新判据阈值 (2026-07-30 Phase 4d 升级, 见 docs/archive/history/validation_criteria.md; SCHEMES v2 判据，独立于 v23 Praxist 裁决链)
 MAXDD_WORSEN_VETO = 0.20      # Rule 1: MaxDD 相对恶化 >20% 一票否决
 PF_DEGRADE_GUARD = 0.02       # Rule 2: 仅 MAPE 达标时 PF 退化 <=2%
 EV_DELTA_MIN = 0.01           # Rule 4: EV 不显著退化阈值 (cand >= base - 0.01)
@@ -206,7 +206,7 @@ def main():
         print()
 
     print("=" * 110)
-    print("固化判定 v2 (vs Baseline) - 规则详见 docs/validation_criteria.md")
+    print("固化判定 v2 (vs Baseline) - 规则详见 docs/archive/history/validation_criteria.md")
     print("=" * 110)
     print(f"{'sym':<4} {'Replace':<30} {'Additive':<40} {'建议'}")
     print("-" * 110)

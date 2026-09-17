@@ -13,7 +13,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 **数据流：** TqSdk → SQLite(每品种独立) → 技术指标计算 → TimesFM 预测 → 报告生成
 
 **数据管理策略：**
-- `LOOP.md` — 预测驱动采集策略 + 协变量变更日志
+- `docs/archive/history/LOOP.md` — 预测驱动采集策略 + 协变量变更日志（已归档）
 - `STATE.md` — 当前系统状态（回测/门禁/待办）**以磁盘事实为准**
 - `loop-constraints.md` — 高风险路径保护规则
 - `docs/` — 人类可读运维/接入文档（runbook、Copilot、Vol 风控状态）
@@ -81,9 +81,9 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 | Neutral A/B 门禁 | `cascade/neutral_ab_report.py` |
 | WF 超参 480/24/24 | `config/backtest_config.py` |
 | 品种协变量/星级 | `config/prediction_scheme.py`（改前人工确认） |
-| 固化判据 v2 | `docs/validation_criteria.md` + `scripts/phase4d_parse_results.verdict` |
+| 固化判据 v2 | `docs/archive/history/validation_criteria.md`（已归档，SCHEMES 固化线遗留判据） + `scripts/phase4d_parse_results.verdict`；Praxist 裁决口径以 v23 spec `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md` 为准 |
 | 固化 WF 权威入口 | `scripts/monthly_backtest.py`（禁止 3/7 点 scan 顶替） |
-| 实验防重复 | `docs/backtest_registry.md` |
+| 实验防重复 | `docs/archive/history/backtest_registry.md`（已归档） |
 | 幽灵 K 线 | `data.future_bar_guard.run_guard` only |
 | Praxist 机器状态 | `data/cache/supervisor_state.json` |
 | Praxist aligned 裁决 | `task_FM/config/aligned_verdicts.jsonl`（仅慢环可写） |
@@ -91,7 +91,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 | Praxist 架构/运维 | `docs/praxist.md` + `docs/runbook_praxist_three_loop.md` |
 
 **2026-08-21 状态锚点（Phase 11/12 结案）**
-- Phase 11 单协变量穷举结案：12 品种协变量替换固化，34 GREEN（详见 `docs/backtest_registry.md`）
+- Phase 11 单协变量穷举结案：12 品种协变量替换固化，34 GREEN（详见 `docs/archive/history/backtest_registry.md`）
 - Phase 12 BU 组合协变量：`calendar_cyclical+hourly_slope` 固化（PF=1.01 边际 GREEN）
 - M/P/SR 基线验证保持（当前方案优于 Phase 11 单协变量候选）
 - 信用档不变：≥2★ = CJ/SS/SR/M/JD/LH/EG/RB（8 品种）；1★ = 12 品种
@@ -171,7 +171,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 │   ├── phase1/                 # Neutral/R1 全链路回测产物
 │   ├── data_ops/               # 采集/审计运维日志
 │   └── ...
-├── STATE.md / LOOP.md / AGENTS.md / CLAUDE.md
+├── STATE.md / AGENTS.md / CLAUDE.md（LOOP.md 已归档至 docs/archive/history/）
 └── tests/            # test_future_bar_guard / test_vol_threshold_contract 等
 ```
 

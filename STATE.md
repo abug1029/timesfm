@@ -419,7 +419,7 @@ python -m unittest tests.test_future_bar_guard tests.test_vol_threshold_contract
 
 **目标**: 对 20 品种 (含 SH 待固化) 进行 7 协变量完整 walk-forward 穷举，以 Phase 9/G004 固化方案为 baseline 对比。  
 **规模**: 138/138 作业全完成 (含 M 补跑), 34 GREEN, 12 品种固化, 3 品种基线保持。  
-**资产**: `docs/backtest_registry.md` (189 实验, 21 品种)
+**资产**: `docs/archive/history/backtest_registry.md`（已归档）(189 实验, 21 品种)
 
 ### Phase 11 固化替换 (12 品种)
 

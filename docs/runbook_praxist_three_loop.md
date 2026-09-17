@@ -190,5 +190,5 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 - `scripts/goal_dsl.py` — success_condition 求值（AST 白名单）
 - `scripts/praxist_assets_archive.py` — 快/慢环资产归档（含已知 `/workspace` 硬编码噪音）
 - `docs/spec_hypothesis_driven_fast_loop_20260908.md` — 方案 A 设计（peer 机制化假设作者）
-- `docs/superpowers/plans/2026-09-02-praxist-three-loop.md` — 实施计划（Spec 绑定解释优先于过时 spec 句）
-- `docs/superpowers/specs/2026-09-02-praxist-three-loop-design.md` — §11 验收标准
+- `docs/archive/superpowers-plans/2026-09-02-praxist-three-loop.md` — 实施计划（Spec 绑定解释优先于过时 spec 句）
+- `docs/archive/superpowers-specs/2026-09-02-praxist-three-loop-design.md` — §11 验收标准

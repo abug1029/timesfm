@@ -17,26 +17,26 @@
 | `spec_hypothesis_driven_fast_loop_20260908.md` | 方案 A：peer 只写假设 |
 | `runbook.md` | 日常运维 |
 | `copilot.md` | Copilot 用法 |
-| `vol-risk.md` | Vol 风控状态（生产默认 OFF） |
-| `backtest_registry.md` | 历史实验目录（Phase 扫描） |
+| [已归档] `./archive/history/vol-risk.md` | Vol 风控状态（生产默认 OFF） |
+| [已归档] `./archive/history/backtest_registry.md` | 历史实验目录（Phase 扫描） |
 | `product_positioning.md` | 可交易方向 / 产品红线 |
 | `module_freeze.md` | Vol/A2/Regime 冻结 |
 | `param_hygiene.md` | 参数卫生裁决 |
-| `validation_criteria.md` | 固化判据 v2 |
+| [已归档] `./archive/history/validation_criteria.md` | 固化判据 v2 |
 | `long-task-sop.md` | 长任务 SOP |
 | `superpowers/plans/` | 阶段实现计划 |
 | `superpowers/specs/` | 设计规格 |
 
-**新口径经济真相**: `../reports/research/20260808_g005e_results.md`（20/20）
+**新口径经济真相**: g005e 结果文件已不在仓内（原 `../reports/research/20260808_g005e_results.md`；Phase 11/12 后协变量已刷新）
 
 ## For AI Agents
 
 ### Working In This Directory
 
-- 重跑 heavy WF 前先读 `backtest_registry.md` 与 `STATE.md`。
-- 固化门槛以 `validation_criteria.md` v2 为准；实现参考 `scripts/phase4d_parse_results.verdict`。
+- 重跑 heavy WF 前先读 `./archive/history/backtest_registry.md`（已归档） 与 `STATE.md`。
+- 固化门槛判据 v2 已归档（`./archive/history/validation_criteria.md`）；当前 Praxist 裁决以 v23 spec（`./superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`）为准；实现参考 `scripts/phase4d_parse_results.verdict`。
 - 更新文档时区分：**磁盘事实**（STATE/reports）vs 规划（plans）。
-- Praxist：新人读 `praxist.md`；运维读 `runbook_praxist_three_loop.md`。`praxist_integration_plan.md` / `praxist_directive_design.md` 是历史方案，顶部有取代说明。
+- Praxist：新人读 `praxist.md`；运维读 `runbook_praxist_three_loop.md`。`./archive/history/praxist_integration_plan.md` / `./archive/history/praxist_directive_design.md` 是历史方案（已归档），顶部有取代说明。
 - Praxist 机器状态不在 STATE.md 独占：`data/cache/supervisor_state.json` + `task_FM/config/aligned_verdicts.jsonl`。
 
 ### Validation Criteria v2 (summary)

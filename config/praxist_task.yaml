@@ -1,5 +1,5 @@
 # PRAXIST 任务包契约 (P0a, 2026-09-01; v23 重构 2026-09-16) — 预注册: 评估口径先于任何实验锁定
-# 依据: docs/praxist_integration_plan.md §2; v23 纯预测质量重构 (DirAcc/MAPE + DM + BH-FDR)
+# 依据: docs/archive/history/praxist_integration_plan.md §2; v23 纯预测质量重构 (DirAcc/MAPE + DM + BH-FDR)
 objective:
   primary: dir_acc                    # 主指标: 方向准确率 (纯预测质量口径, PF/EV 退役)
   green_requires_full_walkforward: true

@@ -2,7 +2,7 @@
 Walk-forward optimization framework for covariate testing.
 
 **NOT for SCHEMES solidification (CF-19 A).** Uses IS-IR selection, not PF/EV.
-Solidify only via ``scripts/monthly_backtest.py`` + validation_criteria v2.
+Solidify only via ``scripts/monthly_backtest.py`` + validation_criteria v2 (archived at docs/archive/history/validation_criteria.md).
 
 Provides IS/OOS (In-Sample/Out-of-Sample) validation for regime research only.
 """

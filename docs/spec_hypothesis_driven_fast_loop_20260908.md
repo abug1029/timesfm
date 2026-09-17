@@ -2,7 +2,7 @@
 
 > 日期: 2026-09-08
 > 状态: **已实施（2026-09-08 上线，当日首个过门策略 ss_vor 即出自本方案）**
-> 关联文档: praxist_peer_evaluation_fix.md, audit_system_efficiency_20260908.md, runbook_praxist_three_loop.md
+> 关联文档: archive/history/praxist_peer_evaluation_fix.md（已归档）, audit_system_efficiency_20260908.md, runbook_praxist_three_loop.md
 
 > **实施后增补（2026-09-09）**：
 > - §4.3 选座在 QD 两遍填充之前增加 **tier 分层**（goal `cadence.priority_symbols`）：目标 1 星品种且当前 n≥350 → 目标品种欠样本（cj/lh）→ 其余品种；修复"扩目标后慢环座位全给 2 星"问题。

@@ -161,10 +161,10 @@ setsid nohup .venv/bin/python scripts/praxist_supervisor.py \
 
 | 文档 | 地位 |
 |---|---|
-| [praxist_integration_plan.md](./praxist_integration_plan.md) | 2026-09-01 方案稿，P0–P3 已落地；路径 `/root/timesFM_fu` 过时 |
-| [praxist_directive_design.md](./praxist_directive_design.md) | 指令闭环仍有效；peer 跑 diagnostic 评估已被方案 A 取代 |
-| [praxist_peer_evaluation_fix.md](./praxist_peer_evaluation_fix.md) | **失效（方案 A）**。只解释诊断 PF 不可信；禁止按本文给 peer 加评估 |
-| `docs/superpowers/specs/2026-09-02-praxist-three-loop-design.md` | 部分取代。骨架仍有效（慢环写 verdict、daily 缓存、同提供商 429 resume）；peer diagnostic 已废 |
-| `docs/superpowers/plans/2026-09-02-praxist-three-loop.md` | 历史施工单，已落地，勿再执行。绑定解释第 4 条作废，现行 harvest 见 `harvest_proposals` |
+| [praxist_integration_plan.md（已归档）](./archive/history/praxist_integration_plan.md) | 2026-09-01 方案稿，P0–P3 已落地；路径 `/root/timesFM_fu` 过时 |
+| [praxist_directive_design.md（已归档）](./archive/history/praxist_directive_design.md) | 指令闭环仍有效；peer 跑 diagnostic 评估已被方案 A 取代 |
+| [praxist_peer_evaluation_fix.md（已归档）](./archive/history/praxist_peer_evaluation_fix.md) | **失效（方案 A）**。只解释诊断 PF 不可信；禁止按本文给 peer 加评估 |
+| `docs/archive/superpowers-specs/2026-09-02-praxist-three-loop-design.md` | 部分取代。骨架仍有效（慢环写 verdict、daily 缓存、同提供商 429 resume）；peer diagnostic 已废 |
+| `docs/archive/superpowers-plans/2026-09-02-praxist-three-loop.md` | 历史施工单，已落地，勿再执行。绑定解释第 4 条作废，现行 harvest 见 `harvest_proposals` |
 
 Windows 工作区里的 `D:\FlyBuddy\timesfm` 可能是过期副本。读/改本仓一律走 WSL：`wsl -d Ubuntu-22.04 -- bash -c "..."`。
