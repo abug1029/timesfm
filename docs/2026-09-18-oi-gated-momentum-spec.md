@@ -223,6 +223,11 @@ t−1 期扰动敏感。此断言同时验证"标尺无样本内污染"与"因�
    **实施第一步**；有空洞则回退逐合约回填求和（成本更高）。
 2. sigmoid 门对照变体：**当前不测**（冻结半波整流），如需 A/B 另行立项走同样评审。
 3. active 占比 50~60% 为评审估计，实施首跑后用实测分布复核 n_active 预期。
+4. **gated 硬门 n_eff 口径待宿主裁定**（评估器评审 2026-09-18 MEDIUM-2）：现行为
+   `n_eff = min(全量 Bartlett ESS, n_active)`——gated 激活样本时间成簇（门控事件驱动），
+   全量 Bartlett ESS 可能高估 active 子集真实 ESS → 门偏松。候选方案：active 子集独立
+   重算 ESS（fallback_n_eff(n_active)）。当前不改行为，仅登记口径风险
+   （评估器 build_summary 处已加显式口径声明注释）。
 
 ## 8. v2 评审处置记录（2026-09-18，宿主 Conditional Pass）
 

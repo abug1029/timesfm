@@ -12,7 +12,8 @@ sys.path.insert(0, FM_ROOT)
 sys.path.insert(0, os.path.join(FM_ROOT, "task_FM", "evaluations", "fm_eval"))
 import monthly_backtest as mb
 import registry_lib as rl
-from evaluator import build_summary, effective_sample_size, load_baseline_points
+from evaluator import (build_summary, effective_sample_size, load_baseline_points,
+                       attach_gated_metrics)
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
 
@@ -136,6 +137,8 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             v = _no_data_verdict(row, batch_id=bid)
         else:
             s = dict(s)
+            # gated 协变量: 注入 Active Mask 统计 (对照 run.py 注入条件; 评审 2026-09-18 HIGH)
+            attach_gated_metrics(s, row["cov_override"], data["points"])
             baseline_pts = load_baseline_points(row["symbol"])
             baseline_dir_acc = None
             if baseline_pts:

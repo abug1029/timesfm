@@ -117,25 +117,44 @@ except Exception as e:
 def _load_gated_covariates():
     """读取 covariate_pool.json 中声明 "gated": true 的协变量名集合.
 
-    失败 → 空集 (与既有协变量池读取同口径, 不收窄既有行为:
-    误判为非 gated 仅意味着走既有全量 dir_acc 口径).
+    返回 (names, err): err 非 None 表示加载失败 — fail-open 空集 (不收窄既有行为,
+    误判为非 gated 仅意味着走既有全量 dir_acc 口径) + stderr WARN (评审 MEDIUM-1:
+    失败不得静默, 对齐 _load_covariate_pool 的 [WARN] 告警风格).
     """
     try:
         with open(POOL_PATH, "r", encoding="utf-8") as f:
             pool = json.load(f)
         covs = pool.get("covariates", {})
-        return {n for n, v in covs.items()
-                if isinstance(v, dict) and v.get("gated") is True}
-    except Exception:
-        return set()
+        return ({n for n, v in covs.items()
+                 if isinstance(v, dict) and v.get("gated") is True}, None)
+    except Exception as e:
+        print("[WARN] gated 协变量声明加载失败, fail-open 全量口径: %s" % e, file=sys.stderr)
+        return set(), str(e)
 
 
-GATED_COVARIATES = _load_gated_covariates()
+GATED_COVARIATES, _GATED_POOL_ERROR = _load_gated_covariates()
+# 评审 MEDIUM-1: 导入期加载失败标记 — build_summary 据此把该 run 的全量口径 verdict
+# 落 gate_basis="full_fallback", 使 gated 候选被静默误判为全量口径这一 fail-open 可见.
+# (声明加载失败时无法按候选识别 gated, 故 run 级整体标记.)
+_GATED_POOL_LOAD_FAILED = _GATED_POOL_ERROR is not None
 
 
 def is_gated_covariate(name):
     """covariate 是否声明 gated (通用开关, 非按名特判)."""
     return name in GATED_COVARIATES
+
+
+def attach_gated_metrics(s, cov_name, points):
+    """注入 gated 协变量 Active Mask 统计到 summary 草稿 s (两入口共用).
+
+    run.py do_evaluate 与 aligned_slow_loop._run_inner 共用本函数, 注入条件
+    单一事实源, 消除双写漂移 (评审 2026-09-18 HIGH).
+    gated → s["gated_metrics"] = active_mask_metrics(points) (build_summary 消费后 pop);
+    非 gated → s 原样返回 (零改动).
+    """
+    if is_gated_covariate(cov_name):
+        s["gated_metrics"] = active_mask_metrics(points)
+    return s
 
 
 def active_mask_metrics(points):
@@ -154,10 +173,15 @@ def active_mask_metrics(points):
         if not isinstance(p, dict) or "error" in p:
             continue
         n_total += 1
-        try:
-            sig = float(p.get("signal"))
-        except (TypeError, ValueError):
+        raw = p.get("signal")
+        if isinstance(raw, bool):
+            # spec §3.3 信号为 float; bool 的 float(True)=1.0 不得伪装激活 → NaN 桶
             sig = float("nan")
+        else:
+            try:
+                sig = float(raw)
+            except (TypeError, ValueError):
+                sig = float("nan")
         if math.isnan(sig):
             n_nan += 1
         elif sig == 0.0:
@@ -241,6 +265,13 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
     if gm is not None:
         # gated 协变量: 硬门挂 active 口径 (plan 步骤三 n 门挂 n_active>=350);
         # gate() 本体语义零改动, 仅换输入为 active 统计. NaN → fail-closed.
+        #
+        # n_eff 口径显式声明 (评审 2026-09-18 MEDIUM-2, 行为不变):
+        # 硬门 n_eff = min(全量 Bartlett ESS, n_active) — 启发式意图: ESS 上限不超过
+        # active 样本数. 已知风险: gated 激活样本时间成簇 (门控事件驱动), 激活段内
+        # 自相关可能高于全量序列, 全量 Bartlett ESS 或高估 active 子集真实 ESS → 门偏松.
+        # 候选修正 fallback_n_eff(n_active) (active 子集独立重算 ESS) 待宿主裁定口径,
+        # 登记于 docs/2026-09-18-oi-gated-momentum-spec.md §7 开放问题 #4.
         _n_active = gm.get("n_active", 0)
         gate_pass = gate(
             {"n": _n_active, "n_eff": min(m["n_eff"], _n_active),
@@ -317,6 +348,11 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         }
         out.update(_active_fields)
         out["metrics"].update(_active_fields)
+    elif _GATED_POOL_LOAD_FAILED:
+        # 评审 MEDIUM-1: pool 加载失败的 run 内, 全量口径 verdict 误分类可见化 —
+        # 本 verdict 走的全量口径不可信 (gated 声明未能加载, 无法按候选识别)
+        out["gate_basis"] = "full_fallback"
+        out["metrics"]["gate_basis"] = "full_fallback"
     return out
 
 

@@ -239,7 +239,8 @@ class TestRunWiring:
             "path_corr": 0.6, "weighted_dir_acc": 0.56,
             "mae": 0.8, "mape": 0.3, "decay": 1.0})
         run_mod = self._load_run("fm_eval_run_gated_a")
-        monkeypatch.setattr(run_mod, "is_gated_covariate", lambda name: True)
+        import evaluator as _ev  # attach_gated_metrics 的注入条件在 evaluator 侧
+        monkeypatch.setattr(_ev, "GATED_COVARIATES", {"oi_gated_momentum"})
         out = run_mod.do_evaluate({
             "symbol": "m", "cov_override": "oi_gated_momentum",
             "max_points": 400, "stage": "aligned"})
@@ -264,7 +265,8 @@ class TestRunWiring:
             "path_corr": 0.6, "weighted_dir_acc": 0.56,
             "mae": 0.8, "mape": 0.3, "decay": 1.0})
         run_mod = self._load_run("fm_eval_run_gated_b")
-        monkeypatch.setattr(run_mod, "is_gated_covariate", lambda name: False)
+        import evaluator as _ev
+        monkeypatch.setattr(_ev, "GATED_COVARIATES", set())
         out = run_mod.do_evaluate({
             "symbol": "m", "cov_override": "rsi_state",
             "max_points": 400, "stage": "aligned"})
@@ -337,7 +339,9 @@ class TestGatedPoolFlag:
         p = tmp_path / "covariate_pool.json"
         p.write_text(json.dumps(pool), encoding="utf-8")
         monkeypatch.setattr(fm, "POOL_PATH", str(p))
-        assert fm._load_gated_covariates() == {"oi_gated_momentum"}
+        names, err = fm._load_gated_covariates()
+        assert names == {"oi_gated_momentum"}
+        assert err is None
 
     def test_gated_false_excluded(self, tmp_path, monkeypatch):
         pool = {"covariates": {
@@ -347,20 +351,156 @@ class TestGatedPoolFlag:
         p = tmp_path / "covariate_pool.json"
         p.write_text(json.dumps(pool), encoding="utf-8")
         monkeypatch.setattr(fm, "POOL_PATH", str(p))
-        assert fm._load_gated_covariates() == set()
+        names, err = fm._load_gated_covariates()
+        assert names == set()
+        assert err is None
 
     def test_missing_file_returns_empty(self, tmp_path, monkeypatch):
         monkeypatch.setattr(fm, "POOL_PATH",
                             str(tmp_path / "nope.json"))
-        assert fm._load_gated_covariates() == set()
+        names, err = fm._load_gated_covariates()
+        assert names == set()
+        assert err is not None
 
     def test_corrupt_file_returns_empty(self, tmp_path, monkeypatch):
         p = tmp_path / "covariate_pool.json"
         p.write_text("{broken", encoding="utf-8")
         monkeypatch.setattr(fm, "POOL_PATH", str(p))
-        assert fm._load_gated_covariates() == set()
+        names, err = fm._load_gated_covariates()
+        assert names == set()
+        assert err is not None
 
     def test_is_gated_covariate(self, monkeypatch):
         monkeypatch.setattr(fm, "GATED_COVARIATES", {"oi_gated_momentum"})
         assert fm.is_gated_covariate("oi_gated_momentum") is True
         assert fm.is_gated_covariate("rsi_state") is False
+
+
+# ======================================================
+# 评审跟进 (2026-09-18): 慢环接线 / pool 加载可见性 / bool 防护
+# ======================================================
+
+class TestSlowLoopWiring:
+    """HIGH 修复: aligned_slow_loop._run_inner 漏接 gated_metrics —
+    gated 协变量经慢环生产入口会静默走全量口径硬门.
+    不 mock build_summary, 走真实评估器路径, 断言 verdict 落 active 字段.
+    """
+
+    def test_slow_loop_gated_verdict_carries_active_fields(self, tmp_path, monkeypatch):
+        import monthly_backtest as mb
+        import aligned_slow_loop as asl
+        import evaluator as ev  # asl 导入时已把 fm_eval 插入 sys.path, 同一模块实例
+
+        monkeypatch.setattr(ev, "GATED_COVARIATES", {"oi_gated_momentum"})
+        pts = [
+            {"signal": 1.0, "dir_ok": True},    # active ok
+            {"signal": 1.0, "dir_ok": False},   # active wrong
+            {"signal": 0.0, "dir_ok": True},    # zero
+            {"signal": None, "dir_ok": True},   # nan
+        ]
+        monkeypatch.setattr(mb, "run_symbol_backtest", lambda *a, **k: {"points": pts})
+        monkeypatch.setattr(mb, "summarize", lambda data: {
+            "n": 4, "dir_acc": 0.6, "n_eff": 4,
+            "endpoint_mape": 0.3, "endpoint_bias_pct": 0.05,
+            "path_corr": 0.6, "weighted_dir_acc": 0.56,
+            "mae": 0.8, "mape": 0.3, "decay": 1.0})
+        monkeypatch.setattr(asl, "_MODELS", (object(), object()))
+        monkeypatch.setattr(asl, "load_baseline_points", lambda sym: None)
+        monkeypatch.setattr(asl, "_METRICS_PATH", str(tmp_path / "metrics.jsonl"))
+        reg = tmp_path / "verdicts.jsonl"
+        verdict = asl.run_aligned_candidate(
+            {"variant_id": "m_oi_gated_momentum", "symbol": "m",
+             "cov_override": "oi_gated_momentum", "max_points": 400, "stage": "aligned"},
+            daily_cache_dir=str(tmp_path / "dc"),
+            checkpoint_dir=str(tmp_path / "cp"),
+            registry_path=str(reg))
+        assert verdict["status"] == "ok"
+        assert verdict["gate_basis"] == "active"
+        assert verdict["active_dir_acc"] == 0.5
+        assert verdict["n_active"] == 2
+        assert verdict["n_zero"] == 1
+        assert verdict["n_nan"] == 1
+        assert verdict["n_total"] == 4
+        assert verdict["gate_pass"] is False  # n_active=2 < 350, fail-closed
+        assert verdict["metrics"]["gate_basis"] == "active"
+
+    def test_slow_loop_non_gated_verdict_has_no_active_fields(self, tmp_path, monkeypatch):
+        import monthly_backtest as mb
+        import aligned_slow_loop as asl
+        import evaluator as ev
+
+        monkeypatch.setattr(ev, "GATED_COVARIATES", set())
+        pts = [{"signal": 1.0, "dir_ok": True}]
+        monkeypatch.setattr(mb, "run_symbol_backtest", lambda *a, **k: {"points": pts})
+        monkeypatch.setattr(mb, "summarize", lambda data: {
+            "n": 1, "dir_acc": 0.5, "n_eff": 1,
+            "endpoint_mape": 0.3, "endpoint_bias_pct": 0.05,
+            "path_corr": 0.6, "weighted_dir_acc": 0.56,
+            "mae": 0.8, "mape": 0.3, "decay": 1.0})
+        monkeypatch.setattr(asl, "_MODELS", (object(), object()))
+        monkeypatch.setattr(asl, "load_baseline_points", lambda sym: None)
+        monkeypatch.setattr(asl, "_METRICS_PATH", str(tmp_path / "metrics.jsonl"))
+        reg = tmp_path / "verdicts.jsonl"
+        verdict = asl.run_aligned_candidate(
+            {"variant_id": "m_rsi_state", "cov_override": "rsi_state",
+             "symbol": "m", "max_points": 400, "stage": "aligned"},
+            daily_cache_dir=str(tmp_path / "dc"),
+            checkpoint_dir=str(tmp_path / "cp"),
+            registry_path=str(reg))
+        assert verdict["status"] == "ok"
+        assert "gate_basis" not in verdict
+        assert "n_active" not in verdict
+        assert "active_dir_acc" not in verdict
+
+
+class TestFullFallbackVisibility:
+    """MEDIUM-1: pool 加载失败的 run 内, 全量口径 verdict 落
+    gate_basis="full_fallback", 使 gated 候选被静默误判为全量口径这一
+    fail-open 可见 (加载失败时无法按候选识别 gated, run 级整体标记).
+    """
+
+    def test_full_fallback_marked_when_load_failed(self, monkeypatch):
+        monkeypatch.setattr(fm, "_GATED_POOL_LOAD_FAILED", True)
+        s = _s_v23(n=600)
+        out = fm.build_summary(s, _cand())
+        assert out["gate_basis"] == "full_fallback"
+        assert out["metrics"]["gate_basis"] == "full_fallback"
+
+    def test_no_fallback_mark_when_load_ok(self, monkeypatch):
+        monkeypatch.setattr(fm, "_GATED_POOL_LOAD_FAILED", False)
+        s = _s_v23(n=600)
+        out = fm.build_summary(s, _cand())
+        assert "gate_basis" not in out
+
+    def test_gated_verdict_keeps_active_basis_even_if_flag_set(self, monkeypatch):
+        # 已成功注入 gated_metrics 的 verdict 不被 full_fallback 覆盖 (gm 分支优先)
+        monkeypatch.setattr(fm, "_GATED_POOL_LOAD_FAILED", True)
+        s = _s_v23(n=600)
+        s["gated_metrics"] = {"active_dir_acc": 0.60, "n_active": 380,
+                              "n_total": 600, "n_zero": 200, "n_nan": 20}
+        out = fm.build_summary(s, _cand())
+        assert out["gate_basis"] == "active"
+
+
+class TestBoolSignalGuard:
+    """LOW: bool signal 防护 — float(True)=1.0 不得伪装激活 (spec §3.3)."""
+
+    def test_bool_signal_goes_to_nan_bucket(self):
+        pts = [
+            {"signal": True, "dir_ok": True},
+            {"signal": False, "dir_ok": True},
+            {"signal": 1.0, "dir_ok": True},
+        ]
+        gm = fm.active_mask_metrics(pts)
+        assert gm["n_nan"] == 2
+        assert gm["n_active"] == 1
+        assert gm["n_zero"] == 0
+        assert gm["n_total"] == 3
+
+    def test_int_signals_not_blocked(self):
+        # int 0/1 仍是合法信号, 不落 bool 防护
+        pts = [{"signal": 1, "dir_ok": True}, {"signal": 0, "dir_ok": True}]
+        gm = fm.active_mask_metrics(pts)
+        assert gm["n_active"] == 1
+        assert gm["n_zero"] == 1
+        assert gm["n_nan"] == 0
