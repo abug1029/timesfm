@@ -24,6 +24,7 @@ from pathlib import Path
 
 warnings.filterwarnings("ignore")
 
+import numpy as np
 import pandas as pd
 
 project_root = Path(__file__).resolve().parent.parent
@@ -63,8 +64,11 @@ def compute_quality(df: pd.DataFrame, calendar: list) -> dict:
     missing = [d for d in expected if d not in date_set]
     runs = [(k, len(list(g))) for k, g in groupby(missing)]
     over_limit = [k for k, n in runs if n > MAX_CONSECUTIVE_MISSING_DAYS]
+    n_nonpositive = int((df["open_interest"].isna() | (
+        pd.to_numeric(df["open_interest"], errors="coerce") <= 0)).sum())
     return {
         "first_valid_date": first,
+        "n_nonpositive_oi": n_nonpositive,
         "last_date": last,
         "n_rows": len(dates),
         "n_missing_total": len(missing),
@@ -106,6 +110,15 @@ def fetch_df(fetcher: TqSdkFetcher, start_date: str) -> pd.DataFrame:
     df = df[["dt", "close", "volume", "open_interest"]].rename(
         columns={"close": "close_price"}
     )
+    # 非正/缺失 OI → NaN (spec §3.1 "OI 无零值"; §3.4 fail-closed 不静默填)。
+    # 实测 fu 有 8 行 open_interest=0.0 且 volume 1~6 (TqSdk 坏 tick), 若原样入库
+    # 会让 pct_change(5) 产生 +inf, 进而污染 rolling(120).quantile 定标 ~138 交易日。
+    bad_oi = df["open_interest"].isna() | (pd.to_numeric(
+        df["open_interest"], errors="coerce") <= 0)
+    n_bad = int(bad_oi.sum())
+    if n_bad:
+        print(f"      [WARN] {n_bad} 行 OI 非正/缺失 → 置 NaN (fail-closed, 不静默填充)")
+        df.loc[bad_oi, "open_interest"] = np.nan
     print(f"      拉取 {len(df)} 行, 区间 {df['dt'].min()} → {df['dt'].max()}")
     return df
 
@@ -121,6 +134,7 @@ def upsert(conn: sqlite3.Connection, df: pd.DataFrame, incremental: bool) -> int
             df = df[df["dt"] > last]
     if df.empty:
         return 0
+    df = df[df["open_interest"].notna()]  # 非正/缺失 OI 不入库 (spec §3.4: 缺行优于错行)
     rows = [
         (r["dt"], float(r["close_price"]), float(r["volume"]), float(r["open_interest"]))
         for _, r in df.iterrows()
