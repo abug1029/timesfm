@@ -1,8 +1,9 @@
-# oi_gated_momentum 协变量 Spec（v23 口径）v2
+# oi_gated_momentum 协变量 Spec（v23 口径）v2.1
 
 > 日期: 2026-09-18。v1: 方案一定标 + 门控结构修正（`0b4f796`）。
 > **v2: 吸收宿主评审（Conditional Pass）的 3 项核心修订 + 4 项工程细节，处置记录见 §8。**
-> 状态: **spec 修订版，未实施**。
+> **v2.1: 宿主编码细节澄清——"不内部 shift" 的精确语义边界（§4.1），防实现跑偏。**
+> 状态: **spec 修订版，未实施**。实施计划: `docs/2026-09-18-oi-gated-momentum-impl-plan.md`。
 
 ## 1. 背景与决策
 
@@ -152,8 +153,37 @@ def compute_oi_gated_momentum(
 ```
 
 - **调用方**：`scripts/extract_xreg.py` 协变量注册 + cascade 特征流水线（慢环
-  aligned 评估消费）；快环经 covariate menu 的机制说明引用本 spec，不直接调用；
+  aligned 评估消费）；快环菜单仅引用机制说明，不直接调用；
 - 参数视为**冻结常量**：不允许运行时注入覆盖，慢环无调参自由度。
+
+### 4.1 "模块不内部 shift" 的精确语义边界（v2.1，防实现跑偏）
+
+该表述**只约束输入序列**：模块不做跨日平移（"已收盘"由外层 `get_safe_daily` 保证）。
+但 §2.3 的定标窗口契约是 **[t−K, t−1]**——**分位数算子必须对历史序列显式 `shift(1)`**
+把当期 bar t 排除在定标基准之外。机械执行"不 shift"直接 rolling 会把 bar t 包进
+定标窗口（样本内定标污染）。
+
+**标准实现口径（唯一正确写法）**：
+
+```python
+abs_delta_p = price.pct_change(5).abs()
+delta_oi = total_oi.pct_change(5)
+
+# 标尺严格基于 [t-K, t-1]: 必须显式 shift(1)
+q_p = abs_delta_p.shift(1).rolling(k).quantile(q_price)
+q_oi = delta_oi.shift(1).rolling(k).quantile(q_oi)
+scale_p = np.where(q_p > 1e-6, 1.0 / q_p, np.nan)
+scale_oi = np.where(q_oi > 1e-6, 1.0 / q_oi, np.nan)
+
+# 因子本体用当期已收盘 bar t
+signal = np.tanh(price.pct_change(5) * scale_p) * np.maximum(
+    0.0, np.tanh(delta_oi * scale_oi))
+```
+
+**对应的单元测试断言（§6.1 新增）**：第 t 期输出的**标尺项**（scale_p/scale_oi）
+对第 t 期自身输入变化率的扰动**零敏感**——扰动 bar t 的 price/total_oi 后，
+scale_p/scale_oi 逐位不变、signal 仅通过因子本体路径变化；同时第 t 期输出对
+t−1 期扰动敏感。此断言同时验证"标尺无样本内污染"与"因子本体用当期 bar"两件事。
 
 ## 5. 评估契约（v23 口径，v2 修订）
 
@@ -173,9 +203,9 @@ def compute_oi_gated_momentum(
 
 1. 模块级测试：
    - 门控四象限表逐格断言（§2.1 四行情 → 输出符号/零）；
-   - **同窗对齐测试（v2）**：signal_t 依赖 bar t 的 price 与 OI、不依赖 t 之后的
-     任何 bar；输入序列含未收盘 bar 的场景由调用方掩码负责（模块以纯函数边界
-     测试代替）；
+   - **标尺无样本内污染测试（v2.1，§4.1）**：扰动 bar t 的 price/total_oi →
+     scale_p/scale_oi 逐位不变；扰动 t−1 → scale 变化。同窗对齐测试（对 t 后
+     bar 不敏感）由调用方掩码边界测试代替；
    - **非对称定标测试（v2）**：窗口内注入极端负 ΔOI（减仓踩踏），scale_OI 与门控
      激活度不变（带符号 85% 分位免疫下尾）；
    - **算子钉死测试（v2）**：构造价格/OI 序列断言 pct_change(5) 语义（相对变化），
