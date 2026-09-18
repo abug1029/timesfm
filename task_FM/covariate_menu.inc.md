@@ -4,20 +4,20 @@ Each covariate carries a mechanism hypothesis — your own mechanism argument mu
 archived covariates are RETIRED: do NOT propose them.
 
 ### family: calendar
-- calendar_cyclical: 日历周期/季节性：交割月、季节性供需周期效应，对交割敏感品种(农产品)尤强。 [track: calendar_cyclical: v22线索(旧PF口径,未v23复测,非证据)]
+- calendar_cyclical: 日历周期/季节性：交割月、季节性供需周期效应，对交割敏感品种(农产品)尤强。 【旧口径线索·非证据】[track: calendar_cyclical: v22线索(旧PF口径,未v23复测,非证据)]
 
 ### family: inventory
-- ccl: 仓差线(CCL)：主力资金净持仓变化方向，定位主力多空意图。 [track: ccl: v22线索(旧PF口径,未v23复测,非证据)]
-- nvi: 负量指标(NVI)：仅在缩量日累计涨跌，跟踪聪明钱在散户离场时的方向。 [track: nvi: v22线索(旧PF口径,未v23复测,非证据)]
-- oi: 持仓量变化率：增仓代表资金流入、趋势可信度高；缩仓代表行情缺乏新资金。 [track: oi: v22线索(旧PF口径,未v23复测,非证据)]
+- ccl: 仓差线(CCL)：主力资金净持仓变化方向，定位主力多空意图。 【旧口径线索·非证据】[track: ccl: v22线索(旧PF口径,未v23复测,非证据)]
+- nvi: 负量指标(NVI)：仅在缩量日累计涨跌，跟踪聪明钱在散户离场时的方向。 【旧口径线索·非证据】[track: nvi: v22线索(旧PF口径,未v23复测,非证据)]
+- oi: 持仓量变化率：增仓代表资金流入、趋势可信度高；缩仓代表行情缺乏新资金。 【旧口径线索·非证据】[track: oi: v22线索(旧PF口径,未v23复测,非证据)]
 
 ### family: momentum
 - ao_accel: Awesome Oscillator加速度：动量的二阶变化，提前捕捉趋势启动/衰竭。
 - gated_slope: Hurst门控斜率：仅趋势体制(H>0.5)跟随斜率，震荡体制屏蔽假突破。
-- ha_body: Heikin-Ashi实体方向与大小：平滑后的K线实体动能，过滤噪声识别趋势延续。 [track: ha_body: v22线索(旧PF口径,未v23复测,非证据)]
+- ha_body: Heikin-Ashi实体方向与大小：平滑后的K线实体动能，过滤噪声识别趋势延续。 【旧口径线索·非证据】[track: ha_body: v22线索(旧PF口径,未v23复测,非证据)]
 - hourly_slope: 小时级别价格斜率：短期趋势动能方向与强度。
 - hurst: Hurst指数：判别趋势持续性(H>0.5)或均值回归(H<0.5)体制，元信号。
-- pca_momentum: 多品种主成分(PCA)动量：提取市场宽度第一主成分，识别系统性趋势共振。 [track: pca_momentum: v22线索(旧PF口径,未v23复测,非证据)]
+- pca_momentum: 多品种主成分(PCA)动量：提取市场宽度第一主成分，识别系统性趋势共振。 【旧口径线索·非证据】[track: pca_momentum: v22线索(旧PF口径,未v23复测,非证据)]
 - qstick: QStick=收盘-开盘的均值，量化净买卖压力方向与持续性。
 - regime_gated: 体制自适应融合：按Hurst体制动态加权pca/rsi/oi，趋势市跟趋势、震荡市跟回归。
 - reversal_shadow: 反转影线比率：长上/下影线相对ATR占比，极端影线标志遇阻/遇撑反转。
@@ -28,8 +28,8 @@ archived covariates are RETIRED: do NOT propose them.
 - rsi24: RSI(24)长周期超买超卖，噪声更小、信号更稳但滞后。
 - rsi6: RSI(6)短周期超买超卖，比rsi_state更灵敏，捕捉短线极端反转。
 - rsi_slope: RSI变化斜率动量：动量转折常领先价格转折，捕捉超买超卖的加速/衰竭。
-- rsi_state: RSI(14)超买超卖体制：极端读数后均值回归，体制状态(超买/中性/超卖)引导方向。 [track: rsi_state: v22线索(旧PF口径,未v23复测,非证据)]
-- sar_dist: 抛物线SAR距离：价格与SAR的距离衡量趋势持仓位置与反转距离。 [track: sar_dist: v22线索(旧PF口径,未v23复测,非证据)]
+- rsi_state: RSI(14)超买超卖体制：极端读数后均值回归，体制状态(超买/中性/超卖)引导方向。 【旧口径线索·非证据】[track: rsi_state: v22线索(旧PF口径,未v23复测,非证据)]
+- sar_dist: 抛物线SAR距离：价格与SAR的距离衡量趋势持仓位置与反转距离。 【旧口径线索·非证据】[track: sar_dist: v22线索(旧PF口径,未v23复测,非证据)]
 - vwap_deviation: 价格对成交量加权均价(VWAP)的偏离：短期过度延伸后回归，量化拥挤度。
 
 ### family: term_structure
@@ -39,9 +39,9 @@ archived covariates are RETIRED: do NOT propose them.
 - crack_spread_zscore: 产业链利润价差Z-score：利润相对历史中枢的偏离度，极端偏离反转。
 
 ### family: volatility
-- bb_squeeze: 布林带挤压：带宽收敛至极窄预示波动即将扩张，突破方向跟随。 [track: bb_squeeze: v22线索(旧PF口径,未v23复测,非证据)]
+- bb_squeeze: 布林带挤压：带宽收敛至极窄预示波动即将扩张，突破方向跟随。 【旧口径线索·非证据】[track: bb_squeeze: v22线索(旧PF口径,未v23复测,非证据)]
 - stddev: 滚动标准差：波动率水平，高波风险规避、低波蓄势突破。
-- vor: 波动率范围(VOR)：真实波幅相对历史的压缩/扩张，低波压缩后突破。 [track: vor: v22线索(旧PF口径,未v23复测,非证据)]
+- vor: 波动率范围(VOR)：真实波幅相对历史的压缩/扩张，低波压缩后突破。 【旧口径线索·非证据】[track: vor: v22线索(旧PF口径,未v23复测,非证据)]
 
 ### symbol sample ceiling (valid aligned points now; hard gate n>=350)
 BELOW GATE symbols cannot pass today regardless of covariate (1H bars accrue over time; supervisor auto-retests near-misses):
