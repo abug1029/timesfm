@@ -33,6 +33,22 @@ def to_tqsdk_main_symbol(symbol: str) -> str:
     return f"KQ.m@{exchange}.{product_part}"
 
 
+def to_tqsdk_index_symbol(symbol: str) -> str:
+    """内部品种代码转 TqSdk 指数合约格式 (open_interest = 全市场总持仓)
+
+    m → KQ.i@DCE.m
+    """
+    product = symbol.upper()
+    exchange = SYMBOL_EXCHANGE_MAP.get(product, SYMBOL_EXCHANGE_MAP.get(product.lower(), ""))
+    if not exchange:
+        raise ValueError(f"无法识别品种 {product}")
+    if exchange in ("CZCE", "CFFEX"):
+        product_part = product
+    else:
+        product_part = product.lower()
+    return f"KQ.i@{exchange}.{product_part}"
+
+
 def to_tqsdk_symbol(contract_code: str) -> str:
     """
     内部合约代码转 TqSdk 格式
@@ -145,6 +161,18 @@ class TqSdkFetcher:
         """获取主力连续合约 K 线 (使用 TqSdk 内置 KQ.m@ 符号)"""
         self._connect()
         tq_symbol = to_tqsdk_main_symbol(symbol)
+        klines = self._api.get_kline_serial(tq_symbol, dur_sec, data_length=data_length)
+        deadline = time.time() + 10
+        while not self._api.wait_update(deadline=deadline):
+            if klines.iloc[-1].datetime > 0:
+                break
+        return self._process_klines(klines, daily=(dur_sec >= 86400))
+
+    def get_index_kline(self, symbol: str, dur_sec: int = 86400,
+                        data_length: int = 4000) -> pd.DataFrame:
+        """获取指数合约 K 线 (KQ.i@, open_interest = 全市场总持仓)"""
+        self._connect()
+        tq_symbol = to_tqsdk_index_symbol(symbol)
         klines = self._api.get_kline_serial(tq_symbol, dur_sec, data_length=data_length)
         deadline = time.time() + 10
         while not self._api.wait_update(deadline=deadline):
