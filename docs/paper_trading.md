@@ -12,7 +12,7 @@
 
 | 盘 | 品种 | 说明 |
 |----|------|------|
-| **主盘** | SS SR M JD | G005-E 弱正且 n≈396 |
+| **主盘** | SR M JD | G005-E 弱正且 n≈396（SS 2026-09-17 降级 1★ 移出主盘，见 9c7fc2a） |
 | **观察** | CJ LH | 经济尚可，n<350，不升仓 |
 | **不要当主盘** | `--three-star` 整表 | 会带上边界 EG/RB |
 
@@ -57,7 +57,7 @@ python scripts/paper_loop.py next
 ### 2. 盘中记一笔（写 ledger + 研报）
 
 ```bash
-python scripts/copilot.py ss sr m jd
+python scripts/copilot.py sr m jd
 # 观察仓
 python scripts/copilot.py cj lh --no-refresh
 ```
@@ -69,7 +69,7 @@ python scripts/copilot.py cj lh --no-refresh
 盘后补记（不刷 TqSdk）：
 
 ```bash
-python scripts/copilot.py ss sr m jd --no-refresh --no-collect
+python scripts/copilot.py sr m jd --no-refresh --no-collect
 ```
 
 ### 3. 回填真值（满 24 根 1H 才填得上）
@@ -103,7 +103,7 @@ python scripts/paper_loop.py health --source all
 | asof = 最后 1H | **Copilot 有** | `last_1h_dt` |
 | 从 `kline_1h` `_MAIN` 回填 | **有** | `backfill_run_from_1h`；单测通过 |
 | 健康 / 弱候选 | **有** | `health_stats` / `export_candidates` |
-| 主盘 1H MAIN | **有** | SS/SR/M/JD 均有数据，截面到 2026-08-17 |
+| 主盘 1H MAIN | **有** | SR/M/JD 均有数据（SS 数据仍在库，2026-09-17 移出主盘），截面到 2026-08-17 |
 | KB 20 品种 | **有** | `config/knowledge_base.json` |
 | 单测 | **有** | `tests/test_live_ledger.py` 8/8 |
 

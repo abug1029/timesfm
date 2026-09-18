@@ -12,6 +12,7 @@
 | [product_positioning.md](./product_positioning.md) | **产品定位**：可交易方向=加权1H；辅助非自动 |
 | [module_freeze.md](./module_freeze.md) | 子策略冻结（Vol OFF / A2 关 / Regime 研究-only） |
 | [param_hygiene.md](./param_hygiene.md) | 参数卫生裁决记录 |
+| [2026-09-17-fm-eval-error-path-audit.md](./2026-09-17-fm-eval-error-path-audit.md) | 评估器错误路径审计：8 bug 清单 + 修复记录 + 下轮跟进 5 项（2026-09-17） |
 | [vol-risk.md](./archive/history/vol-risk.md) | Vol 风控 / R1 / L1 经济结论与红线（已归档） |
 | [validation_criteria.md](./archive/history/validation_criteria.md) | 固化判据 v2（已归档） |
 | [backtest_registry.md](./archive/history/backtest_registry.md) | 历史协变量实验目录（Phase 扫描；已归档；新口径以 g005e 为准，g005e 结果文件已不在仓内） |

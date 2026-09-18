@@ -20,7 +20,6 @@ from config.prediction_scheme import SCHEMES, get_scheme
 
 PHASE9_SNAPSHOT = {
     # ── 2★ ──
-    "ss": ("vor", ["vor"], 0.530, 2),  # Praxist 2026-09-09: ss_vor → 固化
     "sr": ("rsi_state", ["rsi_state", "oi", "calendar_cyclical"], 0.550, 2),
     "lh": ("rsi_state", ["rsi_state"], 0.500, 2),  # Phase 11
     "cj": ("hourly_slope", ["hourly_slope"], 0.520, 2),  # Phase 11
@@ -30,6 +29,7 @@ PHASE9_SNAPSHOT = {
     "eg": ("calendar_cyclical", ["calendar_cyclical"], 0.510, 2),  # Phase 11 baseline
 
     # ── 1★ ──
+    "ss": ("vor", ["vor"], 0.530, 1),  # 2026-09-17 v23 复测未过门 → 降级 1★（9c7fc2a）；vor 保留待重新选型；dir_acc 0.530 为 v2 历史口径（v23 复测实测 0.502）
     "i":  ("reversal_shadow", ["reversal_shadow"], 0.510, 1),  # Phase 11
     "jm": ("ha_body", None, 0.470, 1),
     "fg": ("ha_body", None, 0.480, 1),
@@ -143,9 +143,9 @@ class TestTamperingDetection:
     def test_detects_wrong_stars(self):
         """断言错误的 stars 会被检测到"""
         scheme = get_scheme("ss")
-        # SS 应该是 2★,故意断言错误值
+        # SS 2026-09-17 降级后应为 1★,故意断言错误值
         assert scheme.stars != 3, (
-            "测试逻辑错误: SS 应该是 2★,不应是 3★"
+            "测试逻辑错误: SS 应该是 1★,不应是 3★"
         )
 
     def test_detects_wrong_dir_acc(self):

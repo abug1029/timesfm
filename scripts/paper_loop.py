@@ -23,7 +23,7 @@ from cascade.live_ledger import (  # noqa: E402
 from config.prediction_scheme import list_by_stars  # noqa: E402
 
 # G005-E 可辩护弱正（n 较足）。观察仓经济尚可但 n<350。
-CORE = ("ss", "sr", "m", "jd")
+CORE = ("sr", "m", "jd")  # ss 2026-09-17 降级 1★ 移出（9c7fc2a）
 WATCH = ("cj", "lh")
 # --three-star 还会带上边界 EG/RB，纸面主盘不要用那条 CLI。
 

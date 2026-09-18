@@ -248,9 +248,9 @@ python -m unittest tests.test_future_bar_guard tests.test_vol_threshold_contract
 > **无真实 3 星。** 详见 `AGENTS.md` 同节与 `reports/research/20260808_g005e_results.md`。  
 > 可交易方向=加权1H（`docs/product_positioning.md`）。
 
-> **口径声明**：本节 stars 与 PF 源自 2026-08 v2 月度回测口径，v23 复测进行中，裁决以 aligned verdicts（v23）为准。
+> **口径声明**：本节 stars 与 PF 源自 2026-08 v2 月度回测口径，v23 复测进行中，裁决以 aligned verdicts（v23）为准。（更新 2026-09-17：ss_vor 复测未过门，ss 已降级 1★ 移出下列 ≥2★ 清单，见 9c7fc2a；本节 PF 值为 v2 历史口径，v23 裁决以 STATE.md verdicts 为准）
 
-**≥2★**: CJ SS SR M JD LH（弱正 PF 1.06–1.29）+ EG RB（弱边界 PF 1.04–1.09）  
+**≥2★**: CJ SR M JD LH（弱正 PF 1.06–1.29）+ EG RB（弱边界 PF 1.04–1.09）（SS 2026-09-17 降级移出）  
 **1★**: SP TA FU BU P CF FG JM I AO UR MA  
 （P 已 G004 换 `rsi_state+reversal_shadow`，PF=1.01 刚过线，仍 1★；BU 经 Phase 12 换 `calendar_cyclical+hourly_slope` PF=1.01 边际 GREEN，仍 1★）  
 **待固化**: SH 烧碱（data/config.py 已加入品种池，Phase 11 best PF=0.90 无 GREEN，待后续数据积累后复评，不纳入 SCHEMES）
