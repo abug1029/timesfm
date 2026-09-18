@@ -8,12 +8,16 @@
 - visualize_alignment(): 协变量对齐可视化
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
 from typing import Optional, Dict
 from pathlib import Path
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+
+logger = logging.getLogger(__name__)
 
 # ── 全局极小值，防除零（quant-trading covariate 修复） ──
 EPSILON = 1e-8
@@ -1036,6 +1040,96 @@ def _build_rsi_state_from_daily(
     return np.concatenate([context_states, horizon_states])
 
 
+def _build_oi_gated_momentum_from_daily(
+    historical_daily_closes,
+    daily_dates,
+    store,
+    df_1h: pd.DataFrame,
+    context_len: int,
+    horizon: int,
+) -> np.ndarray:
+    """日线 oi_gated_momentum 信号映射到 1H 时间轴, horizon 段补零.
+
+    与 _build_rsi_state_from_daily 同一日线→1H 映射骨架 (逐 bar 携带最后已知值),
+    但有两个额外约束:
+    1. 价格腿与持仓腿 (index_continuous_1d 总持仓) 必须同窗对齐 (spec §3.4):
+       以价格日历为基准 how="left" join, 缺失日留 NaN (禁 ffill —— 错行比缺行危险);
+    2. NaN 绝不进模型 (cascade/hourly_model.py 无 NaN 防护, NaN 会让 XReg 的
+       正规方程整体 NaN 且静默): 计算后统一 NaN→0 并告警。语义上 0 = 门控未激活
+       = 无信号, 与评估器 n_zero 桶 (不计入 active 分母) 口径一致。
+
+    降级路径 (缺表 / 日历长度不匹配) 一律返回全零 + 告警, 绝不抛异常。
+    """
+    n_hist = len(historical_daily_closes)
+    zeros = np.zeros(context_len + horizon, dtype=float)
+
+    # 日历长度不匹配时禁止按日期配对 (daily_model 的 closes dropna 但 dates 不 dropna)
+    if daily_dates is None or len(daily_dates) != n_hist:
+        logger.warning(
+            "oi_gated_momentum: 日线日历长度不匹配 (closes=%d, dates=%s) — 全零降级",
+            n_hist, "None" if daily_dates is None else len(daily_dates),
+        )
+        return zeros
+
+    # 价格腿 (与 RSI 同一数据源, 无需额外查询)
+    price = pd.Series(
+        np.array(historical_daily_closes, dtype=float),
+        index=pd.DatetimeIndex(pd.to_datetime(list(daily_dates))).normalize(),
+    )
+
+    # 持仓腿: 总持仓 (KQ.i@m), 缺失/空表 → 全零降级
+    try:
+        oi_df = store.get_index_continuous_daily()
+    except Exception as e:  # 表缺失/损坏一律降级, 不让 sqlite 异常逃逸
+        logger.warning("oi_gated_momentum: 总持仓读取失败 (%s) — 全零降级", e)
+        return zeros
+    if oi_df is None or oi_df.empty or "open_interest" not in oi_df.columns:
+        logger.warning("oi_gated_momentum: 无 index_continuous_1d 总持仓数据 — 全零降级")
+        return zeros
+
+    oi = pd.Series(
+        np.array(oi_df["open_interest"], dtype=float),
+        index=pd.DatetimeIndex(pd.to_datetime(oi_df["dt"])).normalize(),
+    )
+    if oi.index.has_duplicates:
+        oi = oi[~oi.index.duplicated(keep="last")]
+
+    # spec §3.4 异构源日历对齐: 价格日历为基准 left join, 缺失日 NaN (不 ffill)
+    price_df = pd.DataFrame({"dt": price.index, "close_price": price.values})
+    oi_df_al = pd.DataFrame({"dt": oi.index, "open_interest": oi.values})
+    merged = price_df.merge(oi_df_al, on="dt", how="left")
+
+    price_s = pd.Series(merged["close_price"].values, index=pd.DatetimeIndex(merged["dt"]))
+    oi_s = pd.Series(merged["open_interest"].values, index=price_s.index)
+
+    from .oi_gated_momentum import compute_oi_gated_momentum
+    signal = compute_oi_gated_momentum(price_s, oi_s)  # 冻结默认参数, 禁运行时注入
+
+    # 信号按日期查表 (信号 NaN 的日期不入表 → 该 bar 及其后沿用上一个已知值)
+    signal_by_day = {
+        d: float(v)
+        for d, v in signal.items()
+        if pd.notna(v) and np.isfinite(v)
+    }
+
+    context_vals = np.full(context_len, np.nan, dtype=float)
+    ctx_day = pd.to_datetime(df_1h["dt"]).dt.normalize()
+    last_v = np.nan
+    for i, d in enumerate(ctx_day):
+        v = signal_by_day.get(d)
+        if v is not None:
+            last_v = v
+        context_vals[i] = last_v
+
+    n_nan = int(np.isnan(context_vals).sum())
+    if n_nan:
+        logger.warning("oi_gated_momentum: context 段 %d 个 bar 为 NaN, 已填 0", n_nan)
+    context_vals = np.nan_to_num(context_vals, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # horizon 段补零: 与 oi / ccl 同惯例 (门控状态不外推)
+    return np.concatenate([context_vals, np.zeros(horizon)])
+
+
 def build_covariate_matrix(
     symbol: str,
     store,
@@ -1408,6 +1502,14 @@ def build_covariate_matrix(
         covariate_full = np.concatenate([ccl_pct.values, np.zeros(horizon)])
         covariate_name = "ccl_pct"
 
+    elif covariate_type == "oi_gated_momentum":
+        # OI 门控动量 (spec v2.1 §2.2): 日线信号 ffill 到 1H, horizon 段补零。
+        # key 必须与 pool / evaluator 声明的字符串逐字一致, 不得改名。
+        covariate_full = _build_oi_gated_momentum_from_daily(
+            historical_daily_closes, daily_dates, store, df_1h, context_len, horizon,
+        )
+        covariate_name = "oi_gated_momentum"
+
     else:
         # 未知协变量显式报错 (此前静默降级为 CCL，会产出错误结果而不报警)
         raise ValueError(
@@ -1649,6 +1751,12 @@ def build_combo_covariate_matrix(
             result["stddev"] = np.concatenate([ctx, last_val * decay])
 
 
+        elif cov_type == "oi_gated_momentum":
+            # OI 门控动量: 与单路径共用同一 helper (避免两路分叉)
+            result["oi_gated_momentum"] = _build_oi_gated_momentum_from_daily(
+                historical_daily_closes, daily_dates, store, df_1h, context_len, horizon,
+            )
+
         elif cov_type == "basis_momentum":
             # 基差动量: 期限结构变化速度
             basis_df = store.get_basis_1h(limit=limit)
@@ -1738,7 +1846,8 @@ def build_combo_covariate_matrix(
                          "sar_dist", "vor", "calendar_cyclical",
                          "crack_spread_slope", "crack_spread_level", "crack_spread_zscore",
                          "nvi", "qstick", "vwap_deviation", "stddev",
-                         "basis_momentum", "ccl", "gated_slope", "regime_gated"]
+                         "basis_momentum", "ccl", "gated_slope", "regime_gated",
+                         "oi_gated_momentum"]
             if cov_type not in supported:
                 raise ValueError(
                     f"combo 不支持协变量类型 '{cov_type}'。"

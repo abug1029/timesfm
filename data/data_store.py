@@ -426,6 +426,37 @@ class DataStore:
 
         return df
 
+    def get_index_continuous_daily(self, limit=None, end_date=None) -> pd.DataFrame:
+        """读取指数合约日线 (KQ.i@m 全市场总持仓, oi_gated_momentum 数据源)
+
+        index_continuous_1d 仅由 scripts/fetch_index_continuous.py 回填到部分品种库,
+        **表缺失时返回空 DataFrame** — 调用方据此 fail-closed 降级为全零, 不抛异常
+        (实测 24 个品种库中仅 futures_m.db 有该表)。
+
+        [H4] limit 语义同 get_main_continuous: 先倒序取最近 N 条, 再正序返回。
+        """
+        exists = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='index_continuous_1d'"
+        ).fetchone()
+        if not exists:
+            return pd.DataFrame(columns=["dt", "close_price", "volume", "open_interest"])
+
+        cols = "dt, close_price, volume, open_interest"
+        params = []
+        if limit:
+            inner = f"SELECT {cols} FROM index_continuous_1d WHERE 1=1"
+            if end_date:
+                inner += " AND dt <= ?"; params.append(end_date)
+            inner += " ORDER BY dt DESC LIMIT ?"
+            params.append(int(limit))
+            sql = f"SELECT * FROM ({inner}) ORDER BY dt"
+        else:
+            sql = f"SELECT {cols} FROM index_continuous_1d WHERE 1=1"
+            if end_date:
+                sql += " AND dt <= ?"; params.append(end_date)
+            sql += " ORDER BY dt"
+        return pd.read_sql_query(sql, self.conn, params=params)
+
     def get_xreg_factors(self, factor_names=None, start_date=None) -> pd.DataFrame:
         """读取 XReg 因子"""
         sql = "SELECT * FROM xreg_factors WHERE symbol = ?"
@@ -803,6 +834,24 @@ class BacktestDataStore(DataStore):
             target_day = (pd.Timestamp(self.cutoff_day) - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
         
         return super().get_main_continuous(
+            end_date=target_day, limit=limit, **kwargs
+        )
+
+    def get_index_continuous_daily(self, limit=None, **kwargs):
+        """指数合约日线 (总持仓): 沿用 **日线** cutoff 口径 (同 get_main_continuous)
+
+        - 15:00 及之后（含夜盘）：当天日线已定型，安全可用
+        - 15:00 之前（日盘进行中）：严格回退至前一日历日
+
+        表为日粒度 (dt TEXT PRIMARY KEY 存日期), 故按日历日 end_date 截断。
+        """
+        cutoff_hour = pd.Timestamp(self.cutoff_ts).hour
+        if cutoff_hour >= 15:
+            target_day = self.cutoff_day
+        else:
+            target_day = (pd.Timestamp(self.cutoff_day) - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+
+        return super().get_index_continuous_daily(
             end_date=target_day, limit=limit, **kwargs
         )
 
