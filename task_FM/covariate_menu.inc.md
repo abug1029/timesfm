@@ -43,6 +43,9 @@ archived covariates are RETIRED: do NOT propose them.
 - stddev: 滚动标准差：波动率水平，高波风险规避、低波蓄势突破。
 - vor: 波动率范围(VOR)：真实波幅相对历史的压缩/扩张，低波压缩后突破。 【旧口径线索·非证据】[track: vor: v22线索(旧PF口径,未v23复测,非证据)]
 
+### experimental (host testing — do not propose yet)
+- oi_gated_momentum
+
 ### symbol sample ceiling (valid aligned points now; hard gate n>=350)
 BELOW GATE symbols cannot pass today regardless of covariate (1H bars accrue over time; supervisor auto-retests near-misses):
 - ao: n=589 gate-reachable

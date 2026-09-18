@@ -22,5 +22,5 @@ DEAD (gate_pass=False, status=ok): never revive without a mechanism correction.
 - ss_vor: DEAD, gate_pass=False, ev=None, n=588, status=ok
 - cj_calendar_cyclical: DEAD, gate_pass=False, ev=None, n=588, status=ok
 - cj_basis_momentum: DEAD, gate_pass=False, ev=None, n=588, status=ok
+- cj_stddev: DEAD, gate_pass=False, ev=None, n=588, status=ok
 - i_oi: DEAD, gate_pass=False, ev=None, n=588, status=ok
-- cj_qstick: DEAD, gate_pass=False, ev=None, n=588, status=ok
