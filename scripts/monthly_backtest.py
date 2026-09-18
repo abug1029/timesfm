@@ -66,6 +66,29 @@ from config.prediction_scheme import get_scheme
 from data.data_store import BacktestDataStore
 
 
+def _point_signal(hourly_result, covariate_type):
+    """单协变量模式下提取 cutoff bar (最后 context bar) 的协变量信号值.
+
+    gated 评估 (spec §5 Active DirAcc) 用: Signal_t = 协变量序列在 cutoff bar 的值.
+    返回 float 或 None (combo 模式 / xreg 回退 / 缺失 → None, 评估侧按 NaN 计).
+    """
+    if covariate_type is None:
+        return None
+    covariates = getattr(hourly_result, "covariates", None)
+    if not covariates:
+        return None
+    arr = covariates.get(covariate_type)
+    if arr is None:
+        return None
+    ctx = getattr(hourly_result, "context_len", 0)
+    if not ctx or len(arr) < ctx:
+        return None
+    try:
+        return float(arr[ctx - 1])
+    except (TypeError, ValueError):
+        return None
+
+
 # ─────────────────────────────────────────────────────────
 # 回测引擎
 # ─────────────────────────────────────────────────────────
@@ -411,6 +434,8 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 "endpoint_mape": _ep_mape,
                 "endpoint_bias_pct": _ep_bias,
                 "path_corr": _pc,
+                # gated 评估用: cutoff bar 协变量信号 (spec §5; 非 gated 路径不消费此键)
+                "signal": None if effective_combo else _point_signal(hourly_result, effective_single),
             }
             points.append(point)
             # ── checkpoint: 完整 point 字段 (resume 可重建 summarize) ──

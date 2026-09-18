@@ -16,7 +16,8 @@ FM_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, os.path.join(FM_ROOT, "scripts"))
 sys.path.insert(0, HERE)
 
-from evaluator import build_summary, validate_candidate, load_baseline_points  # noqa: E402
+from evaluator import (build_summary, validate_candidate, load_baseline_points,  # noqa: E402
+                       is_gated_covariate, active_mask_metrics)
 
 
 _HELD_EVAL_SLOT = None
@@ -97,6 +98,10 @@ def do_evaluate(cand):
     s.setdefault("mae", 0.0)
     s.setdefault("mape", 0.0)
     s.setdefault("decay", 1.0)
+
+    # gated 协变量: 注入 Active Mask 统计 (spec §5 Active DirAcc; 非 gated 路径零改动)
+    if is_gated_covariate(cand["cov_override"]):
+        s["gated_metrics"] = active_mask_metrics(data["points"])
 
     # Load baseline for DM test (aligned stage only)
     baseline_points = None

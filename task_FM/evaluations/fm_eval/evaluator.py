@@ -113,6 +113,70 @@ except Exception as e:
     _POOL_ERROR = "covariate pool apply failed: %s" % e
     print("[WARN] 协变量池应用失败, fail-open: %s" % e, file=sys.stderr)
 
+# ── gated 协变量通用声明 (spec §5: covariate_pool.json 条目声明 "gated": true) ──
+def _load_gated_covariates():
+    """读取 covariate_pool.json 中声明 "gated": true 的协变量名集合.
+
+    失败 → 空集 (与既有协变量池读取同口径, 不收窄既有行为:
+    误判为非 gated 仅意味着走既有全量 dir_acc 口径).
+    """
+    try:
+        with open(POOL_PATH, "r", encoding="utf-8") as f:
+            pool = json.load(f)
+        covs = pool.get("covariates", {})
+        return {n for n, v in covs.items()
+                if isinstance(v, dict) and v.get("gated") is True}
+    except Exception:
+        return set()
+
+
+GATED_COVARIATES = _load_gated_covariates()
+
+
+def is_gated_covariate(name):
+    """covariate 是否声明 gated (通用开关, 非按名特判)."""
+    return name in GATED_COVARIATES
+
+
+def active_mask_metrics(points):
+    """gated 协变量 Active Mask 统计 (spec §5 Active DirAcc, 2026-09-18).
+
+    分类口径 (互斥分区, n_active + n_zero + n_nan == n_total):
+    - Signal != 0 且非 NaN 且 dir_ok 可评 → active (active_dir_acc 分母)
+    - Signal == 0 (含 -0.0) → n_zero (门控未激活)
+    - Signal NaN/缺失/非法, 或目标不可评 (dir_ok 缺失) → n_nan (标尺失效)
+
+    n_active == 0 → active_dir_acc = NaN (fail-closed, 下游硬门自然拒),
+    绝不触发 ZeroDivisionError. error 点不计入任何计数.
+    """
+    n_total = n_active = n_zero = n_nan = n_ok = 0
+    for p in points:
+        if not isinstance(p, dict) or "error" in p:
+            continue
+        n_total += 1
+        try:
+            sig = float(p.get("signal"))
+        except (TypeError, ValueError):
+            sig = float("nan")
+        if math.isnan(sig):
+            n_nan += 1
+        elif sig == 0.0:
+            n_zero += 1
+        elif p.get("dir_ok") is None:
+            n_nan += 1
+        else:
+            n_active += 1
+            if bool(p.get("dir_ok")):
+                n_ok += 1
+    return {
+        "active_dir_acc": (n_ok / n_active) if n_active > 0 else float("nan"),
+        "n_active": n_active,
+        "n_total": n_total,
+        "n_zero": n_zero,
+        "n_nan": n_nan,
+    }
+
+
 ALLOWED_SYMBOLS = {"ao", "bu", "cf", "fg", "fu", "i", "jm", "ma", "p", "sh", "sp", "ta", "ur", "m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"}
 
 STAGE_POINTS = {
@@ -173,6 +237,16 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
     )
     gate_pass = gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52,
                      baseline_dir_acc=baseline_dir_acc)
+    gm = s.pop("gated_metrics", None)
+    if gm is not None:
+        # gated 协变量: 硬门挂 active 口径 (plan 步骤三 n 门挂 n_active>=350);
+        # gate() 本体语义零改动, 仅换输入为 active 统计. NaN → fail-closed.
+        _n_active = gm.get("n_active", 0)
+        gate_pass = gate(
+            {"n": _n_active, "n_eff": min(m["n_eff"], _n_active),
+             "dir_acc": gm.get("active_dir_acc")},
+            min_n=350, min_n_eff=50, min_dir_acc=0.52,
+            baseline_dir_acc=baseline_dir_acc)
     if stage == "diagnostic":
         gate_pass = False
     p_value = None
@@ -194,7 +268,7 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         except Exception as e:
             print(f"[WARN] resolve_cov_family failed: {e}", file=sys.stderr)
     s.pop("point_dir_ok_list", None)
-    return {
+    out = {
         "schema": "fm.aligned_verdict.v2",
         "status": "ok",
         "usage_unknown": False,
@@ -232,6 +306,18 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
             "gate_pass": gate_pass,
         },
     }
+    if gm is not None:
+        _active_fields = {
+            "gate_basis": "active",
+            "active_dir_acc": gm.get("active_dir_acc"),
+            "n_active": gm.get("n_active", 0),
+            "n_total": gm.get("n_total", 0),
+            "n_zero": gm.get("n_zero", 0),
+            "n_nan": gm.get("n_nan", 0),
+        }
+        out.update(_active_fields)
+        out["metrics"].update(_active_fields)
+    return out
 
 
 def map_summary(s):
