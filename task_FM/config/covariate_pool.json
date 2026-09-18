@@ -1,6 +1,6 @@
 {
   "schema": "fm.covariate_pool.v1",
-  "updated": "2026-09-16",
+  "updated": "2026-09-18",
   "note": "协变量策略池单一事实源。status: active(peer可提议) / experimental(宿主测试中) / archived(全局退役禁止提议)。family 使用 cascade/cov_family.py 6 族受控词表 (momentum/volatility/inventory/calendar/term_structure/macro_sentiment)，供 QD 多样性门控。archived 需有跨品种 aligned 失败证据，证据不足一律 active。",
   "families": [
     "momentum",
@@ -170,6 +170,12 @@
       "family": "momentum",
       "status": "active",
       "mechanism": "Awesome Oscillator加速度：动量的二阶变化，提前捕捉趋势启动/衰竭。"
+    },
+    "oi_gated_momentum": {
+      "family": "momentum",
+      "status": "experimental",
+      "gated": true,
+      "mechanism": "OI 门控动量：方向由价格单独决定，持仓项为非负门控(半波整流)——增仓激活(0→1)、减仓精确归零，量化资金流入对趋势方向的确认。spec: docs/2026-09-18-oi-gated-momentum-spec.md"
     }
   }
 }
