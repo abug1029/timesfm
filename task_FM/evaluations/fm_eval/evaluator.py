@@ -7,6 +7,7 @@
 - 诊断级 (max_points 受限) 只产 incubator 证据, 永不过 Gem 门
 """
 import json
+import math
 import os
 import sys
 
@@ -136,7 +137,7 @@ def validate_candidate(c):
         return False, f"stage 必须是 {'/'.join(STAGE_POINTS)}"
     lo, hi = STAGE_POINTS[stage]
     mp = c.get("max_points", 6 if stage == "diagnostic" else 400)
-    if not isinstance(mp, int) or not (lo <= mp <= hi):
+    if isinstance(mp, bool) or not isinstance(mp, int) or not (lo <= mp <= hi):
         return False, f"max_points 必须是 {lo}..{hi} (stage={stage}, 硬门要求 n>=350)"
     return True, "ok"
 
@@ -149,14 +150,17 @@ def load_baseline_points(symbol, root=None):
     if not os.path.exists(path):
         return []
     points = []
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
+    with open(path, "r", encoding="utf-8") as f:
+        for line_no, line in enumerate(f, 1):
+            line = line.strip()
+            if line:
+                try:
                     points.append(json.loads(line))
-    except Exception as e:
-        print(f"[WARN] load_baseline_points({symbol}) failed: {e}", file=sys.stderr)
+                except ValueError as e:
+                    # fail-fast: 中途坏行静默截断会让 DM 配对样本无声缩水 (审计 bug #3)
+                    raise ValueError(
+                        f"baseline_points_{symbol}.jsonl 第 {line_no} 行 JSON 损坏: {e} "
+                        "— DM 对照序列禁止静默部分加载, 请修复文件后重跑") from e
     return points
 
 
@@ -175,7 +179,7 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
     if (baseline_points is not None and
         pair_dir_ok_series is not None and
         diebold_mariano_p is not None):
-        point_dir_ok_list = s.get("point_dir_ok_list", [])
+        point_dir_ok_list = s.get("point_dir_ok_list") or []  # 键存在但值为 None 时也回退 (审计 bug #4)
         if len(point_dir_ok_list) >= 100 and len(baseline_points) >= 100:
             try:
                 v_series, b_series = pair_dir_ok_series(point_dir_ok_list, baseline_points)
@@ -240,9 +244,18 @@ def map_summary(s):
         except (TypeError, ValueError):
             return default
 
+    def _i(val, default=0):
+        # 整数字段防护与浮点字段 _f 一致: 非法值回退默认, 不让 ValueError 上抛 (审计 bug #5)
+        if val is None:
+            return default
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return default
+
     return {
-        "n": int(s.get("n", 0)),
-        "n_eff": int(s.get("n_eff", s.get("n", 0))),
+        "n": _i(s.get("n"), 0),
+        "n_eff": _i(s.get("n_eff"), _i(s.get("n"), 0)),
         "dir_acc": _f(s.get("dir_acc", s.get("DirAcc")), 0.5),
         "endpoint_mape": _f(s.get("endpoint_mape"), 0.0),
         "endpoint_bias_pct": _f(s.get("endpoint_bias_pct"), 0.0),
@@ -261,6 +274,10 @@ def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
     dir_acc = s.get("dir_acc", s.get("DirAcc"))
     if n is None or n_eff is None or dir_acc is None:
         return False
+    # 非有限值 (NaN/inf) 统一 fail-closed (审计 bug #1/#2):
+    # NaN 比较恒 False 会让 n=NaN 绕过硬门 fail-open, dir_acc=inf 数学上无意义
+    if not (math.isfinite(n) and math.isfinite(n_eff) and math.isfinite(dir_acc)):
+        return False
     if n < min_n or n_eff < min_n_eff:
         return False
     if baseline_dir_acc is not None:
@@ -272,6 +289,9 @@ def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
 
 def effective_sample_size(nominal_n, horizon, step, residual_autocorr=None):
     """Bartlett full-kernel effective sample size for overlapping windows."""
+    if step <= 0:
+        # 非法参数显式抛 ValueError, 不再以 ZeroDivisionError 崩溃 (审计 bug #7)
+        raise ValueError(f"step 必须为正, got step={step}")
     if step >= horizon:
         return nominal_n
     if residual_autocorr is None:
