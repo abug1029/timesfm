@@ -3,6 +3,8 @@
 上游 spec: docs/2026-09-18-oi-gated-momentum-spec.md §3.1 / §3.4 / §6.2
 回填脚本: scripts/fetch_index_continuous.py
 TDD: 回填前运行, 因表不存在而失败; 回填后全绿。
+2026-09-18: 第 4 节由 xfail(strict) 包络重构为三层硬断言
+(宿主裁定 2026-09-18 选项 A 放行, 阈值取实测校准值, 未放宽任何其他阈值)。
 """
 from __future__ import annotations
 
@@ -137,9 +139,16 @@ def test_no_gaps_vs_trading_calendar(index_df, main_dates):
 
 
 # ══════════════════════════════════════════════════════
-#  4. 换月脉冲: 两级断言
-#     (a) 硬线: 全表 |ΔOI^tot_5d| ≤ 100% (禁换月翻倍脉冲, spec §3.1)
-#     (b) 包络: 全表 |ΔOI^tot_5d| ≤ 25% (宿主量化要求)
+#  4. 换月脉冲: 三层硬断言 (宿主裁定 2026-09-18, 选项 A 放行)
+#     ΔOI 一律在整条连续序列上一次 pct_change 计算, 再按需过滤窗口
+#     (先按窗口过滤再 pct_change 会在跨窗口缺口处产生假极值 — 实测教训)
+#     第 1 层  换月窗口包络: 12/4/8 月 8-22 日 |ΔOI^tot_5d| max ≤ 0.30
+#              (实测 27.05% @2016-04-22, 2016-04 提保减仓潮, 真实行情)
+#     第 2 层  全表 |ΔOI^tot_5d| max ≤ 1.00
+#              (实测 51.08% @2019-10-14, 10月增仓潮, 真实市场事件)
+#     第 3 层  全表单日 |OI_t/OI_{t-1} − 1| max ≤ 0.20
+#              (实测 17.81% @2019-10-09)
+#     明细: docs/2026-09-18-oi-gated-momentum-data-quality-report.md §4
 # ══════════════════════════════════════════════════════
 
 def _delta5_abs(index_df: pd.DataFrame) -> pd.Series:
@@ -160,22 +169,40 @@ def test_delta_oi_5d_no_rollover_pulse(index_df):
     )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "宿主 25% 包络断言被真实行情击穿, 数据经核为真、非数据伪迹, 阈值待宿主重新裁定 "
-    "(勿静默放宽): 全表 max 51.08% @2019-10-14 (10月增仓潮: 总OI 8日连续爬升 1.36M→2.16M, "
-    "成交量同步放大 0.94M→2.0M, M_CONT 单合约同向增长 —— 真实市场事件); "
-    "换月窗口(12/4/8月中旬) max 27.05% @2016-04-22 (2016-04 商品过热后交易所提保引发连续减仓, "
-    "总OI 1.90M→1.36M 伴随巨量成交, 单合约同向)。明细见 "
-    "docs/2026-09-18-oi-gated-momentum-data-quality-report.md §4"
-))
-def test_delta_oi_5d_envelope_25pct(index_df):
-    """宿主包络: 全表 |ΔOI^tot_5d| ≤ 25%。实测 51.08%, 真实行情击穿 → xfail(宿主裁决项)。"""
+def test_delta_oi_5d_rollover_window_envelope(index_df):
+    """第 1 层包络: 换月窗口 (12/4/8 月 8-22 日) |ΔOI^tot_5d| max ≤ 0.30。
+
+    窗口口径与数据质量报告 §4.2 一致 (2026-09-18 快照为 343 样本日)。
+    """
     delta5 = _delta5_abs(index_df)
-    ext = delta5.iloc[5:].max()
-    top = delta5.iloc[5:].sort_values(ascending=False).head(5)
+    mask = (
+        delta5.index.month.isin([12, 4, 8])
+        & (delta5.index.day >= 8)
+        & (delta5.index.day <= 22)
+    )
+    window = delta5[mask].dropna()
+    top = window.sort_values(ascending=False).head(5)
     detail = ", ".join(f"{d.date()}={v:.4f}" for d, v in top.items())
-    assert ext <= 0.25, (
-        f"ΔOI^tot_5d 极值 {ext:.4f} > 25% 绝对值: top5: {detail}"
+    assert window.max() <= 0.30, (
+        f"换月窗口 |ΔOI^tot_5d| 极值 {window.max():.4f} > 0.30 "
+        f"(超出实测包络 27.05% 的换月脉冲上限, 疑似数据伪迹): top5: {detail}"
+    )
+
+
+def test_delta_oi_daily_jump_envelope(index_df):
+    """第 3 层包络: 全表单日 |OI_t/OI_{t-1} − 1| max ≤ 0.20 (实测 17.81% @2019-10-09)。
+
+    必须在整条连续序列上一次 pct_change(1) 计算 (不得先按窗口过滤再算,
+    跨窗口缺口会产生假极值)。
+    """
+    oi = index_df.set_index(pd.to_datetime(index_df["dt"]))["open_interest"].sort_index()
+    delta1 = oi.pct_change(1).abs()
+    ext = delta1.iloc[1:].max()  # 排除首根预热
+    top = delta1.iloc[1:].sort_values(ascending=False).head(5)
+    detail = ", ".join(f"{d.date()}={v:.4f}" for d, v in top.items())
+    assert ext <= 0.20, (
+        f"单日 |ΔOI| 极值 {ext:.4f} > 0.20 (超出实测包络 17.81% 的单日跳变上限, "
+        f"疑似数据伪迹): top5: {detail}"
     )
 
 
