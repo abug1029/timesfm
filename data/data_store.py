@@ -431,7 +431,7 @@ class DataStore:
 
         index_continuous_1d 仅由 scripts/fetch_index_continuous.py 回填到部分品种库,
         **表缺失时返回空 DataFrame** — 调用方据此 fail-closed 降级为全零, 不抛异常
-        (实测 24 个品种库中仅 futures_m.db 有该表)。
+        (实测绝大多数品种库无该表, 仅 futures_m.db 有)。
 
         [H4] limit 语义同 get_main_continuous: 先倒序取最近 N 条, 再正序返回。
         """

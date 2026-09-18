@@ -278,8 +278,13 @@ def test_prewarmup_nan_is_filled_with_zero_and_warned(caplog):
     assert any("NaN" in r.getMessage() for r in caplog.records), "NaN 填充未告警"
 
 
-def test_zero_signal_semantics_for_flat_oi():
-    """总持仓完全走平 → ΔOI=0 → 门控精确归零 (spec §2.1 减仓/平仓→衰减至零)。"""
+def test_flat_oi_degrades_to_zero_via_nan_path():
+    """总持仓完全走平 → q_oi=0 → scale_oi=NaN (spec §3.3 防御) → 信号 NaN → 填 0。
+
+    注意: 此用例覆盖的是 NaN 降级路径, 而非 spec §2.1 的"门控精确归零"
+    (max(0, tanh(0·finite))=0 的有限定标情形) —— 后者已由
+    tests/test_oi_gated_momentum.py 的四象限断言覆盖。
+    """
     dates, close, oi = _daily()
     flat_oi = np.full(len(dates), 1_000_000.0)
     store = FakeStore(_df_1h(), _oi_frame(dates, flat_oi))
@@ -313,3 +318,44 @@ def test_combo_with_other_covariate():
         dates, horizon=HORIZON, limit=LIMIT, covariate_types=[KEY, "oi"],
     )
     assert set(combo) == {"daily_slope", KEY, "oi_pct_change"}
+
+# ══════════════════════════════════════════════════════════
+#  6. BacktestDataStore cutoff 覆盖 (前视防护, LOW-4 评审跟进)
+# ══════════════════════════════════════════════════════════
+
+def _seed_index_daily_db(db_path, symbol="zz"):
+    """临时库: init_db 基础 schema + 手工建 index_continuous_1d (init_db 不建此表)。"""
+    from pathlib import Path as _P
+    from data.db import init_db as _init_db
+    conn = _init_db(_P(db_path))
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS index_continuous_1d "
+        "(dt TEXT PRIMARY KEY, close_price REAL, volume REAL, open_interest REAL)"
+    )
+    for d, oi in (("2026-03-09", 100.0), ("2026-03-10", 110.0), ("2026-03-11", 120.0)):
+        conn.execute(
+            "INSERT INTO index_continuous_1d (dt, close_price, volume, open_interest) "
+            "VALUES (?,?,?,?)", (d, 100.0, 1.0, oi),
+        )
+    conn.commit(); conn.close()
+
+
+def _bt_store_cutoff_max_dt(tmp_path, cutoff):
+    from pathlib import Path as _P
+    from unittest import mock
+    from data.data_store import BacktestDataStore
+    db = _P(str(tmp_path)) / "zz.db"
+    _seed_index_daily_db(db, "zz")
+    with mock.patch("data.data_store.get_db_path", return_value=db):
+        with BacktestDataStore("zz", cutoff) as bs:
+            return bs.get_index_continuous_daily()["dt"].max()
+
+
+def test_index_daily_cutoff_includes_cutoff_day_at_or_after_15h(tmp_path):
+    """cutoff 时刻 >= 15:00 (日线已定型) → 含 cutoff 当日。"""
+    assert _bt_store_cutoff_max_dt(tmp_path, "2026-03-10 16:00:00") == "2026-03-10"
+
+
+def test_index_daily_cutoff_excludes_cutoff_day_before_15h(tmp_path):
+    """cutoff 时刻 < 15:00 (日盘进行中) → 回退到前一日历日, 不得用未定型当日。"""
+    assert _bt_store_cutoff_max_dt(tmp_path, "2026-03-10 10:00:00") == "2026-03-09"
