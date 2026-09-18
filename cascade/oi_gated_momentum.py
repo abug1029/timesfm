@@ -25,7 +25,7 @@ def _sanitize_float(series: pd.Series) -> pd.Series:
     out = series
     if out.dtype == object:
         # bool 是 int 子类：混入 object 序列的 True/False 不得被当作 1/0
-        out = out.map(lambda v: np.nan if isinstance(v, bool) else v, na_action="ignore")
+        out = out.map(lambda v: np.nan if isinstance(v, (bool, np.bool_)) else v, na_action="ignore")
     out = pd.to_numeric(out, errors="coerce")
     return out.replace([np.inf, -np.inf], np.nan).astype(float)
 

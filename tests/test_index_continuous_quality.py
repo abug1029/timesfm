@@ -181,6 +181,10 @@ def test_delta_oi_5d_rollover_window_envelope(index_df):
         & (delta5.index.day <= 22)
     )
     window = delta5[mask].dropna()
+    # 最小样本量防护 (评审 L4): 窗口样本异常缩减时空洞通过, 包络断言失去统计意义
+    assert len(window) >= 300, (
+        f"换月窗口样本量 {len(window)} < 300 (2026-09-18 快照实测 343), "
+        f"窗口异常缩减, 包络断言失去统计意义")
     top = window.sort_values(ascending=False).head(5)
     detail = ", ".join(f"{d.date()}={v:.4f}" for d, v in top.items())
     assert window.max() <= 0.30, (

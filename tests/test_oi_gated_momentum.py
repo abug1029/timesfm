@@ -27,7 +27,10 @@ import pytest
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from cascade.oi_gated_momentum import compute_oi_gated_momentum  # noqa: E402
+from cascade.oi_gated_momentum import (  # noqa: E402
+    _sanitize_float,
+    compute_oi_gated_momentum,
+)
 
 K, Q_PRICE, Q_OI = 120, 0.75, 0.85
 
@@ -173,31 +176,58 @@ def test_scale_pollution_and_spec_4_1_pinning():
 # ══════════════════════════════════════════════════════
 
 def test_asymmetric_scaling_immune_to_lower_tail():
-    """窗口内注入极端负 ΔOI: 单日 -50% (A) vs -75% (B) 踩踏, 深度不影响 scale_oi
-    与门控激活度 (注入值恒居下尾低秩, 不动 85% 分位)。"""
+    """非对称定标 (§2.3) — 镜像对照构造 (评审 M1): 同一批行注入深/浅两档踩踏
+    (深 -70% vs 浅 -0.1%), 带符号 q85 下两档 scale_oi 与门控激活度逐位相同
+    (注入值恒居 85% 分位之下, 不动分位标尺); 并断言该镜像对照在 abs-q85
+    变异体口径下必须不同 —— 把 abs 变异体特征编码进测试, abs 实现下本测试必死。
+
+    旧构造 (-50% vs -75%, 两档皆深负) 对 abs-quantile 变异体无判别力:
+    两档注入值在 abs 口径下同居上尾同侧且均不越 85% 分位秩, 标尺同样不动。
+    """
     n = 300
     base_price, base_oi = _make_data(n)
-    j = n - 80  # 踩踏起点 (在定标窗口内, 距评估 bar t 充分远)
     t = n - 20
+    j = t - 4  # 踩踏行 t-4..t-1: 位于定标窗口 [t-120, t-1] 内, 但不触碰 t 与 t-5
+    # (bar t 门控分子 delta_oi[t] = oi[t]/oi[t-5]-1 逐位干净; 恢复脉冲落在
+    #  t+1..t+5 的 delta5 上, 在 bar t 定标窗口之外, 不污染上尾)
 
-    def stepped(factor):
-        # 单日 -X% 踩踏且不复位: m>=j 起水平下移, delta5 在 j..j+4 出现 5 个深负值
+    def stamped(factor):
+        # 仅踩踏 4 行: delta5 在 t-4..t-1 变为 factor-1 (深/浅两档), 其余行逐位不动
         oi = base_oi.copy()
-        oi.iloc[j:] = oi.iloc[j:] * factor
+        oi.iloc[j:t] = oi.iloc[j:t] * factor
+        # bar t 门控分子固定 +2% (增仓激活), 保证门控非零、镜像逐位可比
+        oi.iloc[t] = oi.iloc[t - 5] * 1.02
         return base_price.copy(), oi
 
-    pa, oa = stepped(0.5)
-    pb, ob = stepped(0.25)
-    out_a = compute_oi_gated_momentum(pa, oa)
-    out_b = compute_oi_gated_momentum(pb, ob)
+    pa, oa = stamped(0.30)    # 深踩踏: delta_oi ≈ -70% (2016-04 提保减仓潮量级)
+    pb, ob = stamped(0.999)   # 浅踩踏: delta_oi ≈ -0.1% (噪声量级)
 
-    # 门控激活度不变 (价格路径/ΔP/scale_p 全同, ΔOI_t 亦逐位同)
-    assert out_a.iloc[t] == out_b.iloc[t], (
-        f"极端负 ΔOI 注入深度不应影响门控: {out_a.iloc[t]} vs {out_b.iloc[t]}")
-    # scale_oi 逐位不变
+    # (1) 带符号 q85: 两档深度下 scale_oi 逐位相同 (注入值均居分位之下, 不动标尺)
     _, so_a = _ref_scales(pa, oa)
     _, so_b = _ref_scales(pb, ob)
-    assert so_a.iloc[t] == so_b.iloc[t], "scale_oi 应对下尾深度免疫 (逐位)"
+    assert so_a.iloc[t] == so_b.iloc[t], (
+        f"带符号 q85 下 scale_oi 应对踩踏深度免疫 (逐位): "
+        f"{so_a.iloc[t]} vs {so_b.iloc[t]}")
+
+    # (2) 门控激活度逐位相同且非平凡 (门控分子 delta_oi[t]=+2% 激活)
+    out_a = compute_oi_gated_momentum(pa, oa)
+    out_b = compute_oi_gated_momentum(pb, ob)
+    assert out_a.iloc[t] == out_b.iloc[t], (
+        f"极端负 ΔOI 注入深度不应影响门控: {out_a.iloc[t]} vs {out_b.iloc[t]}")
+    assert out_a.iloc[t] != 0.0, "门控应处于激活态, 零相等断言无意义"
+
+    # (3) 变异体判别: abs-q85 变异体下镜像对照必须不同 (测试杀伤力自检)。
+    # abs 口径: 深档 |ΔOI|≈70% 上穿上尾 → 分位标尺上移; 浅档 |ΔOI|≈0.1% 居下,
+    # 不越分位秩 → 标尺不动; 两档标尺分离 → abs 实现下断言 (1)(2) 必失败。
+    def _abs_q_scale_oi(oi_series):
+        d = oi_series.pct_change(5).abs()
+        q = d.shift(1).rolling(K).quantile(Q_OI)
+        return pd.Series(np.where(q > 1e-6, 1.0 / q, np.nan), index=oi_series.index)
+
+    sa = _abs_q_scale_oi(oa)
+    sb = _abs_q_scale_oi(ob)
+    assert sa.iloc[t] != sb.iloc[t], (
+        "镜像对照在 abs-q85 口径下必须不同, 否则本测试对 abs-quantile 变异体无判别力")
 
 
 # ══════════════════════════════════════════════════════
@@ -265,6 +295,14 @@ class TestFailClosed:
         assert out.iloc[K + 5:150].notna().all()
         assert out.iloc[150:156].isna().all(), "bool/str 位置起应 NaN 传播"
         assert not np.isinf(out.dropna()).any()
+
+    def test_numpy_bool_in_object_dtype_fail_closed(self):
+        """np.bool_ 穿透防护 (评审 L2): np.bool_ 不是 Python bool 子类,
+        pd.to_numeric 会把它静默转 1.0 (fail-open)。必须与 bool 同样拦为 NaN。"""
+        s = pd.Series([1.0, np.bool_(True), 3.0], dtype=object)
+        out = _sanitize_float(s)
+        assert out.iloc[0] == 1.0 and out.iloc[2] == 3.0, "非 bool 值不得受影响"
+        assert np.isnan(out.iloc[1]), "np.bool_ 必须清洗为 NaN (fail-closed)"
 
     def test_quantile_degenerate_no_inf(self):
         """常数序列 → 分位数 0 ≤ 1e-6 → scale NaN → 输出 NaN, 绝不产生 inf。"""
