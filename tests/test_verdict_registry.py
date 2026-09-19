@@ -212,3 +212,5 @@ def test_error_tombstone_has_metrics():
     assert t["metrics"]["batch_id"] == "b1"
     assert t.get("baseline_dir_acc") is None
     assert t.get("effective_min") is None
+    assert t["metrics"]["baseline_dir_acc"] is None
+    assert t["metrics"]["effective_min"] is None

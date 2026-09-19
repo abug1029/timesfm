@@ -615,6 +615,7 @@ def test_materialize_known_verdicts_symbol_table_and_proposed(tmp_path):
     )
     text = dest.read_text(encoding="utf-8")
     assert "SYMBOL_DEAD" in text
+    assert "不要提案" in text
     assert "eg:" in text
     assert "jd_ccl" in text
     assert "sr_qstick" in text
@@ -1124,8 +1125,9 @@ def test_build_snapshot_min_dir_acc_none_when_no_pass(tmp_path):
     reg.write_text(json.dumps(rec) + "\n", encoding="utf-8")
     snap = sup.build_snapshot(str(reg), 0, 0, 0)
     assert snap["min_pass_variant_dir_acc"] is None
-def test_proposal_score_exploration_bias():
+def test_proposal_score_exploration_bias(monkeypatch):
     """2026-09-17 探索偏置调整 + 履历分切 v23 dir_acc 口径 (单测级, 直接调函数)。"""
+    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
     prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
     snap = {
         "rb_vor": {"variant_id": "rb_vor", "symbol": "rb", "cov_override": "vor",
@@ -1153,8 +1155,9 @@ def test_proposal_score_exploration_bias():
     assert abs(weak - 13.0) < 1e-9, weak
 
 
-def test_proposal_score_guards():
+def test_proposal_score_guards(monkeypatch):
     """评审 M-3: 履历/探索防护分支覆盖。"""
+    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
     prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
 
     def _vid():

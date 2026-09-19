@@ -582,6 +582,12 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
         reason = rec.get("reason")
         if reason:
             line += " — %s" % reason
+        if st == "DEAD":
+            line += " — 不要提案"
+        elif st == "HOLD":
+            hg = rec.get("hold_generations")
+            if hg is not None:
+                line += " — 暂停 %s 代" % hg
         lines.append(line)
     lines.append("")
 
@@ -678,7 +684,7 @@ _ev_mod_for_goal = _load_evaluator()
 GOAL_SYMBOLS_SET = frozenset({"m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"})
 del _ev_mod_for_goal
 
-def _proposal_priority_score(prop, cov, symbol, snapshot):
+def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None):
     """机制化排序 (替代噪声小样本 EV)。确定性可复现。
     1) 协变量履历 (v23 口径): 同 cov 任一品种 (含自身; 生产经历史去重同 vid
        不可达) gate_pass=True 时, dir_acc 超过硬门 0.52 的部分 x200 加分。
@@ -716,7 +722,9 @@ def _proposal_priority_score(prop, cov, symbol, snapshot):
         score -= 24.0 + 8.0 * (n_fail - 7)
     elif n_fail >= 3:
         score -= 4.0 * (n_fail - 2)
-    st = str((load_symbol_status().get(symbol) or {}).get("status") or "ACTIVE").upper()
+    if status_map is None:
+        status_map = load_symbol_status()
+    st = str((status_map.get(symbol) or {}).get("status") or "ACTIVE").upper()
     if st == "DEAD":
         score -= 50.0
     elif st == "HOLD":
@@ -822,7 +830,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 _reject("dedup"); continue
             seen_vids.add(vid)
             family = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or "other"
-            score = _proposal_priority_score(p, cov, symbol, snapshot or {})
+            score = _proposal_priority_score(p, cov, symbol, snapshot or {}, status_map=status_map)
             if priority:
                 if symbol not in n_cache:
                     n_cache[symbol] = _valid_n_for_symbol(symbol)

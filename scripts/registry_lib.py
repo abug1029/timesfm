@@ -349,6 +349,8 @@ def make_error_tombstone(symbol, variant_id, batch_id, exception):
             "mae": None,
             "mape": None,
             "decay": None,
+            "baseline_dir_acc": None,
+            "effective_min": None,
         },
     }
 
@@ -403,6 +405,8 @@ def make_timeout_tombstone(symbol, variant_id, batch_id):
             "mae": None,
             "mape": None,
             "decay": None,
+            "baseline_dir_acc": None,
+            "effective_min": None,
         },
     }
 
