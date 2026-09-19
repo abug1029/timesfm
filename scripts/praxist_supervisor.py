@@ -41,6 +41,51 @@ BACKLOG_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_backlog.jso
 SYMBOL_STATUS_PATH = os.path.join(FM_ROOT, "task_FM", "config", "symbol_status.json")
 MENU_INC = os.path.join(FM_ROOT, "task_FM", "covariate_menu.inc.md")
 REPORT_DIR = os.path.join(FM_ROOT, "docs", "superpowers", "reports")
+
+
+def _load_dotenv(root=None, path=None):
+    """Load .env.praxist into os.environ (only for keys not already set).
+
+    Eliminates the dependency on shell `source .env.praxist` before startup.
+    Existing env vars take precedence (explicit > file).
+    `root` overrides FM_ROOT for dotenv lookup (used when --root is passed).
+    Returns True if file was loaded, False if not found.
+    """
+    if path:
+        p = path
+    else:
+        base = root or FM_ROOT
+        p = os.path.join(base, ".env.praxist")
+    if not os.path.isfile(p):
+        return False
+    with open(p, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("_"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                value = value[1:-1]
+            if key and key not in os.environ:
+                os.environ[key] = value
+    return True
+
+
+def _check_required_env():
+    """Fail-fast with clear error if required env vars are missing.
+
+    Returns (missing_required, missing_recommended).
+    """
+    required = ["ANTHROPIC_API_KEY"]
+    recommended = ["PRIMARY_MODEL", "ANTHROPIC_BASE_URL"]
+    missing_req = [k for k in required if not os.environ.get(k)]
+    missing_rec = [k for k in recommended if not os.environ.get(k)]
+    return missing_req, missing_rec
+
 STATE_MD = os.path.join(FM_ROOT, "STATE.md")
 EVENTS_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_events.jsonl")
 HEARTBEAT_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_heartbeat")
@@ -1572,6 +1617,23 @@ def main(argv=None):
     ap.add_argument("--root", default=FM_ROOT)
     ap.add_argument("--max-cycles", type=int, default=None)
     args = ap.parse_args(argv)
+    # Self-healing: load .env.praxist so startup doesn't depend on shell source.
+    # Uses args.root so tests with --root tmp_path don't FATAL-exit.
+    env_loaded = _load_dotenv(root=getattr(args, "root", None))
+    missing_req, missing_rec = _check_required_env()
+    if missing_req and env_loaded:
+        # .env.praxist EXISTS but is missing required keys -> real config error.
+        print("[FATAL] .env.praxist exists but required vars missing: %s"
+              % ", ".join(missing_req), file=sys.stderr)
+        sys.exit(2)
+    if missing_req and not env_loaded:
+        # No .env.praxist at this root (tests / non-standard setup). Warn only.
+        print("[WARN] No .env.praxist at %s and required vars not in env: %s"
+              % (getattr(args, "root", FM_ROOT), ", ".join(missing_req)),
+              file=sys.stderr)
+    if missing_rec:
+        print("[WARN] Recommended env vars missing: %s (will use code defaults)"
+              % ", ".join(missing_rec), file=sys.stderr)
     _arm_handlers()
     if args.root != FM_ROOT:
         # 测试可把模块级路径 monkeypatch; --root 仅给 harvest 用
