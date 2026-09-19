@@ -568,7 +568,9 @@ def test_materialize_known_verdicts(tmp_path):
     snap = {"a": _v("m_ccl", gate_pass=True, ev=0.02, dir_acc=0.55),
             "b": _v("m_oi", gate_pass=False, ev=-0.01),
             "c": _v("i_oi", gate_pass=True, ev=-2.46, dir_acc=0.60)}
-    sup.materialize_known_verdicts(snap, str(dest))
+    sup.materialize_known_verdicts(
+        snap, str(dest),
+        proposed_ids=set(), status_map={}, queue_ids=set())
     text = dest.read_text(encoding="utf-8")
     assert "m_ccl" in text and "gate_pass=True" in text
     assert "m_oi" in text and "gate_pass=False" in text
@@ -618,6 +620,10 @@ def test_materialize_known_verdicts_symbol_table_and_proposed(tmp_path):
     assert "sr_qstick" in text
     assert "m_vor" in text
     assert "Do not re-propose" in text
+    assert "jd_ccl (proposed)" in text
+    assert "m_vor (queue)" in text
+    assert ("eg_oi (verdict)" in text) or ("eg_ccl (verdict)" in text)
+    assert "gate_pass=" in text
 
 
 def test_429_failover_resume_not_wait_quota(tmp_path, monkeypatch):
