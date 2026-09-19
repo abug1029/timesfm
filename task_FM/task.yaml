@@ -129,7 +129,7 @@ praxist_plugins:
   workflow:
     stage: workflow_stage:research_loop
   panel:
-    topology: panel_topology:legacy_multi_pi_two_round
+    topology: panel_topology:fm_two_peer
     roles:
     - task_role:peer_generalist
   audit_rules:

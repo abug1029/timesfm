@@ -34,13 +34,21 @@ def _render(tpl_path, ctx):
 
 
 # ---------------------------------------------------------------- task.yaml
-@pytest.mark.xfail(reason="运营决策: cohort_size=2 配合 legacy_multi_pi_two_round 两轮 PI "
-                   "承担 4 角色 (控 token 成本)；G6 原约束 cohort>=4 为单轮设计", strict=False)
-def test_task_cohort_covers_four_pi_roles():
+def test_task_cohort_matches_peer_role_rotation():
+    """cohort_size=2 与 fm_two_peer peer_role_rotation 对账。"""
     spec = _load_task()
     gp = spec["generation_policy"]
-    # PI 议程校验硬性要求 exploit/falsifier/bridge/anti_mainline 4 角色
-    assert gp["cohort_size"] >= 4, "cohort_size<4 时 PI 议程校验必然失败"
+    assert gp["cohort_size"] == 2
+    plugin_path = os.path.join(
+        FM_ROOT, "task_FM", ".praxist", "plugins",
+        "panel_topologies", "fm_two_peer", "plugin.yaml",
+    )
+    assert os.path.exists(plugin_path)
+    with open(plugin_path, encoding="utf-8") as f:
+        plugin = yaml.safe_load(f)
+    rotation = plugin["topology"]["peer_role_rotation"]
+    assert rotation == ["exploit", "falsifier"]
+    assert len(rotation) == gp["cohort_size"]
 
 
 @pytest.mark.xfail(reason="运营决策: max_interval=45min 放宽合成窗口 (1.5h 代)；G6 30min 上限为旧 1h 代", strict=False)
