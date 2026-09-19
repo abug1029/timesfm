@@ -253,3 +253,43 @@ def test_active_symbol_still_enqueued(tmproot, monkeypatch):
 def test_production_goal_survivors_per_cycle_is_3():
     goal = S.load_goal(os.path.join(ROOT, "scripts", "praxist_goal.yaml"))
     assert goal["cadence"]["survivors_per_cycle"] == 3
+
+
+DELTA = ("相对 m_vor（dir_acc 未过门），本次改用持仓量 oi："
+         "豆粕有主力换月与套保盘，持仓方向比波动率压缩更贴机制。")
+
+
+def test_failure_delta_required_when_symbol_already_failed(tmproot):
+    snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
+                      "status": "ok", "gate_pass": False, "dir_acc": 0.45}}
+    _make_run(tmproot, _prop(symbol="m", cov="oi"))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert stats["selected"] == 0
+    assert "no_failure_delta" in stats["reject_reasons"]
+
+
+def test_failure_delta_required_when_cov_already_failed(tmproot):
+    snap = {"rb_oi": {"variant_id": "rb_oi", "symbol": "rb", "cov_override": "oi",
+                      "status": "ok", "gate_pass": False, "dir_acc": 0.40}}
+    _make_run(tmproot, _prop(symbol="m", cov="oi"))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert stats["selected"] == 0
+    assert "no_failure_delta" in stats["reject_reasons"]
+
+
+def test_failure_delta_short_rejected(tmproot):
+    snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
+                      "status": "ok", "gate_pass": False, "dir_acc": 0.45}}
+    _make_run(tmproot, _prop(symbol="m", cov="oi", failure_delta="太短"))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert stats["selected"] == 0
+    assert "no_failure_delta" in stats["reject_reasons"]
+
+
+def test_failure_delta_enqueued_when_present(tmproot):
+    snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
+                      "status": "ok", "gate_pass": False, "dir_acc": 0.45}}
+    _make_run(tmproot, _prop(symbol="m", cov="oi", failure_delta=DELTA))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert stats["selected"] == 1
+    assert rows[0]["variant_id"] == "m_oi"

@@ -590,6 +590,7 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
                 line += " — 暂停 %s 代" % hg
         lines.append(line)
     lines.append("")
+    lines.extend(_effective_clue_lines(items))
 
     # ## Do not re-propose; source priority: verdict > queue > proposed
     lines.append("## Do not re-propose (variant_id)")
@@ -637,6 +638,88 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
     with open(dest_path, "w", encoding="utf-8") as f:
         f.write('\n'.join(lines) + '\n')
+
+
+def _verdict_family(v):
+    fam = str(v.get("cov_family") or "").strip()
+    return fam or str(v.get("cov_override") or "").strip()
+
+
+def _finite_dir_acc(v):
+    da = v.get("dir_acc")
+    if isinstance(da, (int, float)) and not isinstance(da, bool):
+        da = float(da)
+        if da == da and -1e308 < da < 1e308:
+            return da
+    return None
+
+
+def _has_prior_failure(snapshot, symbol, cov):
+    """True if snapshot has an ok+unpassed verdict on this symbol or this cov."""
+    for v in (snapshot or {}).values():
+        if not isinstance(v, dict):
+            continue
+        if v.get("status", "ok") != "ok" or v.get("gate_pass"):
+            continue
+        if str(v.get("symbol") or "").lower() == str(symbol).lower():
+            return True
+        if str(v.get("cov_override") or "") == cov:
+            return True
+    return False
+
+
+def _effective_clue_lines(items):
+    """Live passing / near-miss / weak-family clues. Never a frozen menu."""
+    fam_ok = {}
+    fam_pass = {}
+    near = []
+    for v in items:
+        if not isinstance(v, dict) or v.get("status", "ok") != "ok":
+            continue
+        fam = _verdict_family(v)
+        if fam:
+            fam_ok[fam] = fam_ok.get(fam, 0) + 1
+            if v.get("gate_pass"):
+                fam_pass[fam] = fam_pass.get(fam, 0) + 1
+        da = _finite_dir_acc(v)
+        if da is None or v.get("gate_pass"):
+            continue
+        emin = v.get("effective_min")
+        if not (isinstance(emin, (int, float)) and not isinstance(emin, bool)):
+            emin = 0.52
+        else:
+            emin = float(emin)
+        if 0.49 <= da < emin:
+            near.append((v.get("variant_id"), da, emin))
+    lines = ["## Effective clues (from snapshot, not a frozen menu)",
+             "### Passing families"]
+    passing = [(fam, fam_pass[fam]) for fam in fam_pass if fam_pass[fam] > 0]
+    passing.sort(key=lambda x: (-x[1], x[0]))
+    if passing:
+        for fam, n in passing:
+            lines.append("- %s: %d gate_pass" % (fam, n))
+    else:
+        lines.append("- (none yet)")
+    lines.append("### Near-miss (0.49 <= dir_acc < effective_min)")
+    if near:
+        near.sort(key=lambda x: -x[1])
+        for vid, da, emin in near[:12]:
+            lines.append("- %s dir_acc=%.3f min=%.3f" % (vid, da, emin))
+    else:
+        lines.append("- (none)")
+    lines.append("### Weak families (>=4 ok, 0 pass)")
+    weak = [fam for fam, n in fam_ok.items()
+            if n >= 4 and fam_pass.get(fam, 0) == 0]
+    weak.sort()
+    if weak:
+        for fam in weak:
+            lines.append("- %s: %d ok, 0 pass — 不要为凑探索而提，除非有 failure_delta"
+                         % (fam, fam_ok[fam]))
+    else:
+        lines.append("- (none)")
+    lines.append("")
+    return lines
+
 
 def load_covariate_pool():
     """读协变量池 covariate_pool.json → cov dict。fail-open 返回 {}。"""
@@ -697,6 +780,9 @@ def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None):
        (0 个 +6 / 1 个 +4 / 2 个 +2 / >=3 个 0), 对冲履历分的利用偏置。
        平衡点 (可达路径: 已测 1 次 + 新组合有新颖分): 其他品种
        dir_acc > 0.53 的真履历胜过全新组合。评审 M-2 修正 (原误写 0.555)。
+    5) 过门族迁移: 提案带 covariate_family 且该族在其他品种有 gate_pass 时 +8
+       (压过全新 cov 的探索 +6)。
+    6) 弱族: 同 cov_family ≥4 条 ok 且 0 过门时 -8。
     """
     score = 0.0
     n_cov_ok = 0
@@ -729,6 +815,25 @@ def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None):
         score -= 50.0
     elif st == "HOLD":
         score -= 20.0
+    fam = str(prop.get("covariate_family") or "").strip()
+    if fam:
+        n_fam_ok = 0
+        n_fam_pass = 0
+        other_pass = False
+        for v in (snapshot or {}).values():
+            if str(v.get("cov_family") or "") != fam:
+                continue
+            if v.get("status", "ok") != "ok":
+                continue
+            n_fam_ok += 1
+            if v.get("gate_pass"):
+                n_fam_pass += 1
+                if str(v.get("symbol") or "").lower() != str(symbol).lower():
+                    other_pass = True
+        if other_pass and st == "ACTIVE":
+            score += 8.0
+        if n_fam_ok >= 4 and n_fam_pass == 0:
+            score -= 8.0
     return score
 
 def _append_backlog(prop, src_path):
@@ -820,6 +925,10 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 _reject("cov_not_in_active_pool"); continue
             if len(mechanism) < 40:
                 _reject("mechanism_too_short"); continue
+            if _has_prior_failure(snapshot or {}, symbol, cov):
+                delta = str(p.get("failure_delta") or "").strip()
+                if len(delta) < 20:
+                    _reject("no_failure_delta"); continue
             vid = "%s_%s" % (symbol, cov)
             sym_st = str((status_map.get(symbol) or {}).get("status") or "ACTIVE").upper()
             if sym_st == "DEAD":

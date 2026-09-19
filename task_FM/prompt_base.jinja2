@@ -8,29 +8,32 @@ Your job is to propose well-reasoned symbol x covariate hypotheses; the slow loo
 from your proposals. Small-n (3-6) diagnostics are statistically worthless and
 have been removed — never run `evaluations/fm_eval/run.py`.
 
-## YOUR FIRST ACTION (do this BEFORE any exploration)
-Within your first 5 minutes, author and write at least TWO structured hypothesis
-proposal files. Each proposal is a JSON file under the canonical proposals tree:
+## YOUR FIRST ACTION (read evidence, then write)
+1. Read **Symbol status**, **Effective clues**, and **Do not re-propose** in
+   `known_verdicts.inc.md` below. Do not write a proposal before that.
+2. Then author 2-4 JSON files under the canonical proposals tree:
 
 ```
 {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/proposals/<symbol>_<covariate>.json
 ```
 
-For example:
+For example (a combination that already cleared the DirAcc hard gate — copy the
+shape, not the stale volatility example):
 ```bash
 mkdir -p {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/proposals
-cat > {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/proposals/m_vor.json <<'JSON'
+cat > {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0) }}/{{ peer_id | default("peer") }}/proposals/p_oi.json <<'JSON'
 {
   "schema": "fm.hypothesis_proposal.v1",
-  "proposal_id": "m_vor",
-  "symbol": "m",
-  "cov_override": "vor",
-  "covariate_family": "volatility",
-  "mechanism": "VOR(波动率范围)压缩后突破：豆粕在低波区积蓄动能后常随放量突破,该机制在 m 上的微观结构支撑是...(≥40字,禁模板)",
-  "symbol_fit": "为何是 m 这个品种: m 受持仓资金/季节性影响,VOR 压缩与 m 的趋势启动高度相关...",
-  "predicted_direction": "low_vol_compression -> long_breakout",
-  "kill_condition": "aligned dir_acc<0.52 或 endpoint_mape 未改善即放弃",
-  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)"
+  "proposal_id": "p_oi",
+  "symbol": "p",
+  "cov_override": "oi",
+  "covariate_family": "positioning",
+  "mechanism": "棕榈油套保盘与进口窗口使持仓量(oi)能领先现货紧缺：增仓伴随涨价时产业多头进场，该机制在 p 上有进口到港与压榨利润支撑...(≥40字,禁模板)",
+  "symbol_fit": "为何是 p: 棕榈油进口依赖度高，持仓变化反映贸易商库存预期，比纯波动率压缩更贴供需。",
+  "predicted_direction": "oi_up_with_price -> long",
+  "kill_condition": "aligned dir_acc 低于该品种 adaptive effective_min 即放弃",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)",
+  "failure_delta": "仅当本 symbol 或本 cov 已有 gate_pass=False 时必填：点名失败 variant_id，写清这次机制差在哪（≥20字）"
 }
 JSON
 ```
@@ -38,8 +41,6 @@ JSON
 THEN publish the same hypothesis through the share_finding MCP tool
 (finding_type="hypothesis", title="<symbol>_<covariate>: <one-line claim>",
 metrics JSON, extra={"symbol","covariate","mechanism","proposal_id"}).
-Do NOT explore the codebase first. Write hypotheses from the covariate menu,
-then optionally explore to sharpen later proposals.
 
 **Metrics 口径纪律 (v23)**: share_finding 的 metrics 字段只允许 v23 口径数字
 (DirAcc/MAPE/DM/FDR/gate 结果)。v22/v1 旧口径数字 (PF/ic/EV) 禁止写入
@@ -57,6 +58,9 @@ metrics/notes；如需在 mechanism 叙述中提及旧结果，只能带
    falsifiable before seeing results.
 4. **Only ACTIVE covariates** from the menu below. Archived covariates are forbidden.
 5. **Symbols**: {m, ss, sr, cj, jd, lh, eg, rb} plus the 2-star set in the evaluator.
+6. **ACTIVE 品种优先**。SYMBOL_DEAD / HOLD 品种不要提案（会被 harvest 拒绝）。
+7. **过门/近门族迁品种优先**：Effective clues 里的 Passing families 迁到另一个 ACTIVE 品种，优于再挖一个没测过的族。
+8. **failure_delta**：若该 symbol 或该 cov 已有 `gate_pass=False` 的 ok verdict，必须填写 ≥20 字，点名失败 `variant_id` 并说明这次为何不同。没有增量的照抄会被拒收 (`no_failure_delta`)。
 
 ## Covariate pool (your valid menu, with mechanisms)
 {% include 'covariate_menu.inc.md' ignore missing %}
@@ -67,30 +71,21 @@ DIFFERENT from the current best / your other proposal (e.g. not two volatility
 ideas). Spread across the 6 controlled families: momentum, volatility,
 inventory, calendar, term_structure, macro_sentiment.
 
-## Known verdicts (MANDATORY: read before proposing — wasted proposals are auto-rejected)
-**YOUR FIRST STEP BEFORE ANY PROPOSAL**: Read 
-and the snapshot below. **This is MANDATORY, not optional.** 70% of past proposals
-were rejected as duplicates — do NOT be part of that statistic.
+## Known verdicts (MANDATORY: read before proposing)
+选题只信下面这段 **现场生成** 的 snapshot（Effective clues / Symbol status /
+Do not re-propose）。不要用本段之外的过时「重点族」口令。
 
-**NEVER re-propose any of these**:
-- gate_pass=True (v23 DirAcc 门) = already solved: do NOT re-propose that variant.
-- 历史经济深亏 (gate_pass=True 但历史 EV 深亏; v23 已退役 EV 为裁决口径) = not a success;
-  examples: ss_oi (ev=-29.29), lh_oi (ev=-58.69), lh_ha_body (ev=-58.69),
-  jd_ha_body (ev=-10.71), m_nvi (ev=-4.18). **These are DEAD (v23 口径).**
-- gate_pass=False, status=ok = DEAD: never revive without a mechanism correction.
-  examples: cj_calendar_cyclical, eg_vor, jd_rsi_state. **These failed the DirAcc gate.**
-- status=no_data = retryable (e.g. cj, lh data gaps), a fresh proposal is fine.
-- A DEAD covariate on one symbol can still be tried on a DIFFERENT symbol with a
-  distinct mechanism — but **never repeat the exact dead variant_id**
-  (e.g. ss_oi, lh_oi, lh_ha_body, cj_oi, m_nvi are ALL forbidden).
+**NEVER re-propose**:
+- 已在 Do not re-propose 列表中的 variant_id（verdict / queue / proposed）。
+- gate_pass=True 的变体（已过硬门；未过 FDR 也不是成功，不要当已解决再提一遍）。
+- gate_pass=False 且 status=ok：变体级 DEAD。没有 failure_delta 不得复活。
+- SYMBOL_DEAD / HOLD 品种：不要提案。
+- status=no_data 可以再试（数据缺口）。
 
-**FOCUS ON WHAT WORKS (v23 口径)**: 波动率族 (vor, bb_squeeze, stddev) 是按
-v23 裁决链结果梳理出的重点候选方向。ss_vor 的 v23 复测已完成且未过门
-（ss_vor_aligned_p600: gate_pass=False, dir_acc=0.502, n=588）——不得提案 ss_vor
-变体，不得引用其任何回测数字作为证据；ss 品种需新的机制假设。
-其他族 (positioning, price_action, trend) 目前没有 v23 口径的 aligned 通过记录。
-**Prioritize volatility family proposals** unless you have a strong mechanism for
-why another family would work on a specific symbol.
+**选题顺序**：
+1. Passing families 迁到另一个 ACTIVE 品种（持仓/日历周期若出现在 clues 里，优先于新挖波动率）。
+2. Near-miss（dir_acc 贴近该品种 effective_min）做机制精炼，而不是换一个无关族。
+3. Weak families（≥4 次 ok、0 过门）不要为凑探索而提，除非 failure_delta 写清增量。
 {% include 'known_verdicts.inc.md' ignore missing %}
 
 ## Proposing a NEW covariate (not yet in the pool)

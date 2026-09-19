@@ -1224,3 +1224,78 @@ def test_proposal_score_symbol_status_penalty(monkeypatch):
     hold = sup._proposal_priority_score(prop, "oi", "jd", {})
     assert abs(dead - (base - 50.0)) < 1e-9
     assert abs(hold - (base - 20.0)) < 1e-9
+
+
+def test_proposal_score_family_transfer_beats_fresh_cov(monkeypatch):
+    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
+    prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p",
+            "covariate_family": "calendar"}
+    snap = {
+        "sr_calendar_cyclical": {
+            "variant_id": "sr_calendar_cyclical", "symbol": "sr",
+            "cov_override": "calendar_cyclical", "cov_family": "calendar",
+            "status": "ok", "gate_pass": True, "dir_acc": 0.52,
+        }
+    }
+    # 同 cov 已测 1 次: 机制3+新颖5+探索4=12, 履历 0; 过门族迁到 m +8 → 20
+    moved = sup._proposal_priority_score(
+        prop, "calendar_cyclical", "m", snap, status_map={})
+    assert abs(moved - 20.0) < 1e-9, moved
+    fresh = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
+    # 全新 cov: 3+5+6=14, 无族迁移
+    newcov = sup._proposal_priority_score(fresh, "brand_new", "m", snap, status_map={})
+    assert abs(newcov - 14.0) < 1e-9, newcov
+    assert moved > newcov
+
+
+def test_proposal_score_weak_family_penalty(monkeypatch):
+    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
+    prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p",
+            "covariate_family": "volatility"}
+    snap = {
+        "s%d_vor" % i: {
+            "variant_id": "s%d_vor" % i, "symbol": "s%d" % i,
+            "cov_override": "vor", "cov_family": "volatility",
+            "status": "ok", "gate_pass": False, "dir_acc": 0.45,
+        }
+        for i in range(4)
+    }
+    # stddev 未测: 3+5+6=14, 弱族 -8 → 6
+    got = sup._proposal_priority_score(
+        prop, "stddev", "m", snap, status_map={})
+    assert abs(got - 6.0) < 1e-9, got
+
+
+def test_materialize_known_verdicts_effective_clues(tmp_path):
+    dest = tmp_path / "known_verdicts.inc.md"
+    snap = {
+        "p_oi": _v("p_oi", gate_pass=True, dir_acc=0.568, symbol="p",
+                   cov_override="oi", cov_family="positioning"),
+        "sr_oi": _v("sr_oi", gate_pass=True, dir_acc=0.522, symbol="sr",
+                    cov_override="oi", cov_family="positioning"),
+        "eg_vor": _v("eg_vor", gate_pass=False, dir_acc=0.45, symbol="eg",
+                     cov_override="vor", cov_family="volatility"),
+        "jd_vor": _v("jd_vor", gate_pass=False, dir_acc=0.44, symbol="jd",
+                     cov_override="vor", cov_family="volatility"),
+        "lh_vor": _v("lh_vor", gate_pass=False, dir_acc=0.43, symbol="lh",
+                     cov_override="vor", cov_family="volatility"),
+        "rb_vor": _v("rb_vor", gate_pass=False, dir_acc=0.41, symbol="rb",
+                     cov_override="vor", cov_family="volatility"),
+        "sh_oi": _v("sh_oi", gate_pass=False, dir_acc=0.510, symbol="sh",
+                    cov_override="oi", cov_family="positioning",
+                    effective_min=0.52),
+    }
+    for rec in snap.values():
+        rec["symbol"] = rec.get("symbol")
+    sup.materialize_known_verdicts(
+        snap, str(dest),
+        proposed_ids=set(), status_map={}, queue_ids=set())
+    text = dest.read_text(encoding="utf-8")
+    assert "## Effective clues" in text
+    assert "Passing families" in text
+    assert "positioning" in text
+    assert "Weak families" in text
+    assert "volatility" in text
+    assert "Near-miss" in text
+    assert "sh_oi" in text
+    assert "Prioritize volatility" not in text

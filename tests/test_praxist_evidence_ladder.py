@@ -160,6 +160,17 @@ def _fake_ctx():
     }
 
 
+def test_prompt_base_selection_discipline():
+    text = open(BASE_TPL, encoding="utf-8").read()
+    assert "Prioritize volatility family" not in text
+    assert "first 5 minutes" not in text
+    assert "do this BEFORE any exploration" not in text
+    assert "m_vor.json" not in text
+    assert "p_oi.json" in text
+    assert "failure_delta" in text
+    assert "ACTIVE 品种优先" in text
+
+
 def test_templates_render_directive_context():
     ctx = _fake_ctx()
     base = _render(BASE_TPL, ctx)
