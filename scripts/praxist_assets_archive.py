@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 FM_ROOT = Path(__file__).resolve().parents[1]
-ASSETS = Path(os.environ.get("PRAXIST_ASSETS_ROOT", str(Path(__file__).resolve().parents[1] / "data" / "assets")))
+ASSETS = Path(os.environ.get("PRAXIST_ASSETS_ROOT", str(FM_ROOT / "data" / "assets")))
 SHANGHAI = timezone(timedelta(hours=8))
 
 

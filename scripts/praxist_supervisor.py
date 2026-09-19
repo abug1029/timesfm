@@ -67,7 +67,15 @@ def _load_dotenv(root=None, path=None):
                 continue
             key, _, value = line.partition("=")
             key = key.strip()
+            # M2: strip bash-compatible `export` prefix
+            if key.startswith("export "):
+                key = key[7:].strip()
             value = value.strip()
+            # M1: strip inline comments (only for unquoted values)
+            if value and not value.startswith(("'", '"')):
+                comment_idx = value.find(" #")
+                if comment_idx >= 0:
+                    value = value[:comment_idx].rstrip()
             if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
                 value = value[1:-1]
             if key and key not in os.environ:

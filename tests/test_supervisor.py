@@ -1299,3 +1299,115 @@ def test_materialize_known_verdicts_effective_clues(tmp_path):
     assert "Near-miss" in text
     assert "sh_oi" in text
     assert "Prioritize volatility" not in text
+
+
+# ──────────────────────────────────────────────────────────────
+# M3: _load_dotenv / _check_required_env coverage
+# ──────────────────────────────────────────────────────────────
+
+def test_load_dotenv_basic(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env.praxist"
+    env_file.write_text(
+        "FOO_KEY=bar_value\n"
+        "BAZ_KEY=baz_value\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("FOO_KEY", raising=False)
+    monkeypatch.delenv("BAZ_KEY", raising=False)
+    result = sup._load_dotenv(root=str(tmp_path))
+    assert result is True
+    assert os.environ.get("FOO_KEY") == "bar_value"
+    assert os.environ.get("BAZ_KEY") == "baz_value"
+
+
+def test_load_dotenv_existing_env_wins(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env.praxist"
+    env_file.write_text("EXISTING_KEY=from_file\n", encoding="utf-8")
+    monkeypatch.setenv("EXISTING_KEY", "from_shell")
+    result = sup._load_dotenv(root=str(tmp_path))
+    assert result is True
+    assert os.environ["EXISTING_KEY"] == "from_shell"  # shell wins
+
+
+def test_load_dotenv_missing_file(tmp_path):
+    result = sup._load_dotenv(root=str(tmp_path))
+    assert result is False
+
+
+def test_load_dotenv_quote_stripping(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env.praxist"
+    env_file.write_text(
+        "SINGLE_Q=\'hello\'\n"
+        "DOUBLE_Q=\"world\"\n"
+        "MISMATCH=\'nope\"\n"
+        "EMPTY=\n",
+        encoding="utf-8",
+    )
+    for k in ("SINGLE_Q", "DOUBLE_Q", "MISMATCH", "EMPTY"):
+        monkeypatch.delenv(k, raising=False)
+    sup._load_dotenv(root=str(tmp_path))
+    assert os.environ["SINGLE_Q"] == "hello"
+    assert os.environ["DOUBLE_Q"] == "world"
+    assert os.environ["MISMATCH"] == "\u0027nope\""  # mismatched → not stripped
+    assert os.environ["EMPTY"] == ""
+
+
+def test_load_dotenv_strips_export_prefix(tmp_path, monkeypatch):
+    """M2: bash-compatible `export KEY=val` lines."""
+    env_file = tmp_path / ".env.praxist"
+    env_file.write_text("export MY_EXPORT_KEY=exported_value\n", encoding="utf-8")
+    monkeypatch.delenv("MY_EXPORT_KEY", raising=False)
+    sup._load_dotenv(root=str(tmp_path))
+    assert os.environ["MY_EXPORT_KEY"] == "exported_value"
+
+
+def test_load_dotenv_strips_inline_comments(tmp_path, monkeypatch):
+    """M1: trailing ` # comment` stripped for unquoted values."""
+    env_file = tmp_path / ".env.praxist"
+    env_file.write_text(
+        "KEY_WITH_COMMENT=value  # this is a comment\n"
+        "KEY_QUOTED=\'value  # not a comment\'\n",
+        encoding="utf-8",
+    )
+    for k in ("KEY_WITH_COMMENT", "KEY_QUOTED"):
+        monkeypatch.delenv(k, raising=False)
+    sup._load_dotenv(root=str(tmp_path))
+    assert os.environ["KEY_WITH_COMMENT"] == "value"
+    # Quoted value preserves the # as part of the value (quotes stripped)
+    assert os.environ["KEY_QUOTED"] == "value  # not a comment"
+
+
+def test_load_dotenv_skips_underscore_keys(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env.praxist"
+    env_file.write_text("_INTERNAL=secret\nPUBLIC=visible\n", encoding="utf-8")
+    monkeypatch.delenv("_INTERNAL", raising=False)
+    monkeypatch.delenv("PUBLIC", raising=False)
+    sup._load_dotenv(root=str(tmp_path))
+    assert os.environ.get("_INTERNAL") is None
+    assert os.environ["PUBLIC"] == "visible"
+
+
+def test_check_required_env_present(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("PRIMARY_MODEL", "qwen")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://test")
+    missing_req, missing_rec = sup._check_required_env()
+    assert missing_req == []
+    assert missing_rec == []
+
+
+def test_check_required_env_missing():
+    # Save and clear
+    saved = {}
+    for k in ("ANTHROPIC_API_KEY", "PRIMARY_MODEL", "ANTHROPIC_BASE_URL"):
+        saved[k] = os.environ.pop(k, None)
+    try:
+        missing_req, missing_rec = sup._check_required_env()
+        assert "ANTHROPIC_API_KEY" in missing_req
+        assert "PRIMARY_MODEL" in missing_rec
+        assert "ANTHROPIC_BASE_URL" in missing_rec
+    finally:
+        for k, v in saved.items():
+            if v is not None:
+                os.environ[k] = v
+
