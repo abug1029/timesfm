@@ -708,6 +708,19 @@ def _proposal_priority_score(prop, cov, symbol, snapshot):
     if "%s_%s" % (symbol, cov) not in (snapshot or {}):
         score += 5.0
     score += {0: 6.0, 1: 4.0, 2: 2.0}.get(n_cov_ok, 0.0)
+    n_fail = 0
+    for v in (snapshot or {}).values():
+        if v.get("symbol") == symbol and v.get("status", "ok") == "ok" and not v.get("gate_pass"):
+            n_fail += 1
+    if n_fail >= 8:
+        score -= 24.0 + 8.0 * (n_fail - 7)
+    elif n_fail >= 3:
+        score -= 4.0 * (n_fail - 2)
+    st = str((load_symbol_status().get(symbol) or {}).get("status") or "ACTIVE").upper()
+    if st == "DEAD":
+        score -= 50.0
+    elif st == "HOLD":
+        score -= 20.0
     return score
 
 def _append_backlog(prop, src_path):

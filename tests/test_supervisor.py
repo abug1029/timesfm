@@ -1193,3 +1193,31 @@ def test_proposal_score_guards():
            for i in range(3)}
     f = sup._proposal_priority_score(prop, "cci", "hc", sat)
     assert abs(f - 8.0) < 1e-9, f
+
+def test_proposal_score_symbol_fail_penalty(monkeypatch):
+    prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
+    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
+    fail_snap = {
+        "eg_c%d" % i: {
+            "variant_id": "eg_c%d" % i, "symbol": "eg", "cov_override": "c%d" % i,
+            "status": "ok", "gate_pass": False, "dir_acc": 0.45,
+        }
+        for i in range(8)
+    }
+    eg = sup._proposal_priority_score(prop, "oi", "eg", fail_snap)
+    sr = sup._proposal_priority_score(prop, "oi", "sr", fail_snap)
+    # sr: 机制3 + 新颖5 + 探索6 = 14；eg 同结构再减 24+8=32 → -18
+    assert abs(sr - 14.0) < 1e-9, sr
+    assert abs(eg - (14.0 - 32.0)) < 1e-9, eg
+
+
+def test_proposal_score_symbol_status_penalty(monkeypatch):
+    prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
+    monkeypatch.setattr(sup, "load_symbol_status", lambda: {
+        "eg": {"status": "DEAD"}, "jd": {"status": "HOLD"},
+    })
+    base = sup._proposal_priority_score(prop, "oi", "sr", {})
+    dead = sup._proposal_priority_score(prop, "oi", "eg", {})
+    hold = sup._proposal_priority_score(prop, "oi", "jd", {})
+    assert abs(dead - (base - 50.0)) < 1e-9
+    assert abs(hold - (base - 20.0)) < 1e-9
