@@ -299,6 +299,7 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         except Exception as e:
             print(f"[WARN] resolve_cov_family failed: {e}", file=sys.stderr)
     s.pop("point_dir_ok_list", None)
+    effective_min = compute_effective_min(0.52, baseline_dir_acc)
     out = {
         "schema": "fm.aligned_verdict.v2",
         "status": "ok",
@@ -320,6 +321,8 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         "mape": m["mape"],
         "decay": m["decay"],
         "gate_pass": gate_pass,
+        "baseline_dir_acc": baseline_dir_acc,
+        "effective_min": effective_min,
         "p_value": p_value,
         "fdr_pass": None,
         "migrated_pass": None,
@@ -335,6 +338,8 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
             "mape": m["mape"],
             "decay": m["decay"],
             "gate_pass": gate_pass,
+            "baseline_dir_acc": baseline_dir_acc,
+            "effective_min": effective_min,
         },
     }
     if gm is not None:
@@ -389,6 +394,12 @@ def map_summary(s):
     }
 
 
+def compute_effective_min(min_dir_acc=0.52, baseline_dir_acc=None):
+    if baseline_dir_acc is not None:
+        return max(0.50, min(float(min_dir_acc), float(baseline_dir_acc)))
+    return float(min_dir_acc)
+
+
 def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
     """Hard gate for variant promotion."""
     n = s.get("n")
@@ -402,10 +413,7 @@ def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
         return False
     if n < min_n or n_eff < min_n_eff:
         return False
-    if baseline_dir_acc is not None:
-        effective_min = max(0.50, min(min_dir_acc, baseline_dir_acc))
-    else:
-        effective_min = min_dir_acc
+    effective_min = compute_effective_min(min_dir_acc, baseline_dir_acc)
     return dir_acc >= effective_min
 
 

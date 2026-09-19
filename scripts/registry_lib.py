@@ -12,11 +12,13 @@ VERDICT_FIELDS_V2 = {
     "p_value", "fdr_pass", "migrated_pass",
     "endpoint_mape", "endpoint_bias_pct", "path_corr", "mae", "mape", "decay",
     "checkpoint_path", "slow_loop_pid", "git_rev", "decided_at",
+    "baseline_dir_acc", "effective_min",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
     "fdr_pass", "migrated_pass", "endpoint_mape", "endpoint_bias_pct",
     "cov_family", "weighted_dir_acc", "error_message",
+    "baseline_dir_acc", "effective_min",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",
@@ -327,6 +329,8 @@ def make_error_tombstone(symbol, variant_id, batch_id, exception):
         "slow_loop_pid": None,
         "git_rev": None,
         "decided_at": None,
+        "baseline_dir_acc": None,
+        "effective_min": None,
         "metrics": {
             "batch_id": batch_id,
             "symbol": symbol,
@@ -379,6 +383,8 @@ def make_timeout_tombstone(symbol, variant_id, batch_id):
         "slow_loop_pid": None,
         "git_rev": None,
         "decided_at": None,
+        "baseline_dir_acc": None,
+        "effective_min": None,
         "metrics": {
             "batch_id": batch_id,
             "symbol": symbol,

@@ -210,3 +210,5 @@ def test_error_tombstone_has_metrics():
     assert t["schema"] == "fm.aligned_verdict.v2"
     assert t["status"] == "error" and t["gate_pass"] is False and t["p_value"] == 1.0
     assert t["metrics"]["batch_id"] == "b1"
+    assert t.get("baseline_dir_acc") is None
+    assert t.get("effective_min") is None

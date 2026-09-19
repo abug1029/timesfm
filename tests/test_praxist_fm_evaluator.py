@@ -51,6 +51,36 @@ def test_gate_null_safe():
     assert fm.gate({"n": None, "n_eff": None, "dir_acc": None}) is False
 
 
+def test_compute_effective_min_matches_v23():
+    assert fm.compute_effective_min(0.52, 0.486) == 0.50
+    assert fm.compute_effective_min(0.52, 0.502) == 0.502
+    assert fm.compute_effective_min(0.52, 0.55) == 0.52
+    assert fm.compute_effective_min(0.52, None) == 0.52
+
+
+def test_gate_m_pca_momentum_repro():
+    s = {"n": 588, "n_eff": 73, "dir_acc": 0.502}
+    assert fm.gate(s, baseline_dir_acc=0.486) is True
+    assert fm.gate(s) is False
+
+
+def test_gate_sr_crack_spread_repro():
+    s = {"n": 588, "n_eff": 73, "dir_acc": 0.510}
+    assert fm.gate(s, baseline_dir_acc=0.502) is True
+    assert fm.gate(s, baseline_dir_acc=0.55) is False
+
+
+def test_build_summary_persists_effective_min(tmp_path):
+    s = _summarize_v23(n=400, n_eff=400, dir_acc=0.502)
+    cand = {"symbol": "m", "cov_override": "pca_momentum", "max_points": 6, "stage": "aligned"}
+    out = fm.build_summary(s, cand, baseline_dir_acc=0.486, batch_id="b1")
+    assert out["gate_pass"] is True
+    assert out["baseline_dir_acc"] == 0.486
+    assert out["effective_min"] == 0.50
+    assert out["metrics"]["effective_min"] == 0.50
+    assert out["metrics"]["baseline_dir_acc"] == 0.486
+
+
 # ── map_summary tests ──
 
 def test_map_summary_v23_keys():
