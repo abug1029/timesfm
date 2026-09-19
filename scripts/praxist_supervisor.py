@@ -820,7 +820,66 @@ _ev_mod_for_goal = _load_evaluator()
 GOAL_SYMBOLS_SET = frozenset({"m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"})
 del _ev_mod_for_goal
 
-def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None):
+
+
+def _cross_run_repeat_counts(root=None, max_runs=20):
+    """Count how many runs each variant_id appears in (shared_findings).
+
+    Returns {variant_name: run_count}. Used for repeat-offender penalty.
+    Scans at most `max_runs` most recent runs to bound cost.
+    """
+    base = root or FM_ROOT
+    runs_dir = os.path.join(base, "task_FM", "experiments")
+    if not os.path.isdir(runs_dir):
+        return {}
+    # Most recent N runs
+    run_dirs = sorted(glob.glob(os.path.join(runs_dir, "run_*")),
+                      key=os.path.getmtime, reverse=True)[:max_runs]
+    counts = {}
+    for rd in run_dirs:
+        sf_dir = os.path.join(rd, "shared_findings")
+        if not os.path.isdir(sf_dir):
+            continue
+        seen_in_run = set()
+        for f in glob.glob(os.path.join(sf_dir, "*.json")):
+            try:
+                d = json.load(open(f, encoding="utf-8"))
+                # variant_name is the symbol_cov key
+                vn = d.get("variant_name") or ""
+                if not vn:
+                    title = d.get("title", "")
+                    vn = title.split(":")[0].strip() if ":" in title else ""
+                if vn:
+                    seen_in_run.add(vn)
+            except (OSError, json.JSONDecodeError):
+                continue
+        for vn in seen_in_run:
+            counts[vn] = counts.get(vn, 0) + 1
+    return counts
+
+
+def _dead_families(snapshot, min_ok=4):
+    """Return set of family names with >= min_ok ok verdicts and 0 pass.
+
+    These families are considered DEAD: no amount of re-proposing will help
+    without a fundamental mechanism change.
+    """
+    fam_ok = {}
+    fam_pass = {}
+    for v in (snapshot or {}).values():
+        if not isinstance(v, dict) or v.get("status", "ok") != "ok":
+            continue
+        fam = str(v.get("cov_family") or "").strip()
+        if not fam:
+            continue
+        fam_ok[fam] = fam_ok.get(fam, 0) + 1
+        if v.get("gate_pass"):
+            fam_pass[fam] = fam_pass.get(fam, 0) + 1
+    return {fam for fam, n in fam_ok.items()
+            if n >= min_ok and fam_pass.get(fam, 0) == 0}
+
+
+def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None, repeat_counts=None):
     """机制化排序 (替代噪声小样本 EV)。确定性可复现。
     1) 协变量履历 (v23 口径): 同 cov 任一品种 (含自身; 生产经历史去重同 vid
        不可达) gate_pass=True 时, dir_acc 超过硬门 0.52 的部分 x200 加分。
@@ -858,9 +917,10 @@ def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None):
         if v.get("symbol") == symbol and v.get("status", "ok") == "ok" and not v.get("gate_pass"):
             n_fail += 1
     if n_fail >= 8:
-        score -= 24.0 + 8.0 * (n_fail - 7)
+        # Steeper curve: 8→-50, 9→-60, 10→-70, ...
+        score -= 50.0 + 10.0 * (n_fail - 8)
     elif n_fail >= 3:
-        score -= 4.0 * (n_fail - 2)
+        score -= 8.0 * (n_fail - 2)
     if status_map is None:
         status_map = load_symbol_status()
     st = str((status_map.get(symbol) or {}).get("status") or "ACTIVE").upper()
@@ -887,6 +947,14 @@ def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None):
             score += 8.0
         if n_fam_ok >= 4 and n_fam_pass == 0:
             score -= 8.0
+    # Cross-run repeat offender penalty
+    vid = "%s_%s" % (symbol, cov)
+    repeat_counts = repeat_counts or {}
+    n_runs = repeat_counts.get(vid, 0)
+    if n_runs >= 3:
+        score -= 20.0 + 10.0 * (n_runs - 3)  # 3→-20, 4→-30, 5→-40
+    elif n_runs >= 2:
+        score -= 8.0
     return score
 
 def _append_backlog(prop, src_path):
@@ -978,21 +1046,29 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 _reject("cov_not_in_active_pool"); continue
             if len(mechanism) < 40:
                 _reject("mechanism_too_short"); continue
-            if _has_prior_failure(snapshot or {}, symbol, cov):
-                delta = str(p.get("failure_delta") or "").strip()
-                if len(delta) < 20:
-                    _reject("no_failure_delta"); continue
             vid = "%s_%s" % (symbol, cov)
             sym_st = str((status_map.get(symbol) or {}).get("status") or "ACTIVE").upper()
             if sym_st == "DEAD":
                 _reject("symbol_dead"); continue
             if sym_st == "HOLD":
                 _reject("symbol_hold"); continue
+            # DEAD family check: 4+ ok verdicts, 0 pass → family is dead
+            dead_fams = _dead_families(snapshot or {})
+            fam = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or ""
+            if fam and fam in dead_fams:
+                _reject("family_dead"); continue
+            if _has_prior_failure(snapshot or {}, symbol, cov):
+                delta = str(p.get("failure_delta") or "").strip()
+                if len(delta) < 20:
+                    _reject("no_failure_delta"); continue
             if vid in dead or vid in existing or vid in passing_ids or vid in seen_vids:
                 _reject("dedup"); continue
             seen_vids.add(vid)
             family = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or "other"
-            score = _proposal_priority_score(p, cov, symbol, snapshot or {}, status_map=status_map)
+            repeat_counts = _cross_run_repeat_counts()
+            score = _proposal_priority_score(p, cov, symbol, snapshot or {},
+                                            status_map=status_map,
+                                            repeat_counts=repeat_counts)
             if priority:
                 if symbol not in n_cache:
                     n_cache[symbol] = _valid_n_for_symbol(symbol)

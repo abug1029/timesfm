@@ -1197,31 +1197,29 @@ def test_proposal_score_guards(monkeypatch):
     f = sup._proposal_priority_score(prop, "cci", "hc", sat)
     assert abs(f - 8.0) < 1e-9, f
 
-def test_proposal_score_symbol_fail_penalty(monkeypatch):
+def test_proposal_score_symbol_fail_penalty():
     prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
-    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
     fail_snap = {
         "eg_c%d" % i: {
             "variant_id": "eg_c%d" % i, "symbol": "eg", "cov_override": "c%d" % i,
-            "status": "ok", "gate_pass": False, "dir_acc": 0.45,
+            "cov_family": "", "status": "ok", "gate_pass": False, "dir_acc": 0.45,
         }
         for i in range(8)
     }
-    eg = sup._proposal_priority_score(prop, "oi", "eg", fail_snap)
-    sr = sup._proposal_priority_score(prop, "oi", "sr", fail_snap)
-    # sr: 机制3 + 新颖5 + 探索6 = 14；eg 同结构再减 24+8=32 → -18
-    assert abs(sr - 14.0) < 1e-9, sr
-    assert abs(eg - (14.0 - 32.0)) < 1e-9, eg
+    eg = sup._proposal_priority_score(prop, "oi", "eg", fail_snap, status_map={}, repeat_counts={})
+    sr = sup._proposal_priority_score(prop, "oi", "sr", fail_snap, status_map={}, repeat_counts={})
+    # sr: 机制3 + 新颖5 + 探索6 = 14, no fail penalty (0 eg fails for sr)
+    assert abs(sr - 14.0) < 1e-9, "sr expected 14.0, got %s" % sr
+    # eg: base 14 - 50 (8 fails, new steeper curve) = -36
+    assert abs(eg - (-36.0)) < 1e-9, "eg expected -36.0, got %s" % eg
 
 
-def test_proposal_score_symbol_status_penalty(monkeypatch):
+def test_proposal_score_symbol_status_penalty():
     prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
-    monkeypatch.setattr(sup, "load_symbol_status", lambda: {
-        "eg": {"status": "DEAD"}, "jd": {"status": "HOLD"},
-    })
-    base = sup._proposal_priority_score(prop, "oi", "sr", {})
-    dead = sup._proposal_priority_score(prop, "oi", "eg", {})
-    hold = sup._proposal_priority_score(prop, "oi", "jd", {})
+    smap = {"eg": {"status": "DEAD"}, "jd": {"status": "HOLD"}}
+    base = sup._proposal_priority_score(prop, "oi", "sr", {}, status_map=smap, repeat_counts={})
+    dead = sup._proposal_priority_score(prop, "oi", "eg", {}, status_map=smap, repeat_counts={})
+    hold = sup._proposal_priority_score(prop, "oi", "jd", {}, status_map=smap, repeat_counts={})
     assert abs(dead - (base - 50.0)) < 1e-9
     assert abs(hold - (base - 20.0)) < 1e-9
 
@@ -1410,4 +1408,58 @@ def test_check_required_env_missing():
         for k, v in saved.items():
             if v is not None:
                 os.environ[k] = v
+
+
+# ──────────────────────────────────────────────────────────────
+# Cross-run repeat penalty + DEAD family + rb penalty boost
+# ──────────────────────────────────────────────────────────────
+
+def test_proposal_score_rb_penalty_boosted():
+    """rb with 8 failures should get -50 (was -32 before fix)."""
+    prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
+    fail_snap = {
+        "rb_c%d" % i: {
+            "variant_id": "rb_c%d" % i, "symbol": "rb", "cov_override": "c%d" % i,
+            "status": "ok", "gate_pass": False, "dir_acc": 0.45,
+        }
+        for i in range(8)
+    }
+    rb = sup._proposal_priority_score(prop, "oi", "rb", fail_snap)
+    # Mechanism 3 + novelty 5 + exploration 6 = 14 base, then -50 for 8 fails
+    assert rb < -30, "rb with 8 fails should be heavily negative, got %s" % rb
+
+
+def test_proposal_score_cross_run_repeat():
+    """Variants appearing in 3+ runs should get heavy penalty."""
+    prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
+    rc = {"m_ccl": 5, "ss_stddev": 3, "sr_oi": 1}
+    base = sup._proposal_priority_score(prop, "oi", "sr", {}, status_map={}, repeat_counts={})
+    repeated_5 = sup._proposal_priority_score(prop, "ccl", "m", {}, status_map={}, repeat_counts=rc)
+    repeated_3 = sup._proposal_priority_score(prop, "stddev", "ss", {}, status_map={}, repeat_counts=rc)
+    once = sup._proposal_priority_score(prop, "oi", "sr", {}, repeat_counts=rc)
+    # 5 runs: -40 penalty
+    assert repeated_5 < base - 30, "5-run repeat should be heavily penalized, got %s vs base %s" % (repeated_5, base)
+    # 3 runs: -20 penalty
+    assert repeated_3 < base - 15, "3-run repeat should be penalized, got %s vs base %s" % (repeated_3, base)
+    # 1 run: no penalty
+    assert abs(once - base) < 1e-9, "1-run should have no repeat penalty, got %s vs base %s" % (once, base)
+
+
+def test_dead_families_identified():
+    """Families with 4+ ok and 0 pass should be DEAD."""
+    snap = {
+        "m_ccl": {"variant_id": "m_ccl", "symbol": "m", "cov_override": "ccl",
+                  "cov_family": "ccl", "status": "ok", "gate_pass": False},
+        "ss_ccl": {"variant_id": "ss_ccl", "symbol": "ss", "cov_override": "ccl",
+                   "cov_family": "ccl", "status": "ok", "gate_pass": False},
+        "rb_ccl": {"variant_id": "rb_ccl", "symbol": "rb", "cov_override": "ccl",
+                   "cov_family": "ccl", "status": "ok", "gate_pass": False},
+        "jd_ccl": {"variant_id": "jd_ccl", "symbol": "jd", "cov_override": "ccl",
+                   "cov_family": "ccl", "status": "ok", "gate_pass": False},
+        "m_oi": {"variant_id": "m_oi", "symbol": "m", "cov_override": "oi",
+                 "cov_family": "oi", "status": "ok", "gate_pass": True},
+    }
+    dead = sup._dead_families(snap)
+    assert "ccl" in dead, "ccl should be DEAD (4 ok, 0 pass)"
+    assert "oi" not in dead, "oi should NOT be DEAD (has pass)"
 

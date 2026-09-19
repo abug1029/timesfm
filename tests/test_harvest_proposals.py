@@ -293,3 +293,42 @@ def test_failure_delta_enqueued_when_present(tmproot):
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 1
     assert rows[0]["variant_id"] == "m_oi"
+
+
+def test_dead_family_harvest_rejected(tmproot):
+    """Proposals for DEAD families (4+ ok, 0 pass) rejected at harvest."""
+    # ccl -> pool family "inventory". Use pool family name in snapshot.
+    snap = {
+        "m_ccl_prev": {"variant_id": "m_ccl_prev", "symbol": "m",
+                       "cov_override": "ccl_prev", "cov_family": "inventory",
+                       "status": "ok", "gate_pass": False, "dir_acc": 0.45},
+        "ss_ccl_prev": {"variant_id": "ss_ccl_prev", "symbol": "ss",
+                        "cov_override": "ccl_prev2", "cov_family": "inventory",
+                        "status": "ok", "gate_pass": False, "dir_acc": 0.44},
+        "rb_ccl_prev": {"variant_id": "rb_ccl_prev", "symbol": "rb",
+                        "cov_override": "ccl_prev3", "cov_family": "inventory",
+                        "status": "ok", "gate_pass": False, "dir_acc": 0.43},
+        "jd_ccl_prev": {"variant_id": "jd_ccl_prev", "symbol": "jd",
+                        "cov_override": "ccl_prev4", "cov_family": "inventory",
+                        "status": "ok", "gate_pass": False, "dir_acc": 0.42},
+    }
+    _make_run(tmproot, _prop(symbol="m", cov="ccl", family="inventory"))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert stats["selected"] == 0, "DEAD family proposal should not be selected"
+    assert "family_dead" in stats["reject_reasons"], \
+        "reject_reason should be family_dead, got %s" % list(stats["reject_reasons"].keys())
+
+
+def test_live_family_still_enqueued(tmproot):
+    """Families with at least 1 pass should NOT be rejected as dead."""
+    # oi -> pool family "inventory"
+    snap = {
+        "m_oi_prev": {"variant_id": "m_oi_prev", "symbol": "m",
+                      "cov_override": "oi_prev", "cov_family": "inventory",
+                      "status": "ok", "gate_pass": True, "dir_acc": 0.55},
+    }
+    _make_run(tmproot, _prop(symbol="ss", cov="oi", family="inventory"))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert stats["selected"] == 1, "Live family should be enqueued"
+    assert "family_dead" not in stats["reject_reasons"]
+
