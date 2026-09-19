@@ -15,8 +15,10 @@
 | 监督状态 | `data/cache/supervisor_state.json` |
 | 监督锁 | `data/cache/supervisor.lock` |
 | 决策日志 | `.omc/supervisor_decisions.jsonl` |
-| Known verdicts | `task_FM/known_verdicts.inc.md`（`prompt_base.jinja2` `{% include %}`） |
-| Verdict 注册表 | `task_FM/config/aligned_verdicts.jsonl`（仅慢环可写） |
+| Known verdicts | `task_FM/known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose；`prompt_base.jinja2` `{% include %}`） |
+| 品种探索状态 | `task_FM/config/symbol_status.json`（eg=DEAD，jd/lh=HOLD；人手改 JSON，代码不自动复活） |
+| 面板 topology | `task_FM/.praxist/plugins/panel_topologies/fm_two_peer/`（`cohort_size=2` → exploit+falsifier） |
+| Verdict 注册表 | `task_FM/config/aligned_verdicts.jsonl`（仅慢环可写；新行含 `baseline_dir_acc`/`effective_min`） |
 
 **TimesFM 权重 / RAM：** PRAXIST 用本仓 `models/timesfm-2.5-200m-pytorch/`（`TIMESFM_MODEL_PATH` / `.env.praxist`）。**当前 WSL2 仅 7.7 GiB / 无 GPU / 无 swap**：方案 A（2026-09-08，peer 只写机制化提案、零 TimesFM 加载）后 peer 常驻 ~330MB，TimesFM 仅慢环单实例加载，N=2 舒适；旧盒（15GiB）"并行 peer eval 共载"结论在本机不适用。详见 `docs/host_environment_assessment.md` 顶部迁移表。
 
@@ -122,7 +124,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 ## Harvest 与 Known verdicts（方案 A：机制化假设作者，2026-09-08 起）
 
 - Peer **不跑评估**，只写机制优先的结构化提案：`task_FM/experiments/run_*/results/gen_*/<peer>/proposals/<symbol>_<cov>.json`（schema `fm.hypothesis_proposal.v1`，`mechanism` ≥40 字）。监督环在**活 run 已结束**时由 `harvest_proposals` 收割：`paused_429` / `wait_quota` / failover **不挡** harvest（提案是本地文件）。每 cycle 重扫全部 `run_*/results/**/proposals/*.json`，dead/passing/in-flight 去重。旧 `harvest_survivors`（读 `evaluation_summary.json`）仅留作回滚，不是现行源。
-- **拒绝计数（fail visibly）**：`missing_symbol_or_cov` / `symbol_not_allowed` / `cov_archived` / `cov_not_in_active_pool` / `mechanism_too_short` / `dedup`（dead / 已过门 / in-flight / 本批重复）/ `backlog_dup`。
+- **拒绝计数（fail visibly）**：`missing_symbol_or_cov` / `symbol_not_allowed` / `cov_archived` / `cov_not_in_active_pool` / `mechanism_too_short` / `no_failure_delta`（同 symbol 或同 cov 已失败且 delta 不足 20 字）/ `symbol_dead` / `symbol_hold` / `dedup`（dead / 已过门 / in-flight / 本批重复）/ `backlog_dup`。
 - **新协变量想法** `new_cov_<name>.json`（`cov_override=null`）→ 追加 `task_FM/config/covariate_backlog.jsonl`（按 name 去重），**不入队**；宿主在 `features.py` 实现并入池后才可测。
 - **选座（top_k = `survivors_per_cycle`，当前 3）**：先按 tier 排序再两遍 QD——
   1. tier 0：`cadence.priority_symbols`（目标 1 星品种 m/ss/sr/cj/jd/lh/eg/rb）中当前有效点 n≥350 者；
@@ -132,10 +134,10 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 - 0 份合格提案 → `harvest_empty`（仍计 1 cycle）。有入队则 `phase=slow`，cycle 等到慢环抽干再 +1。
 - 每 tick（无论 phase）还跑 `_maybe_enqueue_retests`：对「硬门仅差 n」的近失误裁决（`n<350 且 ic≥0.05 且 ev>0 且 pf/incumbent>1.05`；2026-09-11 时点判据，运行时以 scripts/praxist_supervisor.py `_retest_candidates` 为准，2026-09-17 起裁决口径见 v23 spec），当本地库有效点长到 ≥350 且比上次裁决多 ≥`retest_min_new_points` 点时，**旁路 dead 去重**补队（`source:"sample_retest"`），checkpoint resume 只算新点。dry-run 中以 `sample_retest_plan` 行展示。
 - 菜单 `covariate_menu.inc.md` 每轮由协变量池 + **品种样本天花板表**（每品种当前可对齐有效点，`BELOW GATE`/`gate-reachable`，`_valid_n_for_symbol` 复刻月度回测有效点计数，fail-open）物化生成。
-- 非 dry-run 每轮会 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`。
-- `prompt_base.jinja2`：`{% include 'known_verdicts.inc.md' ignore missing %}` 与 `covariate_menu.inc.md`；渲染结果含 `variant_id` 与 `gate_pass=`。
+- 非 dry-run 每轮会 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`（品种表不截断；Effective clues 从 snapshot 现场算过门族/近门/弱族；禁止再提案最多 80 条）。
+- `prompt_base.jinja2`：先读证据再写提案；`{% include 'known_verdicts.inc.md' ignore missing %}` 与 `covariate_menu.inc.md`。**不要**再写「优先波动率族」。
 - **红线：** 只有 `aligned_slow_loop.py` 可写 `aligned_verdicts.jsonl`。
-- **已知语义瑕疵（待修；2026-09-11 时点观察，本条 n+ic 硬门为旧口径，v23 裁决口径见 v23 spec）：** 硬门只判 n+ic，`i_oi` 曾 gate_pass=True 但 ev=−2.46（dir=0.467 的空头方向）；成功条件（ev>0、PF 比>1.05）正确排除，但 materializer 仍把它写成 `gate_pass=True … do NOT re-propose`，对 peer 有误导，需区分"过门"与"过硬门但亏钱"。
+- materializer 三态已区分 `v2_pass` / `hard-gate-but-losing` / 变体级 `DEAD`。过硬门但未过 FDR **不是** already solved。`dir_acc` 略低于 0.52 仍 `gate_pass=True` 是品种自适应门槛，不是 bug。
 
 ### 当前 goal（以 `scripts/praxist_goal.yaml` 为准）
 
@@ -170,7 +172,9 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 |------|------|
 | `another supervisor holds the lock` | 已有实例；查 `supervisor.lock` / 进程 |
 | `another slow loop instance holds the lock` | 同上，慢环锁 |
-| harvest 空但 run 已结束 | 方案 A 后看 `results/**/proposals/*.json`：缺提案、机制 <40 字、cov 不在 active 池、symbol 非法都会 reject；看决策日志 `proposal_scan` 的 `reject_reasons` |
+| harvest 空但 run 已结束 | 看 `results/**/proposals/*.json` 与 `reject_reasons`：机制 <40、`no_failure_delta`、DEAD/HOLD 品种、cov 不在池、symbol 非法都会拒 |
+| PI 议程总是 `.rejected` 缺 exploit/falsifier | `cohort_size=2` 必须用 `panel_topology:fm_two_peer`。仍指向 `legacy_multi_pi_two_round` 时 2 个合同盖不住 4 角色。改完重启监督环 |
+| `dir_acc<0.52` 但 `gate_pass=True` | 查 verdict 的 `effective_min`/`baseline_dir_acc`。低基线品种可放到 0.50。不要改 `gate()` 公式 |
 | 429 后开了新 run | 同提供商同 model id 应 resume `last_run_dir`；model id 不同（failover）允许新 run_dir。查 `paused_429` / `llm_provider` |
 | token 预算误停 | `tok_unknown` 时跳过 token 预算；确认 generation_results 是否有 `runtime_usage` |
 | peers 看不到 verdict | 查 `known_verdicts.inc.md` 是否被 materialize；模板 include 是否在 `prompt_base.jinja2` |
@@ -182,6 +186,8 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 ## 相关文件
 
 - `docs/praxist.md` — 架构概览（本体 vs 三环、现行合同、现场快照）
+- `docs/2026-09-19-three-loop-followup-spec.md` — 2026-09-19 跟进合同
+- `docs/2026-09-19-peer-proposal-quality-verification.md` — 提案质量单测验证
 - `scripts/praxist_supervisor.py` — 监督环
 - `scripts/aligned_slow_loop.py` — 慢环
 - `scripts/mem_guard.py` — 全局 flock≤2 + MemAvailable 门 + RSS shed（RLIMIT_AS 默认 OFF）

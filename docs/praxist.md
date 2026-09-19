@@ -6,7 +6,7 @@
 |---|---|
 | 理解架构与合同 | 本文 |
 | 启停 / 429 / 队列 / 复测 | [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) |
-| 快环现行合同（方案 A） | [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) |
+| 快环现行合同（方案 A） | [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md)；选题纪律见 [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) |
 | LLM 环境变量 | [praxist_llm_env.md](./praxist_llm_env.md) |
 | 宿主容量与内存硬顶 | [host_environment_assessment.md](./host_environment_assessment.md) |
 | 机器状态 / 裁决 | `data/cache/supervisor_state.json`、`task_FM/config/aligned_verdicts.jsonl` |
@@ -70,7 +70,7 @@ Peer 第一件事：至少写 2 份假设到
 
 `task_FM/experiments/run_*/results/gen_<N>/<peer>/proposals/<symbol>_<cov>.json`
 
-合同：`schema=fm.hypothesis_proposal.v1`，`mechanism` ≥40 字（禁模板）、`symbol_fit`、预注册 kill/promote。只许提议协变量池里 **active** 的项（`task_FM/config/covariate_pool.json`，目前 30 个、6 族受控词表（`cascade/cov_family.py`），当前池覆盖 5 族）。新指标写 `new_cov_<name>.json`，进 backlog，不入评估队列。
+合同：`schema=fm.hypothesis_proposal.v1`，`mechanism` ≥40 字（禁模板）、`symbol_fit`、预注册 kill/promote。同品种或同协变量已有失败 verdict 时必填 `failure_delta` ≥20 字。只许提议协变量池里 **active** 的项（`task_FM/config/covariate_pool.json`，6 族受控词表 `cascade/cov_family.py`）。新指标写 `new_cov_<name>.json`，进 backlog，不入评估队列。品种探索状态见 `task_FM/config/symbol_status.json`。
 
 ### 监督环
 
@@ -78,9 +78,11 @@ Peer 第一件事：至少写 2 份假设到
 
 1. 用 `scripts/praxist_goal.yaml` 的 DSL 判定成功 / 预算
 2. 配额窗够才 `praxist start` / `resume`；429 则 stop。同提供商、同 model id 解封后 **resume 同一 run**；failover 且 model id 不同时允许新 `run_dir`
-3. run 结束后 `harvest_proposals`：校验 → 去重 → 分层选座 → 入慢环队列
+3. run 结束后 `harvest_proposals`：校验（含 DEAD/HOLD、`failure_delta`）→ 去重 → 分层选座 → 入慢环队列
 4. 有货立刻拉慢环
-5. 物化 `known_verdicts.inc.md` 与 `covariate_menu.inc.md`，喂给下一代
+5. 物化 `known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose）与 `covariate_menu.inc.md`，喂给下一代。提示词先读证据，不要优先波动率族。
+
+快环面板：`task_FM/task.yaml` 的 `cohort_size=2` 配任务侧 `panel_topology:fm_two_peer`（`peer_role_rotation = [exploit, falsifier]`）。bundled 默认要 4 个角色，两人 cohort 盖不住，议程会被拒。**不要改 `.venv` 里的 Praxist。** 改 topology 后重启监督环。
 
 选座（`survivors_per_cycle=3`）：目标 1 星且 n≥350 → 1 星欠样本（cj/lh）→ 其余；同层再按协变量族正交填。
 
@@ -92,7 +94,7 @@ Peer 第一件事：至少写 2 份假设到
 
 - n ≥ 350
 - n_eff ≥ 50（Bartlett 有效样本量）
-- dir_acc ≥ 0.52（品种自适应 effective_min = max(0.50, min(0.52, baseline_dir_acc))，单侧不取 abs）
+- dir_acc ≥ `effective_min`（`max(0.50, min(0.52, baseline_dir_acc))`，基线缺失时 0.52；新 verdict 落库这两字段）
 - 统计显著性：DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol；K<4 时降级固定 Bonferroni α=0.025）
 - PF/EV/MaxDD/IC 退役出裁决链，仅作经济报表字段
 

@@ -3,6 +3,7 @@
 > 日期: 2026-09-08
 > 状态: **已实施（2026-09-08 上线，当日首个过门策略 ss_vor 即出自本方案）**
 > 更新: 2026-09-17 起 promote 判据已按 v23 spec 同步（`docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`）
+> 选题纪律（2026-09-19）：先读 known_verdicts 的 Effective clues，不要优先波动率；有失败史必填 `failure_delta`。合同见 `docs/2026-09-19-three-loop-followup-spec.md` 与 `docs/2026-09-19-peer-proposal-quality-verification.md`。本文件其余章节是 2026-09-08 方案 A 原文，不在这里重复改提示词。
 > 关联文档: archive/history/praxist_peer_evaluation_fix.md（已归档）, audit_system_efficiency_20260908.md, runbook_praxist_three_loop.md
 
 > **实施后增补（2026-09-09）**：

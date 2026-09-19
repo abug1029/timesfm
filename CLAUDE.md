@@ -28,9 +28,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM/` 提供科学合同；外层监督环零 token 调度。架构见 `docs/praxist.md`，运维见 `docs/runbook_praxist_three_loop.md`。**不要改 .venv 里的 Praxist 源码（升级会丢）。
 
-- 快环：peer 只写机制化假设（方案 A），不加载 TimesFM
+- 快环：peer 只写机制化假设（方案 A），不加载 TimesFM。`cohort_size=2` 用任务侧 `panel_topology:fm_two_peer`（exploit+falsifier），不要改 `.venv` 校验器。
 - 慢环：`scripts/aligned_slow_loop.py` 是唯一验证器，唯一可写 `aligned_verdicts.jsonl`
-- 硬门（v23）：n≥350、n_eff≥50、dir_acc≥0.52（品种自适应 effective_min = max(0.50, min(0.52, baseline_dir_acc))）；统计裁决 = DM 检验（Newey-West HAC + HLN） + BH-FDR（per-symbol；K<4 降级 Bonferroni α=0.025）；verdict schema `fm.aligned_verdict.v2`。裁决唯一权威 = `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`
+- 硬门（v23）：n≥350、n_eff≥50、dir_acc ≥ `effective_min`（`max(0.50, min(0.52, baseline_dir_acc))`）。低于字面 0.52 仍过门是自适应设计；新 verdict 带 `baseline_dir_acc`/`effective_min`。统计裁决 = DM + BH-FDR；schema `fm.aligned_verdict.v2`。权威 = `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`
+- 品种状态：`task_FM/config/symbol_status.json`。选题读 `known_verdicts.inc.md` 的 Effective clues，不要优先波动率。有失败史必须 `failure_delta`。跟进合同：`docs/2026-09-19-three-loop-followup-spec.md`
 - 目标：`scripts/praxist_goal.yaml`；机器状态：`data/cache/supervisor_state.json`
 - 密钥只进 `.env.praxist`，不要写进 `task_FM/task.yaml`
 

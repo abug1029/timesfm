@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-09-17 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-19 -->
 
 # docs
 
@@ -14,7 +14,9 @@
 | `README.md` | 文档索引 |
 | `praxist.md` | Praxist 架构概览（本体 vs 三环；现行合同） |
 | `runbook_praxist_three_loop.md` | Praxist 三环运维 |
-| `spec_hypothesis_driven_fast_loop_20260908.md` | 方案 A：peer 只写假设 |
+| `spec_hypothesis_driven_fast_loop_20260908.md` | 方案 A：peer 只写假设（提示词纪律已被 2026-09-19 跟进覆盖） |
+| `2026-09-19-three-loop-followup-spec.md` | 三环跟进合同：自适应门可观测、两人议程、DEAD/HOLD |
+| `2026-09-19-peer-proposal-quality-verification.md` | 提案质量改动的单测验证（过门率仍待下一轮快环） |
 | `runbook.md` | 日常运维 |
 | `copilot.md` | Copilot 用法 |
 | [已归档] `./archive/history/vol-risk.md` | Vol 风控状态（生产默认 OFF） |
@@ -43,9 +45,9 @@
 
 > 固化判据 v2 的 Rule1–Rule5（MaxDD 一票否决 / EV 翻正绿通等）已随 v23 退役出裁决链；旧文见 `./archive/history/validation_criteria.md`（已归档）。现行裁决口径唯一权威 = v23 spec `./superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`：
 
-- 硬门：n≥350、n_eff≥50（Bartlett）、dir_acc≥0.52（品种自适应 effective_min = max(0.50, min(0.52, baseline_dir_acc))）
+- 硬门：n≥350、n_eff≥50（Bartlett）、dir_acc ≥ `effective_min`（`max(0.50, min(0.52, baseline_dir_acc))`）。新 verdict 落库这两字段；缺字段的历史行按「未知门槛」读，不要假设恒为 0.52。
 - 统计裁决：DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol 多重校正；K<4 时降级固定 Bonferroni α=0.025）
-- 裁决三态：`v2_pass` / `hard-gate-but-losing` / `DEAD`（`scripts/praxist_supervisor.py::materialize_known_verdicts`）
+- 裁决三态：`v2_pass` / `hard-gate-but-losing` / 变体级 `DEAD`（`materialize_known_verdicts`）。品种级探索状态另见 `task_FM/config/symbol_status.json`（`SYMBOL_DEAD` / `HOLD`），不要和变体级 DEAD 混名。
 - PF/EV/MaxDD/IC：仅经济报表字段，不参与裁决
 
 ### Note on EV unit

@@ -23,7 +23,10 @@
 |------|------|
 | [praxist.md](./praxist.md) | **架构概览（先读）**：Praxist 本体 vs 本仓三环、方案 A 合同、当前目标与现场 |
 | [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | **运维手册**：启停、429 failover、队列/checkpoint、方案 A 收割、近失误复测、故障速查 |
-| [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（已实施，含 2026-09-09 增补） |
+| [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（已实施；提示词选题纪律以 2026-09-19 为准） |
+| [2026-09-19-verdict-analysis-report.md](./2026-09-19-verdict-analysis-report.md) | 2026-09-19 裁决分析（81 verdicts；提案过门 0/11） |
+| [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 |
+| [2026-09-19-peer-proposal-quality-verification.md](./2026-09-19-peer-proposal-quality-verification.md) | 提案质量改动单测验证；过门率待下一轮快环 |
 | [praxist_directive_design.md](./archive/history/praxist_directive_design.md) | 指令/目标 DSL 设计 |
 | [praxist_integration_plan.md](./archive/history/praxist_integration_plan.md) | 三环集成计划 |
 | [praxist_llm_env.md](./praxist_llm_env.md) | LLM 环境变量（Ark 主 / DashScope 备） |

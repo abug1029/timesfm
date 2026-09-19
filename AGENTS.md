@@ -54,11 +54,14 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
    └─ 慢环  scripts/aligned_slow_loop.py        唯一验证器；唯一可写 aligned_verdicts.jsonl
 ```
 
-- 快环产物：`results/gen_<N>/<peer>/proposals/<symbol>_<cov>.json`（`fm.hypothesis_proposal.v1`，mechanism ≥40 字）
-- 硬门（v23）：n≥350、n_eff≥50（Bartlett）、dir_acc≥0.52（品种自适应 effective_min = max(0.50, min(0.52, baseline_dir_acc))，单侧不取 abs，反向变体直接拒绝）（`config/praxist_task.yaml`）
+- 快环产物：`results/gen_<N>/<peer>/proposals/<symbol>_<cov>.json`（`fm.hypothesis_proposal.v1`，mechanism ≥40 字；有历史失败时必填 `failure_delta` ≥20 字）
+- 面板：`cohort_size=2`，任务侧 topology `panel_topology:fm_two_peer`（`task_FM/.praxist/plugins/panel_topologies/fm_two_peer/`），`peer_role_rotation = [exploit, falsifier]`。**不要**指望 4 角色覆盖，**不要**改 `.venv` 里的校验器。合入后必须重启监督环才加载新 topology。
+- 硬门（v23）：n≥350、n_eff≥50（Bartlett）、dir_acc ≥ `effective_min`（`max(0.50, min(0.52, baseline_dir_acc))`，基线缺失时 0.52）。`dir_acc` 略低于 0.52 但 `gate_pass=True` **符合设计**（低基线品种放宽），不是 bug。新 verdict 落库 `baseline_dir_acc` 与 `effective_min`（`evaluator.build_summary`）。
+- 品种探索状态唯一家：`task_FM/config/symbol_status.json`（2026-09-19：eg=DEAD，jd/lh=HOLD）。harvest 拒绝 `symbol_dead` / `symbol_hold`。变体级 DEAD（`gate_pass=False`）≠ 品种级 `SYMBOL_DEAD`。
 - 裁决链（v23）：DirAcc/MAPE + DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol 多重校正；K<4 时降级固定 Bonferroni α=0.025）；verdict schema `fm.aligned_verdict.v2`（v1 已离线迁移）
 - **Praxist 裁决唯一权威** = `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`；PF/EV/MaxDD/IC 退役出裁决链，仅作经济报表字段
 - 目标：`scripts/praxist_goal.yaml`（1 星集合过门 ≥4（且独立过门变体 ≥4） + 过门变体 min dir_acc > 0.52 + ≥1 族）
+- 选题证据：`scripts/praxist_supervisor.py::materialize_known_verdicts` 写 `task_FM/known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose）。提示词**先读证据再写**，不要优先波动率族。
 - 机器状态：`data/cache/supervisor_state.json`；裁决：`task_FM/config/aligned_verdicts.jsonl`
 - `task_FM/task.yaml` 禁止明文 API key；密钥只进 `.env.praxist`
 - Windows 挂载/副本可能过期；读本仓用 `wsl -d Ubuntu-22.04 -- bash -c "..."`
@@ -91,6 +94,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 | Praxist aligned 裁决 | `task_FM/config/aligned_verdicts.jsonl`（仅慢环可写） |
 | Praxist 预注册口径 | `config/praxist_task.yaml` |
 | Praxist 架构/运维 | `docs/praxist.md` + `docs/runbook_praxist_three_loop.md` |
+| 三环 2026-09-19 跟进（门控可观测 / 两人议程 / 死区 / 提案质量） | `docs/2026-09-19-three-loop-followup-spec.md` + `docs/2026-09-19-peer-proposal-quality-verification.md` |
 
 **2026-08-21 状态锚点（Phase 11/12 结案）**
 - Phase 11 单协变量穷举结案：12 品种协变量替换固化，34 GREEN（详见 `docs/archive/history/backtest_registry.md`）
