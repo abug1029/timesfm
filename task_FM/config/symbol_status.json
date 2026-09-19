@@ -1,0 +1,9 @@
+{
+  "schema": "fm.symbol_status.v1",
+  "updated": "2026-09-19",
+  "symbols": {
+    "eg": {"status": "DEAD", "reason": "22 ok verdicts, 0 pass, best dir_acc=0.490"},
+    "jd": {"status": "HOLD", "hold_generations": 5, "reason": "7 ok verdicts, 0 pass, best=0.468"},
+    "lh": {"status": "HOLD", "hold_generations": 5, "reason": "7 ok verdicts, 0 pass, best=0.488"}
+  }
+}

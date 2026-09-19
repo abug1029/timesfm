@@ -38,6 +38,7 @@ LOCK_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor.lock")
 VERDICTS_INC = os.path.join(FM_ROOT, "task_FM", "known_verdicts.inc.md")
 POOL_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_pool.json")
 BACKLOG_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_backlog.jsonl")
+SYMBOL_STATUS_PATH = os.path.join(FM_ROOT, "task_FM", "config", "symbol_status.json")
 MENU_INC = os.path.join(FM_ROOT, "task_FM", "covariate_menu.inc.md")
 REPORT_DIR = os.path.join(FM_ROOT, "docs", "superpowers", "reports")
 STATE_MD = os.path.join(FM_ROOT, "STATE.md")
@@ -557,6 +558,25 @@ def load_covariate_pool():
         print("[WARN] covariate pool load failed (fail-open): %s" % e, file=sys.stderr)
         return {}
 
+
+def load_symbol_status(path=None):
+    """Return {symbol: {"status": "DEAD"|"HOLD"|"ACTIVE", ...}}. Missing file -> {}."""
+    p = path or SYMBOL_STATUS_PATH
+    try:
+        with open(p, encoding="utf-8") as f:
+            raw = json.load(f) or {}
+        out = {}
+        for sym, rec in (raw.get("symbols") or {}).items():
+            if not isinstance(rec, dict):
+                continue
+            st = str(rec.get("status") or "ACTIVE").upper()
+            if st in ("DEAD", "HOLD", "ACTIVE"):
+                out[str(sym).lower()] = rec
+        return out
+    except Exception as e:
+        print("[WARN] symbol_status load failed (fail-open): %s" % e, file=sys.stderr)
+        return {}
+
 def _load_evaluator():
     """惰性导入 evaluator (仅 json/os/AST, 无 torch) 复用 active/archived/symbol 校验。"""
     try:
@@ -649,6 +669,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     priority = set(priority_symbols or [])
     n_cache = {}
     ev = _load_evaluator()
+    status_map = load_symbol_status()
     stats = {"seen": 0, "rejected": 0, "backlog": 0, "selected": 0,
              "reject_reasons": {}}
     passing_ids = {v["variant_id"] for v in rl.pass_variants(snapshot or {})}
@@ -696,6 +717,11 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             if len(mechanism) < 40:
                 _reject("mechanism_too_short"); continue
             vid = "%s_%s" % (symbol, cov)
+            sym_st = str((status_map.get(symbol) or {}).get("status") or "ACTIVE").upper()
+            if sym_st == "DEAD":
+                _reject("symbol_dead"); continue
+            if sym_st == "HOLD":
+                _reject("symbol_hold"); continue
             if vid in dead or vid in existing or vid in passing_ids or vid in seen_vids:
                 _reject("dedup"); continue
             seen_vids.add(vid)

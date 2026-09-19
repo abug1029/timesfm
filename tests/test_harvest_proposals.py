@@ -46,6 +46,10 @@ def _prop(symbol="m", cov="vor", **over):
 @pytest.fixture
 def tmproot(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
+    status_path = tmp_path / "symbol_status.json"
+    status_path.write_text(
+        '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
+    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
     return str(tmp_path)
 
 
@@ -204,6 +208,46 @@ def test_new_covariate_without_schema_still_backlog(tmproot):
     assert "schema_mismatch" not in stats["reject_reasons"]
     rec = [json.loads(l) for l in open(S.BACKLOG_PATH, encoding="utf-8")][0]
     assert rec["name"] == "volume_profile"
+
+
+def test_dead_symbol_rejected(tmproot, monkeypatch):
+    status_path = os.path.join(tmproot, "symbol_status.json")
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"schema": "fm.symbol_status.v1", "symbols": {
+            "eg": {"status": "DEAD", "reason": "x"},
+            "jd": {"status": "HOLD", "hold_generations": 5, "reason": "y"},
+        }}, f)
+    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", status_path)
+    _make_run(tmproot, _prop(symbol="eg", cov="oi"))
+    rows, stats = _harvest(tmproot)
+    assert stats["selected"] == 0
+    assert "symbol_dead" in stats["reject_reasons"]
+
+
+def test_hold_symbol_rejected(tmproot, monkeypatch):
+    status_path = os.path.join(tmproot, "symbol_status.json")
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"schema": "fm.symbol_status.v1", "symbols": {
+            "jd": {"status": "HOLD", "hold_generations": 5, "reason": "y"},
+        }}, f)
+    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", status_path)
+    _make_run(tmproot, _prop(symbol="jd", cov="ccl"))
+    rows, stats = _harvest(tmproot)
+    assert stats["selected"] == 0
+    assert "symbol_hold" in stats["reject_reasons"]
+
+
+def test_active_symbol_still_enqueued(tmproot, monkeypatch):
+    status_path = os.path.join(tmproot, "symbol_status.json")
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump({"schema": "fm.symbol_status.v1", "symbols": {
+            "eg": {"status": "DEAD", "reason": "x"},
+        }}, f)
+    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", status_path)
+    _make_run(tmproot, _prop(symbol="m", cov="vor"))
+    rows, stats = _harvest(tmproot)
+    assert stats["selected"] == 1
+    assert rows[0]["variant_id"] == "m_vor"
 
 
 def test_production_goal_survivors_per_cycle_is_3():
