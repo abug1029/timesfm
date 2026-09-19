@@ -594,6 +594,32 @@ def test_materialize_known_verdicts(tmp_path):
     assert body_lines.index(i_oi_line) < body_lines.index(m_ccl_line)
 
 
+
+
+def test_materialize_known_verdicts_symbol_table_and_proposed(tmp_path):
+    dest = tmp_path / "known_verdicts.inc.md"
+    snap = {
+        "eg_oi": _v("eg_oi", gate_pass=False, dir_acc=0.45, symbol="eg"),
+        "eg_ccl": _v("eg_ccl", gate_pass=False, dir_acc=0.44, symbol="eg"),
+        "m_oi": _v("m_oi", gate_pass=True, dir_acc=0.55, symbol="m"),
+    }
+    for rec in snap.values():
+        rec["symbol"] = rec.get("symbol") or rec["variant_id"].split("_")[0]
+    sup.materialize_known_verdicts(
+        snap, str(dest),
+        proposed_ids={"jd_ccl", "sr_qstick"},
+        status_map={"eg": {"status": "DEAD", "reason": "22 fail"}},
+        queue_ids={"m_vor"},
+    )
+    text = dest.read_text(encoding="utf-8")
+    assert "SYMBOL_DEAD" in text
+    assert "eg:" in text
+    assert "jd_ccl" in text
+    assert "sr_qstick" in text
+    assert "m_vor" in text
+    assert "Do not re-propose" in text
+
+
 def test_429_failover_resume_not_wait_quota(tmp_path, monkeypatch):
     """paused_429 + Ark banned + failover configured → failover resume, not wait_quota."""
     _set_failover_env(monkeypatch)

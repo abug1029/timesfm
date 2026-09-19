@@ -511,7 +511,36 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
         r.pop("_dir_acc", None)
     return selected
 
-def materialize_known_verdicts(snapshot, dest_path):
+def collect_proposed_variant_ids(root=None):
+    """Parse results/**/proposals/*.json into {symbol_cov}."""
+    root = root or FM_ROOT
+    out = set()
+    pattern = os.path.join(root, "task_FM", "experiments", "run_*", "results",
+                           "**", "proposals", "*.json")
+    for sp in glob.glob(pattern, recursive=True):
+        try:
+            with open(sp, encoding="utf-8") as f:
+                p = json.load(f)
+        except Exception:
+            continue
+        if not isinstance(p, dict):
+            continue
+        symbol = str(p.get("symbol") or "").lower().strip()
+        cov = str(p.get("cov_override") or "").strip()
+        if symbol and cov:
+            out.add("%s_%s" % (symbol, cov))
+    return out
+
+
+def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
+                               status_map=None, queue_ids=None, root=None):
+    if status_map is None:
+        status_map = load_symbol_status()
+    if queue_ids is None:
+        queue_ids = rl.in_flight_ids(QUEUE, INPROGRESS)
+    if proposed_ids is None:
+        proposed_ids = collect_proposed_variant_ids(root or FM_ROOT)
+
     lines = ["## Known aligned verdicts (supervisor snapshot)",
              "v2 pass (gate_pass=True AND (fdr_pass OR migrated_pass)): already solved, do NOT re-propose.",
              "v1 legacy: pass by ev>0 (legacy econ caliber, schema=v1 entries only).",
@@ -519,6 +548,60 @@ def materialize_known_verdicts(snapshot, dest_path):
              "DEAD (gate_pass=False, status=ok): never revive without a mechanism correction.",
              ""]
     items = list(snapshot.values()) if isinstance(snapshot, dict) else []
+
+    # ## Symbol status (full GOAL_SYMBOLS_SET, never truncated)
+    lines.append("## Symbol status")
+    for sym in sorted(GOAL_SYMBOLS_SET):
+        n_ok = 0
+        n_pass = 0
+        best = None
+        for v in items:
+            if str(v.get("symbol") or "").lower() != sym:
+                continue
+            if v.get("status", "ok") == "ok":
+                n_ok += 1
+            if v.get("gate_pass"):
+                n_pass += 1
+            da = v.get("dir_acc")
+            if isinstance(da, (int, float)) and not isinstance(da, bool):
+                da = float(da)
+                if da == da and -1e308 < da < 1e308:
+                    if best is None or da > best:
+                        best = da
+        rec = status_map.get(sym) or {}
+        st = str(rec.get("status") or "ACTIVE").upper()
+        if st == "DEAD":
+            label = "SYMBOL_DEAD"
+        elif st == "HOLD":
+            label = "HOLD"
+        else:
+            label = "ACTIVE"
+        best_s = ("%.3f" % best) if best is not None else "n/a"
+        line = "- %s: %s, n_ok=%d, n_pass=%d, best=%s" % (
+            sym, label, n_ok, n_pass, best_s)
+        reason = rec.get("reason")
+        if reason:
+            line += " — %s" % reason
+        lines.append(line)
+    lines.append("")
+
+    # ## Do not re-propose; source priority: verdict > queue > proposed
+    lines.append("## Do not re-propose (variant_id)")
+    tagged = {}
+    for vid in (proposed_ids or set()):
+        tagged[str(vid)] = "proposed"
+    for vid in (queue_ids or set()):
+        tagged[str(vid)] = "queue"
+    if isinstance(snapshot, dict):
+        for vid in snapshot.keys():
+            tagged[str(vid)] = "verdict"
+    all_vids = sorted(tagged.keys())
+    total = len(all_vids)
+    for vid in all_vids[:80]:
+        lines.append("- %s (%s)" % (vid, tagged[vid]))
+    if total > 80:
+        lines.append("truncated=%d" % total)
+    lines.append("")
 
     def _da_key(v):
         da = v.get("dir_acc")
@@ -547,7 +630,7 @@ def materialize_known_verdicts(snapshot, dest_path):
             v.get("n"), status))
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
     with open(dest_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+        f.write('\n'.join(lines) + '\n')
 
 def load_covariate_pool():
     """读协变量池 covariate_pool.json → cov dict。fail-open 返回 {}。"""
@@ -1645,7 +1728,12 @@ def _maybe_finish_slow(goal, log):
         fresh.pop("current_batch_variant_ids", None)  # legacy key
         save_state(fresh)
     snap = rl.load_snapshot(REGISTRY)
-    materialize_known_verdicts(snap, VERDICTS_INC)
+    materialize_known_verdicts(
+        snap, VERDICTS_INC,
+        status_map=load_symbol_status(),
+        queue_ids=rl.in_flight_ids(QUEUE, INPROGRESS),
+        proposed_ids=collect_proposed_variant_ids(FM_ROOT),
+    )
     materialize_covariate_menu(load_covariate_pool(), MENU_INC)
     gate_ok, _ = quota_gate(goal)
     fresh = load_state()
@@ -1720,7 +1808,12 @@ def _main_locked(args):
             _mark_stop_emitted()
             return 0
 
-        materialize_known_verdicts(snap["variants"], VERDICTS_INC)
+        materialize_known_verdicts(
+            snap["variants"], VERDICTS_INC,
+            status_map=load_symbol_status(),
+            queue_ids=rl.in_flight_ids(QUEUE, INPROGRESS),
+            proposed_ids=collect_proposed_variant_ids(FM_ROOT),
+        )
         materialize_covariate_menu(load_covariate_pool(), MENU_INC)
         if ok:
             rec = _log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
