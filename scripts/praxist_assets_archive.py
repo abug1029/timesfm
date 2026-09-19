@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Append-only archive of Praxist fast/slow products into /workspace/shared/praxist_assets.
+"""Append-only archive of Praxist fast/slow products into data/assets (repo-local).
 
 Called from praxist_supervisor after harvest and slow_drain_complete.
 Also provides restore helpers for new machines / cleared caches.
@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 FM_ROOT = Path(__file__).resolve().parents[1]
-ASSETS = Path(os.environ.get("PRAXIST_ASSETS_ROOT", "/workspace/shared/praxist_assets"))
+ASSETS = Path(os.environ.get("PRAXIST_ASSETS_ROOT", str(Path(__file__).resolve().parents[1] / "data" / "assets")))
 SHANGHAI = timezone(timedelta(hours=8))
 
 

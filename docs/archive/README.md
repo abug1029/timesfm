@@ -115,3 +115,9 @@
 | 2026-09-16-phase4-code-review.md | 历史审查记录 | v23 spec（裁决口径）、docs/README.md |
 | 2026-09-16-phase4-rereview.md | 历史审查记录 | v23 spec（裁决口径）、docs/README.md |
 | 2026-09-16-uncommitted-changes-review.md | 历史审查记录 | v23 spec（裁决口径）、docs/README.md |
+
+## docs/archive/peer-proposals-pre-0918/
+
+2026-09-19 归档。146 个 2026-09-07 至 2026-09-17 的 peer run 目录（），含 peer_workspaces/findings/gems/trajectory 等快环提案产物。128M。
+
+归档原因：v23 评估系统重构后，9-18 前的 peer 提案已无活跃引用（harvest 仅扫当前 experiments/ 下 run），保留原位增加目录噪音。9-18 起的 run 留在  供 harvest 正常扫描。

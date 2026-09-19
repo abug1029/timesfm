@@ -93,3 +93,4 @@ task_FM/config/baseline_metrics.json
 task_FM/config/baseline_points_*.jsonl
 task_FM/docs/praxist_reports/
 .agentic-qe/
+data/assets/
