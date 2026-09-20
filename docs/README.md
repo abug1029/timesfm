@@ -13,6 +13,15 @@
 | [module_freeze.md](./module_freeze.md) | 子策略冻结（Vol OFF / A2 关 / Regime 研究-only） |
 | [param_hygiene.md](./param_hygiene.md) | 参数卫生裁决记录 |
 | [2026-09-17-fm-eval-error-path-audit.md](./2026-09-17-fm-eval-error-path-audit.md) | 评估器错误路径审计：8 bug 清单 + 修复记录 + 下轮跟进 5 项（2026-09-17） |
+| [2026-09-18-oi-gated-momentum-spec.md](./2026-09-18-oi-gated-momentum-spec.md) | oi_gated_momentum 协变量规格（OI 门控动量） |
+| [2026-09-18-oi-gated-momentum-impl-plan.md](./2026-09-18-oi-gated-momentum-impl-plan.md) | oi_gated_momentum 实施计划（五步落地） |
+| [2026-09-18-oi-gated-momentum-data-quality-report.md](./2026-09-18-oi-gated-momentum-data-quality-report.md) | oi_gated_momentum 数据质量报告（指数回填 + 零值防护） |
+| [2026-09-18-oi-gated-momentum-blocking-decision.md](./2026-09-18-oi-gated-momentum-blocking-decision.md) | oi_gated_momentum 阻塞决策（首跑 dir_acc=0.453 保留 active） |
+| [2026-09-19-cleanup-and-fix-log.md](./2026-09-19-cleanup-and-fix-log.md) | 2026-09-19 清理日志（磁盘归档 + /workspace 修复） |
+| [system_design.md](./system_design.md) | 系统设计概览（数据流 + 模块依赖） |
+| [long-task-sop.md](./long-task-sop.md) | 长任务 SOP（回测/慢环操作规范） |
+| [spec_optimization_roadmap.md](./spec_optimization_roadmap.md) | 系统优化规格说明书（基于 system_design v2.4 的可执行优化任务） |
+| [2026-09-17-claude-dual-system-path-map.md](./2026-09-17-claude-dual-system-path-map.md) | Claude Code 双系统 PATH 关系图与排查手册（Windows + WSL） |
 | [vol-risk.md](./archive/history/vol-risk.md) | Vol 风控 / R1 / L1 经济结论与红线（已归档） |
 | [validation_criteria.md](./archive/history/validation_criteria.md) | 固化判据 v2（已归档） |
 | [backtest_registry.md](./archive/history/backtest_registry.md) | 历史协变量实验目录（Phase 扫描；已归档；新口径以 g005e 为准，g005e 结果文件已不在仓内） |
@@ -110,7 +119,7 @@ setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.ya
 - `python scripts/a2_p1_restore_manifest.py --restore` — 从备份恢复缺失文件
 - 详见 [runbook.md](./runbook.md) "A2-P1 完整性工具" 章节
 
-## 当前生产姿态（2026-09-11）
+## 当前生产姿态（2026-09-20）
 
 - **Neutral / Absolute Risk Overlay：默认 OFF**（全宇宙经济门禁未过）
 - **Copilot：预警-only**，不改变预测数值。卡面「可交易方向」= `position_from_forecast`（加权 1H）；日线只作 `regime_direction`
@@ -119,4 +128,13 @@ setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.ya
 - **Phase 11（2026-08-21 结案）**：12 品种协变量替换固化（SS/SP/FU/I/RB/TA/EG/CJ/LH/JD + 3 基线保持 M/P/SR），34 GREEN
 - **Phase 12（2026-08-21）**：BU 组合协变量 `calendar_cyclical+hourly_slope` 固化。该 PF=1.01 边际 GREEN 结论属 v2 历史口径（2026-08 月度回测），非 v23 证据；v23 下以 aligned verdicts 为准
 - 经济表与信用档（v2 历史口径）：见上表 g005e（结果文件已不在仓内；Phase 11/12 后协变量已刷新）；v23 裁决以 aligned verdicts 为准（口径见 [praxist.md](./praxist.md) 与 v23 spec）；运维细节见 [vol-risk.md](./archive/history/vol-risk.md)（已归档）与 `STATE.md`
-- **Praxist 三环（2026-09-11 磁盘）**：方案 A 已上线；`phase=fast`，`cycles_done=1`。过期以 `data/cache/supervisor_state.json` 为准。架构 [praxist.md](./praxist.md)，现场快照见 `STATE.md`
+- **Praxist 三环（2026-09-20）**：方案 A 运行中；`phase=fast`，`cycles_done=36`，PID 31638。9/19-20 改进：failure_delta 硬门 + DEAD/HOLD 过滤 + 提案质量加固 + 跨 run 重复惩罚 + DEAD 族拒绝（84 tests）。过期以 `data/cache/supervisor_state.json` 为准。架构 [praxist.md](./praxist.md)，运维 [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md)，现场快照见 `STATE.md`
+
+## 维护协议
+
+- **唯一权威源**：WSL `/home/abug/timesfm/`（git repo `abug1029/timesfm`）
+- **Windows 副本**：`D:\FlyBuddy\FM_a\` 为 git 工作副本（`git pull` 同步）；`D:\FlyBuddy\timesfm\` 为过期只读副本
+- **新增文档流程**：在 WSL 侧创建 → 更新 `docs/README.md` 索引 → `docs/AGENTS.md` 路由 → git commit/push
+- **system_design.md 更新触发**：架构变更 / 新模块上线 / 评估口径切换 / 品种状态变更 / 星级调整
+- **会话结束前**：运行 `/neat-freak` 检查文档与代码一致性
+- **不归集**：`D:\FlyBuddy\shared\timesfm\`（独立模型库项目）、`D:\FlyBuddy\docs\`（工作区级文档）

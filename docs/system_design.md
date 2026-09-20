@@ -6,7 +6,7 @@
 > - 硬门 / 裁决口径以 [`loop-constraints.md`](../loop-constraints.md)（预注册评估契约，v23）与 [`docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`](superpowers/specs/2026-09-14-prediction-quality-redesign-design.md) 为准。
 > - 本文若与上述冲突，以上述为准。不要按本文去改 `signal_contract.py` 或 `evaluator.gate`。
 >
-> **版本**: 1.3 (2026-09-17，§7 评估门禁切换 v23 裁决口径)
+> **版本**: 1.4 (2026-09-20，§4.1 新增 oi_gated_momentum；§7.4 星级更新；§11 Praxist 三环集成)
 > **定位**: 方向性建议，不是自动开平仓。描述 TimesFM 两阶段级联如何在任意时刻给出期货品种的方向与置信度。
 
 ---
@@ -269,6 +269,9 @@ CF-01 A：日线斜率**不得覆盖** `position_sign`。Copilot 卡面目前仍
 | **price_action** | `ha_body`, `reversal_shadow` | K线形态/反转信号 | 趋势延续/反转 |
 | **trend** | `hourly_slope`, `ao_accel` | 短期动能 | 趋势品种 |
 | **volatility** | `vor`, `bb_squeeze`, `stddev` | 波动率状态 | 突破/压缩 |
+| **momentum (experimental)** | `oi_gated_momentum` | OI 门控动量（持仓量过滤噪音） | 趋势确认（gated；2026-09-18 active） |
+
+> **oi_gated_momentum**（2026-09-18）：experimental/gated 状态。`extract_xreg` + `pool` 已注册，`features.py` 分派接线完成。首跑 dir_acc=0.453<0.52 未过门但保留 active（让 peer 跨品种试）。数据层：21 品种 `index_continuous_1d` 全回填 + fu 零值防护。
 
 ### 4.2 品种特异配置（生产 SCHEMES）
 
@@ -589,10 +592,15 @@ def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
 | 星级 | 标准 | 品种数 | 建议仓位 |
 |------|------|--------|----------|
 | ⭐⭐⭐ | 无（系统未达 3 星标准） | 0 | — |
-| ⭐⭐ | 经济层标准 PF > 1.05 + 多维度 GREEN（经济报表参考，不参与 Praxist 裁决） | 8 | 中等仓位 |
-| ⭐ | PF ~ 1.0 或 underpowered | 13 | 轻仓或观望 |
+| ⭐⭐ | v23：过硬门 + DM/FDR（经济报表参考，不参与 Praxist 裁决） | 7 | 中等仓位 |
+| ⭐ | underpowered / v23 复测未过门 | 13 | 轻仓或观望 |
+| 待固化 | data pool 已加入但无 GREEN | 1（SH） | 不纳入 SCHEMES |
 
-**2 星品种**（SCHEMES，2026-09-10）：SS, SR, M, RB, EG, LH, CJ, JD
+**2 星品种**（SCHEMES，2026-09-20）：SR, M, RB, EG, LH, CJ, JD
+
+**SS 降级说明**：2026-09-17 v23 复测 dir_acc=0.502<0.52 未过门，从 2★ 降为 1★。goal.yaml 仍含 ss，去留待决策。
+
+**品种状态**（2026-09-19）：eg=DEAD（22 ok, 0 pass）；jd/lh=HOLD（hold_generations=5）；其余 17 品种 active。
 
 ---
 
@@ -782,7 +790,7 @@ python scripts/cascade_predict.py ss --vol-filter-neutral
 | CJ | ⭐⭐ | hourly_slope | [hourly_slope] | short_range | 1.47 | 短段 |
 | JD | ⭐⭐ | rsi_state | [rsi_state] | stable | 1.42 | 全段 |
 
-SS 行是 `calendar_cyclical`。`ss_vor` 只出现在慢环裁决，不在本表。
+SS 行是 `calendar_cyclical`（SS 2026-09-17 v23 降级 1★，但仍在本表因为 SCHEMES 未移除）。`ss_vor` 只出现在慢环裁决，不在本表。
 
 ### 10.2 关键参数
 
@@ -819,6 +827,56 @@ SS 行是 `calendar_cyclical`。`ss_vor` 只出现在慢环裁决，不在本表
 
 ---
 
+
+## 11. Praxist 三环集成（2026-09）
+
+Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学合同，外层监督环零 token 调度。
+
+### 11.1 三环架构
+
+```
+监督环 scripts/praxist_supervisor.py     0 token（调度）
+   ├─ 快环  praxist start --task-path task_FM   peer 写机制化假设（方案 A）
+   └─ 慢环  scripts/aligned_slow_loop.py        唯一验证器，唯一可写 aligned_verdicts.jsonl
+```
+
+- **方案 A**：peer 只写机制化假设（不加载 TimesFM），慢环是唯一验证器
+- **面板**：`cohort_size=2`，`panel_topology:fm_two_peer`（exploit + falsifier）
+- **硬门**（v23）：n≥350 / n_eff≥50 / dir_acc≥adaptive + DM + BH-FDR
+- **品种状态机**（`task_FM/config/symbol_status.json`）：ACTIVE → DEAD/HOLD；harvest 拒绝 DEAD/HOLD
+
+### 11.2 提案质量机制（2026-09-19/20 加固）
+
+| 机制 | 说明 |
+|------|------|
+| `failure_delta` 硬门 | 提案必须含 ≥20 字失败差异分析（占拒绝 95%+） |
+| 跨 run 重复惩罚 | 扫最近 20 run，3+ 次 -20 分起 |
+| 符号失败惩罚加陡 | 8+ 失败 -50 分起，3-7 次 -8/次 |
+| DEAD 族拒绝 | 4+ ok 0 pass 族识别为 family_dead，harvest 先于 no_failure_delta |
+| DEAD/HOLD 过滤 | eg/jd/lh 零入队 |
+
+### 11.3 关键文件
+
+| 文件 | 用途 |
+|------|------|
+| `docs/praxist.md` | Praxist 架构概览（先读） |
+| `docs/runbook_praxist_three_loop.md` | 运维手册：启停、429 failover、故障速查 |
+| `docs/spec_hypothesis_driven_fast_loop_20260908.md` | 方案 A 设计 |
+| `docs/2026-09-19-three-loop-followup-spec.md` | 跟进合同 |
+| `scripts/praxist_supervisor.py` | 监督环（自加载 .env.praxist） |
+| `scripts/aligned_slow_loop.py` | 慢环（唯一 verdicts 写入者） |
+| `task_FM/config/aligned_verdicts.jsonl` | 裁决存储（v2 schema） |
+| `data/cache/supervisor_state.json` | 机器状态（cycles_done / last_run_id） |
+| `scripts/praxist_goal.yaml` | 目标配置 |
+
+### 11.4 当前运行状态（2026-09-20）
+
+- PID 31638，commit `6035c8e`，cycles_done=36
+- 105 verdicts / 22 gate_pass=true (21%) / 0 fdr_pass=true
+- 目标：1★ 品种过门 ≥4 + min dir_acc > 0.52 + ≥1 族
+
+---
+
 ## 总结
 
 FM_a 系统的核心价值在于：
@@ -827,10 +885,11 @@ FM_a 系统的核心价值在于：
 2. **品种异质化**：每个品种有独立的生产 SCHEMES；慢环过门不会自动固化
 3. **防穿越**：回测 `hour>=15`；实盘 `DailyModel.predict` 走 `get_safe_daily`
 4. **风险管理**：Vol 熔断（可选）、置信区间、止损止盈参考
-5. **人机协作**：系统输出方向性建议，人类做最终决策
+5. **Praxist 三环**：自动化假设生成 → 验证 → 裁决管线，v23 硬门保证统计严谨性
+6. **人机协作**：系统输出方向性建议，人类做最终决策
 
 **使用建议**：
-- 优先关注 2 星品种（SS/SR/M/RB/EG/LH/CJ/JD）
+- 优先关注 2 星品种（SR/M/RB/EG/LH/CJ/JD；SS 2026-09-17 降级 1★）
 - 看【可交易方向】（加权 1H）；【日线状态】只是副标签
 - 轻仓试探，根据实际表现调整仓位
 - 结合基本面和主观判断，不盲从模型

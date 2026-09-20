@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-09-19 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-09-20 -->
 
 # docs
 
@@ -11,6 +11,7 @@
 
 | File | Description |
 |------|-------------|
+| **`system_design.md`** | **系统设计全景（先读）**：架构/数据流/协变量/评估/Praxist 三环（v1.4, 2026-09-20） |
 | `README.md` | 文档索引 |
 | `praxist.md` | Praxist 架构概览（本体 vs 三环；现行合同） |
 | `runbook_praxist_three_loop.md` | Praxist 三环运维 |
@@ -26,8 +27,14 @@
 | `param_hygiene.md` | 参数卫生裁决 |
 | [已归档] `./archive/history/validation_criteria.md` | 固化判据 v2 |
 | `long-task-sop.md` | 长任务 SOP |
+| `spec_optimization_roadmap.md` | 系统优化规格（基于 system_design 的优化任务 spec） |
+| `2026-09-19-cleanup-and-fix-log.md` | 2026-09-19 清理日志 |
+| `2026-09-17-claude-dual-system-path-map.md` | 双系统 PATH 排查手册（Windows + WSL） |
+| `2026-09-19-verdict-analysis-report.md` | 裁决分析（81 verdicts，过门 0/11） |
+| `2026-09-18-oi-gated-momentum-spec.md` | oi_gated_momentum 协变量规格 |
 | `superpowers/plans/` | 已清空（历史施工单见 `archive/superpowers-plans/`） |
-| `superpowers/specs/` | 设计规格 |
+| `superpowers/specs/` | 设计规格（v23 spec + praxist_control_plane） |
+| `archive/v23-code-reviews/` | v23 合入过程 code review 报告（17 个文件，历史归档） |
 
 **新口径经济真相**: g005e 结果文件已不在仓内（原 `../reports/research/20260808_g005e_results.md`；Phase 11/12 后协变量已刷新）
 
