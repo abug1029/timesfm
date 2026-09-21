@@ -216,8 +216,8 @@ def _run_worker_core(
     print(f"[Worker {symbol_upper}] loading models...", flush=True)
     import torch
     torch.set_float32_matmul_precision("high")
-    import timesfm
-    base = timesfm.TimesFM_2p5_200M_torch.from_pretrained("google/timesfm-2.5-200m-pytorch")
+    import timesfm3
+    base = timesfm3.TimesFM3Forecaster.from_pretrained("google/timesfm-3.0-pytorch")
     hourly = HourlyModel(shared_model=base)
     daily = DailyModel(shared_model=base)
 

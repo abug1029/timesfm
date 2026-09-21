@@ -155,13 +155,16 @@ def _align_vr():
     )
 
 
-class _FakeTimesFM:
-    def compile(self, config):
-        pass
+class _FakeForecastOutput:
+    """Minimal ForecastOutput mock for testing."""
+    def __init__(self, horizon=24):
+        self.forecast = np.ones(horizon)
+        self.quantiles = np.ones((horizon, 9))
 
-    def forecast_with_covariates(self, **kwargs):
-        h = 24
-        return [np.ones(h)], [np.ones((h, 10))]
+
+class _FakeTimesFM:
+    def predict(self, context, horizon, past_future_covariates=None, return_quantiles=False):
+        return _FakeForecastOutput(horizon=horizon)
 
 
 def test_hourly_predict_passes_align_df_1h_to_single_build(monkeypatch):

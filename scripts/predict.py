@@ -32,7 +32,9 @@ def predict_symbol(symbol: str, model, horizon: int = 22) -> dict:
         if len(arr) < 50:
             return {"symbol": symbol, "error": f"数据不足 ({len(arr)} 天)"}
 
-        point, quantile = model.forecast(horizon=horizon, inputs=[arr])
+        result = model.predict(context=arr.tolist(), horizon=horizon)
+        point = np.array(result.forecast)
+        quantile = np.array(result.quantiles) if result.quantiles is not None else None
 
         future_dates = pd.bdate_range(
             start=datetime.now().replace(hour=0, minute=0, second=0) + timedelta(days=1),
@@ -248,13 +250,9 @@ def main():
 
     print("加载 TimesFM 模型...")
     torch.set_float32_matmul_precision("high")
-    import timesfm
-    model = timesfm.TimesFM_2p5_200M_torch.from_pretrained("google/timesfm-2.5-200m-pytorch")
-    model.compile(timesfm.ForecastConfig(
-        max_context=1024, max_horizon=256, normalize_inputs=True,
-        use_continuous_quantile_head=True, force_flip_invariance=True,
-        infer_is_positive=True, fix_quantile_crossing=True,
-    ))
+    import timesfm3
+    import numpy as np
+    model = timesfm3.TimesFM3Forecaster.from_pretrained("google/timesfm-3.0-pytorch")
 
     # 预测
     results = []

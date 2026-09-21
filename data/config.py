@@ -22,8 +22,8 @@ def resolve_under_root(path: str | Path, root: Path | None = None) -> Path:
 
 logger = logging.getLogger(__name__)
 
-TIMESFM_HUB_ID = "google/timesfm-2.5-200m-pytorch"
-TIMESFM_LOCAL_DIRNAME = "timesfm-2.5-200m-pytorch"
+TIMESFM_HUB_ID = "google/timesfm-3.0-pytorch"
+TIMESFM_LOCAL_DIRNAME = "timesfm-3.0-pytorch"
 
 
 def _env_nonempty(name: str) -> str | None:

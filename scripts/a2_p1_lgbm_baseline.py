@@ -218,10 +218,10 @@ def _load_models():
     """加载共享 TimesFM 实例 (hourly + daily)。"""
     import torch
     torch.set_float32_matmul_precision("high")
-    import timesfm
+    import timesfm3
     from cascade.hourly_model import HourlyModel
     from cascade.daily_model import DailyModel
-    base = timesfm.TimesFM_2p5_200M_torch.from_pretrained("google/timesfm-2.5-200m-pytorch")
+    base = timesfm3.TimesFM3Forecaster.from_pretrained("google/timesfm-3.0-pytorch")
     hourly = HourlyModel(shared_model=base)
     daily = DailyModel(shared_model=base)
     return hourly, daily

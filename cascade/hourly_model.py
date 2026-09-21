@@ -1,7 +1,7 @@
 """
 Stage 2: 1H 级联预测模型 (XReg)
 
-使用 TimesFM 2.5 的 forecast_with_covariates() 方法，
+使用 TimesFM 3.0 的 predict() 方法，
 以日线斜率和 CCL (仓单量价) 指标作为协变量，进行 1H 级别预测。
 """
 
@@ -12,10 +12,10 @@ from dataclasses import dataclass
 from typing import Optional
 from pathlib import Path
 
-import timesfm
+import timesfm3
 from data.config import get_timesfm_model_path
 from data.data_store import DataStore, BacktestDataStore
-from .daily_model import DailyResult, ensure_compiled
+from .daily_model import DailyResult
 from .features import build_covariate_matrix, build_combo_covariate_matrix, visualize_alignment
 
 
@@ -61,31 +61,17 @@ def _fetch_feedstock_1h(fs_sym: str, target_store, limit: int = 480):
 
 
 class HourlyModel:
-    """1H 级联预测模型 (XReg)"""
-
-    _XREG_CONFIG = timesfm.ForecastConfig(
-        max_context=1024,
-        max_horizon=128,
-        return_backcast=True,
-        normalize_inputs=True,
-        use_continuous_quantile_head=True,
-        force_flip_invariance=True,
-        infer_is_positive=True,
-        fix_quantile_crossing=True,
-    )
+    """1H 级联预测模型 (TimesFM 3.0 XReg)"""
 
     def __init__(self, shared_model=None):
         torch.set_float32_matmul_precision("high")
         if shared_model is not None:
             # [B2-1] 共享模型实例，避免重复加载 (~800MB)
             self.model = shared_model
-            # compile 为 XReg 配置 (predict 中也会重新 compile，确保配置正确)
-            ensure_compiled(self.model, self._XREG_CONFIG)
         else:
-            self.model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
+            self.model = timesfm3.TimesFM3Forecaster.from_pretrained(
                 get_timesfm_model_path()
             )
-            ensure_compiled(self.model, self._XREG_CONFIG)
 
     def predict(self, symbol: str, store: DataStore,
                 daily_result: DailyResult, horizon: int = 24,
@@ -115,9 +101,6 @@ class HourlyModel:
         Returns:
             HourlyResult
         """
-        # 确保 XReg 配置生效 (DailyModel 会重编译为日线配置，每次 predict 前重新 compile)
-        ensure_compiled(self.model, self._XREG_CONFIG)
-
         # 0. 数据校验 (skip_validation 仅跳过重复告警输出，错误阻断始终生效)
         from .data_validator import validate_prediction_data
         vr = validate_prediction_data(symbol, store)
@@ -222,31 +205,30 @@ class HourlyModel:
             except Exception as e:
                 print(f"  [WARN] 可视化失败: {e}")
 
-        # 4. 构建 XReg 输入
-        # forecast_with_covariates 需要: dict[str, list[np.ndarray]]
-        dynamic_covariates = {}
-        for key, arr in covariates.items():
-            assert len(arr) == total_len, f"{key} length mismatch: {len(arr)} != {total_len}"
-            dynamic_covariates[key] = [arr]
+        # 4. 构建 3.0 XReg 输入
+        # TimesFM 3.0 expects covariates as np.ndarray of shape (num_covariates, total_length)
+        # for past_future_covariates (covers both context and horizon).
+        covariate_keys = list(covariates.keys())
+        for key in covariate_keys:
+            assert len(covariates[key]) == total_len, f"{key} length mismatch: {len(covariates[key])} != {total_len}"
+        past_future_covariates = np.array(
+            [covariates[k] for k in covariate_keys], dtype=np.float32
+        )  # shape: (num_covariates, context + horizon)
 
-        # 5. Ridge 正则化: 多协变量时增大 ridge 防过拟合
-        ridge_val = 0.1 if combo_mode else 0.0
-
-        # 6. 调用 forecast_with_covariates
+        # 5. 调用 predict with covariates (TimesFM 3.0)
         xreg_fallback = False
         try:
-            point_fc, quant_fc = self.model.forecast_with_covariates(
-                inputs=[hourly_closes],
-                dynamic_numerical_covariates=dynamic_covariates,
-                xreg_mode="xreg + timesfm",
-                normalize_xreg_target_per_input=True,
-                ridge=ridge_val,
+            result = self.model.predict(
+                context=hourly_closes.tolist(),
+                horizon=horizon,
+                past_future_covariates=past_future_covariates,
+                return_quantiles=True,
             )
-            # 输出可能包含 backcast+forecast，只取最后 horizon 个
-            raw_point = point_fc[0]
-            raw_quant = quant_fc[0]
-            point_forecast = raw_point[-horizon:] if len(raw_point) > horizon else raw_point
-            quantile_forecast = raw_quant[-horizon:] if len(raw_quant) > horizon else raw_quant
+            # ForecastOutput: .forecast (point), .quantiles (may be None)
+            point_forecast = np.asarray(result.forecast)  # shape (horizon,)
+            quantile_forecast = (
+                np.asarray(result.quantiles) if result.quantiles is not None else None
+            )  # shape (horizon, 10) or None
         except Exception as e:
             print(f"  [WARN] XReg 预测失败 ({e}), 回退到无协变量模式")
             point_forecast, quantile_forecast = self._fallback_predict(hourly_closes, horizon)
@@ -277,22 +259,20 @@ class HourlyModel:
 
     def _fallback_predict(self, hourly_closes: np.ndarray, horizon: int):
         """无协变量的回退预测"""
-        point, quantile = self.model.forecast(
+        result = self.model.predict(
+            context=hourly_closes.tolist(),
             horizon=horizon,
-            inputs=[hourly_closes],
+            return_quantiles=True,
         )
-        raw_p = point[0]
-        raw_q = quantile[0]
-        # 只取最后 horizon 个
-        p = raw_p[-horizon:] if len(raw_p) > horizon else raw_p
-        q = raw_q[-horizon:] if len(raw_q) > horizon else raw_q
+        p = np.asarray(result.forecast)  # shape (horizon,)
+        q = np.asarray(result.quantiles) if result.quantiles is not None else None
         return p, q
 
     def summary(self, result: HourlyResult, daily_result: DailyResult) -> str:
         """生成级联预测摘要"""
         fc = result.point_forecast
         lines = [
-            f"",
+            "",
             f"1H 级联预测 ({result.symbol.upper()}) — 未来 {result.horizon} 小时",
             f"  Context: {result.context_len} bars",
             f"  日线斜率: {daily_result.horizon_slope * 100:+.3f}%/天",
@@ -305,7 +285,7 @@ class HourlyModel:
             lines.append(f"  P90 最高: {result.quantile_forecast[:, 9].max():.1f}")
 
         # 逐小时预测表
-        lines.append(f"")
+        lines.append("")
         lines.append(f"  {'Hour':<6} {'Pred':>8} {'P10':>8} {'P90':>8}")
         lines.append(f"  {'-'*34}")
         for i in range(result.horizon):
@@ -322,7 +302,7 @@ class HourlyModel:
             bl = result.baseline_forecast
             diff = fc - bl
             same_sign = np.mean(np.sign(fc) == np.sign(bl))
-            lines.append(f"")
+            lines.append("")
             lines.append(f"  消融对比 (有协变量 vs 无协变量):")
             lines.append(f"    最大差异: {np.abs(diff).max():.1f}")
             lines.append(f"    平均差异: {np.abs(diff).mean():.1f}")
@@ -335,7 +315,7 @@ class HourlyModel:
             if len(slope) > ctx:
                 ctx_slope = slope[:ctx]
                 hz_slope = slope[ctx:]
-                lines.append(f"")
+                lines.append("")
                 lines.append(f"  协变量统计:")
                 lines.append(f"    Context slope: [{ctx_slope.min()*100:+.3f}%, {ctx_slope.max()*100:+.3f}%]")
                 lines.append(f"    Horizon slope: {hz_slope.mean()*100:+.3f}% (constant)")

@@ -101,7 +101,7 @@ _CHECKPOINT_POINT_KEYS = (
     "endpoint_mape", "endpoint_bias_pct", "path_corr",
 )
 
-_DAILY_CACHE_VER = "v2"  # v2 = dates 为 tz-naive ISO 列表, 不再 pickle DailyResult
+_DAILY_CACHE_VER = "v3"  # v2 = dates 为 tz-naive ISO 列表, 不再 pickle DailyResult
 
 
 def _weight_shards(weights_dir):

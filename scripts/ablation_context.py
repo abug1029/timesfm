@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import torch
-import timesfm
+import timesfm3
 from data.data_store import DataStore
 from cascade.daily_model import DailyModel, DailyResult
 from cascade.features import build_covariate_matrix
@@ -22,8 +22,8 @@ from cascade.features import build_covariate_matrix
 def load_model():
     print("[1/4] 加载 TimesFM 2.5 模型...")
     torch.set_float32_matmul_precision("high")
-    model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
-        "google/timesfm-2.5-200m-pytorch"
+    model = timesfm3.TimesFM3Forecaster.from_pretrained(
+        "google/timesfm-3.0-pytorch"
     )
     model.compile(timesfm.ForecastConfig(
         max_context=1024,
@@ -76,15 +76,15 @@ def run_hourly_with_context(model, store, daily_result, symbol, context_len, hor
 
     # XReg 预测
     try:
-        point_fc, quant_fc = model.forecast_with_covariates(
-            inputs=[hourly_closes],
-            dynamic_numerical_covariates=dynamic_covariates,
-            xreg_mode="xreg + timesfm",
-            normalize_xreg_target_per_input=True,
-            ridge=0.0,
+        covariates_array = np.array([dynamic_covariates[k][0] for k in dynamic_covariates.keys()])
+        result = model.predict(
+            context=hourly_closes.tolist(),
+            horizon=horizon,
+            past_future_covariates=covariates_array,
+            return_quantiles=True,
         )
-        raw_point = point_fc[0]
-        raw_quant = quant_fc[0]
+        raw_point = np.array(result.forecast)
+        raw_quant = np.array(result.quantiles) if result.quantiles is not None else None
         point = raw_point[-horizon:] if len(raw_point) > horizon else raw_point
         quant = raw_quant[-horizon:] if len(raw_quant) > horizon else raw_quant
     except Exception as e:
@@ -93,11 +93,12 @@ def run_hourly_with_context(model, store, daily_result, symbol, context_len, hor
 
     # 无协变量 baseline
     try:
-        baseline_point, baseline_quant = model.forecast(
+        baseline_result = model.predict(
+            context=hourly_closes.tolist(),
             horizon=horizon,
-            inputs=[hourly_closes],
+            return_quantiles=True,
         )
-        bp = baseline_point[0][-horizon:] if len(baseline_point[0]) > horizon else baseline_point[0]
+        bp = np.array(baseline_result.forecast)[-horizon:] if len(baseline_result.forecast) > horizon else np.array(baseline_result.forecast)
     except Exception:
         bp = None
 

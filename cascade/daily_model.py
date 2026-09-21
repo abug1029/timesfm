@@ -1,5 +1,5 @@
 """
-Stage 1: 日线模型
+Stage 1: 日线模型 (TimesFM 3.0)
 
 用 TimesFM 进行日线级别预测，提取预测斜率。
 输出 DailyResult 供 Stage 2 (1H 模型) 使用。
@@ -12,7 +12,7 @@ import torch
 from dataclasses import dataclass
 from typing import Optional
 
-import timesfm
+import timesfm3
 from data.config import get_timesfm_model_path
 from data.data_store import DataStore, get_safe_daily
 
@@ -28,36 +28,6 @@ class DailyResult:
     quantile_forecast: Optional[np.ndarray] = None  # shape (22, 10)
     r_squared: float = 0.0
     slope_unreliable: bool = False
-
-
-FM_COMPILED_FP_ATTR = "_fm_compiled_fp"
-FP_FIELDS = (
-    "max_context",
-    "max_horizon",
-    "normalize_inputs",
-    "use_continuous_quantile_head",
-    "force_flip_invariance",
-    "infer_is_positive",
-    "fix_quantile_crossing",
-    "return_backcast",
-    "per_core_batch_size",
-)
-
-
-def forecast_config_fp(config):
-    try:
-        return tuple(getattr(config, name) for name in FP_FIELDS)
-    except Exception:
-        return None
-
-
-def ensure_compiled(model, config):
-    fp = forecast_config_fp(config)
-    if fp is not None and getattr(model, FM_COMPILED_FP_ATTR, None) == fp:
-        return
-    model.compile(config)
-    if fp is not None:
-        setattr(model, FM_COMPILED_FP_ATTR, fp)
 
 
 def read_daily_frame(
@@ -79,28 +49,16 @@ def read_daily_frame(
 
 
 class DailyModel:
-    """日线预测模型"""
-
-    _DAILY_CONFIG = timesfm.ForecastConfig(
-        max_context=1024,
-        max_horizon=256,
-        normalize_inputs=True,
-        use_continuous_quantile_head=True,
-        force_flip_invariance=True,
-        infer_is_positive=True,
-        fix_quantile_crossing=True,
-    )
+    """日线预测模型 (TimesFM 3.0)"""
 
     def __init__(self, shared_model=None):
         torch.set_float32_matmul_precision("high")
         if shared_model is not None:
             self.model = shared_model
         else:
-            self.model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
+            self.model = timesfm3.TimesFM3Forecaster.from_pretrained(
                 get_timesfm_model_path()
             )
-        # compile 为日线配置 (predict 中也会重新 compile，确保配置正确)
-        ensure_compiled(self.model, self._DAILY_CONFIG)
 
     def predict(self, symbol: str, store: DataStore,
                 context_days: int = 250, horizon_days: int = 22) -> DailyResult:
@@ -116,9 +74,6 @@ class DailyModel:
         Returns:
             DailyResult
         """
-        # 确保日线配置生效 (HourlyModel 会重编译为 XReg，每次 predict 前重新 compile)
-        ensure_compiled(self.model, self._DAILY_CONFIG)
-
         # 读取主链日线数据
         df = read_daily_frame(symbol, store, context_days=context_days)
         if df.empty:
@@ -131,7 +86,7 @@ class DailyModel:
             raise ValueError(f"{symbol}: 日线数据不足 ({len(closes)} 天)")
 
         # 时效性检查: 日线数据滞后超过阈值时阻断 (考虑周末/假日)
-        is_backtest = hasattr(store, 'cutoff_date')
+        is_backtest = hasattr(store, "cutoff_date")
         if not is_backtest:
             latest_daily = dates.iloc[-1]
             days_stale = (datetime.now() - latest_daily).days
@@ -153,14 +108,16 @@ class DailyModel:
                     f"可能是节假日导致，请先采集数据"
                 )
 
-        # TimesFM 预测
-        point, quantile = self.model.forecast(
+        # TimesFM 3.0 预测
+        result = self.model.predict(
+            context=closes.tolist(),
             horizon=horizon_days,
-            inputs=[closes],
+            return_quantiles=True,
         )
-
-        forecast = point[0]  # shape (horizon_days,)
-        quant = quantile[0]  # shape (horizon_days, 10)
+        
+        # ForecastOutput: .forecast (point), .quantiles
+        forecast = np.asarray(result.forecast)  # shape (horizon_days,)
+        quant = np.asarray(result.quantiles) if result.quantiles is not None else None  # shape (horizon_days, 10)
 
         # 计算 horizon 段的百分比斜率 (线性回归)
         x = np.arange(len(forecast), dtype=float)
@@ -224,5 +181,3 @@ def _compute_direction_v2(daily_result, scheme) -> str:
         return "看空 ↓"
     else:
         return "中性 →"
-
-
