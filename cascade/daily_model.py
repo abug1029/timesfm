@@ -156,8 +156,8 @@ class DailyModel:
             f"  方向: {_compute_direction_v2(result, scheme)}",
         ]
         if result.quantile_forecast is not None:
-            lines.append(f"  P10 范围: {result.quantile_forecast[:, 1].min():.1f} ~ {result.quantile_forecast[:, 1].max():.1f}")
-            lines.append(f"  P90 范围: {result.quantile_forecast[:, 9].min():.1f} ~ {result.quantile_forecast[:, 9].max():.1f}")
+            lines.append(f"  P10 范围: {result.quantile_forecast[:, 0].min():.1f} ~ {result.quantile_forecast[:, 0].max():.1f}")
+            lines.append(f"  P90 范围: {result.quantile_forecast[:, 8].min():.1f} ~ {result.quantile_forecast[:, 8].max():.1f}")
         return "\n".join(lines)
 
 

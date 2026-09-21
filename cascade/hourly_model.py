@@ -281,8 +281,8 @@ class HourlyModel:
         ]
 
         if result.quantile_forecast is not None and result.quantile_forecast.ndim == 2:
-            lines.append(f"  P10 最低: {result.quantile_forecast[:, 1].min():.1f}")
-            lines.append(f"  P90 最高: {result.quantile_forecast[:, 9].max():.1f}")
+            lines.append(f"  P10 最低: {result.quantile_forecast[:, 0].min():.1f}")
+            lines.append(f"  P90 最高: {result.quantile_forecast[:, 8].max():.1f}")
 
         # 逐小时预测表
         lines.append("")
