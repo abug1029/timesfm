@@ -139,3 +139,66 @@ class TestApplyPrescreenScore:
             }, f)
         # invalid triggers -100 first (early return)
         assert _apply_prescreen_score(50.0, prop_path) == -50.0
+
+
+class TestPrescreenAsync:
+    """Test fire-and-forget prescreen thread (daemon, non-blocking, silent failure)."""
+
+    def test_returns_immediately_non_blocking(self):
+        """_prescreen_async 应立即返回，不阻塞调用方。"""
+        import time
+        from scripts.praxist_supervisor import _prescreen_async
+        prop = {"variant_id": "v_test_async", "cov_override": "cc", "symbol": "rb"}
+        start = time.time()
+        # 找不到 proposal 文件/无 key → daemon 线程静默失败, 主线程立即返回
+        _prescreen_async(prop, "/nonexistent/p_001.json", "rb")
+        elapsed = time.time() - start
+        assert elapsed < 1.0  # 同步阻塞 (含 API) 会 > 1s; fire-and-forget 立返
+
+    def test_launches_daemon_thread(self):
+        """线程应为 daemon, 进程退出时不阻塞."""
+        from scripts.praxist_supervisor import _prescreen_async
+        import threading
+        prop = {"variant_id": "v", "cov_override": "cc", "symbol": "rb"}
+        orig_start = threading.Thread.__init__
+        captured = {}
+        def spy(self, *a, **k):
+            captured["daemon"] = k.get("daemon", a[-1] if a else None)
+            orig_start(self, *a, **k)
+        threading.Thread.__init__ = spy
+        try:
+            _prescreen_async(prop, "/nonexistent/p_001.json", "rb")
+        finally:
+            threading.Thread.__init__ = orig_start
+        assert captured.get("daemon") is True
+
+    def test_import_error_silent(self):
+        """prescreen 模块导入失败时静默返回, 不抛给调用方."""
+        import scripts.praxist_supervisor as s
+
+        class _FakeLog:
+            def __init__(self): self.calls = []
+            def warning(self, *a, **k): self.calls.append((a, k))
+
+        # 模拟 prescreen 导入失败 → _prescreen_async 应记录 warning 后返回
+        orig_log = s.logging
+        result = _FakeLog()
+        s.logging = result  # 替换模块级 logging (内含 warning 引用到模块级 logging)
+        try:
+            # 覆盖: 强制 typesafe 子模块导入抛错
+            import builtins
+            real_import = builtins.__import__
+            def broken(name, *a, **k):
+                if name == "cascade.typesafe_prescreen":
+                    raise ImportError("simulated")
+                return real_import(name, *a, **k)
+            builtins.__import__ = broken
+            try:
+                # 不抛异常即通过
+                s._prescreen_async({}, "/x.json", "rb")
+                assert True
+            finally:
+                builtins.__import__ = real_import
+        finally:
+            s.logging = orig_log
+        assert len(result.calls) >= 1  # 记录了 warning (导入失败)

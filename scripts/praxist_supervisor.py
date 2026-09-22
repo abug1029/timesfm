@@ -912,6 +912,47 @@ def _apply_prescreen_score(score, proposal_path):
         score += 5.0
     return score
 
+def _prescreen_async(p, proposal_path, symbol):
+    """Fire-and-forget TypeSafe Jev prescreen (daemon thread, 不阻塞 harvest)。
+
+    prescreen 是软建议伴随元数据，不应拖慢 supervisor 收割循环。
+    - daemon=True: 进程退出时自动杀死，不阻塞 shutdown
+    - 失败静默丢弃 (记录 warning)，不影响主流程
+    - 仍通过原子写盘落盘，慢环读到的一定是完整结果
+    """
+    try:
+        from cascade.typesafe_prescreen import prescreen_and_save
+    except Exception as _e:
+        logging.warning("TypeSafe 预筛导入失败 (%s): %s", proposal_path, _e)
+        return
+
+    _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _verdicts_path = os.path.join(_root, "task_FM", "config", "aligned_verdicts.jsonl")
+    _menu_path = os.path.join(_root, "task_FM", "covariate_menu.inc.md")
+
+    def _run():
+        try:
+            _history = []
+            if os.path.exists(_verdicts_path):
+                with open(_verdicts_path, encoding="utf-8") as f:
+                    _history = [json.loads(l) for l in f if l.strip()]
+            _menu = {}
+            if os.path.exists(_menu_path):
+                with open(_menu_path, encoding="utf-8") as f:
+                    _menu = {"text": f.read()}
+            prescreen_and_save(
+                proposal=p,
+                proposal_path=proposal_path,
+                symbol=symbol,
+                verdict_history=_history,
+                covariate_menu=_menu,
+            )
+        except Exception as _e:
+            logging.warning("TypeSafe 预筛异步调用失败 (%s): %s", proposal_path, _e)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None, repeat_counts=None, proposal_path=None):
     """机制化排序 (替代噪声小样本 EV)。确定性可复现。
     1) 协变量履历 (v23 口径): 同 cov 任一品种 (含自身; 生产经历史去重同 vid
@@ -1124,32 +1165,8 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 "src_run": os.path.basename(run_dir), "source": "peer_proposal",
                 "_family": family, "_score": score, "_tier": tier,
                 "_proposal_path": sp})
-            # ── TypeSafe 预筛触发 ──────────────────────
-            try:
-                from cascade.typesafe_prescreen import prescreen_and_save
-                _verdicts_path = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                    "task_FM", "config", "aligned_verdicts.jsonl")
-                _history_verdicts = []
-                if os.path.exists(_verdicts_path):
-                    with open(_verdicts_path, encoding="utf-8") as _vf:
-                        _history_verdicts = [json.loads(_l) for _l in _vf if _l.strip()]
-                _menu_path = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                    "task_FM", "covariate_menu.inc.md")
-                _menu_content = {}
-                if os.path.exists(_menu_path):
-                    with open(_menu_path, encoding="utf-8") as _mf:
-                        _menu_content = {"text": _mf.read()}
-                prescreen_and_save(
-                    proposal=p,
-                    proposal_path=sp,
-                    symbol=symbol,
-                    verdict_history=_history_verdicts,
-                    covariate_menu=_menu_content,
-                )
-            except Exception as _e:
-                logging.warning("TypeSafe 预筛失败 (%s): %s", sp, _e)
+            # ── TypeSafe 预筛触发 (fire-and-forget, 不阻塞 harvest) ──
+            _prescreen_async(p, sp, symbol)
 
     candidates.sort(key=lambda r: (r["_tier"], -r["_score"], r["_family"], r["variant_id"]))
     selected = []
