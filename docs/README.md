@@ -36,6 +36,8 @@
 | [2026-09-19-verdict-analysis-report.md](./2026-09-19-verdict-analysis-report.md) | 2026-09-19 裁决分析（81 verdicts；提案过门 0/11） |
 | [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 |
 | [2026-09-19-peer-proposal-quality-verification.md](./2026-09-19-peer-proposal-quality-verification.md) | 提案质量改动单测验证；过门率待下一轮快环 |
+| [superpowers/specs/2026-09-22-typesafe-covariate-prescreen-design.md](./superpowers/specs/2026-09-22-typesafe-covariate-prescreen-design.md) | **TypeSafe Jev 协变量预筛设计**（软建议模式：三问判读 → 调度降权/奖励，不阻断慢环） |
+| [superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md](./superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md) | Jev 预筛输出如何影响 peer 行为（Phase 2/3 演进设计） |
 | [praxist_directive_design.md](./archive/history/praxist_directive_design.md) | 指令/目标 DSL 设计 |
 | [praxist_integration_plan.md](./archive/history/praxist_integration_plan.md) | 三环集成计划 |
 | [praxist_llm_env.md](./praxist_llm_env.md) | LLM 环境变量（Ark 主 / DashScope 备） |

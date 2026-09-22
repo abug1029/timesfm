@@ -11,7 +11,7 @@
 
 | File | Description |
 |------|-------------|
-| **`system_design.md`** | **系统设计全景（先读）**：架构/数据流/协变量/评估/Praxist 三环（v1.4, 2026-09-20） |
+| **`system_design.md`** | **系统设计全景（先读）**：架构/数据流/协变量/评估/Praxist 三环 + TypeSafe 预筛（v1.5, 2026-09-22） |
 | `README.md` | 文档索引 |
 | `praxist.md` | Praxist 架构概览（本体 vs 三环；现行合同） |
 | `runbook_praxist_three_loop.md` | Praxist 三环运维 |
@@ -33,7 +33,7 @@
 | `2026-09-19-verdict-analysis-report.md` | 裁决分析（81 verdicts，过门 0/11） |
 | `2026-09-18-oi-gated-momentum-spec.md` | oi_gated_momentum 协变量规格 |
 | `superpowers/plans/` | 已清空（历史施工单见 `archive/superpowers-plans/`） |
-| `superpowers/specs/` | 设计规格（v23 spec + praxist_control_plane） |
+| `superpowers/specs/` | 设计规格（v23 spec + praxist_control_plane + `2026-09-22-typesafe-covariate-prescreen-design.md` TypeSafe Jev 预筛 + `2026-09-22-jev-prescreen-peer-influence.md` Jev→peer） |
 | `archive/v23-code-reviews/` | v23 合入过程 code review 报告（17 个文件，历史归档） |
 
 **新口径经济真相**: g005e 结果文件已不在仓内（原 `../reports/research/20260808_g005e_results.md`；Phase 11/12 后协变量已刷新）

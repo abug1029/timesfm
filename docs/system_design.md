@@ -6,7 +6,7 @@
 > - 硬门 / 裁决口径以 [`loop-constraints.md`](../loop-constraints.md)（预注册评估契约，v23）与 [`docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`](superpowers/specs/2026-09-14-prediction-quality-redesign-design.md) 为准。
 > - 本文若与上述冲突，以上述为准。不要按本文去改 `signal_contract.py` 或 `evaluator.gate`。
 >
-> **版本**: 1.4 (2026-09-20，§4.1 新增 oi_gated_momentum；§7.4 星级更新；§11 Praxist 三环集成)
+> **版本**: 1.5 (2026-09-22，§11.2 新增 TypeSafe Jev 预筛调度降权/奖励；§11.4 运行状态更新)
 > **定位**: 方向性建议，不是自动开平仓。描述 TimesFM 两阶段级联如何在任意时刻给出期货品种的方向与置信度。
 
 ---
@@ -155,7 +155,7 @@ TqSdk API
 输入: 250 天历史收盘价
     │
     ↓
-TimesFM 2.5 (200M 参数)
+TimesFM 3.0 (200M 参数, google/timesfm-3.0-pytorch)
     │
     ├── 点预测: forecast[t], t=1..22
     └── 分位数预测: quantile[t, q], q=P10..P90
@@ -179,7 +179,7 @@ class DailyResult:
     horizon_slope: float           # 存储为分数/天（0.0015 = 0.15%/天）
     historical_closes: np.ndarray  # 历史真实日线收盘价
     historical_dates: pd.DatetimeIndex
-    quantile_forecast: np.ndarray  # shape (22, 10), P10~P90
+    quantile_forecast: np.ndarray  # shape (22, 9), P10=col0 .. P90=col8 （3.0 输出 9 列分位）
     r_squared: float = 0.0
     slope_unreliable: bool = False  # R² < 0.35
 ```
@@ -206,7 +206,7 @@ class DailyResult:
     └── 协变量 (品种特异配置)
     │
     ↓
-TimesFM 2.5 XReg (forecast_with_covariates)
+TimesFM 3.0 XReg (predict(context=, horizon=, past_future_covariates=, return_quantiles=True))
     │
     ├── 点预测: point_forecast[t], t=1..24
     └── 分位数预测: quantile_forecast[t, q]
@@ -854,6 +854,7 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
 | 符号失败惩罚加陡 | 8+ 失败 -50 分起，3-7 次 -8/次 |
 | DEAD 族拒绝 | 4+ ok 0 pass 族识别为 family_dead，harvest 先于 no_failure_delta |
 | DEAD/HOLD 过滤 | eg/jd/lh 零入队 |
+| **TypeSafe Jev 预筛**（软建议） | harvest 时 fire-and-forget 调 TypeSafe 三问写 `<proposal>.prescreen.json`；`_apply_prescreen_score` 据此做 ± 调度分（invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5）。**不阻断慢环回测**；缺 `TYPESAFE_API_KEY` 或降级时静默跳过。详见 `cascade/typesafe_prescreen.py` |
 
 ### 11.3 关键文件
 
@@ -869,10 +870,12 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
 | `data/cache/supervisor_state.json` | 机器状态（cycles_done / last_run_id） |
 | `scripts/praxist_goal.yaml` | 目标配置 |
 
-### 11.4 当前运行状态（2026-09-20）
+### 11.4 当前运行状态（2026-09-22）
 
-- PID 31638，commit `6035c8e`，cycles_done=36
-- 105 verdicts / 22 gate_pass=true (21%) / 0 fdr_pass=true
+- 123 verdicts / 22 gate_pass=true (21%) / 0 fdr_pass=true（历史裁决）
+- 本会话落地 TypeSafe Jev 预筛：SDK v0.7.1 适配 + 调度降权/奖励 + 质量追踪器（50 样本门禁）+ 专家审核修复；7 commits `cc856cb..411183e`
+- prefetch 状态：**0 条 verdict 带 prescreen metadata**（历史裁决均为集成前生成），需积累 ≥50 条新 verdict 触发 Phase 3 质量校准
+- 运行计数以 `data/cache/supervisor_state.json` 为准（cycles_done 随调度递增，不在此写死）
 - 目标：1★ 品种过门 ≥4 + min dir_acc > 0.52 + ≥1 族
 
 ---
