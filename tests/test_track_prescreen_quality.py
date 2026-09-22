@@ -35,14 +35,25 @@ class TestAnalyze:
         assert m["high_conf_n"] == 2
         assert m["high_conf_gate_rate"] == 0.5
 
-    def test_skip_true_rate(self):
+    def test_skip_true_rate_strict(self):
+        # NIT-2: 严格口径只计 gate_pass, 不算 migrated_pass
         vs = [
             _mk({"plausibility": 0.3, "skip_suggested": True}, gate_pass=False),
             _mk({"plausibility": 0.2, "skip_suggested": True}, gate_pass=False, migrated=True),
         ]
         m = _analyze(vs)
         assert m["skip_true_n"] == 2
-        assert m["skip_true_gate_rate"] == 0.5  # 1/2 migrated counts as pass
+        assert m["skip_true_gate_rate"] == 0.0  # 严格: 无 gate_pass
+
+    def test_high_conf_loose_includes_migrated(self):
+        # NIT-2: 宽松口径计入 migrated_pass, 严格口径不计
+        vs = [
+            _mk({"plausibility": 0.8, "skip_suggested": False}, gate_pass=False, migrated=True),
+        ]
+        m = _analyze(vs)
+        assert m["high_conf_n"] == 1
+        assert m["high_conf_gate_rate"] == 0.0           # 严格
+        assert m["high_conf_gate_rate_loose"] == 1.0     # 宽松
 
     def test_novelty_dir_acc(self):
         vs = [

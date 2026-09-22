@@ -906,6 +906,11 @@ def _apply_prescreen_score(score, proposal_path):
             return score - 30.0
         if plausibility is not None and isinstance(plausibility, (int, float)) and plausibility < 0.4:
             return score - 20.0
+        # skip 第 4 分支: effect==0 且 plausibility ∈ [0.4, 0.6) -- 无新增信息且可信度不足以补偿
+        if (effect_size == 0
+                and isinstance(plausibility, (int, float))
+                and plausibility < 0.6):
+            return score - 15.0
     if skip is False and isinstance(effect_size, (int, float)) and effect_size >= 2:
         score += 10.0
     if novelty in ("novel", "extension") and isinstance(plausibility, (int, float)) and plausibility > 0.6:
@@ -918,13 +923,26 @@ def _prescreen_async(p, proposal_path, symbol):
     prescreen 是软建议伴随元数据，不应拖慢 supervisor 收割循环。
     - daemon=True: 进程退出时自动杀死，不阻塞 shutdown
     - 失败静默丢弃 (记录 warning)，不影响主流程
+    - 幂等守卫: 已有 status=success 的结果则跳过，避免每轮重复付费调用
     - 仍通过原子写盘落盘，慢环读到的一定是完整结果
+    - 注意: 因异步, 本轮 _proposal_priority_score 读不到刚写入的结果,
+      Phase2 降权在下一个收割周期才生效 (新提案首次调度用未调整分)。
     """
+    # 幂等守卫 (WARN-3): 已有成功 prescreen 结果则不再重复调用
     try:
         from cascade.typesafe_prescreen import prescreen_and_save
     except Exception as _e:
         logging.warning("TypeSafe 预筛导入失败 (%s): %s", proposal_path, _e)
         return
+
+    _existing_ps = str(Path(proposal_path).with_suffix(".prescreen.json"))
+    if os.path.exists(_existing_ps):
+        try:
+            with open(_existing_ps, encoding="utf-8") as _f:
+                if json.load(_f).get("status") == "success":
+                    return
+        except (json.JSONDecodeError, OSError):
+            pass  # 损坏/失败结果 → 允许重试
 
     _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     _verdicts_path = os.path.join(_root, "task_FM", "config", "aligned_verdicts.jsonl")

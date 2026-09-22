@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 
 # ── 异常类兼容导入 ──────────────────────────────────
 try:
-    from typesafe_sdk.exceptions import AuthenticationError, TypeSafeTimeoutError
+    from typesafe_sdk import (
+        TypeSafeAuthenticationError as AuthenticationError,
+        TypeSafeAPITimeoutError as TypeSafeTimeoutError,
+    )
 except ImportError:
     class AuthenticationError(Exception):
         """TypeSafe SDK 鉴权失败异常（本地兜底）"""
@@ -227,8 +230,7 @@ def _serialize_raw_answers(answers: dict) -> dict[str, Any]:
             entry["score"] = ans.score
         if hasattr(ans, "confidence"):
             entry["confidence"] = ans.confidence
-        if hasattr(ans, "reasoning") and ans.reasoning:
-            entry["reasoning"] = ans.reasoning
+        # SDK v0.7.1 的 Noul/Choice/Score answer 均无 reasoning 字段, 故不序列化
         out[qid] = entry
     return out
 

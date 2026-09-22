@@ -173,7 +173,8 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
                     "status": _ps.get("status"),
                     "skip_suggested": _ps.get("skip_suggested"),
                     "plausibility": _ps.get("mechanism_plausibility"),
-                    "novelty": _ps.get("novelty"),
+                    # NIT-3: 读取侧归一化, 不依赖写侧已小写
+                    "novelty": str(_ps.get("novelty") or "").strip().lower(),
                     "effect_size": _ps.get("effect_size"),
                     "note": _ps.get("note"),
                 }

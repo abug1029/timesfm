@@ -202,3 +202,74 @@ class TestPrescreenAsync:
         finally:
             s.logging = orig_log
         assert len(result.calls) >= 1  # 记录了 warning (导入失败)
+
+
+    def test_zero_effect_mid_plausibility_penalty(self, tmp_path):
+        """skip 第4分支: effect==0 且 plausibility ∈ [0.4,0.6) → -15 (WARN-2修复)."""
+        prop_path = str(tmp_path / "p_z.json")
+        ps_path = str(Path(prop_path).with_suffix(".prescreen.json"))
+        with open(ps_path, "w") as f:
+            json.dump({
+                "status": "success", "skip_suggested": True,
+                "novelty": "extension", "mechanism_plausibility": 0.5,
+                "effect_size": 0,
+            }, f)
+        assert _apply_prescreen_score(50.0, prop_path) == 35.0
+
+    def test_zero_effect_high_plausibility_no_penalty(self, tmp_path):
+        """skip=False 且 effect==0 高可信 → 无第4分支惩罚."""
+        prop_path = str(tmp_path / "p_h.json")
+        ps_path = str(Path(prop_path).with_suffix(".prescreen.json"))
+        with open(ps_path, "w") as f:
+            json.dump({
+                "status": "success", "skip_suggested": False,
+                "novelty": "extension", "mechanism_plausibility": 0.7,
+                "effect_size": 0,
+            }, f)
+        # effect<2 无 +10, plausibility>0.6 有 +5
+        assert _apply_prescreen_score(50.0, prop_path) == 55.0
+
+
+    def test_prescreen_async_skips_if_success_exists(self, monkeypatch, tmp_path):
+        """WARN-3: 已有 status=success 结果则幂等跳过, 不启动 daemon 线程."""
+        import threading
+        from scripts.praxist_supervisor import _prescreen_async
+
+        prop_path = str(tmp_path / "p.json")
+        ps_path = str(Path(prop_path).with_suffix(".prescreen.json"))
+        with open(ps_path, "w") as f:
+            json.dump({"status": "success", "skip_suggested": False}, f)
+
+        started = []
+        orig_start = threading.Thread.start
+        def spy_start(self):
+            started.append(self.name)
+            return orig_start(self)
+        monkeypatch.setattr(threading.Thread, "start", spy_start)
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+
+        _prescreen_async({"variant_id": "v"}, prop_path, "rb")
+        import time; time.sleep(0.2)
+        assert started == [], "幂等守卫应跳过, 不启动线程"
+
+    def test_prescreen_async_retries_if_degraded(self, monkeypatch, tmp_path):
+        """WARN-3: 非 success (degraded/损坏) 结果允许重试, 启动线程."""
+        import threading
+        from scripts.praxist_supervisor import _prescreen_async
+        import cascade.typesafe_prescreen as tp
+        # 允许导入; 打桩 prescreen_and_save 避免真实网络
+        calls = []
+        tp.prescreen_and_save = lambda *a, **k: calls.append(k) or {}
+
+        prop_path = str(tmp_path / "p2.json")
+        ps_path = str(Path(prop_path).with_suffix(".prescreen.json"))
+        with open(ps_path, "w") as f:
+            json.dump({"status": "degraded", "skip_suggested": None}, f)
+
+        # 打桩 thread.start 记录
+        orig_start = threading.Thread.start
+        monkeypatch.setattr(threading.Thread, "start", lambda self: orig_start(self))
+        _prescreen_async({"variant_id": "v"}, prop_path, "rb")
+        import time; time.sleep(0.3)
+        assert len(calls) >= 1, "degraded 结果应重试 prescreen_and_save"
+        del tp.prescreen_and_save  # 清理打桩, 避免污染其他测试

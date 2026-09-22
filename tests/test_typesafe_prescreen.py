@@ -266,7 +266,10 @@ class TestPrescreenProposalMock:
     def test_auth_error_returns_error(self, monkeypatch):
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
         def raise_auth(*a, **k):
-            raise AuthenticationError("401 Unauthorized")
+            # 构造真实 SDK TypeSafeAuthenticationError (需 status/body/headers)
+            e = AuthenticationError(
+                401, {"error": "unauthorized"}, {}, message="401 Unauthorized")
+            raise e
         monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe", raise_auth)
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["status"] == "error"

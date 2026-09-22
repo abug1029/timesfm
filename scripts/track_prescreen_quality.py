@@ -58,12 +58,19 @@ def _mean(vals: list[float]) -> float:
     return sum(vals) / len(vals) if vals else 0.0
 
 
-def _gate_rate(verdicts: list[dict[str, Any]]) -> float:
-    """gate_pass 比例 (含 migrated_pass 宽松口径)。"""
+def _gate_rate(verdicts: list[dict[str, Any]], strict: bool = True) -> float:
+    """过门率 (按口径拆分, NIT-2)。
+
+    - strict=True: 仅 gate_pass (严格过门)
+    - strict=False: gate_pass 或 migrated_pass (宽松口径)
+    """
     if not verdicts:
         return 0.0
-    hits = sum(1 for v in verdicts
-               if v.get("gate_pass") or v.get("migrated_pass"))
+    if strict:
+        hits = sum(1 for v in verdicts if v.get("gate_pass"))
+    else:
+        hits = sum(1 for v in verdicts
+                   if v.get("gate_pass") or v.get("migrated_pass"))
     return hits / len(verdicts)
 
 
@@ -99,19 +106,20 @@ def _analyze(verdicts: list[dict[str, Any]]) -> dict[str, Any]:
             effect_buckets.setdefault(es, []).append(v)
 
     return {
-        "high_conf_gate_rate": _gate_rate(high_conf),
+        "high_conf_gate_rate": _gate_rate(high_conf, strict=True),
+        "high_conf_gate_rate_loose": _gate_rate(high_conf, strict=False),
         "high_conf_n": len(high_conf),
-        "low_conf_gate_rate": _gate_rate(low_conf),
+        "low_conf_gate_rate": _gate_rate(low_conf, strict=True),
         "low_conf_n": len(low_conf),
-        "skip_true_gate_rate": _gate_rate(skip_true),
+        "skip_true_gate_rate": _gate_rate(skip_true, strict=True),
         "skip_true_n": len(skip_true),
-        "skip_false_gate_rate": _gate_rate(skip_false),
+        "skip_false_gate_rate": _gate_rate(skip_false, strict=True),
         "skip_false_n": len(skip_false),
         "novel_mean_dir_acc": _mean(novel_acc),
         "novel_n": len(novel_acc),
         "redundant_mean_dir_acc": _mean(redundant_acc),
         "redundant_n": len(redundant_acc),
-        "effect_bucket_rates": {es: _gate_rate(lst) for es, lst in sorted(effect_buckets.items())},
+        "effect_bucket_rates": {es: _gate_rate(lst, strict=True) for es, lst in sorted(effect_buckets.items())},
     }
 
 
@@ -174,7 +182,8 @@ def main() -> None:
         "",
         "| 指标 | 值 | n |",
         "|------|-----|---|",
-        f"| 高可信过门率 | {metrics['high_conf_gate_rate']:.2%} | {metrics['high_conf_n']} |",
+        f"| 高可信过门率(严格) | {metrics['high_conf_gate_rate']:.2%} | {metrics['high_conf_n']} |",
+        f"| 高可信过门率(宽松) | {metrics['high_conf_gate_rate_loose']:.2%} | {metrics['high_conf_n']} |",
         f"| 低可信过门率 | {metrics['low_conf_gate_rate']:.2%} | {metrics['low_conf_n']} |",
         f"| skip=True 过门率 | {metrics['skip_true_gate_rate']:.2%} | {metrics['skip_true_n']} |",
         f"| skip=False 过门率 | {metrics['skip_false_gate_rate']:.2%} | {metrics['skip_false_n']} |",
@@ -198,7 +207,7 @@ def main() -> None:
 
     if len(verdicts) >= MIN_SAMPLES:
         lines.append("")
-        lines.append("> ⚠️ **样本充足，以上结论可作为 Phase 2 阈值校准依据。**")
+        lines.append("> ⚠️ **整体样本充足；具体结论以各子组 n 为准 (high_conf/skip 需≥20, novelty 需≥10)。**")
 
     content = "\n".join(lines) + "\n"
     REPORT_PATH.write_text(content, encoding="utf-8")
