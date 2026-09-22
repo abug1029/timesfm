@@ -219,12 +219,12 @@ def _serialize_raw_answers(answers: dict) -> dict[str, Any]:
     out = {}
     for qid, ans in answers.items():
         entry: dict[str, Any] = {}
-        if hasattr(ans, "probability_yes"):
-            entry["probability_yes"] = ans.probability_yes
-        if hasattr(ans, "value"):
-            entry["value"] = ans.value
-        if hasattr(ans, "level_index"):
-            entry["level_index"] = ans.level_index
+        if hasattr(ans, "noul"):
+            entry["noul"] = ans.noul
+        if hasattr(ans, "choice"):
+            entry["choice"] = ans.choice
+        if hasattr(ans, "score"):
+            entry["score"] = ans.score
         if hasattr(ans, "confidence"):
             entry["confidence"] = ans.confidence
         if hasattr(ans, "reasoning") and ans.reasoning:
@@ -278,8 +278,8 @@ def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 5.0) ->
     from typesafe_sdk import Choice, Noul, Score, TypeSafeClient
 
     client = TypeSafeClient(api_key=api_key, timeout=timeout)
-    return client.judge(
-        model="jev",
+    return client.system_one(
+        model="jev-latest",
         state=state,
         questions={
             "mechanism_plausibility": Noul(
@@ -303,7 +303,7 @@ def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 5.0) ->
             ),
             "expected_effect_size": Score(
                 instructions=f"预期该协变量对 {state['symbol']} 预测质量的信息量贡献",
-                levels=[
+                criteria=[
                     "无新增信息（纯噪声或已完全捕获）",
                     "微弱新增信息（与现有协变量高度相关，边际贡献有限）",
                     "中等新增信息（独立信号维度，可能有交互效应）",
@@ -345,11 +345,11 @@ def _prescreen_impl(
         logger.exception("TypeSafe API 调用失败: %s", e)
         return _fallback_result(proposal, symbol, status="error", note=f"TypeSafe API 返回异常: {e}")
 
-    answers = result.data.answers
-    plausibility = answers["mechanism_plausibility"].probability_yes
-    raw_novelty = answers["novelty_vs_redundancy"].value
+    answers = result.answers
+    plausibility = answers["mechanism_plausibility"].noul
+    raw_novelty = answers["novelty_vs_redundancy"].choice
     novelty: NoveltyType = str(raw_novelty).strip().lower()  # type: ignore[assignment]
-    effect_size = answers["expected_effect_size"].level_index
+    effect_size = int(answers["expected_effect_size"].score)
 
     _record_success()
 

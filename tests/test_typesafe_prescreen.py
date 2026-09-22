@@ -172,27 +172,27 @@ class TestCircuitBreaker:
 
 class MockAnswer:
     """Mock SDK Answer 对象，模拟 typesafe_sdk 返回。"""
-    def __init__(self, probability_yes=None, value=None, level_index=None,
+    def __init__(self, noul=None, choice=None, score=None,
                  confidence=None, reasoning=None):
-        self.probability_yes = probability_yes
-        self.value = value
-        self.level_index = level_index
+        self.noul = noul
+        self.choice = choice
+        self.score = score
         self.confidence = confidence
         self.reasoning = reasoning
 
 
 class MockJudgeResult:
-    """Mock SDK judge 返回。"""
+    """Mock SDK system_one 返回（v0.7.1）。"""
     def __init__(self, answers: dict, is_ok: bool = True):
-        self.data = type("Data", (), {"answers": answers})()
+        self.answers = answers
         self.is_ok = is_ok
 
 
 def _make_mock_result(plausibility=0.85, novelty="novel", effect_size=3):
     return MockJudgeResult({
-        "mechanism_plausibility": MockAnswer(probability_yes=plausibility),
-        "novelty_vs_redundancy": MockAnswer(value=novelty),
-        "expected_effect_size": MockAnswer(level_index=effect_size),
+        "mechanism_plausibility": MockAnswer(noul=plausibility),
+        "novelty_vs_redundancy": MockAnswer(choice=novelty),
+        "expected_effect_size": MockAnswer(score=effect_size),
     })
 
 
@@ -316,7 +316,7 @@ class TestPrescreenProposalMock:
                            lambda *a, **k: _make_mock_result(0.85, "novel", 3))
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert "mechanism_plausibility" in result["raw_answers"]
-        assert result["raw_answers"]["mechanism_plausibility"]["probability_yes"] == 0.85
+        assert result["raw_answers"]["mechanism_plausibility"]["noul"] == 0.85
 
 
 class TestAtomicWrite:
