@@ -98,6 +98,7 @@ runtime_environment:
   env:
     CUDA_VISIBLE_DEVICES: ''
     PRAXIST_TRUSTED_PROJECT_EXTRA_ROOTS: /home/abug/timesfm
+    TYPESAFE_API_KEY: '${TYPESAFE_API_KEY}'
   protected_child_paths:
   - evaluations
   - roles

@@ -4,7 +4,7 @@ import os
 os.environ.setdefault("OMP_NUM_THREADS", "4")
 os.environ.setdefault("MKL_NUM_THREADS", "4")
 
-import argparse, fcntl, json, sys, time
+import argparse, fcntl, json, logging, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 FM_ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
@@ -153,6 +153,30 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
     v["checkpoint_path"] = cp
     v["slow_loop_pid"] = os.getpid()
     v["git_rev"] = _git_rev()
+    # ── TypeSafe 预筛伴随文件注入 ──────────────────────
+    _proposal_path = row.get("_proposal_path") or row.get("proposal_path")
+    if _proposal_path:
+        from pathlib import Path as _Path
+        _ps_path = str(_Path(_proposal_path).with_suffix(".prescreen.json"))
+        if os.path.exists(_ps_path):
+            try:
+                with open(_ps_path, encoding="utf-8") as _f:
+                    _ps = json.load(_f)
+            except (json.JSONDecodeError, OSError) as _e:
+                logging.warning("prescreen 文件解析失败 (%s): %s", _ps_path, _e)
+                _ps = None
+
+            if _ps:
+                if "metadata" not in v:
+                    v["metadata"] = {}
+                v["metadata"]["prescreen"] = {
+                    "status": _ps.get("status"),
+                    "skip_suggested": _ps.get("skip_suggested"),
+                    "plausibility": _ps.get("mechanism_plausibility"),
+                    "novelty": _ps.get("novelty"),
+                    "effect_size": _ps.get("effect_size"),
+                    "note": _ps.get("note"),
+                }
     os.makedirs(os.path.dirname(registry_path) or ".", exist_ok=True)
     rl.append_verdict(registry_path, v)
     _record_elapsed(row["variant_id"], elapsed_s)

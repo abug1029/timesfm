@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """三环监督环: goal 判定 + 两环调度, 纯 Python 0 token"""
-import argparse, atexit, fcntl, glob, json, os, re, signal, subprocess, sys, threading, time, traceback, uuid
+import argparse, atexit, fcntl, glob, json, logging, os, re, signal, subprocess, sys, threading, time, traceback, uuid
 from datetime import datetime, timedelta
 import yaml
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1087,7 +1087,34 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 "max_points": int(aligned_max_points), "stage": "aligned",
                 "checkpoint_path": "", "enqueued_at": _now_iso(),
                 "src_run": os.path.basename(run_dir), "source": "peer_proposal",
-                "_family": family, "_score": score, "_tier": tier})
+                "_family": family, "_score": score, "_tier": tier,
+                "_proposal_path": sp})
+            # ── TypeSafe 预筛触发 ──────────────────────
+            try:
+                from cascade.typesafe_prescreen import prescreen_and_save
+                _verdicts_path = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "task_FM", "config", "aligned_verdicts.jsonl")
+                _history_verdicts = []
+                if os.path.exists(_verdicts_path):
+                    with open(_verdicts_path, encoding="utf-8") as _vf:
+                        _history_verdicts = [json.loads(_l) for _l in _vf if _l.strip()]
+                _menu_path = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "task_FM", "covariate_menu.inc.md")
+                _menu_content = {}
+                if os.path.exists(_menu_path):
+                    with open(_menu_path, encoding="utf-8") as _mf:
+                        _menu_content = {"text": _mf.read()}
+                prescreen_and_save(
+                    proposal=p,
+                    proposal_path=sp,
+                    symbol=symbol,
+                    verdict_history=_history_verdicts,
+                    covariate_menu=_menu_content,
+                )
+            except Exception as _e:
+                logging.warning("TypeSafe 预筛失败 (%s): %s", sp, _e)
 
     candidates.sort(key=lambda r: (r["_tier"], -r["_score"], r["_family"], r["variant_id"]))
     selected = []

@@ -188,3 +188,10 @@ def parse_contract_info(contract_code: str) -> dict:
     year = 2000 + int(ym[:2])
     month = int(ym[2:])
     return {"product": product, "year": year, "month": month}
+
+
+# ── TypeSafe ────────────────────────────────────────
+
+def get_typesafe_api_key() -> str | None:
+    """读取 TYPESAFE_API_KEY，未设置时返回 None。"""
+    return _env_nonempty("TYPESAFE_API_KEY")
