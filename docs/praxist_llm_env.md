@@ -32,6 +32,7 @@ set +a
 |------|------|
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | 若改用 OpenAI 兼容供应商 |
 | `TIMESFM_MODEL_PATH` | 与 `FM_TIMESFM_MODEL_PATH` 兼容别名 |
+| `TYPESAFE_API_KEY` | TypeSafe Jev 协变量预筛（`cascade/typesafe_prescreen.py`）；**仅** `.env.praxist`；无 key 自动降级为 degraded。模型名 `jev-latest` |
 
 ## 隔离说明
 
