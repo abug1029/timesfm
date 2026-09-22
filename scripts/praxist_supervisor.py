@@ -2,6 +2,7 @@
 """三环监督环: goal 判定 + 两环调度, 纯 Python 0 token"""
 import argparse, atexit, fcntl, glob, json, logging, os, re, signal, subprocess, sys, threading, time, traceback, uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 import yaml
 HERE = os.path.dirname(os.path.abspath(__file__))
 FM_ROOT = os.path.dirname(HERE)
@@ -879,7 +880,39 @@ def _dead_families(snapshot, min_ok=4):
             if n >= min_ok and fam_pass.get(fam, 0) == 0}
 
 
-def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None, repeat_counts=None):
+
+def _apply_prescreen_score(score, proposal_path):
+    """TypeSafe Jev prescreen score adjustment (Phase 2)."""
+    if not proposal_path:
+        return score
+    ps_path = str(Path(proposal_path).with_suffix(".prescreen.json"))
+    if not os.path.exists(ps_path):
+        return score
+    try:
+        with open(ps_path, encoding="utf-8") as _f:
+            ps = json.load(_f)
+    except (json.JSONDecodeError, OSError):
+        return score
+    if not isinstance(ps, dict) or ps.get("status") != "success":
+        return score
+    skip = ps.get("skip_suggested")
+    novelty = str(ps.get("novelty") or "").strip().lower()
+    plausibility = ps.get("mechanism_plausibility")
+    effect_size = ps.get("effect_size")
+    if skip is True:
+        if novelty == "invalid":
+            return score - 100.0
+        if novelty == "redundant" and (effect_size is None or effect_size <= 1):
+            return score - 30.0
+        if plausibility is not None and isinstance(plausibility, (int, float)) and plausibility < 0.4:
+            return score - 20.0
+    if skip is False and isinstance(effect_size, (int, float)) and effect_size >= 2:
+        score += 10.0
+    if novelty in ("novel", "extension") and isinstance(plausibility, (int, float)) and plausibility > 0.6:
+        score += 5.0
+    return score
+
+def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None, repeat_counts=None, proposal_path=None):
     """机制化排序 (替代噪声小样本 EV)。确定性可复现。
     1) 协变量履历 (v23 口径): 同 cov 任一品种 (含自身; 生产经历史去重同 vid
        不可达) gate_pass=True 时, dir_acc 超过硬门 0.52 的部分 x200 加分。
@@ -955,6 +988,7 @@ def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None, repea
         score -= 20.0 + 10.0 * (n_runs - 3)  # 3→-20, 4→-30, 5→-40
     elif n_runs >= 2:
         score -= 8.0
+    score = _apply_prescreen_score(score, proposal_path)
     return score
 
 def _append_backlog(prop, src_path):
@@ -1068,7 +1102,8 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             repeat_counts = _cross_run_repeat_counts()
             score = _proposal_priority_score(p, cov, symbol, snapshot or {},
                                             status_map=status_map,
-                                            repeat_counts=repeat_counts)
+                                            repeat_counts=repeat_counts,
+                                            proposal_path=sp)
             if priority:
                 if symbol not in n_cache:
                     n_cache[symbol] = _valid_n_for_symbol(symbol)
