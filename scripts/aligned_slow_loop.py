@@ -99,6 +99,13 @@ def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path, b
         return _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid)
     except Exception as e:
         tombstone = rl.make_error_tombstone(row["symbol"], row["variant_id"], bid, e)
+        # 注入 tier 字段（与正常 verdict 一致）
+        from cascade.tier_classifier import compute_tier_score
+        _tier = compute_tier_score(tombstone)
+        tombstone["tier"] = _tier["tier"]
+        tombstone["tier_score"] = _tier["tier_score"]
+        tombstone["tier_label"] = _tier["tier_label"]
+        tombstone["tier_breakdown"] = _tier["tier_breakdown"]
         rl.append_verdict(registry_path, tombstone)
         return tombstone
 
@@ -179,6 +186,13 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
                     "note": _ps.get("note"),
                 }
     os.makedirs(os.path.dirname(registry_path) or ".", exist_ok=True)
+    # ── Tier 等级评分注入 ──────────────────────────────
+    from cascade.tier_classifier import compute_tier_score
+    tier_info = compute_tier_score(v)
+    v["tier"] = tier_info["tier"]
+    v["tier_score"] = tier_info["tier_score"]
+    v["tier_label"] = tier_info["tier_label"]
+    v["tier_breakdown"] = tier_info["tier_breakdown"]
     rl.append_verdict(registry_path, v)
     _record_elapsed(row["variant_id"], elapsed_s)
     return v
