@@ -262,8 +262,8 @@ def test_e2e_tombstone_and_fdr_collection(tmp_path):
 def test_e2e_snapshot_goal_combo(tmp_path):
     goal = sup.load_goal(GOAL_YAML)
     conds = goal["success_condition"]
-    cond_min_da = next(c for c in conds if "min_pass_variant_dir_acc" in c)
-    assert "is not None" in cond_min_da  # guard still present in production condition
+    cond_phase1 = next(c for c in conds if "all_symbols_pass_phase1" in c)
+    assert cond_phase1 == "all_symbols_pass_phase1"
 
     reg = str(tmp_path / "verdicts.jsonl")
     bid = "batch_goal"
@@ -283,20 +283,22 @@ def test_e2e_snapshot_goal_combo(tmp_path):
     assert snap["n_unique_pass_variants"] == 1
     assert snap["n_families_hit"] == 1
 
-    ok, reasons = sup.evaluate_goal([cond_min_da], snap)
-    assert ok is True and reasons == []  # 0.56 > 0.52 and not None
+    # 单品种 (ss) 过门不足以让全品种通过 Phase 1
+    assert snap["all_symbols_pass_phase1"] is False
+    ok, reasons = sup.evaluate_goal([cond_phase1], snap)
+    assert ok is False and any("all_symbols_pass_phase1" in r for r in reasons)
 
     ok_all, _ = sup.evaluate_goal(conds, snap)
-    assert ok_all is False  # n_one_star_symbols_hit=1 < 4, overall goal unmet
+    assert ok_all is False  # overall goal unmet
 
-    # no passing record: min_pass_variant_dir_acc=None -> condition unmet,
-    # not an eval error
+    # no passing record: 无品种通过 Phase 1 -> 条件未满足, 而非求值错误
     reg2 = str(tmp_path / "verdicts2.jsonl")
     rl.append_verdict(reg2, _v2_row("ss_bad2", "b2", symbol="ss",
                                     dir_acc=0.40, gate_pass=False, p_value=1.0))
     snap2 = sup.build_snapshot(reg2, 0, 0.0, 0.0)
     assert snap2["min_pass_variant_dir_acc"] is None
-    ok2, reasons2 = sup.evaluate_goal([cond_min_da], snap2)
+    assert snap2["all_symbols_pass_phase1"] is False
+    ok2, reasons2 = sup.evaluate_goal([cond_phase1], snap2)
     assert ok2 is False
     assert len(reasons2) == 1 and "eval error" not in reasons2[0]
     assert "unmet" in reasons2[0]
