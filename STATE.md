@@ -4,7 +4,11 @@
 > `reports/` 全部为 derived_view（可从 `predictions.json` / 回测 JSONL / db 产物重建），
 > 冲突时以 **STATE.md + 磁盘回测产物**为准。此规则用于终结"滞后文档事故"（如 SH 状态那次）。
 
-**最后更新**: 2026-09-22  
+**最后更新**: 2026-09-24（三环已停止并封存）
+
+> **WARNING: 三环封存声明 (2026-09-24 14:22)**：三环系统已 SIGTERM 优雅停止并全量封存于
+> data/archive/fm_a_sealed_2026-09-24T1422/（234MB，含 MANIFEST.md / SHA256SUMS / 143 run 目录 / 裁决 / checkpoint / 配置）。
+> 停滞根因链 + 恢复指引见该目录 MANIFEST.md §3 / §5。手动重启前必读。  
 **Phase 1 状态**: **L1 ops 全量完成 → ECONOMIC_PASS=False → 生产 REMAIN_OFF**  
 **人类文档**: `docs/README.md`（含 product_positioning / module_freeze / 新口径全表链接）  
 **冲突债**: `reports/research/20260808_conflict_debt_register.md`（绝大多数 DONE）  
@@ -19,11 +23,11 @@
 **Phase 15b (2026-08-29)**: StdDev 改 returns std **保留**（5/6 改善，AO PF +0.14；UR -0.11 例外退化待复评）；VWAP 衰减填充**回滚**（0/6 改善）。详见下节。  
 **Phase Q1 (2026-08-29 结案)**: 协变量实现质量审计 6 方向裁决：D1 RSI 自适应 **REJECT**（JD -0.02 / P combo -0.10；信息量↑≠预测力↑，固定边界 91% 零输出=隐式信号门控）；D2/D4 CANCEL；D3 SKIP；D5 PAUSE；D6 审计框架 **ACCEPT**（`tests/test_covariate_audit.py` 19 测试）。实验性协变量代码已从 features.py 移除。SCHEMES 无变更。详见下节。
 **MaxDD>100% bug (2026-08-30 闭环)**: 已于 2026-08-21 修复 (`cascade/evaluation_metrics.py` cumprod+clamp) 并 8 测试覆盖；-265%/-134% 为修复前旧口径 (batch_f1 2026-08-18)，Phase 11 裁决以 PF 为准不受影响。
-**PRAXIST (2026-09-22)**: 三环运行中（方案 A）。9/19 改进：failure_delta 硬门 + DEAD/HOLD 过滤 + fm_two_peer topology + 提案质量加固（84 tests）。9/20 改进：跨 run 重复惩罚 + DEAD 族拒绝。9/22 落地 **TypeSafe Jev 协变量预筛**（软建议模式：harvest 时三问判读 → `_proposal_priority_score` ± 调度分，不阻断慢环；质量门禁 50 样本）。累计 123 verdicts / 22 gate_pass=true（历史裁决均无 prescreen metadata，Phase 3 校准待新 verdict）。人类概览 `docs/praxist.md`；运维 `docs/runbook_praxist_three_loop.md`；机器状态 `data/cache/supervisor_state.json`；裁决 `task_FM/config/aligned_verdicts.jsonl`。
+**PRAXIST (2026-09-24, 三环已封存)**: 系统已停止封存（见顶部声明）。此前的方案 A 三环进展：9/19 改进：failure_delta 硬门 + DEAD/HOLD 过滤 + fm_two_peer topology + 提案质量加固（84 tests）。9/20 改进：跨 run 重复惩罚 + DEAD 族拒绝。9/22 落地 **TypeSafe Jev 协变量预筛**（软建议模式：harvest 时三问判读 → `_proposal_priority_score` ± 调度分，不阻断慢环；质量门禁 50 样本）。累计 123 verdicts / 22 gate_pass=true（历史裁决均无 prescreen metadata，Phase 3 校准待新 verdict）。人类概览 `docs/praxist.md`；运维 `docs/runbook_praxist_three_loop.md`；机器状态 `data/cache/supervisor_state.json`；裁决 `task_FM/config/aligned_verdicts.jsonl`。
 
 ---
 
-## PRAXIST 运行快照（2026-09-20）
+## PRAXIST 运行快照（2026-09-20 档；2026-09-24 封存时点）
 
 > Praxist 的**机器事实所有者**是 `data/cache/supervisor_state.json` 与 `task_FM/config/aligned_verdicts.jsonl`，不是本文件。本节省人类交接。过期时以 JSON 为准。停机报告仍落 `docs/superpowers/reports/`。
 >
