@@ -30,6 +30,9 @@ timesfm_cache/
 
 # Praxist 运行产物（太大，可从 praxist 重新生成）
 task_FM/experiments/
+
+# Jev 预筛产物（运行时生成）
+results/
 task_FM/scripts/praxist_ws/
 
 # 模型权重（pkl 太大）
