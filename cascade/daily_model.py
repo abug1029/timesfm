@@ -25,7 +25,7 @@ class DailyResult:
     horizon_slope: float           # 预测段的百分比斜率
     historical_closes: np.ndarray  # 历史真实日线收盘价
     historical_dates: pd.DatetimeIndex  # 历史真实日期
-    quantile_forecast: Optional[np.ndarray] = None  # shape (22, 10)
+    quantile_forecast: Optional[np.ndarray] = None  # shape (22, 9)
     r_squared: float = 0.0
     slope_unreliable: bool = False
 

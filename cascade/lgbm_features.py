@@ -188,10 +188,10 @@ def compute_timesfm_features_batch(
             try:
                 point, quant = shared_hourly._fallback_predict(ctx, horizon=HORIZON)
                 pred_t24 = float(point[-1])
-                # quant shape (HORIZON, 10); P10=col[1], P90=col[9] (与 hourly_model.summary 一致)
+                # quant shape (HORIZON, 9); P10=col[0], P90=col[8] (与 hourly_model.summary 一致)
                 if quant.ndim == 2 and quant.shape[0] >= HORIZON:
-                    p10 = float(quant[-1, 1])
-                    p90 = float(quant[-1, 9])
+                    p10 = float(quant[-1, 0])
+                    p90 = float(quant[-1, 8])
                 else:
                     p10 = p90 = pred_t24
                 rec["timesfm_pure_pred"] = (pred_t24 / t0_close - 1) if t0_close != 0 else None

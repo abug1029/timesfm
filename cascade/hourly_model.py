@@ -24,7 +24,7 @@ class HourlyResult:
     """1H 级联预测结果"""
     symbol: str
     point_forecast: np.ndarray       # shape (horizon,)
-    quantile_forecast: np.ndarray    # shape (horizon, 10)
+    quantile_forecast: np.ndarray    # shape (horizon, 9)
     covariates: dict                 # {"daily_slope": ..., "ccl_pct": ...}
     context_len: int                 # context 长度
     horizon: int                     # horizon 长度
@@ -291,8 +291,8 @@ class HourlyModel:
         for i in range(result.horizon):
             p = fc[i]
             if result.quantile_forecast is not None and result.quantile_forecast.ndim == 2:
-                p10 = result.quantile_forecast[i, 1] if i < len(result.quantile_forecast) else 0
-                p90 = result.quantile_forecast[i, 9] if i < len(result.quantile_forecast) else 0
+                p10 = result.quantile_forecast[i, 0] if i < len(result.quantile_forecast) else 0
+                p90 = result.quantile_forecast[i, 8] if i < len(result.quantile_forecast) else 0
             else:
                 p10 = p90 = 0
             lines.append(f"  T+{i+1:<3} {p:>8.1f} {p10:>8.1f} {p90:>8.1f}")

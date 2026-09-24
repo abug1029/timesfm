@@ -393,10 +393,10 @@ def _build_report(symbol, daily_result, hourly_result,
     lines.append(f"| 首日预测 | {d_fc[0]:,.0f} |")
     lines.append(f"| 末日预测 | {d_fc[-1]:,.0f} |")
     if daily_result.quantile_forecast is not None:
-        lines.append(f"| P10 范围 | {daily_result.quantile_forecast[:, 1].min():,.0f} ~ "
-                     f"{daily_result.quantile_forecast[:, 1].max():,.0f} |")
-        lines.append(f"| P90 范围 | {daily_result.quantile_forecast[:, 9].min():,.0f} ~ "
-                     f"{daily_result.quantile_forecast[:, 9].max():,.0f} |")
+        lines.append(f"| P10 范围 | {daily_result.quantile_forecast[:, 0].min():,.0f} ~ "
+                     f"{daily_result.quantile_forecast[:, 0].max():,.0f} |")
+        lines.append(f"| P90 范围 | {daily_result.quantile_forecast[:, 8].min():,.0f} ~ "
+                     f"{daily_result.quantile_forecast[:, 8].max():,.0f} |")
     lines.append("")
     lines.append("### 日线预测走势")
     lines.append("")
@@ -411,9 +411,9 @@ def _build_report(symbol, daily_result, hourly_result,
     for i in range(len(d_fc)):
         if i in [0, 4, 9, 14, 19, 21] or i == len(d_fc) - 1:
             p = d_fc[i]
-            q = daily_result.quantile_forecast[i] if daily_result.quantile_forecast is not None else [0]*10
+            q = daily_result.quantile_forecast[i] if daily_result.quantile_forecast is not None else [0]*9
             date_str = future_days[i].strftime("%m-%d") if future_days is not None else "—"
-            lines.append(f"| {date_str} | D+{i+1} | {p:,.0f} | {q[1]:,.0f} | {q[5]:,.0f} | {q[9]:,.0f} |")
+            lines.append(f"| {date_str} | D+{i+1} | {p:,.0f} | {q[0]:,.0f} | {q[4]:,.0f} | {q[8]:,.0f} |")
     lines.append("")
 
     # ── 三、1小时级别过往走势 ──
@@ -482,9 +482,9 @@ def _build_report(symbol, daily_result, hourly_result,
     for i in range(horizon):
         p = fc[i]
         if h_quant is not None and h_quant.ndim == 2:
-            p10 = h_quant[i, 1]
-            p50 = h_quant[i, 5]
-            p90 = h_quant[i, 9]
+            p10 = h_quant[i, 0]
+            p50 = h_quant[i, 4]
+            p90 = h_quant[i, 8]
         else:
             p10 = p50 = p90 = 0
         w_str = f"{weights[i]:.2f}" if weights is not None else "—"

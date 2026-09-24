@@ -47,11 +47,11 @@ def predict_symbol(symbol: str, model, horizon: int = 22) -> dict:
                 "day": i + 1,
                 "date": future_dates[i].strftime("%Y-%m-%d"),
                 "pred": float(point[0, i]),
-                "p10": float(quantile[0, i, 1]),
-                "p25": float(quantile[0, i, 3]),
-                "p50": float(quantile[0, i, 5]),
-                "p75": float(quantile[0, i, 7]),
-                "p90": float(quantile[0, i, 9]),
+                "p10": float(quantile[0, i, 0]),
+                "p25": float(quantile[0, i, 2]),
+                "p50": float(quantile[0, i, 4]),
+                "p75": float(quantile[0, i, 6]),
+                "p90": float(quantile[0, i, 8]),
             })
 
         result = {
@@ -66,8 +66,8 @@ def predict_symbol(symbol: str, model, horizon: int = 22) -> dict:
             "min_pred": float(point[0].min()),
             "max_pred": float(point[0].max()),
             "change_pct": (float(point[0, -1]) / float(arr[-1]) - 1) * 100,
-            "p10_floor": float(quantile[0, :, 1].min()),
-            "p90_ceil": float(quantile[0, :, 9].max()),
+            "p10_floor": float(quantile[0, :, 0].min()),
+            "p90_ceil": float(quantile[0, :, 8].max()),
             "week_avgs": [
                 float(point[0, :min(5, horizon)].mean()) if horizon > 0 else 0,
                 float(point[0, 5:min(10, horizon)].mean()) if horizon > 5 else 0,
