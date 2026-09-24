@@ -490,6 +490,71 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     pass_dir_accs = [float(v["dir_acc"]) for v in passing
                      if isinstance(v.get("dir_acc"), (int, float))]
     min_pass_variant_dir_acc = min(pass_dir_accs) if pass_dir_accs else None
+    # Phase 1: 基础质量门槛
+    n_gate_pass_variants = len([v for v in snap.get("variants", {}).values() if v.get("gate_pass")])
+    gate_pass_dir_accs = [float(v["dir_acc"]) for v in snap.get("variants", {}).values() 
+                          if v.get("gate_pass") and isinstance(v.get("dir_acc"), (int, float))]
+    avg_dir_acc_gate_pass = sum(gate_pass_dir_accs) / len(gate_pass_dir_accs) if gate_pass_dir_accs else 0.0
+    
+    # Phase 2: 高质量变体
+    n_tier_a_or_b = len([v for v in snap.get("variants", {}).values() 
+                         if v.get("tier") in ["A", "B"]])
+    n_symbols_represented = len(symbols_hit)
+    
+    # Phase 3: 稳定性验证 (placeholder - need actual multi-seed validation data)
+    n_validated_multi_seed = 0  # TODO: implement multi-seed validation tracking
+    decay_below_threshold = 0  # TODO: implement decay tracking
+    
+    # 定义目标品种集
+    TARGET_SYMBOLS = {"m", "ss", "sr", "cj", "jd", "lh", "eg", "rb", "i", "p", "y", "cf", 
+                      "bu", "fu", "ta", "ma", "fg", "ur", "px", "oi", "sh", "sp", "ao", "sc"}
+    
+    # 按品种统计指标
+    symbol_stats = {}
+    for symbol in TARGET_SYMBOLS:
+        symbol_variants = [v for v in snap.get("variants", {}).values() if v.get("symbol") == symbol]
+        symbol_gate_pass = [v for v in symbol_variants if v.get("gate_pass")]
+        symbol_tier_a_b = [v for v in symbol_variants if v.get("tier") in ["A", "B"]]
+        
+        # Phase 1: 基础质量门槛
+        n_gate_pass = len(symbol_gate_pass)
+        gate_pass_dir_accs = [float(v["dir_acc"]) for v in symbol_gate_pass 
+                              if isinstance(v.get("dir_acc"), (int, float))]
+        avg_dir_acc = sum(gate_pass_dir_accs) / len(gate_pass_dir_accs) if gate_pass_dir_accs else 0.0
+        
+        # Phase 2: 高质量变体
+        n_tier_a_b = len(symbol_tier_a_b)
+        
+        # Phase 3: 稳定性验证 (placeholder)
+        n_validated = 0  # TODO: implement multi-seed validation
+        n_decay = 0  # TODO: implement decay tracking
+        
+        # 检查该品种是否通过各阶段
+        phase1_pass = (n_gate_pass >= 10) and (avg_dir_acc >= 0.51)
+        phase2_pass = (n_tier_a_b >= 8)
+        phase3_pass = (n_validated >= 3) and (n_decay <= 2)
+        
+        symbol_stats[symbol] = {
+            "n_gate_pass": n_gate_pass,
+            "avg_dir_acc": avg_dir_acc,
+            "n_tier_a_b": n_tier_a_b,
+            "n_validated": n_validated,
+            "n_decay": n_decay,
+            "phase1_pass": phase1_pass,
+            "phase2_pass": phase2_pass,
+            "phase3_pass": phase3_pass,
+        }
+    
+    # 检查所有品种是否都通过各阶段
+    all_symbols_pass_phase1 = all(stats["phase1_pass"] for stats in symbol_stats.values())
+    all_symbols_pass_phase2 = all(stats["phase2_pass"] for stats in symbol_stats.values())
+    all_symbols_pass_phase3 = all(stats["phase3_pass"] for stats in symbol_stats.values())
+    
+    # 统计通过各阶段的品种数
+    n_symbols_pass_phase1 = sum(1 for stats in symbol_stats.values() if stats["phase1_pass"])
+    n_symbols_pass_phase2 = sum(1 for stats in symbol_stats.values() if stats["phase2_pass"])
+    n_symbols_pass_phase3 = sum(1 for stats in symbol_stats.values() if stats["phase3_pass"])
+    
     return {
         "variants": snap,
         "symbols_hit": symbols_hit,
@@ -497,10 +562,23 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
         "cycles_done": cycles_done,
         "cpu_hours_used": cpu_hours_used,
         "tokens_used_m": tokens_used_m,
+        # Legacy metrics (keep for backward compatibility)
         "n_one_star_symbols_hit": n_one_star_symbols_hit,
         "n_unique_pass_variants": n_unique_pass_variants,
         "n_families_hit": n_families_hit,
         "min_pass_variant_dir_acc": min_pass_variant_dir_acc,
+        # Per-symbol metrics
+        "symbol_stats": symbol_stats,
+        "target_symbols": TARGET_SYMBOLS,
+        # Phase pass status (all symbols)
+        "all_symbols_pass_phase1": all_symbols_pass_phase1,
+        "all_symbols_pass_phase2": all_symbols_pass_phase2,
+        "all_symbols_pass_phase3": all_symbols_pass_phase3,
+        # Phase pass counts
+        "n_symbols_pass_phase1": n_symbols_pass_phase1,
+        "n_symbols_pass_phase2": n_symbols_pass_phase2,
+        "n_symbols_pass_phase3": n_symbols_pass_phase3,
+        "n_target_symbols": len(TARGET_SYMBOLS),
     }
 
 def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=600):
