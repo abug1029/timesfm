@@ -67,7 +67,8 @@ def _summarize(dir_acc=0.56, point_dir_ok_list=None):
     s = {"n": 400, "n_eff": 400, "dir_acc": dir_acc,
          "endpoint_mape": 0.4, "endpoint_bias_pct": 0.1,
          "path_corr": 0.7, "weighted_dir_acc": 0.57,
-         "mae": 1.0, "mape": 0.4, "decay": 1.1}
+         "mae": 1.0, "mape": 0.4, "decay": 1.1,
+         "covariates_used": True}
     if point_dir_ok_list is not None:
         s["point_dir_ok_list"] = point_dir_ok_list
     return s

@@ -47,6 +47,7 @@ def _make_point(i: int, base: float = 100.0) -> dict:
         "endpoint_bias_pct": (delta_pred - delta_real) / _base * 100,
         "path_corr": None,
         "roll_in_horizon": False,
+        "covariates_used": True,
     }
 
 

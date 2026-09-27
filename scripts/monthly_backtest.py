@@ -107,6 +107,7 @@ _CHECKPOINT_POINT_KEYS = (
     "delta_pred", "delta_real", "dir_ok", "dir12_ok",
     "mae", "mape", "mae_h1", "mae_h2", "coverage", "pnl", "real_range", "roll_in_horizon",
     "endpoint_mape", "endpoint_bias_pct", "path_corr",
+    "covariates_used",
 )
 
 _DAILY_CACHE_VER = "v3"  # v2 = dates 为 tz-naive ISO 列表, 不再 pickle DailyResult
@@ -555,7 +556,10 @@ def summarize(data):
         "mape": round(mape, 2),
         # DirAcc: 来自 calc_prediction_quality (零变动=错)
         "dir_acc": round(pq["dir_acc"], 3),
-        "covariates_used": bool(all(p.get("covariates_used", False) for p in ok)),
+        # M1: 全点都带 covariates_used 时才给出明确 True/False；
+        # 旧 checkpoint 缺该键 → None(未知)，不臆断为 False(否认用了协变量)。
+        "covariates_used": (None if any("covariates_used" not in p for p in ok)
+                            else bool(all(p["covariates_used"] for p in ok))),
         "dir_acc_full": round(pq["dir_acc_full"], 3),
         "dir_acc_ex_roll": round(pq["dir_acc_ex_roll"], 3),
         "n_roll_excluded": int(pq["n_roll_excluded"]),
