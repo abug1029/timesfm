@@ -92,9 +92,9 @@ def load_ablation_audit_config(config_path: Optional[str] = None) -> Dict:
     import os
 
     if config_path is None:
-        # 默认路径
+        # 默认路径：config/ 存放静态策略配置（task_FM/config/ 存放运行时状态）
         fm_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config_path = os.path.join(fm_root, "task_FM", "config", "ablation_audit_config.json")
+        config_path = os.path.join(fm_root, "config", "ablation_audit_config.json")
 
     if not os.path.exists(config_path):
         # 返回默认配置

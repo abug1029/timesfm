@@ -108,9 +108,19 @@ _CHECKPOINT_POINT_KEYS = (
     "mae", "mape", "mae_h1", "mae_h2", "coverage", "pnl", "real_range", "roll_in_horizon",
     "endpoint_mape", "endpoint_bias_pct", "path_corr",
     "covariates_used",
+    "ablation_mode",  # PR-B5: resume 时保留消融标签
 )
 
 _DAILY_CACHE_VER = "v3"  # v2 = dates 为 tz-naive ISO 列表, 不再 pickle DailyResult
+
+
+def _resume_mode_conflict(observed_modes, ablation_mode):
+    """PR-B5: checkpoint 内出现过的消融模式中，与当前运行不一致的部分。
+
+    不同消融模式的点不可互换复用（会污染消融对照），因此非空即应中止。
+    旧 checkpoint 无 ablation_mode 键，读取侧已归一为 "full"。
+    """
+    return set(observed_modes) - {ablation_mode}
 
 
 def _weight_shards(weights_dir):
@@ -235,7 +245,8 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                         resumed_points=None,
                         signal_override=None,
                         fill_strategy="default",
-                        daily_cache_dir=None):
+                        daily_cache_dir=None,
+                        ablation_mode="full"):
     """单品种回测，返回汇总指标和逐点详情
 
     Args:
@@ -347,7 +358,8 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                                                      horizon=HORIZON, visualize=False,
                                                      covariate_types=effective_combo,
                                                      verbose=False,
-                                                     fill_strategy=fill_strategy)
+                                                     fill_strategy=fill_strategy,
+                                                     ablation_mode=ablation_mode)
                 if i < 3:
                     _t2 = time.time()
                     print(f" hourly={_t2-_t1:.1f}s", end="", flush=True)
@@ -363,7 +375,8 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                                                      horizon=HORIZON, visualize=False,
                                                      covariate_type=effective_single,
                                                      verbose=False,
-                                                     fill_strategy=fill_strategy)
+                                                     fill_strategy=fill_strategy,
+                                                     ablation_mode=ablation_mode)
                 if i < 3:
                     _t2 = time.time()
                     print(f" hourly={_t2-_t1:.1f}s", end="", flush=True)
@@ -453,6 +466,8 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 # M1: xreg_fallback=True 表示协变量预测失败并回退到无协变量模式
                 "covariates_used": not bool(getattr(hourly_result, "xreg_fallback", False)),
                 "xreg_fallback": bool(getattr(hourly_result, "xreg_fallback", False)),
+                # PR-B5: 消融模式标签 (full/baseline/content/structural)
+                "ablation_mode": str(getattr(hourly_result, "ablation_mode", ablation_mode)),
             }
             points.append(point)
             # ── checkpoint: 完整 point 字段 (resume 可重建 summarize) ──
@@ -868,6 +883,19 @@ def main():
             cov_combo = [s.strip() for s in args[idx + 1].split(",")]
             args = args[:idx] + args[idx + 2:]
 
+    # PR-B5 消融模式: --ablation-mode full|baseline|content|structural
+    ablation_mode = "full"
+    if "--ablation-mode" in args:
+        idx = args.index("--ablation-mode")
+        if idx + 1 < len(args):
+            from cascade.ablation import AblationMode
+            _valid = sorted(m.value for m in AblationMode)
+            ablation_mode = args[idx + 1]
+            if ablation_mode not in _valid:
+                print(f"--ablation-mode 需为 {_valid} 之一，收到 {ablation_mode!r}")
+                return
+            args = args[:idx] + args[idx + 2:]
+
     # 信号模式覆盖: --full-signal (use_full_signal=True, short_horizon_only=False)
     signal_override = None
     if "--full-signal" in args:
@@ -977,6 +1005,7 @@ def main():
         from pathlib import Path
         import json as _json
         cp = Path(resume_path)
+        observed_modes = set()  # PR-B5: 记录 checkpoint 内出现过的消融模式
         if cp.exists():
             with open(cp, "r", encoding="utf-8") as f:
                 for line in f:
@@ -985,6 +1014,8 @@ def main():
                         continue
                     try:
                         rec = _json.loads(line)
+                        # 旧 checkpoint 无该键，一律视为 full（PR-B5 之前只有 full）
+                        observed_modes.add(str(rec.get("ablation_mode", "full")))
                         key = (rec["symbol"], int(rec["idx"]))
                         completed.add(key)
                         # 仅合并含经济字段的完整记录（旧版只有 mae/dir_ok 的行无法重建）
@@ -993,6 +1024,17 @@ def main():
                             resumed_points[key] = pt
                     except (_json.JSONDecodeError, KeyError, TypeError, ValueError):
                         continue
+            # PR-B5: 消融模式必须与 checkpoint 一致。
+            # 否则不同模式的点会被静默复用，污染消融对照（fail-loud）。
+            mismatched = _resume_mode_conflict(observed_modes, ablation_mode)
+            if mismatched:
+                print(
+                    f"  [resume][ERROR] checkpoint 含其他消融模式 {sorted(mismatched)}，"
+                    f"当前 --ablation-mode={ablation_mode}。"
+                    f"不同消融模式必须使用独立的 checkpoint 文件。"
+                )
+                return
+
             n_full = len(resumed_points)
             print(
                 f"  [resume] 已加载 {len(completed)} 完成点 "
@@ -1027,7 +1069,8 @@ def main():
                                         completed=completed, checkpoint_fp=checkpoint_fp,
                                         resumed_points=resumed_points,
                                         signal_override=signal_override,
-                                        fill_strategy=fill_strategy)
+                                        fill_strategy=fill_strategy,
+                                        ablation_mode=ablation_mode)
             if data is None:
                 print("SKIP (无数据)")
                 _append_progress(progress_log, f"[{i+1}/{len(symbols)}] {symbol.upper()} SKIP\n")

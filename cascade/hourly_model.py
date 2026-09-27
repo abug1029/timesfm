@@ -17,6 +17,11 @@ from data.config import get_timesfm_model_path
 from data.data_store import DataStore, BacktestDataStore
 from .daily_model import DailyResult
 from .features import build_covariate_matrix, build_combo_covariate_matrix, visualize_alignment
+from .ablation import (
+    AblationMode,
+    ablate_content_covariates,
+    ablate_structural_covariates,
+)
 
 
 @dataclass
@@ -41,6 +46,8 @@ class HourlyResult:
     inert_constant: list = None      # 惰性常数通道名列表
     horizon_flat: list = None        # horizon 平坦通道名列表
     all_zero: list = None           # 全零通道名列表
+    # PR-B5 消融模式 (full/baseline/content/structural)
+    ablation_mode: str = "full"
 
     def __post_init__(self):
         if self.inert_constant is None:
@@ -97,7 +104,8 @@ class HourlyModel:
                 verbose: bool = True,
                 skip_validation: bool = False,
                 fill_strategy: str = "default",
-                half_life: float = 12.0) -> HourlyResult:
+                half_life: float = 12.0,
+                ablation_mode: str = "full") -> HourlyResult:
         """
         1H 级联预测 (防穿越版)
 
@@ -113,10 +121,23 @@ class HourlyModel:
             verbose: 是否输出校验/数据日志 (回测时设 False 提速)
             skip_validation: 跳过内部数据校验 (预检查已通过时为 True)
             fill_strategy: Horizon 填充策略, "default" (常数) 或 "decay" (衰减)
+            ablation_mode: PR-B5 消融模式:
+                "full"       - 真实协变量 (默认, 行为不变)
+                "baseline"   - 无协变量, 纯 TimesFM (不构建协变量)
+                "content"    - 保持 shape, 打乱时间轴 (破坏自相关, 保留边际分布)
+                "structural" - 协变量置零, 走相同 XReg 代码路径
 
         Returns:
             HourlyResult
         """
+        # PR-B5: 消融模式白名单校验 (fail-fast，避免在昂贵计算后才报错)
+        _valid_modes = {m.value for m in AblationMode}
+        if ablation_mode not in _valid_modes:
+            raise ValueError(
+                f"unknown ablation_mode: {ablation_mode!r}, "
+                f"expected one of {sorted(_valid_modes)}"
+            )
+
         # 0. 数据校验 (skip_validation 仅跳过重复告警输出，错误阻断始终生效)
         from .data_validator import validate_prediction_data
         vr = validate_prediction_data(symbol, store)
@@ -158,6 +179,26 @@ class HourlyModel:
             elif verbose:
                 print(f"  [WARN] {symbol}: crack_spread 协变量无配对, 退化为零填充")
 
+        # PR-B5: BASELINE 模式不构建协变量，直接走纯 TimesFM 路径。
+        # 提前返回，避免下游对 covariates["daily_slope"] 的依赖。
+        if ablation_mode == AblationMode.BASELINE.value:
+            point_forecast, quantile_forecast = self._fallback_predict(hourly_closes, horizon)
+            self.last_covariate_input = None
+            return HourlyResult(
+                symbol=symbol,
+                point_forecast=point_forecast,
+                quantile_forecast=quantile_forecast,
+                covariates={},
+                context_len=context_len,
+                horizon=horizon,
+                xreg_fallback=False,  # 主动选择无协变量，非回退
+                ablation_mode=ablation_mode,
+                cov_effective=0,
+                inert_constant=[],
+                horizon_flat=[],
+                all_zero=[],
+            )
+
         # 2. 构建协变量
         # 去重 (防止 ["oi", "oi"] 传入重复协变量)
         if covariate_types is not None:
@@ -195,6 +236,13 @@ class HourlyModel:
                 half_life=half_life,
                 df_1h=df_1h,
             )
+
+        # PR-B5: 内容/结构消融。必须在 slope_arr 校验、可视化、矩阵构建之前改写，
+        # 使诊断字段与可视化反映真正送入模型的数据。
+        if ablation_mode == AblationMode.CONTENT.value:
+            covariates = ablate_content_covariates(covariates, seed=42)
+        elif ablation_mode == AblationMode.STRUCTURAL.value:
+            covariates = ablate_structural_covariates(covariates)
 
         slope_arr = covariates["daily_slope"]
         total_len = context_len + horizon
@@ -283,6 +331,7 @@ class HourlyModel:
             inert_constant=diag["inert_constant"],
             horizon_flat=diag["horizon_flat"],
             all_zero=diag["all_zero"],
+            ablation_mode=ablation_mode,
         )
 
     def _fallback_predict(self, hourly_closes: np.ndarray, horizon: int):
