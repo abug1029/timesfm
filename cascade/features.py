@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 EPSILON = 1e-8
 
 
+def causal_ffill(series: pd.Series, cold_start_fill: float) -> pd.Series:
+    """因果前向填充（D4）：禁止 bfill 把未来值搬到过去。
+
+    前导 NaN 用 cold_start_fill 常数冷启动（冷启动段本无可用信息），
+    中间/尾部 NaN 用 ffill 前向携带（只用过去）。
+    """
+    return series.ffill().fillna(cold_start_fill)
+
+
 def _clip_prediction_drift(
     hist_daily: np.ndarray,
     pred_daily: np.ndarray,
@@ -641,7 +650,7 @@ def calc_ccl_pct(ccl_series: pd.Series, oi_series: pd.Series = None,
         oi_base = oi_series.astype(float)
         # 避免除零: 用 rolling mean 平滑 OI 基数
         oi_smooth = oi_base.replace(0, np.nan).rolling(window=5, min_periods=1).mean()
-        oi_smooth = oi_smooth.bfill().fillna(1)
+        oi_smooth = causal_ffill(oi_smooth, cold_start_fill=1.0)
         ccl_pct = ccl / oi_smooth
     else:
         # 无 OI 数据: 用均值归一化
@@ -1972,7 +1981,7 @@ def calc_ao_acceleration(df: pd.DataFrame) -> np.ndarray:
     ao_accel_vals = ao_accel.values
     median_accel = ao_accel.rolling(100, min_periods=2).median()
     mad = (ao_accel - median_accel).abs().rolling(100, min_periods=2).median() + EPSILON
-    scale = mad.bfill()  # 处理序列开头 NaN
+    scale = causal_ffill(mad, cold_start_fill=EPSILON)  # 处理序列开头 NaN
 
     signal = (ao_accel / scale).fillna(0.0)
     result = np.tanh(signal.values)
