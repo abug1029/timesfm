@@ -1157,6 +1157,171 @@ def _append_backlog(prop, src_path):
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     return True
 
+# ---------------------------------------------------------------------------
+# PR-B6 提案质量门
+# ---------------------------------------------------------------------------
+# 口径说明: v2 verdict (fm.aligned_verdict.v2) 不含 pf/ev/ic —— 生产 registry
+# 143 条全为 v2。因此评分与过滤一律基于 v2 可观测字段 (gate_pass / dir_acc /
+# decided_at / cov_override / symbol)，不引入不可得字段。
+
+MIN_QUALITY_SCORE = 0.0        # score < 该值 → 拒绝 (0.0 = 仅拦截净负分提案)
+SECTOR_BLOCK_MIN_FAILED = 3    # 同板块 >= N 个品种最近裁决未过门 → 拦截
+COV_CROSS_FAIL_MIN = 3         # 该协变量在其他品种失败 >= N 次且从无过门 → 拦截
+SYMBOL_FAIL_WINDOW = 5         # 品种最近 N 次裁决全失败 → 扣分
+COV_FAIL_WINDOW = 3            # 协变量在其他品种最近 N 次全失败 → 扣分
+
+
+def _verdict_sort_key(v):
+    """按 decided_at 排序；缺失/非字符串视为最早（确定性，无隐式时区假设）。"""
+    d = v.get("decided_at")
+    return d if isinstance(d, str) else ""
+
+
+def _latest_verdict_per_symbol(snapshot):
+    """每个品种最近一次 ok 裁决 → {symbol: verdict}"""
+    latest = {}
+    for v in (snapshot or {}).values():
+        if not isinstance(v, dict) or v.get("status", "ok") != "ok":
+            continue
+        s = str(v.get("symbol") or "").lower().strip()
+        if not s:
+            continue
+        cur = latest.get(s)
+        if cur is None or _verdict_sort_key(v) > _verdict_sort_key(cur):
+            latest[s] = v
+    return latest
+
+
+def _recent_ok_verdicts(snapshot, predicate, n):
+    """最近 n 条满足 predicate 的 ok 裁决（按 decided_at 升序取尾部）。"""
+    rows = [v for v in (snapshot or {}).values()
+            if isinstance(v, dict) and v.get("status", "ok") == "ok" and predicate(v)]
+    rows.sort(key=_verdict_sort_key)
+    return rows[-n:] if n > 0 else []
+
+
+def _prescreen_plausibility(proposal_path):
+    """读取 prescreen 侧写的 mechanism_plausibility；缺失/非法 → None。"""
+    if not proposal_path:
+        return None
+    ps_path = str(Path(proposal_path).with_suffix(".prescreen.json"))
+    if not os.path.exists(ps_path):
+        return None
+    try:
+        with open(ps_path, encoding="utf-8") as f:
+            ps = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(ps, dict) or ps.get("status") != "success":
+        return None
+    p = ps.get("mechanism_plausibility")
+    if isinstance(p, bool) or not isinstance(p, (int, float)):
+        return None
+    p = float(p)
+    if not (0.0 <= p <= 1.0):
+        return None
+    return p
+
+
+def _sector_filter_check(symbol, snapshot):
+    """板块级拦截。
+
+    该品种所属板块中，最近一次裁决未过门的品种数 >= SECTOR_BLOCK_MIN_FAILED
+    → 拦截。板块由 config.sector_map 唯一决定；未知品种 ('other') 不拦截。
+
+    Returns: (blocked, sector, n_failed)
+    """
+    from config.sector_map import sector_of
+    sector = sector_of(symbol)
+    if sector == "other":
+        return False, sector, 0
+    latest = _latest_verdict_per_symbol(snapshot)
+    n_failed = sum(1 for s, v in latest.items()
+                   if sector_of(s) == sector and not v.get("gate_pass"))
+    return n_failed >= SECTOR_BLOCK_MIN_FAILED, sector, n_failed
+
+
+def _covariate_filter_check(cov, symbol, snapshot):
+    """协变量跨品种失败拦截。
+
+    该协变量在**其他**品种上失败 >= COV_CROSS_FAIL_MIN 次，且从未在任一品种
+    过门 → 拦截。有任一品种过门即放行（品种特异性优先于跨品种共性）。
+
+    Returns: (blocked, n_other_fail, n_pass)
+    """
+    n_fail = 0
+    n_pass = 0
+    sym = str(symbol).lower().strip()
+    for v in (snapshot or {}).values():
+        if not isinstance(v, dict) or v.get("status", "ok") != "ok":
+            continue
+        if str(v.get("cov_override") or "") != cov:
+            continue
+        if v.get("gate_pass"):
+            n_pass += 1
+        elif str(v.get("symbol") or "").lower().strip() != sym:
+            n_fail += 1
+    return (n_pass == 0 and n_fail >= COV_CROSS_FAIL_MIN), n_fail, n_pass
+
+
+def _proposal_quality_gate(prop, snapshot, proposal_path=None):
+    """基于历史表现的提案质量评分 (PR-B6)。
+
+    评分项（全部基于 v2 可观测字段）：
+      +5    该品种有过成功协变量 (gate_pass=True)
+      +3    该组合从未测过 (新颖性)
+      +3    机制论证完整 (symbol_fit/kill_condition/promote_condition 齐全)
+      +10 * prescreen mechanism_plausibility
+      -20   该协变量在其他品种最近 COV_FAIL_WINDOW 次裁决全失败
+      -15   该品种最近 SYMBOL_FAIL_WINDOW 次裁决全失败
+
+    Returns: (score, breakdown dict)
+    """
+    symbol = str(prop.get("symbol") or "").lower().strip()
+    cov = str(prop.get("cov_override") or "").strip()
+    snap = snapshot or {}
+    bd = {}
+
+    # +5 该品种有过成功协变量
+    sym_pass = any(isinstance(v, dict) and v.get("gate_pass")
+                   and str(v.get("symbol") or "").lower().strip() == symbol
+                   for v in snap.values())
+    bd["symbol_has_pass"] = 5.0 if sym_pass else 0.0
+
+    # +3 新颖性: 该组合从未出现在 snapshot
+    bd["novel_combo"] = 3.0 if ("%s_%s" % (symbol, cov)) not in snap else 0.0
+
+    # +3 机制论证完整
+    complete = all(str(prop.get(k) or "").strip()
+                   for k in ("symbol_fit", "kill_condition", "promote_condition"))
+    bd["mechanism_complete"] = 3.0 if complete else 0.0
+
+    # +10 * prescreen plausibility
+    plaus = _prescreen_plausibility(proposal_path)
+    bd["prescreen"] = 10.0 * plaus if plaus is not None else 0.0
+
+    # -20 该协变量在其他品种最近 N 次全失败
+    cov_recent = _recent_ok_verdicts(
+        snap,
+        lambda v: str(v.get("cov_override") or "") == cov
+        and str(v.get("symbol") or "").lower().strip() != symbol,
+        COV_FAIL_WINDOW)
+    bd["cov_recent_fail"] = -20.0 if (
+        len(cov_recent) == COV_FAIL_WINDOW
+        and not any(v.get("gate_pass") for v in cov_recent)) else 0.0
+
+    # -15 该品种最近 M 次全失败
+    sym_recent = _recent_ok_verdicts(
+        snap,
+        lambda v: str(v.get("symbol") or "").lower().strip() == symbol,
+        SYMBOL_FAIL_WINDOW)
+    bd["symbol_recent_fail"] = -15.0 if (
+        len(sym_recent) == SYMBOL_FAIL_WINDOW
+        and not any(v.get("gate_pass") for v in sym_recent)) else 0.0
+
+    return sum(bd.values()), bd
+
+
 def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                       aligned_max_points=600, priority_symbols=None):
     """收割 peer 机制化假设 (results/**/proposals/*.json) → aligned 队列行。
@@ -1174,7 +1339,9 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     ev = _load_evaluator()
     status_map = load_symbol_status()
     stats = {"seen": 0, "rejected": 0, "backlog": 0, "selected": 0,
-             "reject_reasons": {}}
+             "reject_reasons": {},
+             # PR-B6 质量门计数
+             "quality_rejected": 0, "sector_blocked": 0, "cov_cross_fail": 0}
     passing_ids = {v["variant_id"] for v in rl.pass_variants(snapshot or {})}
     archived = getattr(ev, "ARCHIVED_COVARIATES", {}) if ev else {}
     valid_covs = getattr(ev, "VALID_COVARIATES", None) if ev else None
@@ -1237,6 +1404,22 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             if vid in dead or vid in existing or vid in passing_ids or vid in seen_vids:
                 _reject("dedup"); continue
             seen_vids.add(vid)
+
+            # ── PR-B6 提案质量门 (在 dedup 之后，保证既有 reject 归因不变) ──
+            _snap = snapshot or {}
+            sec_blocked, sector, _sec_failed = _sector_filter_check(symbol, _snap)
+            if sec_blocked:
+                stats["sector_blocked"] += 1
+                _reject("sector_blocked"); continue
+            cov_blocked, _cov_fail_n, _cov_pass_n = _covariate_filter_check(cov, symbol, _snap)
+            if cov_blocked:
+                stats["cov_cross_fail"] += 1
+                _reject("cov_cross_fail"); continue
+            quality_score, _quality_bd = _proposal_quality_gate(p, _snap, proposal_path=sp)
+            if quality_score < MIN_QUALITY_SCORE:
+                stats["quality_rejected"] += 1
+                _reject("quality_below_threshold"); continue
+
             family = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or "other"
             repeat_counts = _cross_run_repeat_counts()
             score = _proposal_priority_score(p, cov, symbol, snapshot or {},
@@ -1261,6 +1444,8 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 "max_points": int(aligned_max_points), "stage": "aligned",
                 "checkpoint_path": "", "enqueued_at": _now_iso(),
                 "src_run": os.path.basename(run_dir), "source": "peer_proposal",
+                # PR-B6 质量门留痕 (队列行，供宿主审查门是否过严)
+                "quality_score": round(quality_score, 4), "sector": sector,
                 "_family": family, "_score": score, "_tier": tier,
                 "_proposal_path": sp})
             # ── TypeSafe 预筛触发 (fire-and-forget, 不阻塞 harvest) ──

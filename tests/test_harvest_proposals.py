@@ -244,7 +244,7 @@ def test_active_symbol_still_enqueued(tmproot, monkeypatch):
             "eg": {"status": "DEAD", "reason": "x"},
         }}, f)
     monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", status_path)
-    _make_run(tmproot, _prop(symbol="m", cov="vor"))
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
     rows, stats = _harvest(tmproot)
     assert stats["selected"] == 1
     assert rows[0]["variant_id"] == "m_vor"
@@ -331,4 +331,142 @@ def test_live_family_still_enqueued(tmproot):
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 1, "Live family should be enqueued"
     assert "family_dead" not in stats["reject_reasons"]
+
+
+# ---------------------------------------------------------------------------
+# PR-B6 提案质量门 / 板块过滤 / 协变量过滤 —— 端到端接线测试
+# 口径: v2 verdict 无 pf/ev/ic，"失败" = status=ok 且 gate_pass=False
+# ---------------------------------------------------------------------------
+
+def _sv(symbol, cov, gate_pass, decided_at, status="ok"):
+    return {"schema": "fm.aligned_verdict.v2",
+            "variant_id": "%s_%s" % (symbol, cov),
+            "symbol": symbol, "cov_override": cov, "cov_family": "f",
+            "status": status, "gate_pass": gate_pass, "decided_at": decided_at}
+
+
+# 有失败履历的组合必须带 failure_delta，否则先被 no_failure_delta 拦截
+# （该检查位于 PR-B6 质量门之前，故 PR-B6 测试须满足它才能到达新门）
+FAIL_DELTA = "本次改用衰减填充并缩短 horizon，与上次失败口径不同，可区分机制是否成立。"
+
+
+def test_cold_start_not_blocked_by_quality_gates(tmproot):
+    """空 snapshot 不得被新门挡住（防止重演 2026-09-24 提案门禁饿死慢环）"""
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    rows, stats = _harvest(tmproot, snap={})
+    assert stats["selected"] == 1
+    assert stats["quality_rejected"] == 0
+    assert stats["sector_blocked"] == 0
+    assert stats["cov_cross_fail"] == 0
+
+
+def test_quality_score_and_sector_recorded_on_row(tmproot):
+    """入队行留痕 quality_score / sector，供宿主审查门是否过严"""
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    rows, _ = _harvest(tmproot, snap={})
+    r = rows[0]
+    # 空 snapshot: novel +3, mechanism +3
+    assert r["quality_score"] == 6.0
+    assert r["sector"] == "agri"
+
+
+def test_sector_blocked_rejected(tmproot):
+    """同板块 >=3 品种最近裁决未过门 → sector_blocked"""
+    from config.sector_map import SECTORS
+    agri = SECTORS["agri"][:3]
+    snap = {"%s_c" % s: _sv(s, "c", False, "2026-09-0%dT00:00:00" % (i + 1))
+            for i, s in enumerate(agri)}
+
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert stats["selected"] == 0
+    assert "sector_blocked" in stats["reject_reasons"]
+    assert stats["sector_blocked"] == 1
+
+
+def test_cov_cross_fail_rejected(tmproot):
+    """该协变量在其他品种失败 >=3 且从无过门 → cov_cross_fail"""
+    # vor 在黑色系 3 品种失败；m(agri) 所在板块无失败 → 不会先触发 sector_blocked
+    snap = {
+        "rb_vor": _sv("rb", "vor", False, "2026-09-01T00:00:00"),
+        "i_vor": _sv("i", "vor", False, "2026-09-02T00:00:00"),
+        "jm_vor": _sv("jm", "vor", False, "2026-09-03T00:00:00"),
+    }
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert stats["selected"] == 0
+    assert "cov_cross_fail" in stats["reject_reasons"]
+    assert stats["cov_cross_fail"] == 1
+
+
+def test_quality_below_threshold_rejected(tmproot):
+    """净负分提案被拦截。
+
+    构造: vor 早年在一个品种过门(使 covariate_filter 豁免)，
+    但最近 3 次跨品种全失败 → -20；novel +3 + 机制 +3 → 合计 -14 < 0。
+    """
+    snap = {
+        "sr_vor": _sv("sr", "vor", True, "2026-01-01T00:00:00"),
+        "rb_vor": _sv("rb", "vor", False, "2026-09-01T00:00:00"),
+        "i_vor": _sv("i", "vor", False, "2026-09-02T00:00:00"),
+        "jm_vor": _sv("jm", "vor", False, "2026-09-03T00:00:00"),
+    }
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert stats["selected"] == 0
+    assert "quality_below_threshold" in stats["reject_reasons"]
+    assert stats["quality_rejected"] == 1
+
+
+def test_covariate_filter_exempt_when_any_pass(tmproot):
+    """该协变量在任一品种过门 → 不拦截（品种特异性优先）。
+
+    注意窗口语义: 过门那次必须落在"最近 3 条"内，否则 cov_recent_fail 仍扣 -20。
+    此处 sr 的过门是最新的，故豁免 + 不扣分，提案正常入队。
+    """
+    snap = {
+        "rb_vor": _sv("rb", "vor", False, "2026-09-01T00:00:00"),
+        "i_vor": _sv("i", "vor", False, "2026-09-02T00:00:00"),
+        "jm_vor": _sv("jm", "vor", False, "2026-09-03T00:00:00"),
+        "sr_vor": _sv("sr", "vor", True, "2026-09-04T00:00:00"),
+    }
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert "cov_cross_fail" not in stats["reject_reasons"]
+    assert "quality_below_threshold" not in stats["reject_reasons"]
+    assert stats["selected"] == 1
+
+
+def test_stale_pass_does_not_exempt_covariate_filter(tmproot):
+    """过门若在窗口之外，covariate_filter 仍豁免，但 cov_recent_fail 照扣。
+
+    锁定窗口语义: 豁免看全历史(有任一过门即放行)，
+    扣分只看最近 COV_FAIL_WINDOW 条 —— 两者口径不同，不可混淆。
+    """
+    snap = {
+        "sr_vor": _sv("sr", "vor", True, "2026-01-01T00:00:00"),
+        "rb_vor": _sv("rb", "vor", False, "2026-09-01T00:00:00"),
+        "i_vor": _sv("i", "vor", False, "2026-09-02T00:00:00"),
+        "jm_vor": _sv("jm", "vor", False, "2026-09-03T00:00:00"),
+    }
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert "cov_cross_fail" not in stats["reject_reasons"], "有历史过门 → 不拦截"
+    assert "quality_below_threshold" in stats["reject_reasons"], \
+        "窗口内 3 连败 → -20 使其净负"
+
+
+def test_reject_reasons_and_counters_stay_consistent(tmproot):
+    """新计数与 reject_reasons 必须一致（防止两套计数漂移）"""
+    from config.sector_map import SECTORS
+    agri = SECTORS["agri"][:3]
+    snap = {"%s_c" % s: _sv(s, "c", False, "2026-09-0%dT00:00:00" % (i + 1))
+            for i, s in enumerate(agri)}
+
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    _, stats = _harvest(tmproot, snap=snap)
+    assert stats["sector_blocked"] == stats["reject_reasons"].get("sector_blocked", 0)
+    assert stats["cov_cross_fail"] == stats["reject_reasons"].get("cov_cross_fail", 0)
+    assert stats["quality_rejected"] == stats["reject_reasons"].get(
+        "quality_below_threshold", 0)
 
