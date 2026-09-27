@@ -402,6 +402,7 @@ def calc_prediction_quality(
     base_prices,
     pred_paths=None,
     real_paths=None,
+    roll_flags=None,
 ) -> dict:
     p_end = np.asarray(pred_endpoints, dtype=float).ravel()
     r_end = np.asarray(real_endpoints, dtype=float).ravel()
@@ -454,8 +455,23 @@ def calc_prediction_quality(
         mae_h1 = float(np.mean(np.abs(p_paths[..., :mid] - r_paths[..., :mid])))
         mae_h2 = float(np.mean(np.abs(p_paths[..., mid:] - r_paths[..., mid:])))
         decay = float(mae_h2 / max(mae_h1, 1e-6))
+    # D1/D2 分母口径：full 不剔除；ex_roll 剔除跨换月点
+    dir_acc_full = dir_acc
+    if roll_flags is not None and len(roll_flags) == n:
+        keep = ~np.asarray(roll_flags, dtype=bool)
+        n_roll_excluded = int((~keep).sum())
+        dir_acc_ex_roll = float(np.mean(dir_ok[keep])) if keep.any() else 0.0
+    else:
+        n_roll_excluded = 0
+        dir_acc_ex_roll = dir_acc
+    n_roll_ratio = (n_roll_excluded / n) if n > 0 else 0.0
+
     return {
         "dir_acc": dir_acc,
+        "dir_acc_full": dir_acc_full,
+        "dir_acc_ex_roll": dir_acc_ex_roll,
+        "n_roll_excluded": n_roll_excluded,
+        "n_roll_ratio": n_roll_ratio,
         "endpoint_mape": endpoint_mape,
         "endpoint_bias_pct": endpoint_bias_pct,
         "path_corr": path_corr,

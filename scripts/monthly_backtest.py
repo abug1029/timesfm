@@ -93,11 +93,19 @@ def _point_signal(hourly_result, covariate_type):
 # 回测引擎
 # ─────────────────────────────────────────────────────────
 
+def roll_in_horizon(contract_codes) -> bool:
+    """horizon 内是否发生合约切换（D1/D2 换月守卫）。"""
+    if not contract_codes:
+        return False
+    first = contract_codes[0]
+    return any(c != first for c in contract_codes[1:])
+
+
 # Checkpoint JSONL 必须含 summarize / metrics_from_backtest_points 所需字段
 _CHECKPOINT_POINT_KEYS = (
     "cutoff", "base", "pred_end", "real_end",
     "delta_pred", "delta_real", "dir_ok", "dir12_ok",
-    "mae", "mape", "mae_h1", "mae_h2", "coverage", "pnl", "real_range",
+    "mae", "mape", "mae_h1", "mae_h2", "coverage", "pnl", "real_range", "roll_in_horizon",
     "endpoint_mape", "endpoint_bias_pct", "path_corr",
 )
 
@@ -494,7 +502,8 @@ def summarize(data):
     pred_ends = [p["pred_end"] for p in ok]
     real_ends = [p["real_end"] for p in ok]
     bases = [p["base"] for p in ok]
-    pq = calc_prediction_quality(pred_ends, real_ends, bases)
+    _roll_flags = [bool(p.get("roll_in_horizon", False)) for p in ok]
+    pq = calc_prediction_quality(pred_ends, real_ends, bases, roll_flags=_roll_flags)
 
     # point_dir_ok_list: 逐点 (cutoff, dir_ok) — 用完整 cutoff 时间戳
     point_dir_ok_list = [(p["cutoff"], bool(p["dir_ok"])) for p in ok]
@@ -539,6 +548,10 @@ def summarize(data):
         "mape": round(mape, 2),
         # DirAcc: 来自 calc_prediction_quality (零变动=错)
         "dir_acc": round(pq["dir_acc"], 3),
+        "dir_acc_full": round(pq["dir_acc_full"], 3),
+        "dir_acc_ex_roll": round(pq["dir_acc_ex_roll"], 3),
+        "n_roll_excluded": int(pq["n_roll_excluded"]),
+        "n_roll_ratio": round(pq["n_roll_ratio"], 4),
         "dir_acc_points": round(float(dir_acc_legacy), 3),
         "dir12_acc": round(dir12_acc, 3),
         "weighted_dir_acc": round(pq["weighted_dir_acc"], 3),

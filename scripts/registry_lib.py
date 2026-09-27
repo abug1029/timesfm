@@ -18,6 +18,7 @@ VERDICT_FIELDS_V2 = {
     "checkpoint_path", "slow_loop_pid", "git_rev", "decided_at",
     "baseline_dir_acc", "effective_min",
     "run_mode", "run_label",
+    "dir_acc_full", "dir_acc_ex_roll", "n_roll_excluded", "n_roll_ratio",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
@@ -25,6 +26,7 @@ VERDICT_FIELDS_V2_NULLABLE = {
     "cov_family", "weighted_dir_acc", "error_message",
     "baseline_dir_acc", "effective_min",
     "run_mode", "run_label",
+    "dir_acc_full", "dir_acc_ex_roll", "n_roll_excluded", "n_roll_ratio",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",
