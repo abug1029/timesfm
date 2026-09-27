@@ -48,6 +48,7 @@ from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
 from cascade.evaluation_metrics import metrics_from_backtest_points, calc_prediction_quality, fallback_n_eff, safe_path_corr
 from cascade.signal_contract import position_from_forecast
+from cascade.ablation import AblationMode
 
 
 def endpoint_dir_ok(pred_end: float, real_end: float, base: float, eps: float = 1e-8) -> bool:
@@ -112,6 +113,18 @@ _CHECKPOINT_POINT_KEYS = (
 )
 
 _DAILY_CACHE_VER = "v3"  # v2 = dates 为 tz-naive ISO 列表, 不再 pickle DailyResult
+
+
+def _covariates_used(hourly_result, ablation_mode):
+    """PR-B5: 该点是否**真的**使用了协变量。
+
+    baseline 模式主动不传协变量，此时 xreg_fallback 仍为 False（主动选择而非回退），
+    因此必须显式排除 baseline，否则纯 TimesFM 基线会被错记为"用了协变量"，
+    污染 registry 中按协变量切片的对照分析。
+    """
+    mode = str(getattr(hourly_result, "ablation_mode", ablation_mode))
+    return (mode != AblationMode.BASELINE.value
+            and not bool(getattr(hourly_result, "xreg_fallback", False)))
 
 
 def _resume_mode_conflict(observed_modes, ablation_mode):
@@ -447,6 +460,9 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
             _ep_bias = float((_delta_pred_endpoint - _delta_real_endpoint) / max(base, 1.0) * 100)
             _pc = safe_path_corr(pred, real)
 
+            # PR-B5: 以结果自身携带的模式为准（回退时仍能反映真实运行模式）
+            _mode = str(getattr(hourly_result, "ablation_mode", ablation_mode))
+
             point = {
                 "cutoff": cutoff, "cutoff_date": dt, "base": base,
                 "pred_end": float(pred[-1]), "real_end": float(real[-1]),
@@ -464,10 +480,11 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 # gated 评估用: cutoff bar 协变量信号 (spec §5; 非 gated 路径不消费此键)
                 "signal": None if effective_combo else _point_signal(hourly_result, effective_single),
                 # M1: xreg_fallback=True 表示协变量预测失败并回退到无协变量模式
-                "covariates_used": not bool(getattr(hourly_result, "xreg_fallback", False)),
+                # PR-B5: baseline 主动不传协变量，须显式排除（见 _covariates_used）
+                "covariates_used": _covariates_used(hourly_result, ablation_mode),
                 "xreg_fallback": bool(getattr(hourly_result, "xreg_fallback", False)),
                 # PR-B5: 消融模式标签 (full/baseline/content/structural)
-                "ablation_mode": str(getattr(hourly_result, "ablation_mode", ablation_mode)),
+                "ablation_mode": _mode,
             }
             points.append(point)
             # ── checkpoint: 完整 point 字段 (resume 可重建 summarize) ──
@@ -488,6 +505,8 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 import json as _json
                 checkpoint_fp.write(_json.dumps({
                     "symbol": sym_lower, "idx": int(idx), "error": str(e), "cutoff": cutoff,
+                    # PR-B5: 错误行也带模式标签，否则 resume 侧会把缺失键归一为 full
+                    "ablation_mode": ablation_mode,
                 }, ensure_ascii=False) + "\n")
                 checkpoint_fp.flush()
             if i < 3 or i % 50 == 0:
@@ -887,14 +906,15 @@ def main():
     ablation_mode = "full"
     if "--ablation-mode" in args:
         idx = args.index("--ablation-mode")
-        if idx + 1 < len(args):
-            from cascade.ablation import AblationMode
-            _valid = sorted(m.value for m in AblationMode)
-            ablation_mode = args[idx + 1]
-            if ablation_mode not in _valid:
-                print(f"--ablation-mode 需为 {_valid} 之一，收到 {ablation_mode!r}")
-                return
-            args = args[:idx] + args[idx + 2:]
+        _valid = sorted(m.value for m in AblationMode)
+        if idx + 1 >= len(args):
+            print(f"--ablation-mode 需要一个值，可选 {_valid}")
+            sys.exit(2)
+        ablation_mode = args[idx + 1]
+        if ablation_mode not in _valid:
+            print(f"--ablation-mode 需为 {_valid} 之一，收到 {ablation_mode!r}")
+            sys.exit(2)
+        args = args[:idx] + args[idx + 2:]
 
     # 信号模式覆盖: --full-signal (use_full_signal=True, short_horizon_only=False)
     signal_override = None
@@ -1014,8 +1034,12 @@ def main():
                         continue
                     try:
                         rec = _json.loads(line)
-                        # 旧 checkpoint 无该键，一律视为 full（PR-B5 之前只有 full）
-                        observed_modes.add(str(rec.get("ablation_mode", "full")))
+                        # PR-B5: 仅非错误行计入模式。
+                        # 错误行不代表一次真实的预测运行；旧格式残缺行同理。
+                        # 若把缺失键归一为 full 并计入，则非 full 运行只要出过一个
+                        # 点级错误，该 checkpoint 就会被判为"含其他模式"而永久无法 resume。
+                        if "error" not in rec:
+                            observed_modes.add(str(rec.get("ablation_mode", "full")))
                         key = (rec["symbol"], int(rec["idx"]))
                         completed.add(key)
                         # 仅合并含经济字段的完整记录（旧版只有 mae/dir_ok 的行无法重建）
@@ -1033,7 +1057,8 @@ def main():
                     f"当前 --ablation-mode={ablation_mode}。"
                     f"不同消融模式必须使用独立的 checkpoint 文件。"
                 )
-                return
+                # 非零退出码: 自动化调度据此判定失败，不得静默当作成功
+                sys.exit(2)
 
             n_full = len(resumed_points)
             print(

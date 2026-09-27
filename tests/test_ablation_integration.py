@@ -52,6 +52,24 @@ def test_audit_config_symbols_are_known():
     assert not unknown, f"审计集含未知品种: {unknown}"
 
 
+def test_audit_config_covers_all_sectors():
+    """审计集必须覆盖全部板块。
+
+    否则"通道效应/内容效应"的结论无法跨板块推广。
+    实际教训: 初版审计集 ss→black_metals, 其余全 →agri, energy_chem 零覆盖，
+    而只校验品种存在性的测试无法发现该缺口。
+    """
+    from config.sector_map import SECTORS, sector_of
+
+    cfg = load_ablation_audit_config()
+    covered = {sector_of(s) for s in cfg["symbols"]}
+    missing = set(SECTORS) - covered
+    assert not missing, (
+        f"审计集未覆盖板块 {sorted(missing)}；"
+        f"当前覆盖 {sorted(covered)}（品种 {cfg['symbols']}）"
+    )
+
+
 def test_audit_config_covariates_are_in_pool():
     """审计集协变量必须在 covariate_pool 中（防止拼错协变量名）"""
     pool_path = os.path.join(ROOT, "config", "covariate_pool.json")
@@ -120,6 +138,129 @@ class TestResumeModeConflict:
         assert _resume_mode_conflict(observed, "full") == set()
         # 但 legacy checkpoint 对 baseline 运行即为冲突
         assert _resume_mode_conflict(observed, "baseline") == {"full"}
+
+
+class TestCovariatesUsedFlag:
+    """回归: baseline 模式不得被记为"用了协变量"
+
+    缺陷场景: baseline 刻意设 xreg_fallback=False（主动选择而非回退），
+    若 covariates_used 仅由 xreg_fallback 派生，则纯 TimesFM 基线会被错记为
+    covariates_used=True，污染 registry 中按协变量切片的对照分析。
+    """
+
+    class _R:
+        def __init__(self, ablation_mode="full", xreg_fallback=False):
+            self.ablation_mode = ablation_mode
+            self.xreg_fallback = xreg_fallback
+
+    def test_full_mode_uses_covariates(self):
+        from scripts.monthly_backtest import _covariates_used
+
+        assert _covariates_used(self._R("full", False), "full") is True
+
+    def test_baseline_mode_does_not_use_covariates(self):
+        from scripts.monthly_backtest import _covariates_used
+
+        # baseline: xreg_fallback 为 False，但仍不得算作使用协变量
+        assert _covariates_used(self._R("baseline", False), "baseline") is False
+
+    def test_structural_mode_counts_as_used(self):
+        """structural 仍走 XReg 通道（值为零），属于"使用了协变量通道" """
+        from scripts.monthly_backtest import _covariates_used
+
+        assert _covariates_used(self._R("structural", False), "structural") is True
+
+    def test_content_mode_counts_as_used(self):
+        from scripts.monthly_backtest import _covariates_used
+
+        assert _covariates_used(self._R("content", False), "content") is True
+
+    def test_xreg_fallback_does_not_use_covariates(self):
+        """真实回退 → 未使用协变量（既有语义不得回归）"""
+        from scripts.monthly_backtest import _covariates_used
+
+        assert _covariates_used(self._R("full", True), "full") is False
+
+    def test_result_mode_wins_over_argument(self):
+        """以结果自身携带的模式为准（结果缺失时才回落到入参）"""
+        from scripts.monthly_backtest import _covariates_used
+
+        assert _covariates_used(self._R("baseline", False), "full") is False
+
+    def test_missing_attr_falls_back_to_argument(self):
+        """结果对象无 ablation_mode 属性时回落到入参"""
+        from scripts.monthly_backtest import _covariates_used
+
+        class _Bare:
+            xreg_fallback = False
+
+        assert _covariates_used(_Bare(), "baseline") is False
+        assert _covariates_used(_Bare(), "full") is True
+
+
+class TestErrorRowsDoNotPoisonResume:
+    """回归: 错误行不得参与模式判定（否则非 full 运行永久无法 resume）
+
+    缺陷场景: 错误行只含 {symbol, idx, error, cutoff}，读取侧把缺失的
+    ablation_mode 归一为 "full" → content 运行出过一个点级错误后，
+    checkpoint 被判为"含其他模式 ['full']"而永久中止。
+    """
+
+    @staticmethod
+    def _observed_modes(records):
+        """复刻 monthly_backtest 读取侧的模式归一逻辑"""
+        observed = set()
+        for rec in records:
+            if "error" not in rec:
+                observed.add(str(rec.get("ablation_mode", "full")))
+        return observed
+
+    def test_error_row_without_mode_is_ignored(self):
+        """旧格式错误行（无 ablation_mode）不得污染模式集合"""
+        records = [
+            {"symbol": "m", "idx": 1, "ablation_mode": "content"},
+            {"symbol": "m", "idx": 2, "error": "boom", "cutoff": "x"},
+        ]
+        assert self._observed_modes(records) == {"content"}
+
+    def test_error_row_with_mode_is_ignored_too(self):
+        """新格式错误行即便带模式也不参与判定（它不是一次真实运行）"""
+        records = [
+            {"symbol": "m", "idx": 1, "ablation_mode": "content"},
+            {"symbol": "m", "idx": 2, "error": "boom", "ablation_mode": "content"},
+        ]
+        assert self._observed_modes(records) == {"content"}
+
+    def test_content_run_with_error_row_still_resumes(self):
+        """content 运行含错误行 → resume 不冲突（核心回归）"""
+        from scripts.monthly_backtest import _resume_mode_conflict
+
+        records = [
+            {"symbol": "m", "idx": 1, "ablation_mode": "content"},
+            {"symbol": "m", "idx": 2, "error": "boom"},
+        ]
+        observed = self._observed_modes(records)
+        assert _resume_mode_conflict(observed, "content") == set()
+
+    def test_error_rows_alone_do_not_fake_full_mode(self):
+        """全是错误行时，不得凭空得出 "full"（旧行为会误判为 full）"""
+        records = [{"symbol": "m", "idx": 1, "error": "boom"}]
+        assert self._observed_modes(records) == set()
+        # 空集合对任何模式都无冲突
+        from scripts.monthly_backtest import _resume_mode_conflict
+
+        assert _resume_mode_conflict(set(), "structural") == set()
+
+    def test_real_mode_mismatch_still_detected(self):
+        """真正跨模式的 checkpoint 仍必须被检出（守卫未被削弱）"""
+        from scripts.monthly_backtest import _resume_mode_conflict
+
+        records = [
+            {"symbol": "m", "idx": 1, "ablation_mode": "full"},
+            {"symbol": "m", "idx": 2, "ablation_mode": "content"},
+        ]
+        observed = self._observed_modes(records)
+        assert _resume_mode_conflict(observed, "content") == {"full"}
 
 
 def test_unknown_ablation_mode_raises_fast():

@@ -1,6 +1,6 @@
 {
   "schema": "fm.ablation_audit.v1",
   "modes": ["full", "content", "structural", "baseline"],
-  "symbols": ["ss", "sr", "m", "jd", "lh", "cj"],
+  "symbols": ["ss", "sr", "m", "jd", "lh", "cj", "fu"],
   "covariates": ["rsi_state", "calendar_cyclical", "hourly_slope", "ccl", "oi"]
 }

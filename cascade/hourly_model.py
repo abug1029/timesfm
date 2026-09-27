@@ -95,6 +95,8 @@ class HourlyModel:
             self.model = timesfm3.TimesFM3Forecaster.from_pretrained(
                 get_timesfm_model_path()
             )
+        # 最近一次送入模型的 (矩阵, 键)；首次 predict 前访问不应 AttributeError
+        self.last_covariate_input = None
 
     def predict(self, symbol: str, store: DataStore,
                 daily_result: DailyResult, horizon: int = 24,
@@ -169,18 +171,9 @@ class HourlyModel:
         if context_len < 48:
             raise ValueError(f"{symbol}: 1H 数据不足 ({context_len} bars)")
 
-        # Phase 8: crack_spread 跨品种 feedstock 注入 (DI 咽喉点)
-        feedstock_cache = None
-        if _needs_feedstock(covariate_type, covariate_types):
-            from config.crack_spread_pairs import get_crack_pair
-            pair = get_crack_pair(symbol)
-            if pair:
-                feedstock_cache = {pair[0]: _fetch_feedstock_1h(pair[0], store)}
-            elif verbose:
-                print(f"  [WARN] {symbol}: crack_spread 协变量无配对, 退化为零填充")
-
         # PR-B5: BASELINE 模式不构建协变量，直接走纯 TimesFM 路径。
         # 提前返回，避免下游对 covariates["daily_slope"] 的依赖。
+        # 置于 feedstock 抓取之前: baseline 不消费协变量，无需付这次 I/O。
         if ablation_mode == AblationMode.BASELINE.value:
             point_forecast, quantile_forecast = self._fallback_predict(hourly_closes, horizon)
             self.last_covariate_input = None
@@ -198,6 +191,16 @@ class HourlyModel:
                 horizon_flat=[],
                 all_zero=[],
             )
+
+        # Phase 8: crack_spread 跨品种 feedstock 注入 (DI 咽喉点)
+        feedstock_cache = None
+        if _needs_feedstock(covariate_type, covariate_types):
+            from config.crack_spread_pairs import get_crack_pair
+            pair = get_crack_pair(symbol)
+            if pair:
+                feedstock_cache = {pair[0]: _fetch_feedstock_1h(pair[0], store)}
+            elif verbose:
+                print(f"  [WARN] {symbol}: crack_spread 协变量无配对, 退化为零填充")
 
         # 2. 构建协变量
         # 去重 (防止 ["oi", "oi"] 传入重复协变量)
@@ -239,6 +242,9 @@ class HourlyModel:
 
         # PR-B5: 内容/结构消融。必须在 slope_arr 校验、可视化、矩阵构建之前改写，
         # 使诊断字段与可视化反映真正送入模型的数据。
+        # 注意: content 模式同样打乱 daily_slope —— 有意为之。daily_slope 的 horizon
+        # 段是常数填充，打乱后会洗入 context 段；这正是"破坏内容、保留边际分布"
+        # 所要的效应，不单独豁免该通道。
         if ablation_mode == AblationMode.CONTENT.value:
             covariates = ablate_content_covariates(covariates, seed=42)
         elif ablation_mode == AblationMode.STRUCTURAL.value:

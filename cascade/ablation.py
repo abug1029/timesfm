@@ -23,12 +23,18 @@ class AblationMode(Enum):
 
 
 def ablate_content_covariates(covariates: Dict[str, np.ndarray], seed: int = 42) -> Dict[str, np.ndarray]:
-    """内容消融：保持 shape 不变，打乱时间轴
+    """内容消融：保持 shape 不变，沿时间轴(axis 0)打乱
 
     保留 marginal distribution，破坏 autocorrelation。
 
+    **输入形状语义（务必注意，两种形状不等价）**：
+    - 本管线按通道传入 **1-D 数组**（`{name: arr}`），各通道**独立**打乱，
+      通道间同期相关性一并被破坏 —— 这是审计集采用的语义。
+    - 若传入 (T, K) 矩阵，则整行一起移动，**保留**通道间同期相关性。
+    两种形状的消融不可比，审计集一律走 1-D 逐通道，不要混用。
+
     Args:
-        covariates: 协变量字典 {name: array}
+        covariates: 协变量字典 {name: 1-D array}
         seed: 随机种子（保证确定性）
 
     Returns:
@@ -45,9 +51,9 @@ def ablate_content_covariates(covariates: Dict[str, np.ndarray], seed: int = 42)
             ablated[name] = arr
             continue
 
-        # 打乱时间轴（保持 shape）
-        shuffled = rng.permutation(arr)
-        ablated[name] = shuffled
+        # 沿 axis 0 (时间轴) 打乱（保持 shape）；显式写出轴，避免多维下语义含糊
+        idx = rng.permutation(arr.shape[0])
+        ablated[name] = arr[idx]
 
     return ablated
 
