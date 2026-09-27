@@ -36,6 +36,19 @@ class HourlyResult:
     xreg_fallback: bool = False
     # (matrix, keys) 最近一次送入模型的输入；回退时为 None
     last_covariate_input: tuple = None
+    # PR-B2 诊断字段
+    cov_effective: int = 0           # 有效协变量通道数
+    inert_constant: list = None      # 惰性常数通道名列表
+    horizon_flat: list = None        # horizon 平坦通道名列表
+    all_zero: list = None           # 全零通道名列表
+
+    def __post_init__(self):
+        if self.inert_constant is None:
+            self.inert_constant = []
+        if self.horizon_flat is None:
+            self.horizon_flat = []
+        if self.all_zero is None:
+            self.all_zero = []
 
 
 def _needs_feedstock(covariate_type: str, covariate_types: list) -> bool:
@@ -241,6 +254,10 @@ class HourlyModel:
             xreg_fallback = True
             self.last_covariate_input = None
 
+        # PR-B2: 协变量诊断
+        from cascade.covariate_diagnostics import diagnose_covariates
+        diag = diagnose_covariates(covariates, context_len)
+
         # 6. 消融对比: 无协变量预测 (仅在非回测模式下执行)
         baseline_point = None
         baseline_quant = None
@@ -261,6 +278,11 @@ class HourlyModel:
             baseline_forecast=baseline_point,
             baseline_quantile=baseline_quant,
             xreg_fallback=xreg_fallback,
+            last_covariate_input=self.last_covariate_input,
+            cov_effective=diag["cov_effective"],
+            inert_constant=diag["inert_constant"],
+            horizon_flat=diag["horizon_flat"],
+            all_zero=diag["all_zero"],
         )
 
     def _fallback_predict(self, hourly_closes: np.ndarray, horizon: int):
