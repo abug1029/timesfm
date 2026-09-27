@@ -355,7 +355,7 @@ def test_cold_start_not_blocked_by_quality_gates(tmproot):
     _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
     rows, stats = _harvest(tmproot, snap={})
     assert stats["selected"] == 1
-    assert stats["quality_rejected"] == 0
+    assert stats["quality_below_threshold"] == 0
     assert stats["sector_blocked"] == 0
     assert stats["cov_cross_fail"] == 0
 
@@ -371,17 +371,36 @@ def test_quality_score_and_sector_recorded_on_row(tmproot):
 
 
 def test_sector_blocked_rejected(tmproot):
-    """同板块 >=3 品种最近裁决未过门 → sector_blocked"""
-    from config.sector_map import SECTORS
-    agri = SECTORS["agri"][:3]
-    snap = {"%s_c" % s: _sv(s, "c", False, "2026-09-0%dT00:00:00" % (i + 1))
-            for i, s in enumerate(agri)}
+    """板块全集（sector_map 定义的全部成员）最近裁决未过门 → sector_blocked
 
-    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    circuit-breaker 语义: 仅当板块全集失败才拦，部分失败（即便 ≥3）不拦。
+    用最小的板块 black_metals (4 个) 构造全集失败。
+    """
+    from config.sector_map import SECTORS
+    bm = SECTORS["black_metals"]
+    assert len(bm) == 4
+    snap = {"%s_c" % s: _sv(s, "c", False, "2026-09-0%dT00:00:00" % (i + 1))
+            for i, s in enumerate(bm)}
+
+    # 查询板块内品种 (rb)
+    _make_run(tmproot, _prop(symbol="rb", cov="vor", failure_delta=FAIL_DELTA))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 0
     assert "sector_blocked" in stats["reject_reasons"]
     assert stats["sector_blocked"] == 1
+
+
+def test_sector_partial_failure_does_not_block(tmproot):
+    """板块部分失败不拦（防止生产快照三板块全拦的饿死问题）"""
+    from config.sector_map import SECTORS
+    # agri 10 个成员, 让 9 个失败 → 仍放行
+    agri = SECTORS["agri"]
+    snap = {"%s_c" % s: _sv(s, "c", False, "2026-09-0%dT00:00:00" % (i + 1))
+            for i, s in enumerate(agri[:9])}
+
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert "sector_blocked" not in stats["reject_reasons"]
 
 
 def test_cov_cross_fail_rejected(tmproot):
@@ -415,7 +434,7 @@ def test_quality_below_threshold_rejected(tmproot):
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 0
     assert "quality_below_threshold" in stats["reject_reasons"]
-    assert stats["quality_rejected"] == 1
+    assert stats["quality_below_threshold"] == 1
 
 
 def test_covariate_filter_exempt_when_any_pass(tmproot):
@@ -459,14 +478,16 @@ def test_stale_pass_does_not_exempt_covariate_filter(tmproot):
 def test_reject_reasons_and_counters_stay_consistent(tmproot):
     """新计数与 reject_reasons 必须一致（防止两套计数漂移）"""
     from config.sector_map import SECTORS
-    agri = SECTORS["agri"][:3]
+    # 用最小的板块 black_metals (4 个) 构造全集失败触发 sector_blocked
+    bm = SECTORS["black_metals"]
     snap = {"%s_c" % s: _sv(s, "c", False, "2026-09-0%dT00:00:00" % (i + 1))
-            for i, s in enumerate(agri)}
+            for i, s in enumerate(bm)}
 
-    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
+    _make_run(tmproot, _prop(symbol="rb", cov="vor", failure_delta=FAIL_DELTA))
     _, stats = _harvest(tmproot, snap=snap)
+    # 键名已与 reject_reasons 对齐，相等即一致
     assert stats["sector_blocked"] == stats["reject_reasons"].get("sector_blocked", 0)
     assert stats["cov_cross_fail"] == stats["reject_reasons"].get("cov_cross_fail", 0)
-    assert stats["quality_rejected"] == stats["reject_reasons"].get(
+    assert stats["quality_below_threshold"] == stats["reject_reasons"].get(
         "quality_below_threshold", 0)
 

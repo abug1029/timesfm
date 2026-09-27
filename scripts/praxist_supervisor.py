@@ -1165,7 +1165,8 @@ def _append_backlog(prop, src_path):
 # decided_at / cov_override / symbol)，不引入不可得字段。
 
 MIN_QUALITY_SCORE = 0.0        # score < 该值 → 拒绝 (0.0 = 仅拦截净负分提案)
-SECTOR_BLOCK_MIN_FAILED = 3    # 同板块 >= N 个品种最近裁决未过门 → 拦截
+# SECTOR_BLOCK_MIN_FAILED 已废弃: 改为 sector_map 定义的全部品种都失败才拦截
+# (见 _sector_filter_check 的 circuit-breaker 注释)
 COV_CROSS_FAIL_MIN = 3         # 该协变量在其他品种失败 >= N 次且从无过门 → 拦截
 SYMBOL_FAIL_WINDOW = 5         # 品种最近 N 次裁决全失败 → 扣分
 COV_FAIL_WINDOW = 3            # 协变量在其他品种最近 N 次全失败 → 扣分
@@ -1178,7 +1179,12 @@ def _verdict_sort_key(v):
 
 
 def _latest_verdict_per_symbol(snapshot):
-    """每个品种最近一次 ok 裁决 → {symbol: verdict}"""
+    """每个品种最近一次 ok 裁决 → {symbol: verdict}
+
+    当 decided_at 相同（或缺失导致都排序为 ""）时，取**最后**遇到的裁决
+    (使用 `>=` 而非 `>`)。jsonl 是追加写入，同 key 时后到的通常更新，
+    因此 `>=` 在 ties 时给出更符合直觉的"最新"裁决。
+    """
     latest = {}
     for v in (snapshot or {}).values():
         if not isinstance(v, dict) or v.get("status", "ok") != "ok":
@@ -1187,7 +1193,7 @@ def _latest_verdict_per_symbol(snapshot):
         if not s:
             continue
         cur = latest.get(s)
-        if cur is None or _verdict_sort_key(v) > _verdict_sort_key(cur):
+        if cur is None or _verdict_sort_key(v) >= _verdict_sort_key(cur):
             latest[s] = v
     return latest
 
@@ -1224,21 +1230,29 @@ def _prescreen_plausibility(proposal_path):
 
 
 def _sector_filter_check(symbol, snapshot):
-    """板块级拦截。
+    """板块级拦截 (circuit-breaker 语义)。
 
-    该品种所属板块中，最近一次裁决未过门的品种数 >= SECTOR_BLOCK_MIN_FAILED
-    → 拦截。板块由 config.sector_map 唯一决定；未知品种 ('other') 不拦截。
+    该品种所属板块在 config.sector_map 中定义的**全部**品种（不是仅有裁决的）
+    其最近一次裁决均未过门 → 拦截。未观察到的品种视为"未评估"，不参与失败计数，
+    因此未评估的品种不触发拦截。
+
+    这是防饿死设计: 若仅凭 "≥N 个品种失败" 拦截，生产快照中所有三个板块都
+    ≥3 失败 → 所有提案被拦 → 慢环饿死 (与 2026-09-24 no_failure_delta 饿死同构)。
+    改为 "全部已观察品种 + 全部未观察品种都等于板块成员全集失败" 才拦，
+    即只有板块真死透了才拦。
 
     Returns: (blocked, sector, n_failed)
     """
-    from config.sector_map import sector_of
+    from config.sector_map import SECTORS, sector_of
     sector = sector_of(symbol)
     if sector == "other":
         return False, sector, 0
+    sector_size = len(SECTORS[sector])  # 板块在 sector_map 中定义的品种总数
     latest = _latest_verdict_per_symbol(snapshot)
     n_failed = sum(1 for s, v in latest.items()
                    if sector_of(s) == sector and not v.get("gate_pass"))
-    return n_failed >= SECTOR_BLOCK_MIN_FAILED, sector, n_failed
+    # 仅当失败数 >= 板块成员总数时拦截（即全部成员都失败，包括未观察到的）
+    return n_failed >= sector_size, sector, n_failed
 
 
 def _covariate_filter_check(cov, symbol, snapshot):
@@ -1340,8 +1354,8 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     status_map = load_symbol_status()
     stats = {"seen": 0, "rejected": 0, "backlog": 0, "selected": 0,
              "reject_reasons": {},
-             # PR-B6 质量门计数
-             "quality_rejected": 0, "sector_blocked": 0, "cov_cross_fail": 0}
+             # PR-B6 质量门计数（键名与 reject_reasons 一致，防止两套计数漂移）
+             "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0}
     passing_ids = {v["variant_id"] for v in rl.pass_variants(snapshot or {})}
     archived = getattr(ev, "ARCHIVED_COVARIATES", {}) if ev else {}
     valid_covs = getattr(ev, "VALID_COVARIATES", None) if ev else None
@@ -1417,7 +1431,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 _reject("cov_cross_fail"); continue
             quality_score, _quality_bd = _proposal_quality_gate(p, _snap, proposal_path=sp)
             if quality_score < MIN_QUALITY_SCORE:
-                stats["quality_rejected"] += 1
+                stats["quality_below_threshold"] += 1
                 _reject("quality_below_threshold"); continue
 
             family = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or "other"
