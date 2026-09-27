@@ -16,7 +16,6 @@
 """
 
 import sys
-from cascade.baseline_paths import baseline_filename
 import os
 import json
 import argparse
@@ -27,6 +26,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
+from cascade.baseline_paths import baseline_filename
 import scripts.monthly_backtest as mb
 from config.backtest_config import SYMBOL_NAMES, CONTEXT_BARS, HORIZON, STEP
 from cascade.evaluation_metrics import fallback_n_eff

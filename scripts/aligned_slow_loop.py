@@ -155,10 +155,15 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             if baseline_pts:
                 ok_count = sum(1 for pt in baseline_pts if pt.get("dir_ok"))
                 baseline_dir_acc = ok_count / len(baseline_pts)
+            # E9/C2：取最近一次送入模型的协变量矩阵与有序键，供指纹使用
+            _ci = getattr(hourly_model, "last_covariate_input", None)
             v = build_summary(s, {"symbol": row["symbol"], "cov_override": row["cov_override"],
                                   "max_points": row["max_points"], "stage": "aligned"},
                               batch_id=bid, baseline_points=baseline_pts,
-                              baseline_dir_acc=baseline_dir_acc)
+                              baseline_dir_acc=baseline_dir_acc,
+                              points=s.get("points"),
+                              cov_matrix=(_ci[0] if _ci else None),
+                              cov_keys=(_ci[1] if _ci else None))
             v["variant_id"] = row["variant_id"]
             v.setdefault("decided_at", _now())
     v["checkpoint_path"] = cp

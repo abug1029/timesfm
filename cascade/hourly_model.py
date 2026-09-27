@@ -32,8 +32,10 @@ class HourlyResult:
     baseline_forecast: Optional[np.ndarray] = None
     baseline_quantile: Optional[np.ndarray] = None
     # XReg 回退标记
+    # True 表示协变量预测失败，回退到无协变量模式
     xreg_fallback: bool = False
-    last_covariate_input: tuple = None   # (matrix, keys) 最近一次送入模型的输入        # True 表示协变量预测失败，回退到无协变量模式
+    # (matrix, keys) 最近一次送入模型的输入；回退时为 None
+    last_covariate_input: tuple = None
 
 
 def _needs_feedstock(covariate_type: str, covariate_types: list) -> bool:
@@ -215,6 +217,8 @@ class HourlyModel:
         past_future_covariates = np.array(
             [covariates[k] for k in covariate_keys], dtype=np.float32
         )  # shape: (num_covariates, context + horizon)
+        # M2 接线：暴露最近一次送入模型的输入矩阵与有序键，供协变量指纹使用
+        self.last_covariate_input = (past_future_covariates, list(covariate_keys))
 
         # 5. 调用 predict with covariates (TimesFM 3.0)
         xreg_fallback = False
@@ -235,6 +239,7 @@ class HourlyModel:
             point_forecast, quantile_forecast = self._fallback_predict(hourly_closes, horizon)
             covariates = {}  # 标记协变量未使用
             xreg_fallback = True
+            self.last_covariate_input = None
 
         # 6. 消融对比: 无协变量预测 (仅在非回测模式下执行)
         baseline_point = None
