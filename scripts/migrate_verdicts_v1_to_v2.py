@@ -230,6 +230,8 @@ def migrate_row(rec, gate_fn, covariate_pool=None):
         "slow_loop_pid": rec.get("slow_loop_pid"),
         "git_rev": rec.get("git_rev"),
         "decided_at": rec.get("decided_at"),
+        "run_mode": None,        # migrated verdict: 非评估产物
+        "run_label": None,
         "metrics": {
             "batch_id": MIGRATION_BATCH_ID,
             "symbol": rec.get("symbol"),
@@ -247,6 +249,8 @@ def migrate_row(rec, gate_fn, covariate_pool=None):
             "mae": rec.get("mae") if _is_num(rec.get("mae")) else None,
             "mape": rec.get("mape") if _is_num(rec.get("mape")) else None,
             "decay": rec.get("decay") if _is_num(rec.get("decay")) else None,
+            "run_mode": None,
+            "run_label": None,
         },
     }
     if failed:

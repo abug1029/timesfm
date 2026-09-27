@@ -87,14 +87,16 @@ def _summary_to_registry_row(summary, vid, **kw):
     row = copy.deepcopy(summary)
     row.update({"variant_id": vid, "checkpoint_path": None,
                 "slow_loop_pid": None, "git_rev": None,
-                "decided_at": "2026-09-16T00:00:00"})
+                "decided_at": "2026-09-16T00:00:00",
+                "run_mode": "confirmation",   # §1.4 测试夹具默认确认模式
+                "run_label": None})
     row.update(kw)
     return row
 
 
 def _v2_row(vid, bid, *, symbol="m", cov="rsi_state", cov_family="momentum",
             dir_acc=0.56, gate_pass=True, p_value=0.01, fdr_pass=None,
-            migrated_pass=None, status="ok"):
+            migrated_pass=None, status="ok", run_mode="confirmation"):
     """Complete v2 verdict (mirrors test_verdict_registry._v2_complete)."""
     return {
         "schema": "fm.aligned_verdict.v2", "variant_id": vid,
@@ -108,6 +110,7 @@ def _v2_row(vid, bid, *, symbol="m", cov="rsi_state", cov_family="momentum",
         "mape": None, "decay": None, "checkpoint_path": None,
         "slow_loop_pid": None, "git_rev": None,
         "decided_at": "2026-09-16T00:00:00",
+        "run_mode": run_mode, "run_label": None,
     }
 
 
@@ -328,8 +331,11 @@ def test_e2e_migrate_output_into_registry(tmp_path):
     assert rl.validate_verdict(out) == []  # zero v2 validation errors
 
     # straight into tmp registry + pass_variants can read it
+    # W1.1：migrated_pass 不再是晋升通道；必须 run_mode="confirmation" + fdr_pass + p_value 非空
+    # 迁移产物 run_mode=None, p_value=None → 不晋升
     reg = str(tmp_path / "verdicts.jsonl")
     rl.append_verdict(reg, out)
     passing = rl.pass_variants(rl.load_snapshot(reg))
-    assert [v["variant_id"] for v in passing] == ["m_rsi_state"]
-    assert passing[0]["migrated_pass"] is True
+    assert [v["variant_id"] for v in passing] == []
+    # 但 migrated_pass 字段仍保留
+    assert out["migrated_pass"] is True

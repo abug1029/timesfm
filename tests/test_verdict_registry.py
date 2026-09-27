@@ -146,6 +146,8 @@ def _v2_complete(vid="v1", bid="b1", **kw):
         "slow_loop_pid": None,
         "git_rev": None,
         "decided_at": None,
+        "run_mode": "confirmation",
+        "run_label": None,
     }
     base.update(kw)
     return base
@@ -178,6 +180,7 @@ def test_update_batch_no_metrics_key_does_not_invent(tmp_path):
 
 
 def test_pass_variants_v2_needs_fdr(tmp_path):
+    """W1.1：migrated_pass 不再是晋升通道；必须 fdr_pass 且 p_value 非空。"""
     snap = {
         "a": {
             "variant_id": "a",
@@ -185,6 +188,8 @@ def test_pass_variants_v2_needs_fdr(tmp_path):
             "status": "ok",
             "gate_pass": True,
             "fdr_pass": True,
+            "p_value": 0.01,
+            "run_mode": "confirmation",
         },
         "b": {
             "variant_id": "b",
@@ -192,6 +197,7 @@ def test_pass_variants_v2_needs_fdr(tmp_path):
             "status": "ok",
             "gate_pass": True,
             "fdr_pass": False,
+            "run_mode": "confirmation",
         },
         "c": {
             "variant_id": "c",
@@ -200,8 +206,21 @@ def test_pass_variants_v2_needs_fdr(tmp_path):
             "gate_pass": True,
             "migrated_pass": True,
             "fdr_pass": True,
+            "p_value": 0.01,
+            "run_mode": "confirmation",
+        },
+        "d": {
+            "variant_id": "d",
+            "schema": "fm.aligned_verdict.v2",
+            "status": "ok",
+            "gate_pass": True,
+            "fdr_pass": True,
+            "p_value": 0.01,
+            "run_mode": "exploration",
         },
     }
+    # Only "a" and "c" promote (both have confirmation + fdr_pass + p_value);
+    # "b" lacks fdr_pass; "d" is exploration mode.
     assert {v["variant_id"] for v in pass_variants(snap)} == {"a", "c"}
 
 

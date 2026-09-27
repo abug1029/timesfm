@@ -28,6 +28,14 @@ except ImportError as e:
     diebold_mariano_p = None
     resolve_cov_family = None
 
+# §1.4 双运行模式：导入 RUN_LABEL_EXPLORATION
+sys.path.insert(0, FM_ROOT)
+try:
+    from scripts.registry_lib import RUN_LABEL_EXPLORATION
+except ImportError as e:
+    print(f"[WARN] RUN_LABEL_EXPLORATION 加载失败: {e}", file=sys.stderr)
+    RUN_LABEL_EXPLORATION = "exploratory_unconfirmed"  # fallback
+
 VALID_COVARIATES = {
     "rsi_state", "rsi_slope", "hourly_slope", "oi", "ccl", "basis_momentum",
     "ha_body", "calendar_cyclical", "reversal_shadow", "rsi6", "rsi12", "rsi24",
@@ -252,7 +260,7 @@ def load_baseline_points(symbol, root=None):
     return points
 
 
-def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch_id=None):
+def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch_id=None, run_mode="exploration"):
     """Build complete verdict summary with DM test and adaptive gate."""
     m = map_summary(s)
     stage = cand.get("stage", DEFAULT_STAGE)
@@ -303,6 +311,8 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
     out = {
         "schema": "fm.aligned_verdict.v2",
         "status": "ok",
+        "run_mode": run_mode,
+        "run_label": RUN_LABEL_EXPLORATION if run_mode == "exploration" else None,
         "usage_unknown": False,
         "stage": stage,
         "variant_name": variant,

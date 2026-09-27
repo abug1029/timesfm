@@ -81,6 +81,8 @@ def _no_data_verdict(row, batch_id=None):
         "checkpoint_path": "",
         "slow_loop_pid": os.getpid(),
         "git_rev": _git_rev(),
+        "run_mode": None,        # _no_data_verdict 非评估产物，无运行模式
+        "run_label": None,
         "metrics": {
             "batch_id": bid,
             "symbol": row["symbol"],
@@ -90,6 +92,8 @@ def _no_data_verdict(row, batch_id=None):
             "status": "no_data",
             "gate_pass": False,
             "p_value": 1.0,
+            "run_mode": None,
+            "run_label": None,
         },
     }
 

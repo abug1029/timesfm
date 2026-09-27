@@ -1114,7 +1114,9 @@ def test_build_snapshot_scalars_v2(tmp_path):
     reg = tmp_path / "v.jsonl"
     rec = {"variant_id": "m_rsi_state", "symbol": "m", "cov_family": "momentum",
            "schema": "fm.aligned_verdict.v2", "status": "ok",
-           "gate_pass": True, "fdr_pass": True, "pf": 1.2, "ev": 0.05, "dir_acc": 0.56}
+           "gate_pass": True, "fdr_pass": True, "p_value": 0.01,
+           "run_mode": "confirmation", "run_label": None,
+           "pf": 1.2, "ev": 0.05, "dir_acc": 0.56}
     reg.write_text(json.dumps(rec) + "\n", encoding="utf-8")
     snap = sup.build_snapshot(str(reg), 0, 0, 0)
     assert snap["n_unique_pass_variants"] == 1

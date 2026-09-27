@@ -1,6 +1,10 @@
 """verdict 注册表与 aligned 队列的共享库 (三环文件总线)"""
 import json, os, contextlib, fcntl, time, pathlib
 
+# §1.4 双运行模式：唯一机器枚举字段。成功判定读 run_mode，不读 run_label。
+RUN_MODES = frozenset({"exploration", "confirmation"})
+RUN_LABEL_EXPLORATION = "exploratory_unconfirmed"
+
 VERDICT_FIELDS = {"variant_id", "symbol", "cov_override", "max_points", "n",
                   "pf", "ev", "maxdd", "dir_acc", "gate_pass", "ic",
                   "decided_at", "checkpoint_path", "slow_loop_pid", "git_rev",
@@ -13,12 +17,14 @@ VERDICT_FIELDS_V2 = {
     "endpoint_mape", "endpoint_bias_pct", "path_corr", "mae", "mape", "decay",
     "checkpoint_path", "slow_loop_pid", "git_rev", "decided_at",
     "baseline_dir_acc", "effective_min",
+    "run_mode", "run_label",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
     "fdr_pass", "migrated_pass", "endpoint_mape", "endpoint_bias_pct",
     "cov_family", "weighted_dir_acc", "error_message",
     "baseline_dir_acc", "effective_min",
+    "run_mode", "run_label",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",
@@ -331,6 +337,8 @@ def make_error_tombstone(symbol, variant_id, batch_id, exception):
         "decided_at": None,
         "baseline_dir_acc": None,
         "effective_min": None,
+        "run_mode": None,        # tombstone 非评估产物，无运行模式
+        "run_label": None,
         "metrics": {
             "batch_id": batch_id,
             "symbol": symbol,
@@ -351,6 +359,8 @@ def make_error_tombstone(symbol, variant_id, batch_id, exception):
             "decay": None,
             "baseline_dir_acc": None,
             "effective_min": None,
+            "run_mode": None,
+            "run_label": None,
         },
     }
 
@@ -387,6 +397,8 @@ def make_timeout_tombstone(symbol, variant_id, batch_id):
         "decided_at": None,
         "baseline_dir_acc": None,
         "effective_min": None,
+        "run_mode": None,        # tombstone 非评估产物，无运行模式
+        "run_label": None,
         "metrics": {
             "batch_id": batch_id,
             "symbol": symbol,
@@ -407,6 +419,8 @@ def make_timeout_tombstone(symbol, variant_id, batch_id):
             "decay": None,
             "baseline_dir_acc": None,
             "effective_min": None,
+            "run_mode": None,
+            "run_label": None,
         },
     }
 
@@ -414,7 +428,7 @@ def make_timeout_tombstone(symbol, variant_id, batch_id):
 def pass_variants(snapshot):
     """v2-aware pass filter.
 
-    v2: gate_pass AND (fdr_pass OR migrated_pass)
+    v2: gate_pass AND fdr_pass AND p_value is not None (migrated_pass retired per W1.1)
     v1: gate_pass AND ev > 0
     """
     out = []
@@ -422,7 +436,14 @@ def pass_variants(snapshot):
         if v.get("status", "ok") != "ok":
             continue
         if v.get("schema") == "fm.aligned_verdict.v2":
-            if v.get("gate_pass") and (v.get("fdr_pass") or v.get("migrated_pass")):
+            # §1.2 A1：缺 run_mode 或取值非法 → 不得进入成功判定
+            if v.get("run_mode") not in RUN_MODES:
+                continue
+            if v.get("run_mode") == "exploration":
+                continue
+            # W1.1：migrated_pass 已退出成功判定
+            if (v.get("gate_pass") and v.get("fdr_pass")
+                    and v.get("p_value") is not None):
                 out.append(v)
         else:
             if v.get("gate_pass") and v.get("ev", 0) > 0:
