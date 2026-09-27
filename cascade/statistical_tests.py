@@ -310,3 +310,90 @@ def bh_fdr_promote(
                 all_updates[vid] = {"fdr_pass": fdr_pass}
 
     return all_updates
+
+def pair_dir_ok_series_with_diagnostics(
+    variant_points, baseline_points, *, dm_min_common: int = 50,
+    effective_min_n: int = 50, missingness_admissible=None,
+    variant_protocol=None, baseline_protocol=None,
+):
+    """共同 cutoff 配对 + 显式诊断（E6 / W1.5）。
+
+    状态判定优先级（首个匹配者胜）：
+      no_baseline -> protocol_mismatch -> no_common_cutoff -> insufficient_common
+      -> set_mismatch_descriptive -> set_mismatch_ok -> ok
+    """
+    import hashlib
+
+    def _norm(pts):
+        m = {}
+        for p in (pts or []):
+            if isinstance(p, dict):
+                ts = safe_normalize_cutoff(p.get("cutoff"))
+                ok = p.get("dir_ok")
+            elif isinstance(p, (tuple, list)) and len(p) >= 2:
+                ts = safe_normalize_cutoff(p[0])
+                ok = p[1]
+            else:
+                continue
+            if ts is not None:
+                m[ts] = bool(ok)
+        return m
+
+    if missingness_admissible is None:
+        missingness_admissible = False
+
+    vm, bm = _norm(variant_points), _norm(baseline_points)
+
+    def _base(**over):
+        out = {"dm_common_count": 0, "dm_unmatched_variant": 0,
+               "dm_unmatched_baseline": 0, "pair_set_hash": None,
+               "raw_cutoff_set_hash": None, "pairing_valid": False,
+               "missingness_admissible": bool(missingness_admissible),
+               "d_series_n_eff": None, "d_bar_le_zero": None,
+               "n_avail_variant": len(vm), "n_avail_baseline": len(bm),
+               "variant_series": [], "baseline_series": []}
+        out.update(over)
+        return out
+
+    if baseline_points is None:
+        return _base(dm_status="no_baseline")
+
+    if variant_protocol is not None and baseline_protocol is not None:
+        if variant_protocol != baseline_protocol:
+            return _base(dm_status="protocol_mismatch")
+
+    common = sorted(vm.keys() & bm.keys())
+    raw_hash = hashlib.sha256(
+        "|".join(str(k) for k in sorted(vm.keys() | bm.keys())).encode()
+    ).hexdigest()
+
+    if not common:
+        return _base(dm_status="no_common_cutoff", raw_cutoff_set_hash=raw_hash)
+
+    pair_hash = hashlib.sha256("|".join(str(k) for k in common).encode()).hexdigest()
+    v_series = [float(vm[k]) for k in common]
+    b_series = [float(bm[k]) for k in common]
+    counts = {"dm_common_count": len(common),
+              "dm_unmatched_variant": len(vm.keys() - bm.keys()),
+              "dm_unmatched_baseline": len(bm.keys() - vm.keys()),
+              "pair_set_hash": pair_hash, "raw_cutoff_set_hash": raw_hash,
+              "variant_series": v_series, "baseline_series": b_series}
+
+    if len(common) < dm_min_common:
+        return _base(dm_status="insufficient_common", **counts)
+
+    import numpy as _np
+    d = _np.asarray(v_series) - _np.asarray(b_series)
+    counts["d_bar_le_zero"] = bool(d.mean() <= 0)
+    counts["d_series_n_eff"] = int(len(d))
+    if counts["d_series_n_eff"] < effective_min_n:
+        return _base(dm_status="insufficient_common", **counts)
+
+    if not missingness_admissible:
+        return _base(dm_status="set_mismatch_descriptive", **counts)
+
+    set_mismatch = bool(counts["dm_unmatched_variant"]
+                        or counts["dm_unmatched_baseline"])
+    return _base(dm_status="set_mismatch_ok" if set_mismatch else "ok",
+                 pairing_valid=True, **counts)
+

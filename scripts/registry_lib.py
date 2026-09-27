@@ -458,3 +458,25 @@ def pass_variants(snapshot):
 def comparable(a, b) -> bool:
     """可比性只由协议指纹决定（W1.5）。"""
     return a.get("protocol_fingerprint") == b.get("protocol_fingerprint")
+
+# Section 1.2 A1 required fields
+A1_REQUIRED_FIELDS = (
+    "protocol_fingerprint", "cov_fingerprint", "dir_acc", "dir_acc_full",
+    "dir_acc_ex_roll", "n_roll_excluded", "n_roll_ratio", "dm_status",
+    "dm_common_count", "n_avail_variant", "n_avail_baseline",
+    "missingness_admissible", "d_series_n_eff", "pair_set_hash",
+    "covariates_used", "baseline_dir_acc", "run_mode", "run_label",
+)
+A1_NULLABLE = frozenset({"run_label", "cov_fingerprint", "pair_set_hash",
+                         "d_series_n_eff", "baseline_dir_acc"})
+
+
+def a1_missing_fields(verdict) -> list:
+    missing = []
+    for k in A1_REQUIRED_FIELDS:
+        if k not in verdict:
+            missing.append(k)
+        elif verdict.get(k) is None and k not in A1_NULLABLE:
+            missing.append(k)
+    return missing
+

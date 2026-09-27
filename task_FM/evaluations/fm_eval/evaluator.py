@@ -390,6 +390,7 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         "sample_fingerprint": compute_sample_fingerprint(points or s.get("points")),
         "cov_fingerprint": (compute_cov_fingerprint(cov_matrix, cov_keys)
                             if cov_matrix is not None and cov_keys else None),
+        "covariates_used": m.get("covariates_used", False),
         "metrics": {
             "n": m["n"],
             "n_eff": m["n_eff"],
@@ -408,6 +409,7 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
             "gate_pass": gate_pass,
             "baseline_dir_acc": baseline_dir_acc,
             "effective_min": effective_min,
+            "covariates_used": m.get("covariates_used", False),
         },
     }
     if gm is not None:
