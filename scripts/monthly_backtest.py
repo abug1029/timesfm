@@ -595,8 +595,11 @@ def summarize(data):
         # 旧 checkpoint 缺该键 → None(未知)，不臆断为 False(否认用了协变量)。
         "covariates_used": (None if any("covariates_used" not in p for p in ok)
                             else bool(all(p["covariates_used"] for p in ok))),
-        "xreg_fallback_count": sum(1 for p in ok if p.get("xreg_fallback", False)),
-        "xreg_fallback_rate": sum(1 for p in ok if p.get("xreg_fallback", False)) / n if n > 0 else 0.0,
+        # PR-B3: xreg_fallback 统计，缺失键时报告 None（未知）而非 0（否认）
+        "xreg_fallback_count": (None if any("xreg_fallback" not in p for p in ok)
+                                else sum(1 for p in ok if p.get("xreg_fallback", False))),
+        "xreg_fallback_rate": (None if any("xreg_fallback" not in p for p in ok)
+                               else (sum(1 for p in ok if p.get("xreg_fallback", False)) / n if n > 0 else 0.0)),
         "dir_acc_full": round(pq["dir_acc_full"], 3),
         "dir_acc_ex_roll": round(pq["dir_acc_ex_roll"], 3),
         "n_roll_excluded": int(pq["n_roll_excluded"]),

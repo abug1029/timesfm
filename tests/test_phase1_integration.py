@@ -143,5 +143,70 @@ class TestRollMarkingIsWired(unittest.TestCase):
         self.assertIn("_roll = roll_in_horizon(_cc)", src)
 
 
+class TestXregFallbackStats(unittest.TestCase):
+    """PR-B3: xreg_fallback_count/rate 传播链必须正确处理四种边界情况"""
+
+    def _make_data(self, points):
+        return {"symbol": "rb", "name": "rb", "contract": "RB_MAIN",
+                "total_bars": 100, "points": points}
+
+    def _make_point(self, xreg_fallback=None):
+        pt = {"cutoff": "2026-01-01 10:00:00", "base": 100.0,
+              "pred_end": 101.0, "real_end": 101.0, "delta_pred": 1.0,
+              "delta_real": 1.0, "dir_ok": True, "dir12_ok": True,
+              "mae": 0.0, "mape": 0.0, "mae_h1": 0.0, "mae_h2": 0.0,
+              "coverage": 1, "pnl": 1.0, "real_range": 1.0,
+              "endpoint_mape": 0.0, "endpoint_bias_pct": 0.0,
+              "path_corr": None, "roll_in_horizon": False,
+              "covariates_used": True}
+        if xreg_fallback is not None:
+            pt["xreg_fallback"] = xreg_fallback
+        return pt
+
+    def test_all_points_fallback_rate_1(self):
+        """全点回退 → rate=1.0, count=3"""
+        import scripts.monthly_backtest as mb
+        data = self._make_data([self._make_point(True) for _ in range(3)])
+        out = mb.summarize(data)
+        self.assertEqual(out["xreg_fallback_count"], 3)
+        self.assertAlmostEqual(out["xreg_fallback_rate"], 1.0)
+
+    def test_mixed_fallback_rate_0_5(self):
+        """半数回退 → rate=0.5, count=2"""
+        import scripts.monthly_backtest as mb
+        points = [self._make_point(True), self._make_point(True),
+                  self._make_point(False), self._make_point(False)]
+        data = self._make_data(points)
+        out = mb.summarize(data)
+        self.assertEqual(out["xreg_fallback_count"], 2)
+        self.assertAlmostEqual(out["xreg_fallback_rate"], 0.5)
+
+    def test_all_clean_rate_0(self):
+        """全点正常 → rate=0.0, count=0"""
+        import scripts.monthly_backtest as mb
+        data = self._make_data([self._make_point(False) for _ in range(5)])
+        out = mb.summarize(data)
+        self.assertEqual(out["xreg_fallback_count"], 0)
+        self.assertAlmostEqual(out["xreg_fallback_rate"], 0.0)
+
+    def test_missing_key_reports_none_unknown(self):
+        """缺失 xreg_fallback 键 → count/rate=None（未知），非 0（否认）"""
+        import scripts.monthly_backtest as mb
+        # 旧 checkpoint 无 xreg_fallback 键
+        data = self._make_data([self._make_point() for _ in range(3)])
+        out = mb.summarize(data)
+        self.assertIsNone(out["xreg_fallback_count"])
+        self.assertIsNone(out["xreg_fallback_rate"])
+
+    def test_mixed_missing_and_present_reports_none(self):
+        """混合缺失键和存在键 → 仍报告 None（保守策略）"""
+        import scripts.monthly_backtest as mb
+        points = [self._make_point(True), self._make_point()]  # 第二个缺键
+        data = self._make_data(points)
+        out = mb.summarize(data)
+        self.assertIsNone(out["xreg_fallback_count"])
+        self.assertIsNone(out["xreg_fallback_rate"])
+
+
 if __name__ == "__main__":
     unittest.main()

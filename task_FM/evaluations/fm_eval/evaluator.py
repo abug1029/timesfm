@@ -424,10 +424,10 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         # M1: 保留 None(未知) 诚实暴露旧 checkpoint 缺该键；True/False 仅当全点有明确值
 
         "covariates_used": (None if s.get("covariates_used") is None
-
                                     else bool(s.get("covariates_used"))),
-        "xreg_fallback_count": s.get("xreg_fallback_count", 0),
-        "xreg_fallback_rate": s.get("xreg_fallback_rate", 0.0),
+        # PR-B3: xreg_fallback 统计，缺失时报告 None（未知）而非 0（否认）
+        "xreg_fallback_count": s.get("xreg_fallback_count"),
+        "xreg_fallback_rate": s.get("xreg_fallback_rate"),
         # E6: DM 配对诊断 (variant_series/baseline_series 是中间产物, 不落 verdict)
         **{k: v for k, v in dm_diag.items()
            if k not in ("variant_series", "baseline_series")},
