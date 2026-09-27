@@ -17,12 +17,26 @@ import praxist_supervisor as S  # noqa: E402
 
 
 def _v(symbol, cov, gate_pass, decided_at, status="ok", vid=None):
-    return {
+    """创建 verdict 测试夹具。
+
+    当 gate_pass=True 时，必须包含 pass_variants 严格定义所需的全部字段：
+    - run_mode="confirmation" (排除 exploration)
+    - fdr_pass=True
+    - p_value=0.01 (非 None)
+    否则 symbol_has_pass 不会计入该 verdict。
+    """
+    v = {
         "schema": "fm.aligned_verdict.v2",
         "variant_id": vid or ("%s_%s" % (symbol, cov)),
         "symbol": symbol, "cov_override": cov, "cov_family": "f",
         "status": status, "gate_pass": gate_pass, "decided_at": decided_at,
     }
+    # 当 gate_pass=True 时，补充 pass_variants 严格定义所需字段
+    if gate_pass:
+        v["run_mode"] = "confirmation"
+        v["fdr_pass"] = True
+        v["p_value"] = 0.01
+    return v
 
 
 def _prop(symbol="m", cov="vor", **over):

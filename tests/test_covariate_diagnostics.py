@@ -125,16 +125,24 @@ class TestDiagnoseCovariatesEdgeCases:
         assert result["cov_effective"] == 0
 
     def test_nan_values(self):
-        """NaN 值处理"""
+        """NaN 值处理 — 部分 NaN 不影响有效性判断"""
         covariates = {
             "cov_with_nan": np.array([1.0, 2.0, np.nan, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
                                        11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0])
         }
-        # numpy 的 std 会返回 nan 如果有 nan 值
+        # PR-B2 评审修复: 使用 nanstd 忽略 NaN 计算 std
+        # 该通道有有效变化（std 约 5.76），应计为有效
         result = diagnose_covariates(covariates, context_len=10)
-        # std 为 nan，不应该 < 1e-12，所以不算惰性常数
-        # 但 np.all(arr == 0) 会因为 nan 返回 False
-        # 所以这个通道应该是有效的
+        assert result["cov_effective"] == 1
+
+    def test_all_nan_channel_not_effective(self):
+        """全 NaN 通道不应被计为有效"""
+        covariates = {
+            "all_nan": np.full(20, np.nan),
+            "valid": np.random.randn(20)
+        }
+        result = diagnose_covariates(covariates, context_len=10)
+        # all_nan 应被跳过，只有 valid 有效
         assert result["cov_effective"] == 1
 
 

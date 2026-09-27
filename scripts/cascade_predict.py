@@ -190,6 +190,11 @@ def run_cascade(symbol: str, horizon: int = 24, visualize: bool = True,
                 baseline_forecast=hourly_result.point_forecast,  # 保留原始预测供审计
                 baseline_quantile=hourly_result.quantile_forecast,
                 xreg_fallback=hourly_result.xreg_fallback,
+                # PR-B2: 转发诊断字段，避免 force_neutral 覆盖后丢失协变量有效性证据
+                cov_effective=hourly_result.cov_effective,
+                inert_constant=hourly_result.inert_constant,
+                horizon_flat=hourly_result.horizon_flat,
+                all_zero=hourly_result.all_zero,
             )
             print(f"    [RISK] Forecast flattened to base={last_1h_close:.2f} "
                   f"(horizon={actual_horizon})")

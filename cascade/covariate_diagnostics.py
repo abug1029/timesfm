@@ -45,6 +45,10 @@ def diagnose_covariates(covariates, context_len):
         if not isinstance(arr, np.ndarray):
             continue
 
+        # PR-B2 评审修复: NaN 通道不应被计为有效
+        if np.all(np.isnan(arr)):
+            continue
+
         # 分割 context 和 horizon
         context_part = arr[:context_len]
         horizon_part = arr[context_len:]
@@ -55,7 +59,8 @@ def diagnose_covariates(covariates, context_len):
             continue
 
         # 检查 context 部分是否惰性常数（std < 1e-12）
-        context_std = np.std(context_part)
+        # PR-B2 评审修复: 使用 nanstd 避免 NaN 污染
+        context_std = np.nanstd(context_part)
         if context_std < 1e-12:
             inert_constant.append(name)
             continue

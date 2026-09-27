@@ -1296,10 +1296,19 @@ def _proposal_quality_gate(prop, snapshot, proposal_path=None):
     snap = snapshot or {}
     bd = {}
 
-    # +5 该品种有过成功协变量
-    sym_pass = any(isinstance(v, dict) and v.get("gate_pass")
-                   and str(v.get("symbol") or "").lower().strip() == symbol
-                   for v in snap.values())
+    # +5 该品种有过成功协变量（必须与 pass_variants 严格定义一致，排除探索运行）
+    # §1.4: 探索运行不得出现在任何"已确认"表述中
+    sym_pass = any(
+        isinstance(v, dict)
+        and v.get("status", "ok") == "ok"
+        and v.get("run_mode") in rl.RUN_MODES
+        and v.get("run_mode") != "exploration"
+        and v.get("gate_pass")
+        and v.get("fdr_pass")
+        and v.get("p_value") is not None
+        and str(v.get("symbol") or "").lower().strip() == symbol
+        for v in snap.values()
+    )
     bd["symbol_has_pass"] = 5.0 if sym_pass else 0.0
 
     # +3 新颖性: 该组合从未出现在 snapshot
