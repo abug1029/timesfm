@@ -32,7 +32,8 @@ class HourlyResult:
     baseline_forecast: Optional[np.ndarray] = None
     baseline_quantile: Optional[np.ndarray] = None
     # XReg 回退标记
-    xreg_fallback: bool = False        # True 表示协变量预测失败，回退到无协变量模式
+    xreg_fallback: bool = False
+    last_covariate_input: tuple = None   # (matrix, keys) 最近一次送入模型的输入        # True 表示协变量预测失败，回退到无协变量模式
 
 
 def _needs_feedstock(covariate_type: str, covariate_types: list) -> bool:

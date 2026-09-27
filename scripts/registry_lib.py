@@ -19,6 +19,7 @@ VERDICT_FIELDS_V2 = {
     "baseline_dir_acc", "effective_min",
     "run_mode", "run_label",
     "dir_acc_full", "dir_acc_ex_roll", "n_roll_excluded", "n_roll_ratio",
+    "protocol_fingerprint", "sample_fingerprint", "cov_fingerprint",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
@@ -27,6 +28,7 @@ VERDICT_FIELDS_V2_NULLABLE = {
     "baseline_dir_acc", "effective_min",
     "run_mode", "run_label",
     "dir_acc_full", "dir_acc_ex_roll", "n_roll_excluded", "n_roll_ratio",
+    "protocol_fingerprint", "sample_fingerprint", "cov_fingerprint",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",
@@ -451,3 +453,8 @@ def pass_variants(snapshot):
             if v.get("gate_pass") and v.get("ev", 0) > 0:
                 out.append(v)
     return out
+
+
+def comparable(a, b) -> bool:
+    """可比性只由协议指纹决定（W1.5）。"""
+    return a.get("protocol_fingerprint") == b.get("protocol_fingerprint")

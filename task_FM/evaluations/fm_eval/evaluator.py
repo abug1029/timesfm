@@ -10,6 +10,7 @@ import json
 import math
 import os
 import sys
+import hashlib
 
 import numpy as np
 
@@ -260,7 +261,52 @@ def load_baseline_points(symbol, root=None):
     return points
 
 
-def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch_id=None, run_mode="exploration"):
+
+PROTOCOL_FINGERPRINT_VERSION = "protocol_v1"
+COV_MATRIX_HASH_VERSION = "cov_matrix_hash_v1"
+COV_FILL_VERSION = "v2"      # 唯一来源（D4 语义变更）
+
+
+def compute_protocol_fingerprint(metric_version="v1",
+                                 cov_fill_version=COV_FILL_VERSION,
+                                 eval_window_bars=None, step=None, horizon=None):
+    """协议指纹：决定两次评估是否可比（W1.5）。"""
+    from config import backtest_config
+    parts = [
+        PROTOCOL_FINGERPRINT_VERSION,
+        f"metric={metric_version}",
+        f"cov_fill={cov_fill_version}",
+        f"window={eval_window_bars if eval_window_bars is not None else backtest_config.EVAL_WINDOW_BARS}",
+        f"step={step if step is not None else backtest_config.STEP}",
+        f"horizon={horizon if horizon is not None else backtest_config.HORIZON}",
+    ]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def compute_sample_fingerprint(points):
+    """样本指纹：本次评估实际用到的 cutoff 集合。"""
+    cutoffs = sorted(str(p.get("cutoff")) for p in (points or [])
+                     if isinstance(p, dict) and p.get("cutoff") is not None)
+    return hashlib.sha256("|".join(cutoffs).encode("utf-8")).hexdigest()
+
+
+def compute_cov_fingerprint(matrix, keys):
+    """协变量输入矩阵的规范哈希（C2 / W2.1）。"""
+    import numpy as _np
+    arr = _np.asarray(matrix, dtype="<f4")
+    if not _np.all(_np.isfinite(arr)):
+        raise ValueError("cov matrix contains Inf/NaN payload")
+    arr = _np.where(arr == 0.0, 0.0, arr)
+    blob = b"|".join([COV_MATRIX_HASH_VERSION.encode()]
+                     + [str(k).encode("utf-8") for k in keys]
+                     + [arr.tobytes(order="C")])
+    return {"keys": list(keys),
+            "matrix_sha256": hashlib.sha256(blob).hexdigest(),
+            "n_channels": len(list(keys)),
+            "hash_version": COV_MATRIX_HASH_VERSION}
+
+
+def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch_id=None, run_mode="exploration", points=None, cov_matrix=None, cov_keys=None):
     """Build complete verdict summary with DM test and adaptive gate."""
     m = map_summary(s)
     stage = cand.get("stage", DEFAULT_STAGE)
@@ -340,6 +386,10 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         "p_value": p_value,
         "fdr_pass": None,
         "migrated_pass": None,
+        "protocol_fingerprint": compute_protocol_fingerprint(),
+        "sample_fingerprint": compute_sample_fingerprint(points or s.get("points")),
+        "cov_fingerprint": (compute_cov_fingerprint(cov_matrix, cov_keys)
+                            if cov_matrix is not None and cov_keys else None),
         "metrics": {
             "n": m["n"],
             "n_eff": m["n_eff"],
