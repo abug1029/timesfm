@@ -24,6 +24,7 @@ VERDICT_FIELDS_V2 = {
     "pair_set_hash", "raw_cutoff_set_hash", "d_series_n_eff", "d_bar_le_zero",
     "n_avail_variant", "n_avail_baseline", "missingness_admissible",
     "covariates_used", "pairing_valid",
+    "xreg_fallback_count", "xreg_fallback_rate",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
@@ -37,6 +38,7 @@ VERDICT_FIELDS_V2_NULLABLE = {
     "pair_set_hash", "raw_cutoff_set_hash", "d_series_n_eff", "d_bar_le_zero",
     "n_avail_variant", "n_avail_baseline", "missingness_admissible",
     "covariates_used", "pairing_valid",
+    "xreg_fallback_count", "xreg_fallback_rate",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",

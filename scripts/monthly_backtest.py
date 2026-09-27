@@ -452,6 +452,7 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 "signal": None if effective_combo else _point_signal(hourly_result, effective_single),
                 # M1: xreg_fallback=True 表示协变量预测失败并回退到无协变量模式
                 "covariates_used": not bool(getattr(hourly_result, "xreg_fallback", False)),
+                "xreg_fallback": bool(getattr(hourly_result, "xreg_fallback", False)),
             }
             points.append(point)
             # ── checkpoint: 完整 point 字段 (resume 可重建 summarize) ──
@@ -560,6 +561,8 @@ def summarize(data):
         # 旧 checkpoint 缺该键 → None(未知)，不臆断为 False(否认用了协变量)。
         "covariates_used": (None if any("covariates_used" not in p for p in ok)
                             else bool(all(p["covariates_used"] for p in ok))),
+        "xreg_fallback_count": sum(1 for p in ok if p.get("xreg_fallback", False)),
+        "xreg_fallback_rate": sum(1 for p in ok if p.get("xreg_fallback", False)) / n if n > 0 else 0.0,
         "dir_acc_full": round(pq["dir_acc_full"], 3),
         "dir_acc_ex_roll": round(pq["dir_acc_ex_roll"], 3),
         "n_roll_excluded": int(pq["n_roll_excluded"]),
