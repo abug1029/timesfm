@@ -110,6 +110,19 @@ def detect_rolls_from_price_gaps(df, gap_threshold_atr_mult=2.0):
     return rolls
 
 
+def resolve_adjustment_policy(df) -> str:
+    """显式报告复权策略（D1）。
+
+    历史上 apply_backward_adjustment_robust 因 raw_close 恒在 MAIN_COLUMNS
+    而永不执行——"以为复权了、实际没有"是静默失效。本函数把该事实变成可见返回值。
+    """
+    if df is None:
+        return "empty"
+    if "raw_close" in df.columns:
+        return "skipped_raw_close_column_present"
+    return "eligible"
+
+
 def apply_backward_adjustment_robust(kline_df: pd.DataFrame, roll_records: list) -> pd.DataFrame:
     """Vectorized backward roll adjustment — no quadratic compounding.
 
@@ -350,7 +363,7 @@ class DataStore:
         return stored
 
     def store_xreg_factor(self, factor_name: str, df: pd.DataFrame) -> int:
-        """写入 XReg 因子"""
+        """[DEAD TABLE - 预测路径不读取] 写入 XReg 因子"""
         if df.empty:
             return 0
         stored = 0
@@ -419,10 +432,14 @@ class DataStore:
         # always includes this column (values may be all NULL), so production
         # SELECT * never calls apply_backward_adjustment_robust. 1H reads
         # (get_klines_1h) never apply roll adj either. Do not delete the column.
-        if not df.empty and "raw_close" not in df.columns:
+        # [C10] raw_close 恒在 MAIN_COLUMNS -> 生产路径从不执行复权
+        adjustment_policy = resolve_adjustment_policy(df)
+        if adjustment_policy == "eligible":
             roll_records = detect_rolls_from_price_gaps(df)
             if roll_records:
                 df = apply_backward_adjustment_robust(df, roll_records)
+                adjustment_policy = "applied"
+        df.attrs["adjustment_policy"] = adjustment_policy
 
         return df
 
@@ -458,7 +475,7 @@ class DataStore:
         return pd.read_sql_query(sql, self.conn, params=params)
 
     def get_xreg_factors(self, factor_names=None, start_date=None) -> pd.DataFrame:
-        """读取 XReg 因子"""
+        """[DEAD TABLE - 预测路径不读取] 读取 XReg 因子"""
         sql = "SELECT * FROM xreg_factors WHERE symbol = ?"
         params = [self.symbol]
         if factor_names:
@@ -716,7 +733,7 @@ class DataStore:
         return arr
 
     def get_xreg_matrix(self, days: int = 250) -> pd.DataFrame:
-        """输出多因子矩阵"""
+        """[DEAD TABLE - 预测路径不读取] 输出多因子矩阵"""
         main_df = self.get_main_continuous(limit=days)
         if main_df.empty:
             return pd.DataFrame()

@@ -129,9 +129,6 @@ class VarietyScheme:
     # ── 协变量配置 ──
     covariate_type: str = "ccl"            # 单协变量模式: "ccl", "oi", "rsi_slope" 等
     covariate_types: list = None           # 组合模式: ["rsi_state", "oi"] 等 (daily_slope 自动包含)
-    xreg_covariates: list = field(default_factory=lambda: [
-        "daily_slope", "ccl_pct",
-    ])
 
     # ── 趋势判断阈值 ──
     trend_threshold_pct: float = 0.1   # 斜率 > 此值视为上升/下降
