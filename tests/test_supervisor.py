@@ -1116,7 +1116,15 @@ def test_build_snapshot_scalars_v2(tmp_path):
            "schema": "fm.aligned_verdict.v2", "status": "ok",
            "gate_pass": True, "fdr_pass": True, "p_value": 0.01,
            "run_mode": "confirmation", "run_label": None,
-           "pf": 1.2, "ev": 0.05, "dir_acc": 0.56}
+           "pf": 1.2, "ev": 0.05, "dir_acc": 0.56,
+           "dir_acc_full": 0.56, "dir_acc_ex_roll": 0.56,
+           "n_roll_excluded": 0, "n_roll_ratio": 0.0,
+           "dm_status": "ok", "dm_common_count": 50,
+           "n_avail_variant": 50, "n_avail_baseline": 50,
+           "missingness_admissible": False, "d_series_n_eff": 50,
+           "pair_set_hash": "ph", "covariates_used": True,
+           "baseline_dir_acc": 0.5, "protocol_fingerprint": "pf",
+           "cov_fingerprint": None}
     reg.write_text(json.dumps(rec) + "\n", encoding="utf-8")
     snap = sup.build_snapshot(str(reg), 0, 0, 0)
     assert snap["n_unique_pass_variants"] == 1

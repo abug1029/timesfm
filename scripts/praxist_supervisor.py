@@ -674,7 +674,9 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
         proposed_ids = collect_proposed_variant_ids(root or FM_ROOT)
 
     lines = ["## Known aligned verdicts (supervisor snapshot)",
-             "v2 pass (gate_pass=True AND (fdr_pass OR migrated_pass)): already solved, do NOT re-propose.",
+             "v2 pass (gate_pass=True AND fdr_pass=True AND p_value NOT NULL AND run_mode='confirmation'): already solved, do NOT re-propose.",
+             "v1 legacy: pass by ev>0 (legacy econ caliber, schema=v1 entries only).",
+             "hard-gate-but-losing (gate_pass=True but not statistically confirmed): 过硬门但未过统计检验; not a success; do not re-propose as solved.",
              "v1 legacy: pass by ev>0 (legacy econ caliber, schema=v1 entries only).",
              "hard-gate-but-losing (gate_pass=True but not (fdr_pass or migrated_pass)): 过硬门但未过 v23 统计检验; not a success; do not re-propose as solved.",
              "DEAD (gate_pass=False, status=ok): never revive without a mechanism correction.",
@@ -1999,11 +2001,11 @@ def ensure_baselines(symbols, root):
             return
     for sym in sorted(symbols):
         sym_lower = sym.lower()
-        points_path = os.path.join(config_dir, f"baseline_points_{sym_lower}.jsonl")
+        points_path = os.path.join(config_dir, gbp.baseline_filename(sym_lower, None))
         met = metrics.get(sym_lower, {})
         if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
             try:
-                gbp.generate(sym_lower, "ccl", root)
+                gbp.generate(sym_lower, None, root)   # E7: 无协变量基线
             except Exception as e:
                 print(f"[ERROR] ensure_baselines: generate failed for {sym_lower}: {e}", file=sys.stderr)
             continue
@@ -2022,7 +2024,7 @@ def ensure_baselines(symbols, root):
                 pass
         if n_lines < 100:
             try:
-                gbp.generate(sym_lower, "ccl", root)
+                gbp.generate(sym_lower, None, root)   # E7: 无协变量基线
             except Exception as e:
                 print(f"[ERROR] ensure_baselines: generate failed for {sym_lower} (n_lines={n_lines}): {e}", file=sys.stderr)
 

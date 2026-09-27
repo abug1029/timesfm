@@ -161,7 +161,7 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
                                   "max_points": row["max_points"], "stage": "aligned"},
                               batch_id=bid, baseline_points=baseline_pts,
                               baseline_dir_acc=baseline_dir_acc,
-                              points=s.get("points"),
+                              points=data["points"],
                               cov_matrix=(_ci[0] if _ci else None),
                               cov_keys=(_ci[1] if _ci else None))
             v["variant_id"] = row["variant_id"]

@@ -111,6 +111,14 @@ def _v2_row(vid, bid, *, symbol="m", cov="rsi_state", cov_family="momentum",
         "slow_loop_pid": None, "git_rev": None,
         "decided_at": "2026-09-16T00:00:00",
         "run_mode": run_mode, "run_label": None,
+        "dir_acc_full": 0.55, "dir_acc_ex_roll": 0.55,
+        "n_roll_excluded": 0, "n_roll_ratio": 0.0,
+        "dm_status": "ok", "dm_common_count": 50,
+        "n_avail_variant": 50, "n_avail_baseline": 50,
+        "missingness_admissible": False, "d_series_n_eff": 50,
+        "pair_set_hash": "ph", "covariates_used": True,
+        "baseline_dir_acc": 0.5, "protocol_fingerprint": "pf",
+        "cov_fingerprint": None,
     }
 
 

@@ -179,45 +179,33 @@ def test_update_batch_no_metrics_key_does_not_invent(tmp_path):
     assert "metrics" not in rec  # do not invent if missing
 
 
+def _a1_min(**kw):
+    """§1.2 A1 最小完整字段集（M1：A1 守卫要求晋升候选必须完整）。"""
+    base = {"schema": "fm.aligned_verdict.v2", "status": "ok",
+            "dir_acc": 0.55, "dir_acc_full": 0.55, "dir_acc_ex_roll": 0.55,
+            "n_roll_excluded": 0, "n_roll_ratio": 0.0,
+            "dm_status": "ok", "dm_common_count": 50,
+            "n_avail_variant": 50, "n_avail_baseline": 50,
+            "missingness_admissible": False, "d_series_n_eff": 50,
+            "pair_set_hash": "ph", "covariates_used": True,
+            "baseline_dir_acc": 0.5, "protocol_fingerprint": "pf",
+            "cov_fingerprint": None, "run_label": None}
+    base.update(kw)
+    return base
+
+
 def test_pass_variants_v2_needs_fdr(tmp_path):
     """W1.1：migrated_pass 不再是晋升通道；必须 fdr_pass 且 p_value 非空。"""
     snap = {
-        "a": {
-            "variant_id": "a",
-            "schema": "fm.aligned_verdict.v2",
-            "status": "ok",
-            "gate_pass": True,
-            "fdr_pass": True,
-            "p_value": 0.01,
-            "run_mode": "confirmation",
-        },
-        "b": {
-            "variant_id": "b",
-            "schema": "fm.aligned_verdict.v2",
-            "status": "ok",
-            "gate_pass": True,
-            "fdr_pass": False,
-            "run_mode": "confirmation",
-        },
-        "c": {
-            "variant_id": "c",
-            "schema": "fm.aligned_verdict.v2",
-            "status": "ok",
-            "gate_pass": True,
-            "migrated_pass": True,
-            "fdr_pass": True,
-            "p_value": 0.01,
-            "run_mode": "confirmation",
-        },
-        "d": {
-            "variant_id": "d",
-            "schema": "fm.aligned_verdict.v2",
-            "status": "ok",
-            "gate_pass": True,
-            "fdr_pass": True,
-            "p_value": 0.01,
-            "run_mode": "exploration",
-        },
+        "a": dict(_a1_min(), variant_id="a", gate_pass=True,
+                  fdr_pass=True, p_value=0.01, run_mode="confirmation"),
+        "b": dict(_a1_min(), variant_id="b", gate_pass=True,
+                  fdr_pass=False, run_mode="confirmation"),
+        "c": dict(_a1_min(), variant_id="c", gate_pass=True,
+                  migrated_pass=True, fdr_pass=True, p_value=0.01,
+                  run_mode="confirmation"),
+        "d": dict(_a1_min(), variant_id="d", gate_pass=True,
+                  fdr_pass=True, p_value=0.01, run_mode="exploration"),
     }
     # Only "a" and "c" promote (both have confirmation + fdr_pass + p_value);
     # "b" lacks fdr_pass; "d" is exploration mode.

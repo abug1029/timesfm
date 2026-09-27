@@ -316,6 +316,10 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
         cutoff = bar_ts.strftime("%Y-%m-%d %H:%M:%S")
         base = float(all_1h["close_price"].iloc[idx])
         real = all_1h["close_price"].iloc[idx+1:idx+1+HORIZON].values.astype(np.float64)
+        # D1/D2 换月守卫: horizon 内若发生合约切换, delta_real 混合两个合约的价格,
+        # 方向标签不可比, 须从 dir_acc 分母剔除
+        _cc = all_1h["contract_code"].iloc[idx+1:idx+1+HORIZON].tolist()
+        _roll = roll_in_horizon(_cc)
 
         # Clear GPU cache every cache_interval eval points to prevent memory accumulation
         if i > 0 and i % cache_interval == 0:
@@ -439,11 +443,14 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 "coverage": cov,
                 "pnl": pnl,
                 "real_range": float(real.max() - real.min()),
+                "roll_in_horizon": _roll,
                 "endpoint_mape": _ep_mape,
                 "endpoint_bias_pct": _ep_bias,
                 "path_corr": _pc,
                 # gated 评估用: cutoff bar 协变量信号 (spec §5; 非 gated 路径不消费此键)
                 "signal": None if effective_combo else _point_signal(hourly_result, effective_single),
+                # M1: xreg_fallback=True 表示协变量预测失败并回退到无协变量模式
+                "covariates_used": not bool(getattr(hourly_result, "xreg_fallback", False)),
             }
             points.append(point)
             # ── checkpoint: 完整 point 字段 (resume 可重建 summarize) ──
@@ -548,6 +555,7 @@ def summarize(data):
         "mape": round(mape, 2),
         # DirAcc: 来自 calc_prediction_quality (零变动=错)
         "dir_acc": round(pq["dir_acc"], 3),
+        "covariates_used": bool(all(p.get("covariates_used", False) for p in ok)),
         "dir_acc_full": round(pq["dir_acc_full"], 3),
         "dir_acc_ex_roll": round(pq["dir_acc_ex_roll"], 3),
         "n_roll_excluded": int(pq["n_roll_excluded"]),

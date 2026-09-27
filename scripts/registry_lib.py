@@ -20,6 +20,10 @@ VERDICT_FIELDS_V2 = {
     "run_mode", "run_label",
     "dir_acc_full", "dir_acc_ex_roll", "n_roll_excluded", "n_roll_ratio",
     "protocol_fingerprint", "sample_fingerprint", "cov_fingerprint",
+    "dm_status", "dm_common_count", "dm_unmatched_variant", "dm_unmatched_baseline",
+    "pair_set_hash", "raw_cutoff_set_hash", "d_series_n_eff", "d_bar_le_zero",
+    "n_avail_variant", "n_avail_baseline", "missingness_admissible",
+    "covariates_used", "pairing_valid",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
@@ -29,6 +33,10 @@ VERDICT_FIELDS_V2_NULLABLE = {
     "run_mode", "run_label",
     "dir_acc_full", "dir_acc_ex_roll", "n_roll_excluded", "n_roll_ratio",
     "protocol_fingerprint", "sample_fingerprint", "cov_fingerprint",
+    "dm_status", "dm_common_count", "dm_unmatched_variant", "dm_unmatched_baseline",
+    "pair_set_hash", "raw_cutoff_set_hash", "d_series_n_eff", "d_bar_le_zero",
+    "n_avail_variant", "n_avail_baseline", "missingness_admissible",
+    "covariates_used", "pairing_valid",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",
@@ -448,6 +456,9 @@ def pass_variants(snapshot):
             # W1.1：migrated_pass 已退出成功判定
             if (v.get("gate_pass") and v.get("fdr_pass")
                     and v.get("p_value") is not None):
+                # §1.2 A1：缺失 A1 字段 → verdict 不完整，不得晋升
+                if a1_missing_fields(v):
+                    continue
                 out.append(v)
         else:
             if v.get("gate_pass") and v.get("ev", 0) > 0:

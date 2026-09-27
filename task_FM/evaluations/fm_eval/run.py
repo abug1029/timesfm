@@ -111,10 +111,15 @@ def do_evaluate(cand):
             ok_count = sum(1 for pt in baseline_points if pt.get("dir_ok"))
             baseline_dir_acc = ok_count / len(baseline_points) if baseline_points else None
 
+    # E9/C2: 取最近一次送入模型的协变量矩阵与有序键，供指纹使用
+    _ci = getattr(h, "last_covariate_input", None)
     return {"summary": build_summary(
         s, cand,
         baseline_points=baseline_points,
         baseline_dir_acc=baseline_dir_acc,
+        points=data["points"],
+        cov_matrix=(_ci[0] if _ci else None),
+        cov_keys=(_ci[1] if _ci else None),
     )}
 
 

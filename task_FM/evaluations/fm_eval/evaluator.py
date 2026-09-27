@@ -21,12 +21,16 @@ FM_ROOT = os.path.abspath(os.path.join(
 # 导入统计检验模块
 sys.path.insert(0, os.path.join(FM_ROOT, "cascade"))
 try:
-    from statistical_tests import pair_dir_ok_series, diebold_mariano_p
+    from statistical_tests import (
+        pair_dir_ok_series, diebold_mariano_p,
+        pair_dir_ok_series_with_diagnostics,
+    )
     from cov_family import resolve_cov_family
 except ImportError as e:
     print(f"[WARN] 统计检验模块加载失败: {e}", file=sys.stderr)
     pair_dir_ok_series = None
     diebold_mariano_p = None
+    pair_dir_ok_series_with_diagnostics = None
     resolve_cov_family = None
 
 # §1.4 双运行模式：导入 RUN_LABEL_EXPLORATION
@@ -339,18 +343,38 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
             baseline_dir_acc=baseline_dir_acc)
     if stage == "diagnostic":
         gate_pass = False
+    # ── E6/W1.5: DM 显式状态机 ──
+    # PR-A1 前 dm_status 会频繁落 insufficient_common/no_common_cutoff——
+    # 这是 fail-loud 设计行为, 运维侧禁止过滤该 WARN.
     p_value = None
+    dm_diag = {"dm_status": "no_baseline", "dm_common_count": 0,
+               "dm_unmatched_variant": 0, "dm_unmatched_baseline": 0,
+               "pair_set_hash": None, "raw_cutoff_set_hash": None,
+               "pairing_valid": False, "missingness_admissible": False,
+               "d_series_n_eff": None, "d_bar_le_zero": None,
+               "n_avail_variant": 0, "n_avail_baseline": 0}
     if (baseline_points is not None and
-        pair_dir_ok_series is not None and
-        diebold_mariano_p is not None):
+            pair_dir_ok_series_with_diagnostics is not None):
         point_dir_ok_list = s.get("point_dir_ok_list") or []  # 键存在但值为 None 时也回退 (审计 bug #4)
-        if len(point_dir_ok_list) >= 100 and len(baseline_points) >= 100:
-            try:
-                v_series, b_series = pair_dir_ok_series(point_dir_ok_list, baseline_points)
-                if len(v_series) >= 100:
-                    p_value = diebold_mariano_p(v_series, b_series)
-            except Exception as e:
-                print(f"[WARN] DM test failed: {e}", file=sys.stderr)
+        try:
+            _base_proto = next(
+                (p.get("protocol_fingerprint") for p in baseline_points
+                 if isinstance(p, dict) and p.get("protocol_fingerprint")), None)
+            dm_diag = pair_dir_ok_series_with_diagnostics(
+                point_dir_ok_list, baseline_points,
+                variant_protocol=compute_protocol_fingerprint(),
+                baseline_protocol=_base_proto)
+            v_series, b_series = dm_diag["variant_series"], dm_diag["baseline_series"]
+            if (dm_diag["dm_status"] not in ("protocol_mismatch", "no_baseline")
+                    and len(v_series) >= 100 and diebold_mariano_p is not None):
+                p_value = diebold_mariano_p(v_series, b_series)
+        except Exception as e:
+            print(f"[WARN] DM test failed: {e}", file=sys.stderr)
+    if dm_diag["dm_status"] in ("insufficient_common", "no_common_cutoff",
+                                "protocol_mismatch"):
+        print(f"[WARN] dm_status={dm_diag['dm_status']} "
+              f"common={dm_diag['dm_common_count']} — DM 不可用于确认",
+              file=sys.stderr)
     cov_family = "unknown"
     if resolve_cov_family is not None:
         try:
@@ -396,6 +420,9 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         "cov_fingerprint": (compute_cov_fingerprint(cov_matrix, cov_keys)
                             if cov_matrix is not None and cov_keys else None),
         "covariates_used": bool(s.get("covariates_used", False)),
+        # E6: DM 配对诊断 (variant_series/baseline_series 是中间产物, 不落 verdict)
+        **{k: v for k, v in dm_diag.items()
+           if k not in ("variant_series", "baseline_series")},
         "metrics": {
             "n": m["n"],
             "n_eff": m["n_eff"],

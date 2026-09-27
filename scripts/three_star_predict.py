@@ -373,7 +373,7 @@ def show_schemes():
         print(f"    Horizon: {scheme.horizon_bars} bars (1H) / {scheme.horizon_days} days (日线)")
         print(f"    信号策略: {'全段 T+1~T+24' if scheme.use_full_signal else '短段 T+1~T+12'}")
         print(f"    置信乘数: {scheme.confidence_multiplier:.2f}")
-        print(f"    协变量: {', '.join(scheme.xreg_covariates)}")
+        print(f"    协变量: {scheme.covariate_type}")
     print()
 
 

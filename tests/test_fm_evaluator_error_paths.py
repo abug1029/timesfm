@@ -342,7 +342,7 @@ class TestBuildSummaryErrorPaths:
         # 统计模块崩溃 (scipy/数据畸形) 不得拖垮裁定输出: p_value 回退 None, status 保持 ok
         def _boom(*a, **k):
             raise RuntimeError("statistical module down")
-        monkeypatch.setattr(fm, "pair_dir_ok_series", _boom)
+        monkeypatch.setattr(fm, "pair_dir_ok_series_with_diagnostics", _boom)
         s = {"n": 400, "n_eff": 400, "dir_acc": 0.56, "endpoint_mape": 0.4,
              "endpoint_bias_pct": 0.1, "path_corr": 0.7, "weighted_dir_acc": 0.57,
              "mae": 1.0, "mape": 0.4, "decay": 1.1,
