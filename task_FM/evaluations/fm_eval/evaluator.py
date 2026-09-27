@@ -419,6 +419,8 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         "sample_fingerprint": compute_sample_fingerprint(points or s.get("points")),
         "cov_fingerprint": (compute_cov_fingerprint(cov_matrix, cov_keys)
                             if cov_matrix is not None and cov_keys else None),
+        "weight_fingerprint": None,  # PR-B1: 后续优化，需要从权重目录计算
+        "seed_fingerprint": None,  # PR-B1: 后续优化，需要从随机种子计算
         # M1: 保留 None(未知) 诚实暴露旧 checkpoint 缺该键；True/False 仅当全点有明确值
 
         "covariates_used": (None if s.get("covariates_used") is None
