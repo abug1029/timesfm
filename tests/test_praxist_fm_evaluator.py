@@ -180,7 +180,7 @@ def test_load_baseline_points_missing_file():
 def test_load_baseline_points_valid_file():
     """正常 JSONL 加载."""
     with tempfile.TemporaryDirectory() as tmp:
-        path = os.path.join(tmp, "baseline_points_m.jsonl")
+        path = os.path.join(tmp, "baseline_points_m_nocov.jsonl")
         with open(path, "w") as f:
             f.write(json.dumps({"cutoff": "2024-06-15 09:00:00", "dir_ok": True}) + "\n")
             f.write(json.dumps({"cutoff": "2024-06-15 10:00:00", "dir_ok": False}) + "\n")

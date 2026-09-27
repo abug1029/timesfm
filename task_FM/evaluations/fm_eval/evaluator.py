@@ -239,11 +239,16 @@ def validate_candidate(c):
     return True, "ok"
 
 
-def load_baseline_points(symbol, root=None):
-    """Load baseline points from JSONL file."""
+def load_baseline_points(symbol, root=None, cov=None):
+    """Load baseline points from JSONL file.
+
+    cov=None -> 无协变量基线（E7）。
+    """
     if root is None:
         root = os.path.join(FM_ROOT, "task_FM", "config")
-    path = os.path.join(root, f"baseline_points_{symbol}.jsonl")
+    from cascade.baseline_paths import baseline_filename
+    _fname = baseline_filename(symbol, cov)
+    path = os.path.join(root, _fname)
     if not os.path.exists(path):
         return []
     points = []
@@ -256,7 +261,7 @@ def load_baseline_points(symbol, root=None):
                 except ValueError as e:
                     # fail-fast: 中途坏行静默截断会让 DM 配对样本无声缩水 (审计 bug #3)
                     raise ValueError(
-                        f"baseline_points_{symbol}.jsonl 第 {line_no} 行 JSON 损坏: {e} "
+                        f"{_fname} 第 {line_no} 行 JSON 损坏: {e} "
                         "— DM 对照序列禁止静默部分加载, 请修复文件后重跑") from e
     return points
 
@@ -390,7 +395,7 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         "sample_fingerprint": compute_sample_fingerprint(points or s.get("points")),
         "cov_fingerprint": (compute_cov_fingerprint(cov_matrix, cov_keys)
                             if cov_matrix is not None and cov_keys else None),
-        "covariates_used": m.get("covariates_used", False),
+        "covariates_used": bool(s.get("covariates_used", False)),
         "metrics": {
             "n": m["n"],
             "n_eff": m["n_eff"],
@@ -409,7 +414,7 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
             "gate_pass": gate_pass,
             "baseline_dir_acc": baseline_dir_acc,
             "effective_min": effective_min,
-            "covariates_used": m.get("covariates_used", False),
+            "covariates_used": bool(s.get("covariates_used", False)),
         },
     }
     if gm is not None:

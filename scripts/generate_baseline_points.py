@@ -16,6 +16,7 @@
 """
 
 import sys
+from cascade.baseline_paths import baseline_filename
 import os
 import json
 import argparse
@@ -67,11 +68,15 @@ def generate(symbol: str, cov: str, root: str):
             print(f"[WARN] baseline generate: model load failed ({e}); aborting", file=sys.stderr)
             raise
 
+        # M3: cov_override=None 会被 monthly_backtest 回落到 scheme 默认
+        # (多数品种 "ccl"), 使 _nocov 文件里装的仍是 ccl 数据.
+        effective_cov = "none" if (cov is None or cov == "none") else cov
+
         result = mb.run_symbol_backtest(
             symbol=sym_upper,
             daily_model=daily_m,
             hourly_model=hourly_m,
-            cov_override=cov,
+            cov_override=effective_cov,
         )
 
         if result is None:
@@ -90,13 +95,16 @@ def generate(symbol: str, cov: str, root: str):
             missing = required_keys - set(summary.keys())
             raise ValueError(f"summarize 返回的字典缺少键: {missing}")
 
+        from task_FM.evaluations.fm_eval.evaluator import compute_protocol_fingerprint
+        _proto = compute_protocol_fingerprint()
+
         points = result.get("points", [])
         total = len(points)
         print(f"[Info] 品种 {sym_upper} 共 {total} 个评估点")
 
         # MEDIUM 3: 部分写入文件清理 - 写入临时文件，成功后 rename
-        jsonl_file = config_dir / f"baseline_points_{sym_lower}.jsonl"
-        temp_file = config_dir / f".baseline_points_{sym_lower}.tmp"
+        jsonl_file = config_dir / baseline_filename(sym_lower, cov)
+        temp_file = config_dir / f".{baseline_filename(sym_lower, cov)}.tmp"
         try:
             with open(temp_file, "w", encoding="utf-8") as fp:
                 written = 0
@@ -116,6 +124,7 @@ def generate(symbol: str, cov: str, root: str):
                         "dir_ok": bool(pt["dir_ok"]),
                         "delta_pred": float(pt["delta_pred"]),
                         "delta_real": float(pt["delta_real"]),
+                        "protocol_fingerprint": _proto,
                     }
                     fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     written += 1

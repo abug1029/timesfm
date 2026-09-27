@@ -405,7 +405,7 @@ class TestSlowLoopWiring:
             "path_corr": 0.6, "weighted_dir_acc": 0.56,
             "mae": 0.8, "mape": 0.3, "decay": 1.0})
         monkeypatch.setattr(asl, "_MODELS", (object(), object()))
-        monkeypatch.setattr(asl, "load_baseline_points", lambda sym: None)
+        monkeypatch.setattr(asl, "load_baseline_points", lambda sym, cov=None: None)
         monkeypatch.setattr(asl, "_METRICS_PATH", str(tmp_path / "metrics.jsonl"))
         reg = tmp_path / "verdicts.jsonl"
         verdict = asl.run_aligned_candidate(
@@ -438,7 +438,7 @@ class TestSlowLoopWiring:
             "path_corr": 0.6, "weighted_dir_acc": 0.56,
             "mae": 0.8, "mape": 0.3, "decay": 1.0})
         monkeypatch.setattr(asl, "_MODELS", (object(), object()))
-        monkeypatch.setattr(asl, "load_baseline_points", lambda sym: None)
+        monkeypatch.setattr(asl, "load_baseline_points", lambda sym, cov=None: None)
         monkeypatch.setattr(asl, "_METRICS_PATH", str(tmp_path / "metrics.jsonl"))
         reg = tmp_path / "verdicts.jsonl"
         verdict = asl.run_aligned_candidate(

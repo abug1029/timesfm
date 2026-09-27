@@ -54,7 +54,7 @@ STEP = 3600
 
 def _write_baseline(root, symbol="m", n=120):
     """120-point baseline JSONL, dir_ok ratio 0.55 (i%20<11 -> 66/120)."""
-    path = os.path.join(root, f"baseline_points_{symbol}.jsonl")
+    path = os.path.join(root, f"baseline_points_{symbol}_nocov.jsonl")
     with open(path, "w", encoding="utf-8") as f:
         for i in range(n):
             f.write(json.dumps({"cutoff": START + i * STEP,

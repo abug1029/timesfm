@@ -54,7 +54,8 @@ def test_generate_writes_jsonl_and_metrics(tmp_path, monkeypatch):
     # 验证每行只包含规定的 4 个字段
     for line in lines:
         rec = json.loads(line)
-        assert set(rec.keys()) == {"cutoff", "dir_ok", "delta_pred", "delta_real"}
+        assert set(rec.keys()) == {"cutoff", "dir_ok", "delta_pred", "delta_real",
+                                    "protocol_fingerprint"}
         assert isinstance(rec["cutoff"], str)
         assert isinstance(rec["dir_ok"], bool)
         assert isinstance(rec["delta_pred"], float)

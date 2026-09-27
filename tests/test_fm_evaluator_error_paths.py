@@ -117,13 +117,13 @@ class TestLoadBaselinePointsErrors:
     def test_empty_file_returns_empty_list(self):
         # 空文件 → 空列表: aligned 候选不会得到 p_value, 被上层 >=100 防护拦截
         with tempfile.TemporaryDirectory() as tmp:
-            open(os.path.join(tmp, "baseline_points_m.jsonl"), "w").close()
+            open(os.path.join(tmp, "baseline_points_m_nocov.jsonl"), "w").close()
             assert fm.load_baseline_points("m", root=tmp) == []
 
     def test_blank_lines_skipped(self):
         # 尾部空行/连续空行是编辑器常见产物, 不应计入点数
         with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "baseline_points_m.jsonl")
+            path = os.path.join(tmp, "baseline_points_m_nocov.jsonl")
             with open(path, "w") as f:
                 f.write("\n")
                 f.write(json.dumps({"cutoff": "2024-06-15 09:00:00", "dir_ok": True}) + "\n")
@@ -135,7 +135,7 @@ class TestLoadBaselinePointsErrors:
         # 2026-09-17 修复审计 bug #3: 中途坏行不再 fail-open 静默截断, 改为 fail-fast
         # 抛 ValueError (带行号) — DM 配对样本无声缩水比整批失败更危险
         with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "baseline_points_m.jsonl")
+            path = os.path.join(tmp, "baseline_points_m_nocov.jsonl")
             with open(path, "w") as f:
                 f.write(json.dumps({"cutoff": "2024-06-15 09:00:00", "dir_ok": True}) + "\n")
                 f.write("{not valid json\n")

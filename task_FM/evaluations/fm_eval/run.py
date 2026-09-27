@@ -106,7 +106,7 @@ def do_evaluate(cand):
     baseline_points = None
     baseline_dir_acc = None
     if stage == "aligned":
-        baseline_points = load_baseline_points(cand["symbol"])
+        baseline_points = load_baseline_points(cand["symbol"], cov=None)  # E7
         if baseline_points:
             ok_count = sum(1 for pt in baseline_points if pt.get("dir_ok"))
             baseline_dir_acc = ok_count / len(baseline_points) if baseline_points else None

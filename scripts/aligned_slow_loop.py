@@ -150,7 +150,7 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             s = dict(s)
             # gated 协变量: 注入 Active Mask 统计 (对照 run.py 注入条件; 评审 2026-09-18 HIGH)
             attach_gated_metrics(s, row["cov_override"], data["points"])
-            baseline_pts = load_baseline_points(row["symbol"])
+            baseline_pts = load_baseline_points(row["symbol"], cov=None)  # E7
             baseline_dir_acc = None
             if baseline_pts:
                 ok_count = sum(1 for pt in baseline_pts if pt.get("dir_ok"))
