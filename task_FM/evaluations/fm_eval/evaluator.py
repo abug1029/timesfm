@@ -102,6 +102,9 @@ POOL_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_pool.json")
 ARCHIVED_COVARIATES = {}
 _POOL_ERROR = None
 
+# N5: 权重指纹缓存哨兵 —— 区分「尚未计算」与「计算结果为 None」
+_NOT_COMPUTED = object()
+
 def _load_covariate_pool():
     try:
         with open(POOL_PATH, "r", encoding="utf-8") as f:
@@ -363,6 +366,57 @@ def _compute_context_hash(points) -> Optional[str]:
     return hashlib.sha256("|".join(digests).encode("utf-8")).hexdigest()[:16]
 
 
+# ── N5 修复：权重指纹 (PR-B1 接线) ─────────────────────────────────
+# 缓存模块级结果，避免每个 verdict 重复扫描+哈希大文件
+_WEIGHT_FINGERPRINT_CACHE = {"value": _NOT_COMPUTED}
+
+
+def _compute_weight_fingerprint_safe():
+    """计算 TimesFM 基础模型权重指纹。
+
+    路径来源：data.config.get_timesfm_model_path()，解析顺序为
+    环境变量 FM_TIMESFM_MODEL_PATH / TIMESFM_MODEL_PATH / TIMESFM_WEIGHTS_DIR
+    → 本地 models/timesfm-3.0-pytorch/ → HF hub id。
+
+    区分两种 None：
+    - 路径是 HF hub id（非本地目录）→ 无法哈希，返回 None + WARN
+    - 路径是本地目录但无模型文件 → compute_weight_fingerprint 抛 FileNotFoundError，
+      捕获后返回 None + WARN
+    - 计算成功 → 返回 dict {"weights_sha256": "...", "n_files": N, "hash_version": "v1"}
+
+    结果缓存在模块级 _WEIGHT_FINGERPRINT_CACHE，同进程内只算一次。
+    """
+    if _WEIGHT_FINGERPRINT_CACHE["value"] is not _NOT_COMPUTED:
+        return _WEIGHT_FINGERPRINT_CACHE["value"]
+
+    try:
+        from data.config import get_timesfm_model_path
+        from scripts.fingerprint_lib import compute_weight_fingerprint
+    except ImportError as e:
+        print(f"[WARN] weight_fingerprint: 依赖导入失败 ({e})，落 None", file=sys.stderr)
+        _WEIGHT_FINGERPRINT_CACHE["value"] = None
+        return None
+
+    model_path = get_timesfm_model_path()
+
+    # get_timesfm_model_path 可能返回 HF hub id（如 "google/timesfm-3.0-pytorch"），
+    # 那不是本地路径，无法哈希
+    if not os.path.isdir(model_path):
+        print(f"[WARN] weight_fingerprint: 模型路径不是本地目录 ({model_path})，"
+              f"无法计算权重指纹，落 None", file=sys.stderr)
+        _WEIGHT_FINGERPRINT_CACHE["value"] = None
+        return None
+
+    try:
+        fp = compute_weight_fingerprint(model_path)
+        _WEIGHT_FINGERPRINT_CACHE["value"] = fp
+        return fp
+    except (FileNotFoundError, OSError) as e:
+        print(f"[WARN] weight_fingerprint: 计算失败 ({e})，落 None", file=sys.stderr)
+        _WEIGHT_FINGERPRINT_CACHE["value"] = None
+        return None
+
+
 def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch_id=None, run_mode="exploration", points=None, cov_matrix=None, cov_keys=None):
     """Build complete verdict summary with DM test and adaptive gate."""
     m = map_summary(s)
@@ -467,8 +521,16 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         "sample_fingerprint": compute_sample_fingerprint(points or s.get("points")),
         "cov_fingerprint": (compute_cov_fingerprint(cov_matrix, cov_keys)
                             if cov_matrix is not None and cov_keys else None),
-        "weight_fingerprint": None,  # PR-B1: 后续优化，需要从权重目录计算
-        "seed_fingerprint": None,  # PR-B1: 后续优化，需要从随机种子计算
+        # N5 修复 (PR-B1 接线)：权重指纹从 TimesFM 基础模型目录计算。
+        # 路径来源：data.config.get_timesfm_model_path()（环境变量 → 本地 models/ → HF hub id）。
+        # 若路径非本地目录或计算失败，_compute_weight_fingerprint_safe() 返回 None 并打 WARN ——
+        # fail-visible，不静默吞错。
+        "weight_fingerprint": _compute_weight_fingerprint_safe(),
+        # N5: 种子指纹。当前系统无 per-verdict 随机种子 —— hourly_model.py 仅有硬编码
+        # seed=42 用于消融（ablate_content_covariates），不随 verdict 变化。
+        # 因此 seed_fingerprint 恒为 None 是**设计正确的**（无种子可指纹），不是 bug。
+        # 若未来引入 per-verdict seed（如 ensemble 随机化），需在此处接线 compute_seed_fingerprint()。
+        "seed_fingerprint": None,
         # M1: 保留 None(未知) 诚实暴露旧 checkpoint 缺该键；True/False 仅当全点有明确值
 
         "covariates_used": (None if s.get("covariates_used") is None
