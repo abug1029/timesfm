@@ -176,36 +176,98 @@ def compute_planning_vif(horizon=24, step=2):
 
 
 def compute_n_required(
-    delta, var_d, rho=0.5, horizon=24, step=2, 
+    delta, var_d=None, var_lr_d=None, horizon=24, step=2,
     alpha=0.05, power=0.80
 ):
-    """
-    计算达到目标功效所需的样本量
-    
+    """计算达到目标功效所需的样本量（spec W3.5②）。
+
+    ⚠️ 复核 HIGH-4 修正 —— 原稿有两处缺陷:
+      (1) 调用 `compute_vif(...)` —— 该函数已改名为 `compute_planning_vif`，
+          全仓 grep `compute_vif` 0 匹配 → **NameError**
+      (2) 无条件乘 VIF，且只收单个 `var_d` 参数 →
+          spec §5.3 测试 16「传入已含 HAC 的长程方差时**不再乘** VIF
+          （防重复调整）」既未实现也未断言
+
+    spec W3.5② 「两条途径，互斥，必须二选一」:
+      途径 A（情景近似）: Var(d) 边际方差 × VIF  —— 无先导数据时用
+      途径 B（先导估计）: 直接用 HAC 长程方差 Var_LR(d)，**不再乘 VIF** —— 优先
+
     Args:
         delta: 目标效应大小
-        var_d: 配对差异序列的方差
-        rho: 相关性假设
-        horizon: 预测窗口
-        step: 步长
-        alpha: 显著性水平
-        power: 目标功效
-    
+        var_d: 边际方差（途径 A；与 var_lr_d 二选一）
+        var_lr_d: HAC 长程方差（途径 B；与 var_d 二选一）
+        horizon / step: 仅途径 A 需要（用于名义 VIF）
+        alpha / power: 显著性水平与目标功效
+
     Returns:
         int: 所需样本量
+
+    Raises:
+        ValueError: 两途径同时提供或都未提供（fail-loud，禁止静默混用）
     """
+    if (var_d is None) == (var_lr_d is None):
+        raise ValueError(
+            "必须且只能提供 var_d（途径 A）或 var_lr_d（途径 B）之一；"
+            "spec W3.5 禁止两条途径混用"
+        )
+
     z_alpha = 1.645
     z_beta = 0.8416  # 80% 功效
-    vif = compute_vif(horizon, step)
-    
-    n_req = ((z_alpha + z_beta) ** 2 * var_d * vif) / (delta ** 2)
+
+    if var_lr_d is not None:
+        # 途径 B: 已含自相关修正，**不得**再乘 VIF
+        var_eff = var_lr_d
+    else:
+        # 途径 A: 边际方差 × 名义 VIF
+        var_eff = var_d * compute_planning_vif(horizon, step)
+
+    n_req = ((z_alpha + z_beta) ** 2 * var_eff) / (delta ** 2)
     return int(np.ceil(n_req))
+
 ```
 
 ### 2. 实现 HAC 标准误估计
 
+> **⚠️ 复核 MEDIUM-1 修正 —— h/q 必须真正单一来源**
+>
+> 原稿引入模块常量 `HAC_MAX_LAG_Q`（未定义）**并且**在 `compute_planning_vif`
+> 内本地重算 `h = horizon // step; q = h - 1` —— 加上仓库现有的第三种推导
+> （`cascade/statistical_tests.py:196` 内联 `q = max(1, horizon // max(1, step) - 1)`），
+> 共**三处定义**。spec W1.2 要求「实现只允许有一个来源」（§5.3 测试 13）。
+>
+> 且字面 `11` 无法随 `HORIZON` 变化 —— 正是单一来源规则要防的。
+>
+> **处置**：在 `cascade/statistical_tests.py` 顶部建立**唯一**推导，三处引用它：
+>
+> ```python
+> # cascade/statistical_tests.py —— 唯一来源（spec W1.2）
+> from config import backtest_config as _bc
+>
+> def _hac_lag_order(horizon=None, step=None) -> int:
+>     """最大滞后阶数 q = h - 1，h = HORIZON // STEP。
+>
+>     spec W1.2: 该定义在 n_eff 实测 / DM 检验 / 规划公式 三处共享，
+>     实现只允许有**一个**来源。改动 HORIZON 或 STEP 时三处同步生效。
+>     """
+>     h = (horizon if horizon is not None else _bc.HORIZON) // \
+>         max(1, (step if step is not None else _bc.STEP))
+>     return max(1, h - 1)
+> ```
+>
+> **三处调用方全部改为引用 `_hac_lag_order()`**：
+> | 调用方 | 现状 | 改为 |
+> |--------|------|------|
+> | `cascade/statistical_tests.py:196`（DM） | 内联 `max(1, horizon//max(1,step)-1)` | `_hac_lag_order(horizon, step)` |
+> | `compute_hac_se`（本 PR） | 默认参数字面 `11` | `q=None` → 内部 `_hac_lag_order()` |
+> | `compute_planning_vif`（本 PR） | 本地 `h = horizon//step` | `_hac_lag_order(horizon, step)` |
+>
+> **验收**：`assert _hac_lag_order(24, 2) == 11`，且 monkeypatch `HORIZON=48`
+> 后三处同步变为 23（**替换原稿的 vacuous 断言** ——
+> `assert compute_planning_vif(24,2) != HAC_MAX_LAG_Q` 是拿 VIF 8.0278 与滞后阶数 11
+> 相比，恒真，无意义）。
+
 ```python
-def compute_hac_se(d_series, kernel="bartlett", q=HAC_MAX_LAG_Q):
+def compute_hac_se(d_series, kernel="bartlett", q=None):
     """计算 HAC 标准误（Newey-West Bartlett）。
 
     ⚠️ 审计 D2 修正: 原稿 `bandwidth=None` 自动选择（Newey-West 经验式），
@@ -215,12 +277,12 @@ def compute_hac_se(d_series, kernel="bartlett", q=HAC_MAX_LAG_Q):
          q = h - 1 = 11                        # 最大滞后阶数
 
        该定义在 **n_eff 实测、DM 检验、规划公式** 三处**共享**，
-       实现只允许有**一个**来源。故 q **固定为 11**，不得自动选择。
+       实现只允许有**一个**来源（`_hac_lag_order()`）。故 q 不得自动选择。
 
     Args:
         d_series: 配对差异序列
         kernel: 核函数（Bartlett）
-        q: 最大滞后阶数（spec 钦定 11，勿改）
+        q: 最大滞后阶数；None 时取单一来源 `_hac_lag_order()`
 
     Returns:
         float: HAC 标准误
@@ -252,57 +314,34 @@ def compute_hac_se(d_series, kernel="bartlett", q=HAC_MAX_LAG_Q):
     return se
 ```
 
-### 3. 实现 family 封账逻辑
+### 3. family 封账逻辑 —— **不在本 PR 交付**
 
-```python
-def close_family(family_members, family_close_at, t_max_days=180):
-    """
-    封账 family，分配 p 值
-    
-    Args:
-        family_members: list of dict，每个成员包含 registered_at, status, p_value
-        family_close_at: 封账时间
-        t_max_days: 成员最大等待天数
-    
-    Returns:
-        dict: 封账后的 family，包含 K, p_values, bh_results
-    """
-    from statsmodels.stats.multitest import multipletests
-    
-    # 检查未完成的成员，分配 timeout + p=1
-    for member in family_members:
-        if member["status"] not in ["confirmed", "refuted", "abandoned"]:
-            # 检查是否超过 T_max
-            days_since_registration = (
-                family_close_at - member["registered_at"]
-            ).days
-            if days_since_registration >= t_max_days:
-                member["status"] = "timeout"
-                member["p_value"] = 1.0
-    
-    # 计算 K（包括 abandoned 和 timeout）
-    K = len(family_members)
-    
-    # 提取 p 值
-    p_values = [m["p_value"] for m in family_members if m["status"] == "confirmed"]
-    
-    # 运行 BH-FDR
-    if p_values:
-        reject, pvals_corrected, _, _ = multipletests(
-            p_values, alpha=0.05, method="fdr_bh"
-        )
-    else:
-        reject = []
-        pvals_corrected = []
-    
-    return {
-        "K": K,
-        "p_values": p_values,
-        "pvals_corrected": pvals_corrected,
-        "reject": reject,
-        "closed_at": family_close_at
-    }
-```
+> **⚠️ 复核 HIGH-1 修正 —— 本节已删除**
+>
+> 原稿在本节内联了一份 `close_family` 实现，其中**逐字保留**了审计 D3 指出的
+> p-hacking 路径：
+>
+> ```python
+> if days_since_registration >= t_max_days:      # 仍以 T_max 为门
+>     member["status"] = "timeout"
+> p_values = [m["p_value"] for m in family_members if m["status"] == "confirmed"]
+> #                                                            ^^^^^^^^^^^ 排除 timeout/abandoned
+> ```
+>
+> 即：**D3 修复只落在 PR-C2，PR-C1 中的违规实现原封未动**。
+> 两份文档因此给出**两个不同的 `close_family`**，而存活下来的是错的那个。
+>
+> **处置**：`family 封账逻辑` 的**唯一所有者是 PR-C2**
+> （见 `2026-09-28-t5-prc2-family-definition-closure.md` §`close_family`）。
+> 本 PR（PR-C1）只交付：
+> - `detection_threshold_vs_random` / `_vs_baseline`
+> - `compute_hac_se`（q=11）
+> - `compute_planning_vif`（规划专用）
+> - `compute_n_required`（两途径互斥）
+>
+> **验收标准 #4「family 封账逻辑正确」一并移交 PR-C2**，本 PR 不再声称拥有它。
+
+
 
 ### 4. 创建测试 `tests/test_statistical_tests.py`
 
@@ -311,7 +350,7 @@ def close_family(family_members, family_close_at, t_max_days=180):
 
 import pytest
 import numpy as np
-from scripts.statistical_tests import (
+from cascade.statistical_tests import (
     compute_detection_threshold_vs_random,
     compute_detection_threshold_vs_baseline,
     compute_n_required,
@@ -326,14 +365,60 @@ def test_detection_threshold_vs_random():
     assert abs(threshold - 0.596) < 0.001
 
 
-def test_detection_threshold_vs_baseline():
-    """测试 vs baseline 检测阈值"""
-    # 使用 rho=0.5, Var(d)=0.25, VIF=8.028, n=588
-    threshold = compute_detection_threshold_vs_baseline(
-        n=588, var_d=0.25, rho=0.5, horizon=24, step=2
+def test_detection_threshold_vs_baseline_golden():
+    """spec §5.3 #67: 黄金用例 —— 固定 d_series + **精确预期值**。
+
+    复核 HIGH-3 修正: 原稿用 `n=588, var_d=0.25, rho=0.5, horizon=24, step=2`
+    调用 —— 函数签名已改为 `(d_series, alpha=0.05)`，执行即
+    `TypeError: unexpected keyword argument 'n'`；且断言 `0.09 < t < 0.10`
+    仍是 **VIF 情景期望**，即 D2 违规在测试层存活。
+
+    本用例固定序列，预期值可人工复算。
+    """
+    # 固定 d_series（方向命中差 ∈ {-1, 0, 1}），n=20
+    d = np.array([1, -1, 0, 1, 1, -1, 1, 0, -1, 1,
+                  1, -1, 1, 1, 0, -1, 1, 1, -1, 1], dtype=float)
+
+    # 手工复算 SE_HAC（Bartlett, q=11）
+    d_bar = d.mean()                     # = 0.25
+    dc = d - d_bar
+    q = 11
+    g0 = np.mean(dc ** 2)
+    lr = g0 + 2 * sum(
+        (1 - j / (q + 1)) * np.mean(dc[j:] * dc[:-j]) for j in range(1, q + 1)
     )
-    # 应该约为 0.096
-    assert 0.09 < threshold < 0.10
+    se_hac_expected = np.sqrt(lr / len(d))
+    expected = 1.645 * se_hac_expected
+
+    got = compute_detection_threshold_vs_baseline(d)
+    assert abs(got - expected) < 1e-9, (
+        f"预期 {expected}（= 1.645 × SE_HAC），实得 {got}"
+    )
+    # 显式断言：结果由实测 HAC 决定，与 VIF 情景值 0.096 无关
+    assert abs(got - 0.096) > 1e-6 or abs(expected - 0.096) < 1e-9
+
+
+def test_n_required_two_paths_mutually_exclusive():
+    """spec §5.3 测试 16: 两途径互斥，且途径 B **不再乘** VIF。
+
+    复核 HIGH-4 补录。
+    """
+    # 途径 A: 边际方差 × VIF
+    n_a = compute_n_required(delta=0.10, var_d=0.25, horizon=24, step=2)
+    assert 1200 < n_a < 1300          # ≈ 1240（VIF 情景）
+
+    # 途径 B: 直接给 HAC 长程方差 —— 不得再乘 VIF
+    var_lr = 0.25 * compute_planning_vif(24, 2)   # 已含自相关
+    n_b = compute_n_required(delta=0.10, var_lr_d=var_lr)
+    assert n_b == n_a, "途径 B 传入已含 HAC 的方差时不得再乘 VIF（防重复调整）"
+
+    # 两途径同时提供 → fail-loud
+    with pytest.raises(ValueError, match="禁止两条途径混用"):
+        compute_n_required(delta=0.10, var_d=0.25, var_lr_d=var_lr)
+
+    # 都不提供 → fail-loud
+    with pytest.raises(ValueError, match="必须且只能提供"):
+        compute_n_required(delta=0.10)
 
 
 def test_n_required():
@@ -363,52 +448,73 @@ def test_hac_se_with_autocorrelation():
     assert se > se_iid
 
 
+def _body_src(fn) -> str:
+    """取函数**函数体**源码（剔除签名与 docstring）。
+
+    复核 HIGH-2 修正: `inspect.getsource` 会**连 docstring 一起返回**，
+    而本模块的 docstring 里大量出现 "VIF"（用于说明为何禁用），
+    导致 `'vif' not in src.lower()` 之类的断言**必然失败**。
+    源码断言必须只看可执行体。
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    fdef = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+    body = fdef.body
+    # 去掉开头的 docstring 节点
+    if body and isinstance(body[0], ast.Expr) and isinstance(
+        body[0].value, ast.Constant
+    ) and isinstance(body[0].value.value, str):
+        body = body[1:]
+    return "\n".join(ast.unparse(n) for n in body)
+
+
 def test_no_mixing_hac_and_vif():
     """spec §8.3: 断言实现中**不存在**「长程方差 × VIF」的混用路径。
 
     源码断言（审计 D2 修正: 原稿为空函数体）。
+    复核 HIGH-2 修正: 改用 `_body_src`（剔除 docstring），否则断言必失败。
     """
-    import inspect
-    from scripts.statistical_tests import compute_detection_threshold_vs_baseline
+    from cascade.statistical_tests import compute_detection_threshold_vs_baseline
 
-    src = inspect.getsource(compute_detection_threshold_vs_baseline)
-    assert "vif" not in src.lower(), (
-        "detection_threshold_vs_baseline 混用了 VIF —— "
+    body = _body_src(compute_detection_threshold_vs_baseline)
+    assert "vif" not in body.lower(), (
+        "detection_threshold_vs_baseline 的函数体混用了 VIF —— "
         "spec W3.5 明令禁止两条途径混用"
     )
-    assert "compute_vif" not in src
+    assert "compute_planning_vif" not in body, "verdict 路径不得调用规划 VIF"
 
 
 def test_vif_is_planning_only():
     """spec W3.5: VIF 只允许出现在规划函数，不得进 verdict。"""
-    import inspect
-    from scripts import statistical_tests as st
+    from cascade import statistical_tests as st
 
-    # 规划函数可以引用 VIF
-    plan_src = inspect.getsource(st.compute_planning_vif)
-    assert "VIF" in plan_src or "vif" in plan_src
+    # 规划函数体内可以引用 VIF
+    plan_body = _body_src(st.compute_planning_vif)
+    assert "1 - j / h" in plan_body or "1-j/h" in plan_body.replace(" ", "")
 
-    # verdict 侧函数不得引用
+    # verdict 侧函数体不得引用
     for fn_name in ("compute_detection_threshold_vs_baseline",
                     "compute_detection_threshold_vs_random"):
-        src = inspect.getsource(getattr(st, fn_name))
-        assert "vif" not in src.lower(), f"{fn_name} 不得引用 VIF"
+        body = _body_src(getattr(st, fn_name))
+        assert "vif" not in body.lower(), f"{fn_name} 函数体不得引用 VIF"
 
 
 def test_loss_definition_unique():
     """spec §8.3: 断言损失定义唯一（方向命中差 d_t ∈ {-1, 0, 1}）。
 
     审计 D2 修正: 原稿为空函数体。
-    本 spec 的确认检验**唯一**采用方向命中差，等价于 0-1 方向损失。
+    复核 HIGH-2 修正: 改用 `_body_src` 剔除 docstring。
     MAE/RMSE 类「预测误差差」属**独立检验**，不得与方向命中差混称。
     """
-    import inspect
-    from scripts.statistical_tests import compute_detection_threshold_vs_baseline
+    from cascade.statistical_tests import compute_detection_threshold_vs_baseline
 
-    src = inspect.getsource(compute_detection_threshold_vs_baseline)
+    body = _body_src(compute_detection_threshold_vs_baseline)
     for other_loss in ("mae", "rmse", "mse"):
-        assert other_loss not in src.lower(), (
-            f"检测阈值混入了 {other_loss.upper()} 损失 —— 损失定义必须唯一"
+        assert other_loss not in body.lower(), (
+            f"检测阈值函数体混入了 {other_loss.upper()} 损失 —— 损失定义必须唯一"
         )
 
     # d_t 的取值域断言
@@ -416,33 +522,67 @@ def test_loss_definition_unique():
     assert set(np.unique(d)) <= {-1.0, 0.0, 1.0}, "d_t 取值域应为 {-1, 0, 1}"
 
 
-def test_hac_bandwidth_fixed_at_11():
-    """spec W1.2: 带宽 q 钦定为 h-1 = 11，不得自动选择。"""
-    import inspect
-    from scripts import statistical_tests as st
 
-    assert st.HAC_MAX_LAG_Q == 11
-    sig = inspect.signature(st.compute_hac_se)
-    assert sig.parameters["q"].default == 11, "q 默认值必须为 11"
+def test_hac_lag_order_single_source():
+    """spec W1.2 / §5.3 测试 13: h/q 必须**单一来源**，且随 HORIZON/STEP 联动。
+
+    复核 MEDIUM-1 修正: 原测试断言 `st.HAC_MAX_LAG_Q == 11` ——
+    那是一个**独立常量**，恰是「第二处定义」。改为断言三处引用**同一函数**，
+    且改动 HORIZON 时三处同步变化。
+    """
+    import inspect
+    from unittest import mock
+    from cascade import statistical_tests as st
+
+    # 1) 唯一来源存在且取值正确
+    assert st._hac_lag_order(24, 2) == 11
+
+    # 2) DM 估计器不再内联推导（源码级断言）
+    dm_body = _body_src(st.compute_hac_se)
+    assert "horizon // max(1, step)" not in dm_body.replace(" ", ""), (
+        "compute_hac_se 仍在本地推导 q —— 违反单一来源"
+    )
+
+    # 3) 联动：改 HORIZON 后三处同步（这是原 vacuous 断言缺失的真实检验）
+    with mock.patch.object(st._bc, "HORIZON", 48):
+        assert st._hac_lag_order() == 23, "HORIZON 翻倍后 q 必须同步变化"
+        assert st._hac_lag_order(48, 2) == 23
 
 
 def test_three_formulas_verified_separately():
     """spec §8.3: 三套公式（n_eff ESS / DM 标准误 / 功效规划）**分别**验证。
 
     禁止「一套通过即视为三套通过」。
+
+    复核 LOW-2 修正: 原测试只用 `hasattr` 检查**存在性** ——
+    三个空函数体也能通过。spec 要求的是**验证**，故本测试改为
+    断言三套公式各自的**数值正确性**（黄金用例在各自专项测试中，
+    此处做交叉一致性检查）。
     """
-    from scripts import statistical_tests as st
+    import numpy as np
+    from cascade import statistical_tests as st
 
-    # 三套公式必须有各自独立的实现入口
-    assert hasattr(st, "compute_hac_se")            # DM 标准误口径
-    assert hasattr(st, "compute_planning_vif")      # 功效规划口径
-    # n_eff 实测在 cascade/evaluation_metrics.py（唯一家）
+    # 1) DM 标准误口径：对已知 IID 序列，HAC SE ≈ 样本 SE
+    rng = np.random.default_rng(42)
+    x = rng.standard_normal(2000)
+    se_hac = st.compute_hac_se(x)
+    se_iid = float(np.std(x, ddof=1) / np.sqrt(len(x)))
+    assert abs(se_hac - se_iid) / se_iid < 0.15, (
+        f"IID 序列下 HAC SE({se_hac}) 应接近样本 SE({se_iid})"
+    )
+
+    # 2) 功效规划口径：VIF 数值正确
+    assert abs(st.compute_planning_vif(24, 2) - 8.0278) < 1e-3
+
+    # 3) ESS 实测口径：独立入口且数值合理
     from cascade import evaluation_metrics as em
-    assert hasattr(em, "measured_n_eff")            # ESS 实测口径
+    n_eff, status = em.measured_n_eff(rng.standard_normal(1000))
+    assert status == "ok"
+    assert 0 < n_eff <= 1000
 
-    # 参数同源但统计量不同：h/q 共享，估计量各自独立
-    assert st.HAC_MAX_LAG_Q == 11
-    assert st.compute_planning_vif(24, 2) != st.HAC_MAX_LAG_Q  # 非同一量
+    # 4) 参数同源但**统计量不同**：VIF 与滞后阶数不是同一个量
+    assert st.compute_planning_vif(24, 2) != st._hac_lag_order(24, 2)
+
 
 
 if __name__ == "__main__":

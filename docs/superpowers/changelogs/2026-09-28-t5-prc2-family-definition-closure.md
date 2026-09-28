@@ -195,30 +195,65 @@ class Family:
         if self.is_closed:
             return
 
-        # (1) 封账时所有未达终态成员立即 timeout + p=1（spec W3.6②）
+        # 封账前检查：不得早于 family_close_at（spec W3.6③）
+        if self.family_close_at and current_time < self.family_close_at:
+            raise ValueError(
+                f"封账时间 {current_time} 早于 family_close_at {self.family_close_at}；"
+                "提前封账须走 close_early() 并标 underpowered"
+            )
+
+        # (1) 两机制并用（spec W3.6②「二者缺一不可」）—— 复核 MEDIUM-2 修正
+        #     原稿只看 T_max，导致 T_max 成死代码且「从未获得确认数据」的成员
+        #     被延迟到 registered_at + T_max 才 timeout。
         for member in self.members:
-            if member.status not in ("confirmed", "refuted",
-                                     "abandoned", "timeout"):
+            if member.status in ("confirmed", "refuted",
+                                 "abandoned", "timeout"):
+                continue
+
+            # 机制 A: 从未获得确认数据 → 立即 timeout，不等待
+            if not getattr(member, "has_confirmation_data", False):
+                member.status = "timeout"
+                member.p_value = 1.0
+                member.closed_at = current_time
+                continue
+
+            # 机制 B: 有数据在途 → 给到 registered_at + T_max
+            deadline = member.registered_at + timedelta(days=self.t_max_days)
+            if current_time >= deadline:
                 member.status = "timeout"
                 member.p_value = 1.0
                 member.closed_at = current_time
 
+        # (2) abandoned / timeout 的 p 值**强制**为 1（复核 MEDIUM-3 修正）
+        #     原稿只检查 p_value is None，导致 abandoned 带 p=0.01 会按面值进入 BH。
+        #     spec W3.6②: p=1 适用于「已进入 family 且未完成确认」的成员 ——
+        #     abandoned 正是此类，其 p 必须**强制**为 1，而非仅要求非 None。
+        for member in self.members:
+            if member.status in ("abandoned", "timeout"):
+                member.p_value = 1.0
+
+        # 全部成员必须已达终态，否则 family 尚不能封账
+        not_terminal = [m.prereg_id for m in self.members
+                        if m.status not in ("confirmed", "refuted",
+                                            "abandoned", "timeout")]
+        if not_terminal:
+            raise ValueError(
+                f"成员 {not_terminal} 未达终态，family 不得封账"
+            )
+
         # K = 全部成员（含 abandoned / timeout）—— 禁止缩小 K
         self.K = len(self.members)
 
-        # (2) BH 输入 = **全部 K 个** p 值（含 timeout/abandoned 的 p=1）
+        # (3) BH 输入 = **全部 K 个** p 值（含 timeout/abandoned 的 p=1）
         #     p=1 不会显著，但必须计入校正基数；排除它们等于 p-hacking。
         p_values = []
         for m in self.members:
             if m.p_value is None:
-                # 终态成员必须有 p 值；缺失即 fail-loud（不得静默补 1）
                 raise ValueError(
                     f"成员 {m.prereg_id} 处于 {m.status} 但 p_value 为 None；"
-                    "终态成员必须携带 p 值（timeout/abandoned 应为 1.0）"
+                    "confirmed/refuted 必须携带真实 p 值"
                 )
             p_values.append(m.p_value)
-
-        assert len(p_values) == self.K, "BH 输入数必须等于 K（禁止排除任何成员）"
 
         # 运行 BH-FDR（K>=1 即运行，单成员时退化为其自身 p 值）
         if p_values:
@@ -235,6 +270,23 @@ class Family:
             }
 
         self.is_closed = True
+
+    def close_early(self, current_time: datetime, n_confirm_actual: int,
+                    n_confirm_required: int):
+        """提前封账（spec W3.6③）—— 必须标 underpowered。
+
+        复核 MEDIUM-2 补录: 原稿无此路径，`close_all_families` 无条件封账。
+        spec 允许提前封账，但要求如实落 `n_confirm_actual < n_confirm_required`
+        且结论标 `underpowered`。
+        """
+        self.underpowered = n_confirm_actual < n_confirm_required
+        self.n_confirm_actual = n_confirm_actual
+        self.n_confirm_required = n_confirm_required
+        if not self.underpowered:
+            raise ValueError("close_early 仅用于未达 n_confirm_required 的情形")
+        # 绕过 family_close_at 检查，走同一封账逻辑
+        self.family_close_at = None
+        self.close_family(current_time)
 
 
 class FamilyManager:

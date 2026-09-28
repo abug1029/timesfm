@@ -53,16 +53,67 @@ v1 把 full-sample 保留为主口径，与规范正相反。
 
 ### 必须同时落盘并报告（缺任一项即 verdict 不完整）
 
-| 字段 | 含义 |
-|------|------|
-| `n_total` | 名义点数（剔除前） |
-| `n_active` | 实际进入 `dir_acc` 分母的点数 |
-| `n_zero_move` | 零变动剔除数 |
-| `n_roll_excluded` | 跨换月剔除数（若启用 roll 守卫） |
-| `n_zero_ratio` / `n_roll_ratio` | 上述两者占 `n_total` 的比例 |
-| `dir_acc` | **主口径**（预注册约定，见下） |
-| `dir_acc_full` | 不剔除任何点的原始口径 |
-| `dir_acc_ex_roll` | 仅剔除跨换月、不剔零变动 |
+> **⚠️ 复核 HIGH-1 修正 —— spec 的字面字段名与现有代码冲突**
+>
+> 复核实测：spec W6.5① 列出的 `n_total` / `n_active` 与 `active_dir_acc`
+> **在代码中已存在，但语义完全不同**：
+>
+> | 现有字段 | 现有语义（Signal-based） | 位置 |
+> |---------|------------------------|------|
+> | `n_total` / `n_active` | `Signal != 0` 且 `dir_ok` 可评估的点数 | `evaluator.py:191-211` `active_mask_metrics` |
+> | `active_dir_acc` | `n_ok / n_active`（gated 路径） | `evaluator.py:209` |
+> | `n_zero` | `Signal == 0`（门未激活） | 同上 |
+>
+> 且 **143 行 registry 中已有 5 行带 `n_active`/`n_total`**；
+> gated 硬门**消费 `n_active`** 做样本量判定（`evaluator.py:331-333`
+> 调 `gate({"n": _n_active, ...}, min_n=350)`）。
+>
+> **若照 spec 字面复用这些名字，会重造本 PR 要消灭的 X10「同名两义」——
+> 且发生在 gated 路径上。**
+>
+> **处置**：语义保留 spec，**落盘改用嵌套对象**避免与现有 Signal-based 计数器冲突：
+>
+> ```json
+> "dir_acc_caliber": {
+>   "n_total":        <名义点数（剔除前）>,
+>   "n_active":       <实际进入 dir_acc 分母的点数>,
+>   "n_zero_move":    <零变动剔除数>,
+>   "n_roll_excluded":<跨换月剔除数>,
+>   "n_zero_ratio":   <n_zero_move / n_total>,
+>   "n_roll_ratio":   <n_roll_excluded / n_total>
+> }
+> ```
+>
+> **此偏离须宿主确认**（spec 字面 vs 代码冲突，属实现层裁定）。
+
+| spec 名称 | 落盘路径 | 含义 |
+|-----------|---------|------|
+| `n_total` | `dir_acc_caliber.n_total` | 名义点数（剔除前） |
+| `n_active` | `dir_acc_caliber.n_active` | 实际进入 `dir_acc` 分母的点数 |
+| `n_zero_move` | `dir_acc_caliber.n_zero_move` | 零变动剔除数 |
+| `n_roll_excluded` | `dir_acc_caliber.n_roll_excluded` | 跨换月剔除数（若启用 roll 守卫） |
+| `n_zero_ratio` / `n_roll_ratio` | `dir_acc_caliber.*` | 上述两者占 `n_total` 的比例 |
+| `dir_acc` | `dir_acc`（顶层，**已存在**） | **主口径**（预注册约定，见下） |
+| `dir_acc_full` | `dir_acc_full`（顶层，**已存在**） | 不剔除任何点的原始口径 |
+| `dir_acc_ex_roll` | `dir_acc_ex_roll`（顶层，**已存在**） | 仅剔除跨换月、不剔零变动 |
+
+> **`n_zero_move` 命名提示**：现有 `n_zero` 意为「`Signal == 0`，门未激活」，
+> 与本项「`|Δreal| < eps`」无关。两者并存时须在 schema 注释中显式区分
+> （或考虑 `n_flat_real`，见复核 LOW-4）。
+
+### 已落地 vs 新增（复核 MEDIUM-4 修正）
+
+> 原稿把三值机制整体列为新交付物 —— **不实**。复核实测：
+> `cascade/evaluation_metrics.py:399-480`（`calc_prediction_quality`）
+> **已返回** `dir_acc` / `dir_acc_full` / `dir_acc_ex_roll` /
+> `n_roll_excluded` / `n_roll_ratio`，且 `dir_acc_full = dir_acc`（:459）。
+>
+> **实际缺口只有三项**：
+> 1. 主口径方向（现 `dir_acc` 仍为 full-sample）
+> 2. 四个分母字段（`n_total`/`n_active`/`n_zero_move`/`n_zero_ratio`）
+> 3. gate 接线
+
+
 
 ### 主口径选定规则
 
@@ -90,6 +141,14 @@ v1 把 full-sample 保留为主口径，与规范正相反。
 
 **量化前置**：必须先测出跨换月 cutoff 的**占比**（`n_roll_ratio`）与其对 `dir_acc` 的影响；占比不可忽略时，一律按「数据有效性问题」处理（即修复或排除），不得降级为敏感性。
 
+**跨品种汇总的声明要求（复核 MEDIUM-6 补录）**：
+
+spec §5.3 测试 #22（其权威引用指向 §4.7 W6.5③）要求：**跨品种汇总必须声明是「描述性审计结论」还是「正式推断」** —— 后者需跨品种不确定性处理，属「结论仅限品种内」的**显式例外**。
+
+> ⚠️ **spec 内部归属不一致（须提请宿主）**：该句在 §4.7 W6.5③ 的**正文中不存在**（正文只有换月分类表 + 配对 CI 定义），却出现在 §5.3 测试 #22 并引用 W6.5③。本档按「要求真实存在」处理，同时登记该归属矛盾待 spec 修订。
+
+**落地要求**：跨品种换月影响汇总表须带 `claim_type` 字段，取值为 `descriptive`（描述性审计）或 `inferential`（正式推断）；取 `inferential` 时必须附跨品种不确定性处理说明，否则报告校验失败。
+
 ---
 
 ## 历史 verdict 重算（宿主裁定：重算）
@@ -116,24 +175,56 @@ d_series_n_eff   # 有基线时可算，否则 null
 
 ## 实施步骤
 
-### 1. `cascade/evaluation_metrics.py` — 三值计算
+### 1. `cascade/evaluation_metrics.py` — 扩展 `calc_prediction_quality`
+
+> **⚠️ 复核 MEDIUM-4 修正 —— 不得新建第二个函数**
+>
+> 原稿提议新建 `compute_dir_acc_variants()`。但复核实测：
+> `calc_prediction_quality`（`:399-480`）**已返回**三值中的全部字段。
+> 新建第二个函数从同一批 points 计算同一口径 = **第二个事实来源** ——
+> 与 X10 同类缺陷。**必须扩展既有函数，不得另起。**
+
+**改动**：
 
 ```python
-def compute_dir_acc_variants(points):
-    """计算 dir_acc 三值口径 + 分母全套。
-    
-    Returns:
-        dict: {
-            "dir_acc": 主口径（剔零变动、不剔跨换月）,
-            "dir_acc_full": 不剔除任何点,
-            "dir_acc_ex_roll": 仅剔跨换月,
-            "n_total": ..., "n_active": ..., "n_zero_move": ...,
-            "n_roll_excluded": ..., "n_zero_ratio": ..., "n_roll_ratio": ...
-        }
-    """
+# cascade/evaluation_metrics.py — calc_prediction_quality 内
+# (1) 主口径方向：dir_acc 改为「剔零变动」
+zero_move = np.abs(delta_real_arr) < EPS
+keep_active = ~zero_move
+dir_acc = float(np.mean(dir_ok[keep_active])) if keep_active.any() else float("nan")
+
+# (2) dir_acc_full 保持「不剔除任何点」（现为 dir_acc 的别名 → 改为独立计算）
+dir_acc_full = float(np.mean(dir_ok))
+
+# (3) dir_acc_ex_roll 保持「仅剔跨换月」（现有逻辑不变）
+
+# (4) 新增分母计数（嵌套对象，避免与 Signal-based n_active/n_total 冲突）
+dir_acc_caliber = {
+    "n_total": int(n),
+    "n_active": int(keep_active.sum()),
+    "n_zero_move": int(zero_move.sum()),
+    "n_roll_excluded": n_roll_excluded,
+    "n_zero_ratio": float(zero_move.sum() / n) if n else 0.0,
+    "n_roll_ratio": n_roll_ratio,
+}
 ```
 
-`calc_net_metrics` 的 active-only 返回值**改名** `active_dir_acc`（仅 gated 路径使用）。
+**关于 `active_dir_acc` 改名（复核 HIGH-1 修正）**：
+
+原稿称「`calc_net_metrics` 的 active-only 返回值改名 `active_dir_acc`」—— **两处不实**：
+
+1. `calc_net_metrics`（`evaluation_metrics.py:29`）**没有**名为 active-only 的返回值；
+   它的 active-only 输出是键 **`DirAcc`**（`:164`），口径为
+   `active_mask = (dirs != 0) & (rets != 0)`（`:144`）——**第三种定义**
+2. `active_dir_acc` 这个名字**已被占用**（`evaluator.py:209`，Signal-based）
+
+**处置**：`calc_net_metrics` 的 `DirAcc` **保持原名不动**（其消费者
+`scripts/a2_p1_lgbm_baseline.py:186-190` 与 `tests/test_evaluation_metrics_contract.py`
+依赖它）；`evaluator.py:209` 的 `active_dir_acc` 也保持。spec W6.5② 的「改名」
+意图是**消除同名两义**，而现状是**三个不同口径各占其名**，已无同名冲突 ——
+**故本项无需改动，但须在报告中显式登记三个口径的名称与定义边界**。
+
+
 
 ### 2. `task_FM/evaluations/fm_eval/evaluator.py` — gate 改用主口径
 
@@ -143,12 +234,37 @@ def compute_dir_acc_variants(points):
 
 ### 3. `scripts/registry_lib.py` — schema 扩展
 
-`VERDICT_FIELDS` 新增：
-```
-n_total, n_active, n_zero_move, n_roll_excluded,
-n_zero_ratio, n_roll_ratio,
-dir_acc_full, dir_acc_ex_roll, active_dir_acc
-```
+> **⚠️ 复核 HIGH-2 修正 —— 原稿指向错误的 schema 常量**
+>
+> 复核实测：**143 行 registry 全部为 `schema == "fm.aligned_verdict.v2"`**，
+> 而 `registry_lib.py:180-183` 将 v2 裁决路由到 `validate_verdict_v2`，
+> 该校验依据 **`VERDICT_FIELDS_V2`**（:21 起），**不是** `VERDICT_FIELDS`（:8，v1 遗留 15 字段集）。
+>
+> **两个后果**：
+> 1. 原稿列的 `dir_acc_full` / `dir_acc_ex_roll` / `n_roll_excluded` / `n_roll_ratio`
+>    **已在 `VERDICT_FIELDS_V2` 中**（:21, :35）→ 四个"新增"是 no-op，证明基线盘点过期
+> 2. `active_dir_acc` **仅在 gated 变体写入**（`evaluator.py:462`，`gm is not None` 时）。
+>    若只加入 `VERDICT_FIELDS_V2` 而不加入 **`VERDICT_FIELDS_V2_NULLABLE`**，
+>    则 `validate_verdict_v2` 的 `nullable_ok = missing - VERDICT_FIELDS_V2_NULLABLE`
+>    非空 → **每一个非 gated 裁决写入都会抛 ValueError**
+
+**正确目标**：`VERDICT_FIELDS_V2` + `VERDICT_FIELDS_V2_NULLABLE`（均在 `scripts/registry_lib.py`）
+
+新增字段及 nullable 归属：
+
+| 字段 | 加入 `VERDICT_FIELDS_V2` | 加入 `..._NULLABLE` | 理由 |
+|------|:---:|:---:|------|
+| `dir_acc_caliber`（嵌套对象） | ✅ | ✅ | 非 gated 运行可能不产出全部分母 |
+| `dir_acc_v2` | ✅ | ✅ | 仅重算脚本写入 |
+| `gate_basis` | ✅ | ✅ | 已存在于 verdict（`evaluator.py:462`），补登记 |
+| `active_dir_acc` | ✅ | ✅ | **必须 nullable** —— 仅 gated 变体有 |
+| `dir_acc_full` / `dir_acc_ex_roll` | 已在 | 已在 | no-op |
+| `n_roll_excluded` / `n_roll_ratio` | 已在 | 已在 | no-op |
+
+> **复核 LOW-3 提示**：`validate_verdict_v2` 只检查**缺字段**，未知多余字段可通过。
+> 但登记进 schema 才能保持 schema 为唯一事实来源。
+
+
 
 ### 4. `scripts/recompute_dir_acc.py` — 幂等重算脚本（新增）
 
@@ -166,9 +282,46 @@ dir_acc_full, dir_acc_ex_roll, active_dir_acc
 
 ### 5. 测试
 
-- `tests/test_dir_acc_variants.py`：三值口径计算正确性（构造零变动样本）
-- `tests/test_recompute_dir_acc.py`：幂等性 + 不覆盖原值
-- 回归：`tests/test_praxist_fm_evaluator.py`、`tests/test_supervisor.py`
+**新增：**
+
+- `tests/test_dir_acc_caliber.py`：三值口径 + 分母全套正确性（构造含零变动的样本）
+  - 黄金用例：real deltas `[0, +5, 0]` → `dir_acc == 1.0`、`n_zero_move == 2`、
+    `n_active == 1`、`dir_acc_full == 1/3`（spec W6.5① 的直接断言）
+- `tests/test_recompute_dir_acc.py`：幂等性 + **不覆盖**原 `dir_acc`
+
+**必须更新（复核 MEDIUM-5 补录 —— 原稿遗漏）：**
+
+| 文件 | 为何必须改 |
+|------|-----------|
+| `tests/test_evaluation_metrics.py:55` | `test_calc_prediction_quality_dir_ok_zero_delta` **显式断言旧主口径**：输入 real deltas `[0, +5, 0]` 时期望 `dir_acc == 1/3`。新口径下应为 `1.0` → **该测试必然失败**，须改写为新口径的**首要正向测试** |
+| `tests/test_fm_evaluator_gated.py:120-180` | 断言 `n_active`/`n_total` 语义与 gate 结果；若 gated 路径口径变动则含义翻转 |
+| `tests/test_evaluation_metrics_contract.py` | 消费 `calc_net_metrics` 的 `DirAcc` |
+
+**回归：**
+
+- `tests/test_praxist_fm_evaluator.py`、`tests/test_supervisor.py`
+
+**执行顺序**：先改上述 3 个「必须更新」测试 → 再改实现 → 全绿后提交。
+（禁止先改实现再补测试 —— 那会让失败被误读为回归。）
+
+### 5b. gated vs 非 gated 路径的口径归属（复核 MEDIUM-6 澄清）
+
+> 原稿只说「gate 消费的 `dir_acc` 改为主口径」，未区分路径。实测现状：
+
+| 路径 | 现消费 | 本 PR 后 |
+|------|--------|---------|
+| **非 gated** gate | full-sample `dir_acc`（`evaluator.py:330`） | **主口径**（剔零变动）—— 本 PR 的目标 |
+| **gated** gate | `active_dir_acc`（`evaluator.py:346`） | **不变** |
+
+**gated 路径不变的理由**：`active_dir_acc` 是 Signal-based 口径（`Signal != 0`），
+与「零变动剔除」是**不同的筛选轴**；两者混用会让 `n_active` 的语义再次漂移。
+
+**须同步更新**：`tests/test_fm_evaluator_gated.py` 的
+`test_gate_uses_n_active_not_n_total` 与 `test_gate_active_can_pass_when_full_fails`
+在本 PR 后**语义不变**（gated 路径未动），但须在测试 docstring 中显式声明
+「此路径不受 dir_acc 主口径变更影响」，防止未来误改。
+
+
 
 ---
 
@@ -179,7 +332,11 @@ dir_acc_full, dir_acc_ex_roll, active_dir_acc
 3. `active_dir_acc` 改名完成，仅 gated 路径使用
 4. 重算脚本幂等，且**不覆盖**原 `dir_acc`
 5. 143 条历史 verdict 完成重算，产出 `dir_acc_v2`
-6. rb 重算后 `dir_acc` 上升约 **+2pp**（零变动剔除效应）
+6. rb 重算后 `dir_acc` 上升约 **+1pp**（复核 MEDIUM-3 修正 —— 原稿写 +2pp，
+   **算术不可达**。实测 rb 冻结 registry 均值 `dir_acc = 0.4661`（n=19），
+   零变动占比 2.0% → `0.4661 / 0.98 = 0.4756`，即 **+0.95pp**。
+   原 +2pp 需占比 ≈ 4.1%。**spec 测试 #30 同此错误，须一并提请宿主更正**）
+
 7. 报告同时呈现主口径与敏感性口径，列出各类剔除数与比例
 8. 跨换月影响已按 ③ 判定类别并留证据
 
