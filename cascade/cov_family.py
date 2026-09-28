@@ -45,7 +45,8 @@ def validate_horizon_known(pool: dict) -> list:
     测试与生成脚本里，生产加载路径不校验 —— 新增一个漏填证据的
     known_ahead 会静默通过，把「未来已知」这个最强假设白送给下游填充逻辑。
 
-    fail-loud 而非 fail-open：返回问题清单由调用方决定处置。
+    **只报告，不改数据**。要连降级一起做，用 `apply_horizon_known_downgrade`
+    —— 把「校验」与「变更」分开，调用方才能在不改数据的前提下先看清单。
     """
     problems = []
     covs = pool.get("covariates")
@@ -72,6 +73,45 @@ def validate_horizon_known(pool: dict) -> list:
                 problems.append(
                     "%s: known_ahead_evidence 缺字段 %s" % (name, missing))
     return problems
+
+
+def apply_horizon_known_downgrade(pool: dict) -> list:
+    """就地降级不合规的 `known_ahead`，返回降级记录。
+
+    spec §4.5 W5.1 原文：
+    > 缺 `known_ahead_evidence` 的协变量**不得**标 `known_ahead`
+    > —— **降级为 `unknowable` 并打 WARN**，**不得静默**。
+
+    仅打 WARN 不够：标签仍以 `known_ahead` 流向下游填充逻辑，
+    仍然白得「未来已知」这个最强假设 —— 洞没关，只是变可见了。
+
+    降级同时**删除残留证据**：否则陈旧 `known_ahead_evidence` 会零告警
+    存活，日后被误当作「证据齐备」而升级回去。
+
+    Returns:
+        [(name, 原因)]，空表示无需降级。
+    """
+    downgraded = []
+    covs = pool.get("covariates")
+    if not isinstance(covs, dict):
+        return downgraded
+
+    for name, v in covs.items():
+        if not isinstance(v, dict) or v.get("horizon_known") != "known_ahead":
+            continue
+        ev = v.get("known_ahead_evidence")
+        reason = None
+        if not isinstance(ev, dict):
+            reason = "缺 known_ahead_evidence"
+        else:
+            missing = [k for k in KNOWN_AHEAD_EVIDENCE_FIELDS if not ev.get(k)]
+            if missing:
+                reason = "known_ahead_evidence 缺字段 %s" % missing
+        if reason:
+            v["horizon_known"] = "unknowable"
+            v.pop("known_ahead_evidence", None)
+            downgraded.append((name, reason))
+    return downgraded
 
 
 def _wb(keyword: str) -> str:

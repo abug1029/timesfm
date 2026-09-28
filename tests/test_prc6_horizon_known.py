@@ -199,3 +199,55 @@ def test_validate_horizon_known_allows_non_known_ahead_without_evidence():
         "c": {"horizon_known": "unknowable"},
     }}
     assert validate_horizon_known(pool) == []
+
+
+# ── 降级（spec §4.5 W5.1 要求，此前只 WARN 不降级）──────────────────
+
+def test_downgrade_missing_evidence_to_unknowable():
+    """缺证据的 known_ahead 必须降级为 unknowable，不是只 WARN。"""
+    from cascade.cov_family import apply_horizon_known_downgrade
+
+    pool = {"covariates": {"c": {"horizon_known": "known_ahead"}}}
+    dg = apply_horizon_known_downgrade(pool)
+    assert len(dg) == 1 and dg[0][0] == "c"
+    assert pool["covariates"]["c"]["horizon_known"] == "unknowable"
+
+
+def test_downgrade_removes_stale_evidence():
+    """降级须删除残留证据，否则陈旧证据零告警存活、日后被误升级。"""
+    from cascade.cov_family import apply_horizon_known_downgrade
+
+    pool = {"covariates": {"c": {
+        "horizon_known": "known_ahead",
+        "known_ahead_evidence": {"source": "x"},
+    }}}
+    apply_horizon_known_downgrade(pool)
+    assert "known_ahead_evidence" not in pool["covariates"]["c"]
+
+
+def test_downgrade_leaves_valid_and_other_labels_alone():
+    from cascade.cov_family import (
+        KNOWN_AHEAD_EVIDENCE_FIELDS, apply_horizon_known_downgrade)
+
+    good_ev = {k: "v" for k in KNOWN_AHEAD_EVIDENCE_FIELDS}
+    pool = {"covariates": {
+        "ok": {"horizon_known": "known_ahead", "known_ahead_evidence": good_ev},
+        "p": {"horizon_known": "persistence"},
+        "u": {"horizon_known": "unknowable"},
+    }}
+    assert apply_horizon_known_downgrade(pool) == []
+    assert pool["covariates"]["ok"]["horizon_known"] == "known_ahead"
+    assert pool["covariates"]["p"]["horizon_known"] == "persistence"
+
+
+def test_downgrade_is_noop_on_real_pool():
+    """生产池证据齐备，不得被降级。"""
+    import copy
+    import json
+    from pathlib import Path
+    from cascade.cov_family import apply_horizon_known_downgrade
+
+    pool = json.loads(
+        Path("task_FM/config/covariate_pool.json").read_text(encoding="utf-8"))
+    assert apply_horizon_known_downgrade(copy.deepcopy(pool)) == []
+

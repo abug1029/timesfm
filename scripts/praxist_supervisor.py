@@ -871,13 +871,14 @@ def load_covariate_pool():
         return {}
 
     try:
-        from cascade.cov_family import validate_horizon_known
-        problems = validate_horizon_known(pool)
-        if problems:
-            print("[WARN] covariate pool horizon_known 契约违规 %d 处：%s"
-                  % (len(problems), "; ".join(problems[:5])), file=sys.stderr)
-    except Exception as e:  # 校验器本身出错不得阻断加载
-        print("[WARN] horizon_known 校验未能执行: %s" % e, file=sys.stderr)
+        from cascade.cov_family import apply_horizon_known_downgrade
+        # spec §4.5 W5.1：缺证据的 known_ahead **不得**保留该标签，
+        # 须降级为 unknowable + WARN。仅打 WARN 不降级等于洞没关。
+        for name, reason in apply_horizon_known_downgrade(pool):
+            print("[WARN] horizon_known 降级: %s -> unknowable（%s）"
+                  % (name, reason), file=sys.stderr)
+    except Exception as e:  # 降级器本身出错不得阻断加载
+        print("[WARN] horizon_known 降级未能执行: %s" % e, file=sys.stderr)
 
     return pool.get("covariates", {})
 
