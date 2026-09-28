@@ -336,9 +336,12 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 points.append(pt)
             continue
         # bar-exact cutoff (full timestamp) — 禁止仅截日期造成同日 1H lookahead
+        # D5 修正: cutoff 应为 bar 收盘时间（dt + 1h），而非开盘时间
+        # 原因: base 使用的是该 bar 的收盘价，只有在收盘时才知道
         bar_ts = pd.Timestamp(all_1h["dt"].iloc[idx])
-        dt = bar_ts.strftime("%Y-%m-%d")  # 报告/cutoff 展示用日历日
-        cutoff = bar_ts.strftime("%Y-%m-%d %H:%M:%S")
+        close_ts = bar_ts + pd.Timedelta(hours=1)  # bar 收盘时间
+        dt = close_ts.strftime("%Y-%m-%d")  # 报告/cutoff 展示用日历日
+        cutoff = close_ts.strftime("%Y-%m-%d %H:%M:%S")
         base = float(all_1h["close_price"].iloc[idx])
         real = all_1h["close_price"].iloc[idx+1:idx+1+HORIZON].values.astype(np.float64)
         # D1/D2 换月守卫: horizon 内若发生合约切换, delta_real 混合两个合约的价格,

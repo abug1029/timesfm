@@ -263,8 +263,10 @@ def run_symbol_shared_forecast(
     for i, idx in enumerate(eval_indices):
         dt_ts = all_1h["dt"].iloc[idx]
         bar_ts = pd.Timestamp(dt_ts)
-        dt = bar_ts.strftime("%Y-%m-%d")
-        cutoff = bar_ts.strftime("%Y-%m-%d %H:%M:%S")
+        # D5 修正: cutoff 应为 bar 收盘时间（dt + 1h），而非开盘时间
+        close_ts = bar_ts + pd.Timedelta(hours=1)
+        dt = close_ts.strftime("%Y-%m-%d")
+        cutoff = close_ts.strftime("%Y-%m-%d %H:%M:%S")
         # resume key: prefer bar_idx when present (T04 will standardize); date kept for display
         eval_key = f"{idx}:{cutoff}"
         if eval_key in done_set or dt in done_set:

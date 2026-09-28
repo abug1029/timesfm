@@ -97,7 +97,9 @@ def _evaluate_one_point(mat, t0, hourly, daily, closes, df_1h, scheme, symbol):
             from data.data_store import BacktestDataStore
             from cascade.daily_model import DailyModel
             from cascade.hourly_model import HourlyModel
-            cutoff = pd.Timestamp(df_1h["dt"].iloc[t0]).strftime("%Y-%m-%d %H:%M:%S")
+            # D5 修正: cutoff 应为 bar 收盘时间（dt + 1h），而非开盘时间
+            bar_ts = pd.Timestamp(df_1h["dt"].iloc[t0])
+            cutoff = (bar_ts + pd.Timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
             with BacktestDataStore(symbol, cutoff) as bts:
                 dr = daily.predict(symbol, bts)
                 hr = HourlyModel(shared_model=hourly.model)
