@@ -36,7 +36,8 @@ def archived_set(pool):
 
 
 def test_pool_schema(pool):
-    assert pool.get("schema") == "fm.covariate_pool.v1"
+    # PR-C6 (spec §4.5 W5) 合法升级至 v2：每协变量增 horizon_known 分类
+    assert pool.get("schema") == "fm.covariate_pool.v2"
     fams = set(pool["families"])
     covs = pool["covariates"]
     assert len(covs) >= 30
@@ -44,6 +45,12 @@ def test_pool_schema(pool):
         assert v.get("family") in fams, f"{name} family 非法"
         assert v.get("status") in {"active", "experimental", "archived"}, f"{name} status 非法"
         assert v.get("mechanism") and len(v["mechanism"]) >= 15, f"{name} mechanism 缺失/过短"
+        # PR-C6: horizon_known 受控词表四选一；known_ahead 必须带证据
+        assert v.get("horizon_known") in {
+            "known_ahead", "persistence", "self_referential", "unknowable",
+        }, f"{name} horizon_known 非法: {v.get('horizon_known')!r}"
+        if v["horizon_known"] == "known_ahead":
+            assert v.get("known_ahead_evidence"), f"{name} known_ahead 缺证据"
 
 
 def test_active_equals_valid_covariates(pool):

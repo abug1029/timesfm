@@ -433,14 +433,43 @@ def test_main_json_output_is_valid(tmp_path, monkeypatch, capsys):
 
 # ── 真实 registry 冒烟 ──────────────────────────────────────────────────
 
-def test_real_registry_reports_no_new_verdicts():
-    """对生产 registry 冒烟：143 条 pre-A1 遗留 → 必为 NO_NEW_VERDICTS。"""
+def test_real_registry_report_is_internally_consistent():
+    """对生产 registry 冒烟：断言**不变量**，不冻结 Stage 3 前的计数。
+
+    历史：原断言 `status == "NO_NEW_VERDICTS"` 且 `n_total == 143`，
+    那是 Stage 3 前的冻结状态。2026-09-28 慢环产出 A1 完整裁决后前提失效
+    （实测 status=PARTIAL，registry 已 153+ 条），故改为断言报告自身的
+    一致性 —— 这才是应当长期成立的条件。
+    """
     real = REPO_ROOT / "task_FM" / "config" / "aligned_verdicts.jsonl"
     if not real.exists():
         pytest.skip("生产 registry 不存在")
     rep = build_report(real, None)
-    assert rep["status"] == "NO_NEW_VERDICTS"
-    assert rep["n_total_in_registry"] == 143
+
+    # 判据分母不得为负，且进入判据的裁决数不得超过 registry 总数
+    assert rep["n_total_in_registry"] >= 0
+    assert rep["n_evaluated"] >= 0
+    assert rep["n_evaluated"] <= rep["n_total_in_registry"]
+    # 新裁决数不得超过 registry 总数
+    assert rep["n_new_a1_verdicts"] <= rep["n_total_in_registry"]
+
+    # status 必须是受控词表之一
+    assert rep["status"] in {
+        "PASS", "PARTIAL", "FAIL",
+        "NO_NEW_VERDICTS", "A1_NOT_WIRED",
+    }
+
+    # 判据 A 的分母与失败数须自洽：n_failed 不得超过 n_evaluated
+    crit_a = rep["criteria_a"]
+    assert crit_a["n_evaluated"] == rep["n_evaluated"]
+    assert 0 <= crit_a["n_failed"] <= crit_a["n_evaluated"]
+    # passed 标志须与失败数一致
+    assert crit_a["passed"] == (crit_a["n_failed"] == 0)
+
+    # status 为 PASS 时两条判据都必须通过
+    if rep["status"] == "PASS":
+        assert crit_a["passed"] is True
+        assert rep["criteria_b_prime"]["passed"] is True
 
 
 if __name__ == "__main__":
