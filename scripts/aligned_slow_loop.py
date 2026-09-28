@@ -138,7 +138,12 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             cov_override=row["cov_override"], max_points=row["max_points"],
             daily_cache_dir=daily_cache_dir,
             completed=completed, checkpoint_fp=checkpoint_fp,
-            resumed_points=resumed)
+            resumed_points=resumed,
+            # T2/PR-B5: 消融模式从队列行透传（缺省 "full" 保持既有行为）。
+            # 注意 checkpoint 按 variant_id 分文件，故消融批次必须用不同
+            # variant_id（建议 `{sym}_{cov}_{mode}_{stage}_p{n}`），否则
+            # resume 会把不同模式的点混进同一 checkpoint。
+            ablation_mode=row.get("ablation_mode") or "full")
     elapsed_s = round(time.time() - t0, 3)
     if data is None:
         v = _no_data_verdict(row, batch_id=bid)
@@ -169,6 +174,8 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
     v["checkpoint_path"] = cp
     v["slow_loop_pid"] = os.getpid()
     v["git_rev"] = _git_rev()
+    # T2/PR-B5: 消融批次标记落 verdict，供对照表按口径分组
+    v["ablation_mode"] = row.get("ablation_mode") or "full"
     # ── TypeSafe 预筛伴随文件注入 ──────────────────────
     _proposal_path = row.get("_proposal_path") or row.get("proposal_path")
     if _proposal_path:
