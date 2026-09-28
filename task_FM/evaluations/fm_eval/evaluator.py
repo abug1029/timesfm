@@ -11,6 +11,7 @@ import math
 import os
 import sys
 import hashlib
+from typing import Optional
 
 import numpy as np
 
@@ -320,6 +321,47 @@ def compute_cov_fingerprint(matrix, keys):
             "hash_version": COV_MATRIX_HASH_VERSION}
 
 
+def _compute_context_hash(points) -> Optional[str]:
+    """计算 context 窗口的内容哈希（PR-C4 W6.7 历史修订防护）。
+
+    Args:
+        points: 预测点列表（每个点含 context 信息）
+
+    Returns:
+        SHA-256 哈希前 16 位，或 None（若无 points）
+
+    用途：后续重算时比对 context_hash，若变化则标记 data_revised=True，
+    退出成功判定（spec W6.7）。
+    """
+    if not points:
+        return None
+
+    # 提取所有点的 context 信息（若存在）
+    context_data = []
+    for p in points:
+        if isinstance(p, dict):
+            # 优先使用 context_window，否则用 cutoff + real_endpoint 组合
+            ctx = p.get("context_window")
+            if ctx is not None:
+                if isinstance(ctx, np.ndarray):
+                    context_data.append(ctx.tobytes())
+                else:
+                    context_data.append(str(ctx).encode("utf-8"))
+            else:
+                # fallback: 用 cutoff + real_endpoint 组合
+                cutoff = p.get("cutoff")
+                real_end = p.get("real_endpoint")
+                if cutoff is not None and real_end is not None:
+                    context_data.append(f"{cutoff}:{real_end}".encode("utf-8"))
+
+    if not context_data:
+        return None
+
+    # 合并所有 context 并计算哈希
+    combined = b"|".join(context_data)
+    return hashlib.sha256(combined).hexdigest()[:16]
+
+
 def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch_id=None, run_mode="exploration", points=None, cov_matrix=None, cov_keys=None):
     """Build complete verdict summary with DM test and adaptive gate."""
     m = map_summary(s)
@@ -436,6 +478,22 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         # E6: DM 配对诊断 (variant_series/baseline_series 是中间产物, 不落 verdict)
         **{k: v for k, v in dm_diag.items()
            if k not in ("variant_series", "baseline_series")},
+        # PR-C4 W6.6: 门槛一致性（gate_basis 标记）
+        "gate_basis": "baseline" if baseline_dir_acc is not None else "fallback_0.52",
+        # PR-C4 W6.7: 历史修订防护（context_hash）
+        "context_hash": _compute_context_hash(points or s.get("points")),
+        "data_revised": False,  # 重算时比对，若变化则标记为 True
+        # PR-C4 W6.8: 预训练污染登记（仅登记，不做诊断性检验）
+        "pretrain_risk": {
+            "status": "registered",
+            "model_card_cutoffs": {
+                "wikipedia_pageviews": "Nov 2023",
+                "google_trends": "EoY 2022"
+            },
+            "eval_window": "2026-01 to 2026-09",
+            "gap_years": 2,
+            "gift_eval_pretrain_cutoff": "unlabeled"
+        },
         "metrics": {
             "n": m["n"],
             "n_eff": m["n_eff"],
