@@ -271,15 +271,19 @@ def load_baseline_points(symbol, root=None, cov=None):
 
 
 
-PROTOCOL_FINGERPRINT_VERSION = "protocol_v1"
+PROTOCOL_FINGERPRINT_VERSION = "protocol_v2"  # v2: 加入 cutoff_convention (D5 修复)
 COV_MATRIX_HASH_VERSION = "cov_matrix_hash_v1"
 COV_FILL_VERSION = "v2"      # 唯一来源（D4 语义变更）
 
 
 def compute_protocol_fingerprint(metric_version="v1",
                                  cov_fill_version=COV_FILL_VERSION,
-                                 eval_window_bars=None, step=None, horizon=None):
-    """协议指纹：决定两次评估是否可比（W1.5）。"""
+                                 eval_window_bars=None, step=None, horizon=None,
+                                 cutoff_convention="bar_close"):
+    """协议指纹：决定两次评估是否可比（W1.5）。
+
+    v2 变更: 加入 cutoff_convention 参数（D5 修复后默认为 bar_close）。
+    """
     from config import backtest_config
     parts = [
         PROTOCOL_FINGERPRINT_VERSION,
@@ -288,6 +292,7 @@ def compute_protocol_fingerprint(metric_version="v1",
         f"window={eval_window_bars if eval_window_bars is not None else backtest_config.EVAL_WINDOW_BARS}",
         f"step={step if step is not None else backtest_config.STEP}",
         f"horizon={horizon if horizon is not None else backtest_config.HORIZON}",
+        f"cutoff={cutoff_convention}",  # D5: bar_open 或 bar_close
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
