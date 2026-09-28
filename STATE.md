@@ -212,7 +212,42 @@ spec 自身矛盾，两个条款指向相反结论：
 | `test_no_persistence_in_current_pool` | 断言池内**任何**协变量不得标 `persistence`。而 `persistence` 是 spec 受控词表的合法值，且语义上恰好是 persistence 的协变量会被挤进别的标签 —— **测试把唯一正确的标签堵死了** | 改为「取值须在受控词表内」 |
 | `test_horizon_known_distribution` | 断言 `self_referential >= 10` / `unknowable >= 5` / `known_ahead >= 1`，冻住争议分布，一旦修正标签即假失败 | 改为覆盖性断言 |
 
-**⑤ 其他已核实但未处置**（`scripts/add_horizon_known.py`）
+**⑤ 回测前视问题（**新发现，需宿主裁定**）**
+
+修复 context_hash 对齐时（`ecd0260`）意外发现：**模型输入含一根
+cutoff 之后才收盘的 bar**。
+
+证据（RB idx=8798）：
+
+```
+dt[idx]   = 2026-01-09 10:00   （dt 是 bar 开盘时间）
+cutoff    = 2026-01-09 11:00   （bar idx 收盘时间，D5 修正后）
+dt[idx+1] = 2026-01-09 11:00   ← 恰等于 cutoff
+
+BacktestDataStore.get_main_contract_1h 的 SQL: dt <= cutoff_ts
+  → 纳入 dt == cutoff 的那根，即 bar idx+1
+  → 其收盘于 12:00，**晚于 cutoff**
+```
+
+而预测目标是 bar idx+1..idx+HORIZON —— 即模型**已经看过**它被要求预测的
+第一根 bar 的收盘价。
+
+`dt` = 开盘时间由两条独立证据确认：夜盘只有 21:00/22:00 两根、无 23:00
+（若 dt 是收盘时间则必有 23:00 根）；相邻 bar 前收 == 后开。
+
+**归因**：D5（`d621a1a`）把 cutoff 从开盘时间改为收盘时间，但**未同步
+`data/data_store.py` 的 `dt <= cutoff_ts` 边界**（该 commit 未触及
+data_store.py）。正确边界应为 `dt < cutoff_ts`。
+
+**影响面**：所有走 `BacktestDataStore` 的回测 —— 即 Stage 1–3 的
+全部结果。但注意 `max_points` 与 `eval_start` 逻辑不受影响，
+`base`（= bar idx 收盘价）取值正确，受污染的只有模型输入的最后 1 根。
+
+**未处置理由**：改动会再次改变全部 cutoff 语义 → 配对交集、DM 序列、
+协议指纹、nocov 基线全部需要重跑（与 D5 的影响相同）。这是宿主决策，
+不在本轮自行处理。**已在此登记，未静默。**
+
+**⑥ 其他已核实但未处置**（`scripts/add_horizon_known.py`）
 
 - 降级时不删除残留 `known_ahead_evidence` → 陈旧证据零告警存活
 - `CALENDAR_EVIDENCE` 是模块级常量按引用赋值 → 多个 known_ahead 会共享同一 dict
