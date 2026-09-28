@@ -4,7 +4,7 @@
 > `reports/` 全部为 derived_view（可从 `predictions.json` / 回测 JSONL / db 产物重建），
 > 冲突时以 **STATE.md + 磁盘回测产物**为准。此规则用于终结"滞后文档事故"（如 SH 状态那次）。
 
-**最后更新**: 2026-09-24（三环已停止并封存）
+**最后更新**: 2026-09-28（Stage 3 协变量可信度重构进行中；T1a 已完成，等待新裁决流）
 
 > **WARNING: 三环封存声明 (2026-09-24 14:22)**：三环系统已 SIGTERM 优雅停止并全量封存于
 > data/archive/fm_a_sealed_2026-09-24T1422/（234MB，含 MANIFEST.md / SHA256SUMS / 143 run 目录 / 裁决 / checkpoint / 配置）。
@@ -24,6 +24,68 @@
 **Phase Q1 (2026-08-29 结案)**: 协变量实现质量审计 6 方向裁决：D1 RSI 自适应 **REJECT**（JD -0.02 / P combo -0.10；信息量↑≠预测力↑，固定边界 91% 零输出=隐式信号门控）；D2/D4 CANCEL；D3 SKIP；D5 PAUSE；D6 审计框架 **ACCEPT**（`tests/test_covariate_audit.py` 19 测试）。实验性协变量代码已从 features.py 移除。SCHEMES 无变更。详见下节。
 **MaxDD>100% bug (2026-08-30 闭环)**: 已于 2026-08-21 修复 (`cascade/evaluation_metrics.py` cumprod+clamp) 并 8 测试覆盖；-265%/-134% 为修复前旧口径 (batch_f1 2026-08-18)，Phase 11 裁决以 PF 为准不受影响。
 **PRAXIST (2026-09-24, 三环已封存)**: 系统已停止封存（见顶部声明）。此前的方案 A 三环进展：9/19 改进：failure_delta 硬门 + DEAD/HOLD 过滤 + fm_two_peer topology + 提案质量加固（84 tests）。9/20 改进：跨 run 重复惩罚 + DEAD 族拒绝。9/22 落地 **TypeSafe Jev 协变量预筛**（软建议模式：harvest 时三问判读 → `_proposal_priority_score` ± 调度分，不阻断慢环；质量门禁 50 样本）。累计 123 verdicts / 22 gate_pass=true（历史裁决均无 prescreen metadata，Phase 3 校准待新 verdict）。人类概览 `docs/praxist.md`；运维 `docs/runbook_praxist_three_loop.md`；机器状态 `data/cache/supervisor_state.json`；裁决 `task_FM/config/aligned_verdicts.jsonl`。
+
+
+
+## Stage 3 协变量可信度重构（2026-09-28，进行中）
+
+> 上游 spec：`docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（**v15**，2026-09-28 修订）
+> 计划：`docs/superpowers/plans/2026-09-28-covariate-credibility-stage3.md`（v5）
+> 审核汇总：`docs/superpowers/reports/2026-09-28-stage3-review-summary.md`
+
+**目标**：把 Stage 1/2 的降级声明解除；让协变量可信度从「推断」变成「可验证事实」。
+
+### 已完成
+
+| 任务 | 状态 | 关键提交 |
+|------|------|---------|
+| **T1a** nocov 基线重生 + registry 复活 | ✅ 完成（8/8，指纹正确） | `d621a1a` (D5) + `6c94275` (PR-A1) + `d4e7097` (ensure_baselines 指纹校验) |
+| **T3** PR-B4 dir_acc 口径改档 | ✅ 文档完成（spec v15 字段已改名） | `2d38839` + `12e0850` + `ac979ef` |
+| **T4** 审计集 fu 加入裁定 | ✅ 已追认 | `7d74c76` + `aa48aa6` + `ac979ef` |
+| **T7** 板块部分退化 WARN | ✅ 实施 | `5dde4dc` |
+| **M4** T1a 判据验证脚本 | ✅ 实施（42 测试） | `59c7d3b` + `f754762` |
+| **spec v15** 三处结构性修订 | ✅ | `ac979ef`：① 字段改名 `n_total`/`n_active` → `n_dir_total`/`n_dir_active`；② 审计集规模 2–3 → 7 品种；③ §4.5 W5.5 horizon_known 裁定记录 |
+
+### 当前阻塞点
+
+**T1a 判据 A/B' 待新裁决流**。基线已就绪，但慢环尚未产出首批 A1 完整裁决。
+判据 A/B' 验证脚本就绪：`scripts/verify_t1a_criteria_a.py`，退出码 `3` = NO_NEW_VERDICTS（当前状态）。
+
+### 待执行
+
+| 任务 | 依赖 | 预计 |
+|------|------|------|
+| **T1a 判据 A/B' 验证** | 慢环产出首批裁决 | 慢环节奏决定 |
+| **T1b** 手算核对预测点 | T1a 新裁决 | 0.5 天 |
+| **T2** 三路消融实跑 | T1a 新裁决 | 2 天 |
+| **PR-B4 实施** | T3（已落地的字段名） | 1.75 天 |
+| **T5 PR-C1~C6** 统计实现 | 无 | 各 1-5 天 |
+| **T6** PR-B1 接线 + 小项 | 无 | 1 天 |
+
+### 宿主裁定（2026-09-28）
+
+| 裁定 | 内容 | spec 位置 |
+|------|------|----------|
+| M3 | 重置 eg/jd/lh 为 ACTIVE | `symbol_status.json` |
+| T3 字段改名 | `n_total`/`n_active` → `n_dir_total`/`n_dir_active` | spec v15 §4.7 W6.5 |
+| M6 | 审计集规模 2–3 → 7 品种 | spec v15 §1.1 L2 |
+| M5 | horizon_known 分类 + verified_by 白名单 | spec v15 §4.5 W5.5 |
+
+### 关键数据
+
+| 项 | 当前值 |
+|----|--------|
+| nocov 基线 | 8/8 就绪，协议指纹全部一致（`bd851c9ca0730dc5…` = protocol_v2） |
+| registry | 143 条 pre-A1 遗留（无 `protocol_fingerprint`），等待首批新裁决 |
+| 品种状态 | 8 品种全部 ACTIVE（M3 重置后） |
+| 测试 | 320+ Stage 2 + 21 (M4) + 13 (ensure_baselines) = 354+ |
+
+### 已知代码缺陷（Stage 3 实测发现）
+
+| 缺陷 | 状态 | 处置 |
+|------|------|------|
+| `ensure_baselines` 不校验协议指纹 | ✅ 已修 (`d4e7097`) | `_baseline_protocol_fingerprint` + `_current_protocol_fingerprint` |
+| PR-C1 `close_family` 重复 D3 违规 | ✅ 已修 (`12e0850`) | 整节删除，唯一所有者改为 PR-C2 |
 
 ---
 

@@ -43,6 +43,8 @@ models/*.pkl
 
 # 预测报告（按需取消注释以提交）
 reports/
+# 但允许 Stage 3 停机报告（STATE.md 指定位置）
+!docs/superpowers/reports/
 
 # 数据缓存
 data/cache/
