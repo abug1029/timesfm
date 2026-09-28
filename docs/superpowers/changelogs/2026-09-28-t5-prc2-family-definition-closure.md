@@ -177,42 +177,63 @@ class Family:
             )
     
     def close_family(self, current_time: datetime):
-        """封账 family"""
+        """封账 family（spec W3.6②）。
+
+        ⚠️ 审计 D3 修正 —— 原稿有两处**违反 spec**:
+
+        (1) 原稿仅在 `days_since_registration >= t_max_days` 时才赋 timeout。
+            spec W3.6② 明定: 「已注册但从未获得确认数据的成员：在
+            `family_close_at` 封账时若仍未达终态，**立即**落 `timeout` + `p=1`，
+            **不等待**」。故封账时**所有** pending 成员一律立即 timeout+p=1。
+
+        (2) 原稿 BH 输入过滤为 `status in ["confirmed","refuted"]`，
+            **排除了 timeout/abandoned 的 p=1** —— 这恰好复刻 spec 明令防止的
+            「结果不好就悄悄丢掉 = 缩小 K = p-hacking」路径。
+            spec: 「`abandoned` 与 `timeout` **仍计入 K**」，
+            其 p=1 必须**进入 BH 输入**（p=1 不会被判显著，但计入校正基数）。
+        """
         if self.is_closed:
             return
-        
-        # 检查未完成的成员，分配 timeout + p=1
+
+        # (1) 封账时所有未达终态成员立即 timeout + p=1（spec W3.6②）
         for member in self.members:
-            if member.status == "pending":
-                days_since_registration = (
-                    current_time - member.registered_at
-                ).days
-                if days_since_registration >= self.t_max_days:
-                    member.status = "timeout"
-                    member.p_value = 1.0
-                    member.closed_at = current_time
-        
-        # 计算 K（包括 abandoned 和 timeout）
+            if member.status not in ("confirmed", "refuted",
+                                     "abandoned", "timeout"):
+                member.status = "timeout"
+                member.p_value = 1.0
+                member.closed_at = current_time
+
+        # K = 全部成员（含 abandoned / timeout）—— 禁止缩小 K
         self.K = len(self.members)
-        
-        # 提取 p 值
-        p_values = [
-            m.p_value for m in self.members 
-            if m.status in ["confirmed", "refuted"] and m.p_value is not None
-        ]
-        
-        # 运行 BH-FDR
+
+        # (2) BH 输入 = **全部 K 个** p 值（含 timeout/abandoned 的 p=1）
+        #     p=1 不会显著，但必须计入校正基数；排除它们等于 p-hacking。
+        p_values = []
+        for m in self.members:
+            if m.p_value is None:
+                # 终态成员必须有 p 值；缺失即 fail-loud（不得静默补 1）
+                raise ValueError(
+                    f"成员 {m.prereg_id} 处于 {m.status} 但 p_value 为 None；"
+                    "终态成员必须携带 p 值（timeout/abandoned 应为 1.0）"
+                )
+            p_values.append(m.p_value)
+
+        assert len(p_values) == self.K, "BH 输入数必须等于 K（禁止排除任何成员）"
+
+        # 运行 BH-FDR（K>=1 即运行，单成员时退化为其自身 p 值）
         if p_values:
             from statsmodels.stats.multitest import multipletests
             reject, pvals_corrected, _, _ = multipletests(
                 p_values, alpha=0.05, method="fdr_bh"
             )
             self.bh_results = {
+                "K": self.K,
                 "p_values": p_values,
                 "pvals_corrected": pvals_corrected.tolist(),
-                "reject": reject.tolist()
+                "reject": reject.tolist(),
+                "n_rejected": int(sum(reject)),
             }
-        
+
         self.is_closed = True
 
 
@@ -397,7 +418,12 @@ def test_family_timeout_assignment():
 
 
 def test_abandoned_and_timeout_counted_in_K():
-    """测试 abandoned 和 timeout 计入 K"""
+    """spec W3.6②: abandoned 与 timeout 计入 K，且其 p=1 进入 BH 输入。
+
+    审计 D3 修正: 原测试只断言 `K == 3` 且手动置 is_closed 绕过 BH，
+    抓不到「BH 输入排除 timeout/abandoned」这一违规。本版**实际调用
+    close_family** 并断言 BH 输入数 == K。
+    """
     target = ResearchTarget(
         symbol="ss",
         target_var="price_direction",
@@ -410,10 +436,9 @@ def test_abandoned_and_timeout_counted_in_K():
         prediction_task="24h"
     )
     family = Family(research_question=research_question)
-    
-    # 添加 3 个假设
+
     for i in range(3):
-        hypothesis = PreregisteredHypothesis(
+        family.add_member(PreregisteredHypothesis(
             prereg_id=f"test_{i:03d}",
             symbol="ss",
             cov_fingerprint_keys="rsi_state",
@@ -422,21 +447,113 @@ def test_abandoned_and_timeout_counted_in_K():
             registered_at=datetime(2026, 1, 1),
             confirm_from_ts=datetime(2026, 1, 1),
             n_planned=100
-        )
-        family.add_member(hypothesis)
-    
-    # 手动设置状态
+        ))
+
+    # 两个成员已达终态；第三个保持 pending
     family.members[0].status = "confirmed"
     family.members[0].p_value = 0.03
     family.members[1].status = "abandoned"
-    family.members[2].status = "timeout"
-    family.members[2].p_value = 1.0
-    
-    family.is_closed = True
-    family.K = len(family.members)
-    
-    # K 应该包括所有成员（包括 abandoned 和 timeout）
+    family.members[1].p_value = 1.0          # abandoned 也须带 p=1
+    # members[2] 保持 pending
+
+    # 封账（实际运行 BH，不绕过）
+    family.close_family(datetime(2026, 1, 1) + timedelta(days=90))
+
+    # K 含全部成员（含 timeout/abandoned）
     assert family.K == 3
+    # pending 成员被立即赋 timeout + p=1（不等待 T_max）
+    assert family.members[2].status == "timeout"
+    assert family.members[2].p_value == 1.0
+    # BH 输入数必须 == K（禁止排除任何成员）
+    assert family.bh_results is not None
+    assert len(family.bh_results["p_values"]) == family.K == 3
+    assert family.bh_results["K"] == 3
+    # p=1 不会被判显著
+    assert family.bh_results["n_rejected"] == 0
+
+
+def test_bh_input_excludes_nobody():
+    """spec W3.6② 反向断言: 若排除 timeout 的 p=1，BH 基数会被缩小。
+
+    构造 4 成员：1 个 confirmed(p=0.04) + 3 个 timeout(p=1)。
+    正确行为: BH 在 K=4 上校正；错误行为（排除 timeout）会在 K=1 上校正。
+    """
+    target = ResearchTarget(
+        symbol="ss", target_var="price_direction",
+        price_series_def="1H_close", adjust_roll_rule_version="v1"
+    )
+    rq = ResearchQuestion(target=target, prediction_target="price_direction",
+                          prediction_task="24h")
+    family = Family(research_question=rq)
+
+    for i in range(4):
+        family.add_member(PreregisteredHypothesis(
+            prereg_id=f"h_{i}", symbol="ss", cov_fingerprint_keys="rsi_state",
+            mechanism="m", predicted_direction="up",
+            registered_at=datetime(2026, 1, 1),
+            confirm_from_ts=datetime(2026, 1, 1), n_planned=100
+        ))
+
+    family.members[0].status = "confirmed"
+    family.members[0].p_value = 0.04
+    # 其余 3 个保持 pending → 封账时全部 timeout + p=1
+
+    family.close_family(datetime(2026, 1, 1) + timedelta(days=90))
+
+    assert family.K == 4
+    assert len(family.bh_results["p_values"]) == 4, (
+        "BH 输入必须含全部 4 个成员（含 3 个 p=1）—— 排除它们即 p-hacking"
+    )
+    # K=4 上校正 0.04 → 0.16 > 0.05，不显著；若错误地在 K=1 上校正则会显著
+    assert family.bh_results["n_rejected"] == 0
+
+
+def test_pending_member_gets_timeout_immediately():
+    """spec W3.6②: 封账时 pending 成员**立即** timeout，不等待 T_max。"""
+    target = ResearchTarget(
+        symbol="ss", target_var="price_direction",
+        price_series_def="1H_close", adjust_roll_rule_version="v1"
+    )
+    rq = ResearchQuestion(target=target, prediction_target="price_direction",
+                          prediction_task="24h")
+    family = Family(research_question=rq, t_max_days=180)
+    family.add_member(PreregisteredHypothesis(
+        prereg_id="h_0", symbol="ss", cov_fingerprint_keys="rsi_state",
+        mechanism="m", predicted_direction="up",
+        registered_at=datetime(2026, 1, 1),
+        confirm_from_ts=datetime(2026, 1, 1), n_planned=100
+    ))
+
+    # 仅过 90 天（< T_max=180），但已到 family_close_at
+    family.close_family(datetime(2026, 1, 1) + timedelta(days=90))
+
+    assert family.members[0].status == "timeout", (
+        "封账时 pending 成员必须立即 timeout，不得等待 T_max"
+    )
+    assert family.members[0].p_value == 1.0
+
+
+def test_terminal_member_without_p_fails_loud():
+    """终态成员缺 p 值 → fail-loud（不得静默补 1）。"""
+    target = ResearchTarget(
+        symbol="ss", target_var="price_direction",
+        price_series_def="1H_close", adjust_roll_rule_version="v1"
+    )
+    rq = ResearchQuestion(target=target, prediction_target="price_direction",
+                          prediction_task="24h")
+    family = Family(research_question=rq)
+    family.add_member(PreregisteredHypothesis(
+        prereg_id="h_0", symbol="ss", cov_fingerprint_keys="rsi_state",
+        mechanism="m", predicted_direction="up",
+        registered_at=datetime(2026, 1, 1),
+        confirm_from_ts=datetime(2026, 1, 1), n_planned=100
+    ))
+    family.members[0].status = "confirmed"
+    family.members[0].p_value = None      # 违规：终态无 p
+
+    with pytest.raises(ValueError, match="p_value 为 None"):
+        family.close_family(datetime(2026, 1, 1) + timedelta(days=90))
+
 
 
 def test_cross_symbol_no_aggregation():

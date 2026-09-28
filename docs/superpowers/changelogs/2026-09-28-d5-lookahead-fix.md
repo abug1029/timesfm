@@ -34,7 +34,12 @@ base = float(all_1h["close_price"].iloc[idx])   # 收盘价（一致！）
 
 ## 实施内容
 
-### 修改（5 个回测脚本）
+### 修改（10 个回测脚本）
+
+> **审计 D7 修正**: 原版只记 5 个脚本（`d621a1a`），未随补全提交 `c318091` 更新。
+> 实际共 **10 个**脚本：首批 5 个 + 专家审核发现的 5 个遗漏。
+
+**首批（`d621a1a`）:**
 
 1. **scripts/monthly_backtest.py** (line 339-343)
    - 新增 `close_ts = bar_ts + pd.Timedelta(hours=1)`
@@ -51,6 +56,19 @@ base = float(all_1h["close_price"].iloc[idx])   # 收盘价（一致！）
 
 5. **scripts/a2_p2_worker.py** (line 100-102)
    - 同上简化写法
+
+**补全（`c318091`）— 专家审核发现的 5 个遗漏:**
+
+首批修复后经 `code-reviewer` 审核，发现 5 个脚本仍沿用同一前视模式
+（`cutoff = bar_ts.strftime(...)` 而 `base = close_price.iloc[idx]`）：
+
+6. **scripts/backtest_1h.py** (line 135-137)
+7. **scripts/covariate_scan_new.py** (line 110-113)
+8. **scripts/short_variety_diagnostic.py** (line 262-265)
+9. **scripts/validate_context_length.py** (line 60-63)
+10. **scripts/a2_p1_lgbm_baseline.py** (line 301-302)
+
+补全后经复评确认：全仓 grep 无遗漏，10 个脚本修复模式一致。
 
 ### 新增
 

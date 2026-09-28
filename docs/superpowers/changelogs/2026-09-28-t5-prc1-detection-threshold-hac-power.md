@@ -133,28 +133,46 @@ def compute_detection_threshold_vs_random(n_eff, alpha=0.05):
     return 0.5 + z_alpha * 0.5 / np.sqrt(n_eff)
 
 
-def compute_detection_threshold_vs_baseline(
-    n, var_d, rho=0.5, horizon=24, step=2, alpha=0.05
-):
-    """
-    计算 vs baseline 的检测阈值
-    
+def compute_detection_threshold_vs_baseline(d_series, alpha=0.05):
+    """计算 vs baseline 的检测阈值（spec W3.5①）。
+
+    detection_threshold_vs_baseline = z_alpha * SE_HAC(d_bar)
+    其中 d_t = v_ok_t - b_ok_t（方向命中差，0-1 损失）。
+
+    ⚠️ 审计 D2 修正: 原稿用 VIF 情景公式，**违反 spec W3.5「二选一」**。
+       spec 明文:
+         - 途径 A（情景近似）: Var(d) × VIF —— **仅用于规划文档**
+         - 途径 B（先导估计）: 直接用 HAC 长程方差 —— **实证口径，verdict 采用**
+         - **禁止**两条途径混用
+       spec §8.3 出口核验明令: 「断言实现中**不存在**『长程方差 × VIF』的混用路径」。
+       verdict 落 `se_hac`（**实测**）；规划 rho 表只进规划文档，**不进 verdict**。
+
     Args:
-        n: 样本量
-        var_d: 配对差异序列的方差
-        rho: 两模型正确分类事件相关性（假设）
-        horizon: 预测窗口
-        step: 步长
-        alpha: 显著性水平
-    
+        d_series: 配对差异序列 d_t = v_ok_t - b_ok_t
+        alpha: 显著性水平（单侧）
+
     Returns:
-        float: 检测阈值
+        float: 检测阈值（= z_alpha × 实测 HAC 标准误）
     """
-    z_alpha = 1.645
-    # VIF 计算（名义值）
-    vif = compute_vif(horizon, step)
-    se = np.sqrt(var_d * vif / n)
-    return z_alpha * se
+    z_alpha = 1.645  # 单侧 α=0.05，与 DM 同侧
+    se_hac = compute_hac_se(d_series)   # 实测，非 VIF 情景
+    return z_alpha * se_hac
+
+
+def compute_planning_vif(horizon=24, step=2):
+    """名义 VIF —— **仅供规划文档**，禁止进入 verdict（spec W3.5）。
+
+    VIF = 1 + 2 * Σ_{j=1..q} (1 - j/h)^2,  h = horizon//step, q = h-1
+    HORIZON=24, STEP=2 → h=12, q=11 → VIF = 8.0278
+
+    ⚠️ 这是**名义 VIF**（重叠窗口的名义方差膨胀），
+       **不等于** DM 检验使用的 Bartlett 长程方差，
+       **也不等于** n_eff 的实测分母。
+       「参数同源（共享 h/q）≠ 统计量定义相同」。
+    """
+    h = horizon // step
+    q = h - 1
+    return 1.0 + 2.0 * sum((1 - j / h) ** 2 for j in range(1, q + 1))
 
 
 def compute_n_required(
@@ -187,38 +205,42 @@ def compute_n_required(
 ### 2. 实现 HAC 标准误估计
 
 ```python
-def compute_hac_se(d_series, kernel="bartlett", bandwidth=None):
-    """
-    计算 HAC 标准误
-    
+def compute_hac_se(d_series, kernel="bartlett", q=HAC_MAX_LAG_Q):
+    """计算 HAC 标准误（Newey-West Bartlett）。
+
+    ⚠️ 审计 D2 修正: 原稿 `bandwidth=None` 自动选择（Newey-West 经验式），
+       **违反 spec 钦定**。spec W1.2/W3.5 明定:
+
+         h = HORIZON // STEP = 24 // 2 = 12   # 重叠窗口数
+         q = h - 1 = 11                        # 最大滞后阶数
+
+       该定义在 **n_eff 实测、DM 检验、规划公式** 三处**共享**，
+       实现只允许有**一个**来源。故 q **固定为 11**，不得自动选择。
+
     Args:
         d_series: 配对差异序列
-        kernel: 核函数（默认 Bartlett）
-        bandwidth: 带宽（若 None，自动选择）
-    
+        kernel: 核函数（Bartlett）
+        q: 最大滞后阶数（spec 钦定 11，勿改）
+
     Returns:
         float: HAC 标准误
     """
     n = len(d_series)
     d_bar = np.mean(d_series)
     d_centered = d_series - d_bar
-    
-    if bandwidth is None:
-        # 自动选择带宽（Newey-West 建议）
-        bandwidth = int(np.floor(4 * (n / 100) ** (2/9)))
-    
+
     # 计算自协方差
     gamma = []
-    for j in range(bandwidth + 1):
+    for j in range(q + 1):
         if j == 0:
             gamma_j = np.mean(d_centered ** 2)
         else:
             gamma_j = np.mean(d_centered[j:] * d_centered[:-j])
         gamma.append(gamma_j)
-    
+
     # 应用核权重
     if kernel == "bartlett":
-        weights = [1 - j / (bandwidth + 1) for j in range(bandwidth + 1)]
+        weights = [1 - j / (q + 1) for j in range(q + 1)]
     else:
         raise ValueError(f"Unsupported kernel: {kernel}")
     
@@ -342,16 +364,85 @@ def test_hac_se_with_autocorrelation():
 
 
 def test_no_mixing_hac_and_vif():
-    """断言实现中不存在"长程方差 × VIF"的路径"""
-    # 这个测试需要检查代码实现
-    # 确保 compute_detection_threshold_vs_baseline 不会同时使用 HAC 和 VIF
-    ...
+    """spec §8.3: 断言实现中**不存在**「长程方差 × VIF」的混用路径。
+
+    源码断言（审计 D2 修正: 原稿为空函数体）。
+    """
+    import inspect
+    from scripts.statistical_tests import compute_detection_threshold_vs_baseline
+
+    src = inspect.getsource(compute_detection_threshold_vs_baseline)
+    assert "vif" not in src.lower(), (
+        "detection_threshold_vs_baseline 混用了 VIF —— "
+        "spec W3.5 明令禁止两条途径混用"
+    )
+    assert "compute_vif" not in src
+
+
+def test_vif_is_planning_only():
+    """spec W3.5: VIF 只允许出现在规划函数，不得进 verdict。"""
+    import inspect
+    from scripts import statistical_tests as st
+
+    # 规划函数可以引用 VIF
+    plan_src = inspect.getsource(st.compute_planning_vif)
+    assert "VIF" in plan_src or "vif" in plan_src
+
+    # verdict 侧函数不得引用
+    for fn_name in ("compute_detection_threshold_vs_baseline",
+                    "compute_detection_threshold_vs_random"):
+        src = inspect.getsource(getattr(st, fn_name))
+        assert "vif" not in src.lower(), f"{fn_name} 不得引用 VIF"
 
 
 def test_loss_definition_unique():
-    """断言损失定义唯一（方向命中差）"""
-    # 确保所有统计函数使用 d_t ∈ {-1, 0, 1}
-    ...
+    """spec §8.3: 断言损失定义唯一（方向命中差 d_t ∈ {-1, 0, 1}）。
+
+    审计 D2 修正: 原稿为空函数体。
+    本 spec 的确认检验**唯一**采用方向命中差，等价于 0-1 方向损失。
+    MAE/RMSE 类「预测误差差」属**独立检验**，不得与方向命中差混称。
+    """
+    import inspect
+    from scripts.statistical_tests import compute_detection_threshold_vs_baseline
+
+    src = inspect.getsource(compute_detection_threshold_vs_baseline)
+    for other_loss in ("mae", "rmse", "mse"):
+        assert other_loss not in src.lower(), (
+            f"检测阈值混入了 {other_loss.upper()} 损失 —— 损失定义必须唯一"
+        )
+
+    # d_t 的取值域断言
+    d = np.array([1.0, -1.0, 0.0, 1.0, 0.0])
+    assert set(np.unique(d)) <= {-1.0, 0.0, 1.0}, "d_t 取值域应为 {-1, 0, 1}"
+
+
+def test_hac_bandwidth_fixed_at_11():
+    """spec W1.2: 带宽 q 钦定为 h-1 = 11，不得自动选择。"""
+    import inspect
+    from scripts import statistical_tests as st
+
+    assert st.HAC_MAX_LAG_Q == 11
+    sig = inspect.signature(st.compute_hac_se)
+    assert sig.parameters["q"].default == 11, "q 默认值必须为 11"
+
+
+def test_three_formulas_verified_separately():
+    """spec §8.3: 三套公式（n_eff ESS / DM 标准误 / 功效规划）**分别**验证。
+
+    禁止「一套通过即视为三套通过」。
+    """
+    from scripts import statistical_tests as st
+
+    # 三套公式必须有各自独立的实现入口
+    assert hasattr(st, "compute_hac_se")            # DM 标准误口径
+    assert hasattr(st, "compute_planning_vif")      # 功效规划口径
+    # n_eff 实测在 cascade/evaluation_metrics.py（唯一家）
+    from cascade import evaluation_metrics as em
+    assert hasattr(em, "measured_n_eff")            # ESS 实测口径
+
+    # 参数同源但统计量不同：h/q 共享，估计量各自独立
+    assert st.HAC_MAX_LAG_Q == 11
+    assert st.compute_planning_vif(24, 2) != st.HAC_MAX_LAG_Q  # 非同一量
 
 
 if __name__ == "__main__":
