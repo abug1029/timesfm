@@ -1241,6 +1241,8 @@ def _sector_filter_check(symbol, snapshot):
     改为 "全部已观察品种 + 全部未观察品种都等于板块成员全集失败" 才拦，
     即只有板块真死透了才拦。
 
+    T7 新增: 当失败数 >= 板块规模 50% 但未达全失败时，打 WARN 预警板块部分退化。
+
     Returns: (blocked, sector, n_failed)
     """
     from config.sector_map import SECTORS, sector_of
@@ -1251,6 +1253,16 @@ def _sector_filter_check(symbol, snapshot):
     latest = _latest_verdict_per_symbol(snapshot)
     n_failed = sum(1 for s, v in latest.items()
                    if sector_of(s) == sector and not v.get("gate_pass"))
+
+    # T7: 板块部分退化预警（50% 阈值）
+    if n_failed >= sector_size * 0.5 and n_failed < sector_size:
+        import logging
+        logging.warning(
+            f"Sector partial degradation: {sector} has {n_failed}/{sector_size} "
+            f"symbols failed ({100*n_failed/sector_size:.0f}%). "
+            f"Approaching circuit-breaker threshold."
+        )
+
     # 仅当失败数 >= 板块成员总数时拦截（即全部成员都失败，包括未观察到的）
     return n_failed >= sector_size, sector, n_failed
 
