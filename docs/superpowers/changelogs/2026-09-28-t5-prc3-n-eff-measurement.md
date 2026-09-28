@@ -258,18 +258,36 @@ def test_measured_n_eff_nonfinite():
 
 
 def test_measured_n_eff_negative_variance():
-    """测试长程方差为负的情况"""
-    # 构造一个特殊的序列，使得长程方差为负
-    # 这在实际中很少见，但需要处理
-    np.random.seed(42)
-    x = np.random.randn(100)
-    
-    # 这种情况下应该夹取为 sigma0^2
+    """测试长程方差为负时的夹取行为。
+
+    审计 D8 修正: 原测试用 `np.random.randn(100)` —— 那是**近似白噪声**，
+    其长程方差**不会**为负，因此该测试根本没走到夹取分支（vacuous test）。
+
+    构造真正产生负长程方差的序列：强负自相关 AR(1)（rho < 0）。
+    当 rho 足够负时，Bartlett 加权和可为负。
+    """
+    n = 500
+    rho = -0.8          # 强负自相关
+    x = np.zeros(n)
+    x[0] = np.random.randn()
+    for t in range(1, n):
+        x[t] = rho * x[t - 1] + np.random.randn() * 0.1
+
+    # 先确认该序列确实产生负长程方差（否则测试仍是 vacuous）
+    x_c = x - np.mean(x)
+    q = 11
+    gamma0 = np.mean(x_c ** 2)
+    lr = gamma0 + 2 * sum(
+        (1 - j / (q + 1)) * np.mean(x_c[j:] * x_c[:-j])
+        for j in range(1, q + 1)
+    )
+    assert lr < 0, "构造失败：该序列未产生负长程方差，测试将 vacuous"
+
     n_eff, status = measured_n_eff(x)
-    
-    # 即使长程方差为负，也应该返回一个有效值
-    assert status in ["ok", "clipped_to_iid"]
+    assert status == "clipped_to_iid", "负长程方差必须走夹取分支"
     assert n_eff is not None
+    assert n_eff <= n
+
 
 
 def test_meets_min_info_all_conditions_met():
@@ -350,13 +368,37 @@ def test_n_eff_le_n():
 
 
 def test_parameter_sharing():
-    """测试参数同源（h, q 共享）"""
-    from cascade.evaluation_metrics import measured_n_eff
-    from cascade.statistical_tests import compute_dm_test
+    """spec §8.3: 断言 h/q 三处同源，但**统计量各自独立**。
+
+    审计 D8 修正: 原为空函数体（...），无任何断言。
+    spec 关键区分（v7 第 5 轮审核）: 「参数同源」≠「统计量定义相同」。
+    """
     
-    # 确保 n_eff 和 DM 检验使用相同的 h, q
-    # 这个测试需要检查代码实现
-    ...
+    # 审计 D8 修正: 原为空函数体（...），无任何断言。
+    # spec §8.3: 三套公式**分别**验证，禁止「一套通过即视为三套通过」。
+    import inspect
+    from cascade import evaluation_metrics as em
+    from scripts import statistical_tests as st
+
+    # 1) 参数同源：q 必须是单一常量来源（spec W1.2 钦定 h-1 = 11）
+    assert st.HAC_MAX_LAG_Q == 11, "q 必须钦定为 11（h = HORIZON//STEP = 12）"
+
+    # 2) DM 侧使用 Bartlett 核（与 n_eff 实测共用同一估计量）
+    dm_src = inspect.getsource(st.compute_hac_se)
+    assert "bartlett" in dm_src.lower(), "DM 标准误须用 Bartlett 核"
+
+    # 3) 「参数同源 ≠ 统计量定义相同」：VIF ≠ HAC 长程方差
+    vif = st.compute_planning_vif(horizon=24, step=2)
+    assert abs(vif - 8.0278) < 1e-3, "名义 VIF 应为 8.0278"
+    # VIF 是名义方差膨胀因子（线性衰减假设的**平方**权重），
+    # 与标准 Bartlett HAC 核（**线性**权重 1 - l/(L+1)）不是同一个量。
+    # 禁止声称「规划 VIF = DM 长程方差」。
+    assert vif != st.HAC_MAX_LAG_Q
+
+    # 4) 三套公式各有独立入口（ESS / DM 标准误 / 功效规划）
+    assert hasattr(em, "measured_n_eff"), "缺 ESS 实测入口"
+    assert hasattr(st, "compute_hac_se"), "缺 DM 标准误入口"
+    assert hasattr(st, "compute_planning_vif"), "缺功效规划入口"
 
 
 if __name__ == "__main__":
