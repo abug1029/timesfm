@@ -1,8 +1,14 @@
-# 阶段 3 实施计划 (2026-09-28)
+# 阶段 3 实施计划 v2 (2026-09-28)
 
 **前置:** Stage 1 有条件通过（代码+测试层）· Stage 2 有条件通过
 **Spec:** `docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md` v14
 **Stage 1 计划:** `docs/superpowers/plans/2026-09-27-covariate-credibility-stage1.md`
+
+> **版本历史**
+> - **v1** (`bb0981f`/`1217ccc`) — 被退回：① T1 头条判据 `pass_variants() > 0` 结构性不可达；
+>   ② 「baselines 非空」误导（7/8 是已作废 ccl 基线）；③ spec §8.1 手算核验遗漏；
+>   ④ §8.3 核验清单未落到任务；⑤ D5 无责任方/时限/默认分支。
+> - **v2（本版）** — 逐项修复上述五点，并消除 Stage 2 报告 §9.1 的循环依赖。
 
 ---
 
@@ -25,100 +31,122 @@ Stage 1 与 Stage 2 的出口核验均附**降级声明**：
 registry 在 A1 接线落地前 3 天即冻结 → **接线从未在生产运行过**。
 143/143 裁决缺全部 18 个 A1 字段，`pass_variants()` 返回 **0**。
 
-因此 spec §8.3 的统计实现（PR-C1..C6）在当前状态下**缺少可验证的判据**：
-统计量要在真实的 A1 完整裁决流上才有意义。
+### 三处「只有施工图、未实证」的项（v2 已全部收录）
 
-### 另发现一处 Stage 2 自身的未实证项
-
-spec §8.5 约束 5：
-
-> 阶段 2 核验未通过（**消融显示输入不变**）→ 阶段 4 不得宣称任何协变量有效。
-
-PR-B5 交付了三路消融的**机制与接线**，但审计集**从未实跑**。
-即 Stage 2 的核心主张（区分内容效应与通道效应）目前也只是施工图。
-
-**这两项共同构成本阶段的第一优先级。**
+| # | 未实证项 | spec 出处 | 本计划任务 |
+|---|---------|----------|-----------|
+| 1 | Stage 1 A1 接线从未生产运行 | Stage 1 §7 | T1 |
+| 2 | 三路消融审计集从未实跑 | **§8.2 出口核验** | T2 |
+| 3 | **手算核对预测点从未执行** | **§8.1 出口核验** | **T1b（v2 新增）** |
 
 ---
 
 ## 执行顺序
 
 ```
-【可立即进行 — 与 cutoff 语义正交】
-P0a ─┬─ T1-A: registry 复活 → 判据 A（A1 字段确被生产路径写入）
-     └─ T2  : 三路消融审计集实跑（验证 Stage 2 核心主张）
+【可立即进行 — 不依赖 D5 裁定】
+P0a ─┬─ T1a : registry 复活 + 7 个 nocov 基线重生
+     │        → 判据 A（A1 字段确被生产路径写入）
+     ├─ T1b : 手算核对预测点（spec §8.1 出口核验）  ← v2 新增
+     └─ T2  : 三路消融审计集实跑（spec §8.2 出口核验）
 
 【关键路径 — 依赖 D5 裁定】
-D5 裁定 ─→ PR-A1（cutoff 语义 + checkpoint 键）
+D5 裁定 ─→ PR-A1（cutoff 语义 + checkpoint 键 + 协议指纹 bump）
         ─→ 重生成全部 nocov 基线
         ─→ 重跑 DM 配对验证
-        ─→ T1-B: 判据 B（pass_variants() > 0）← Stage 1 生产层闭合的唯一充分证据
+        ─→ T1c : 判据 B'（A1 完整 + DM 配对产出 p_value）
 
 【P1 — 计划偏移收录，可与上述并行】
 T3: PR-B4 dir_acc 口径变更改档
 T4: 审计集裁定记录（「固定审计集」语义）
 
 【P2 — spec §8.3 主体】
-T5: PR-C1..C6 统计实现
-T6: PR-B1 接线（含 64-bit 截断 + 回退吞异常）
+T5: PR-C1..C6 统计实现 + §8.3 核验交付物
+T6: PR-B1 接线 + Stage 2 登记的小项
 T7: 板块部分退化 WARN
 ```
 
-> **注:** T1 拆为 A/B 两层是 2026-09-28 自查后的修正。原计划把
-> `pass_variants() > 0` 当作复活即可达成的判据，实际它依赖 PR-A1 的 cutoff 语义
-> （证据见 T1「关键修正」与「阻塞项」两节）。
+> **v2 关键改动:** T1 拆为 a/b/c 三层。原计划把 `pass_variants() > 0` 当作
+> 复活即可达成的判据 —— **该判据结构性不可达**（见 T1「判据可达性」）。
 
 ---
 
-## P0 — 生产层实证（本阶段唯一的新增前置）
+## P0a — 生产层实证
 
-### T1: registry 复活三环
+### T1a: registry 复活 + nocov 基线重生
 
-**目标:** 产出第一批 **A1 完整的 confirmation 裁决**，验证 Stage 1 全链路在生产生效。
+**目标:** 产出第一批 **A1 完整**的裁决，验证 Stage 1 A1 接线在生产生效。
 
-**⚠️ 关键修正（2026-09-28 自查发现）: 验收判据必须分两层，因为 A1 接线验证
-**不**与 cutoff 语义正交。**
+#### 判据可达性（v2 核心修正）
 
-证据:
-- `cascade/statistical_tests.py:373` — `pair_set_hash` 是**共同 cutoff 集合**的哈希:
-  `pair_hash = sha256("|".join(str(k) for k in common))`。cutoff 语义变更 → 该哈希变更。
-- `evaluator.py` 注释明示: 「PR-A1 前 dm_status 会频繁落
-  insufficient_common/no_common_cutoff —— 这是 fail-loud 设计行为」
-- `registry_lib.pass_variants()` 要求 `p_value is not None`；
-  `p_value` 仅在 DM 配对产出足够共同点（`len(v_series) >= 100`）时才被赋值。
+**原计划判据 `pass_variants() > 0` 结构性不可达**，证据:
 
-**推论: PR-A1 未落地 → DM 配对频繁失败 → `p_value` 恒 None → `pass_variants()` 恒 0，
-即便 A1 接线完全正确。** 故「`pass_variants() > 0`」**不是**接线验证判据，
-而是 cutoff 语义就绪后的证据层判据。
+| 证据 | 内容 |
+|------|------|
+| `registry_lib.py:456` | `pass_variants()` 显式 `continue` 掉 `run_mode == "exploration"` |
+| `evaluator.py:318` | `build_summary(..., run_mode="exploration")` —— **默认值即 exploration** |
+| 生产路径 grep | `aligned_slow_loop.py` / `run.py` **均不传** `run_mode` → 全部落 exploration |
+| `aligned_slow_loop.py:84,95` | `_no_data_verdict` 写 `run_mode=None` |
+| Stage 1 报告 §5 | 自述「生产 verdict 全部是 exploration —— 这是设计意图」 |
+| spec §1.4 | confirmation **必须有已锁定 `prereg_id`**，而 prereg 是 **PR-D1（阶段 4）** 交付物 |
 
-#### 验收判据 A — 接线层（PR-A1 落地前即可测，用于解除 Stage 1「代码层」质疑）
+**推论:** 在 PR-D1 落地前，生产裁决**全部是 exploration** → `pass_variants()` 结构性恒 0。
+这与 PR-A1/cutoff 无关，是**运行模式设计**导致的，阶段 3 范围内无法解除。
 
-1. 新增裁决的 `protocol_fingerprint` / `cov_fingerprint` / `dir_acc_full` /
-   `dir_acc_ex_roll` / `n_roll_excluded` / `n_roll_ratio` / `run_mode` /
-   `covariates_used` **均非空**
+#### 验收判据 A — 接线层（本阶段可达成）
+
+限定为「**经评估产出的、非 no-data 墓碑的** exploration 裁决」（排除 `_no_data_verdict`
+的合法 null）:
+
+1. 新增裁决的 `protocol_fingerprint` / `dir_acc_full` / `dir_acc_ex_roll` /
+   `n_roll_excluded` / `n_roll_ratio` / `run_mode` / `covariates_used` **均非空**
 2. `a1_missing_fields()` 对新增裁决返回**空列表**
-3. `run_mode` 取值落在 `RUN_MODES` 内（非 None）
+3. `run_mode == "exploration"`（当前设计预期值，非 None）
 4. `dm_status` / `pair_set_hash` **有值**（可为 `no_common_cutoff`，但不得为缺键）
+5. `cov_fingerprint` 可为 null（在 `A1_NULLABLE` 内，exploration 传不齐矩阵时是设计豁免）
 
-> 判据 A 通过 = 「A1 字段确实被生产路径写入」。这解除 §7 的「接线从未跑过」质疑，
-> 但**不**兑现「过门具备证据含义」。
+> **判据 A 通过 = 「A1 字段确实被生产路径写入」** → 解除 Stage 1/2 的
+> 「接线从未跑过」质疑。
 
-#### 验收判据 B — 证据层（**依赖 PR-A1 落地**）
+#### 验收判据 B' — 统计层（**依赖 PR-A1**）
 
-5. `pass_variants()` 返回值 **> 0**
-6. 至少 1 条裁决的 `dm_status` 为可配对状态且 `p_value` 非 None
+6. 至少 1 条裁决的 `pairing_valid=True` 且 `p_value` 非 None
+7. `dm_status` 落入可配对状态（非 `no_baseline` / `no_common_cutoff`）
 
-> 判据 B 通过 = Stage 1 硬门 2/3 的「生产层闭合」。
-> **在 PR-A1 落地前不应期待判据 B 达成。**
+> **判据 B' 通过 = 「DM 配对在生产真实产出 p 值」。**
+> 依赖 PR-A1（cutoff 语义就绪），见「阻塞项」。
 
-**复活前置实测状态（2026-09-28）:**
+#### 验收判据 C — 晋升层（**本阶段不可达，显式推迟**）
 
-- [x] **baselines 非空** — 8 个品种基线存在
-  （`baseline_points_{cj,eg,jd,lh,m,rb,sr,ss}.jsonl`，61-62KB，2026-09-16/17）
-  + `baseline_points_rb_nocov.jsonl`（115KB，2026-09-27，Task 5 产物）
-  > 「baselines 空」是 2026-09-24 的**历史状态**，当前不成立。
-- [x] **`baseline_metrics.json` 覆盖 8 品种**
-- [ ] ⚠️ **`symbol_status.json` 全部非 ACTIVE** — 复活首要障碍:
+8. `pass_variants() > 0` —— **推迟至 PR-D1（阶段 4）之后**。
+   本计划**不**以此为阶段 3 出口判据。
+
+#### 前置检查（2026-09-28 实测）
+
+- [ ] ⚠️ **nocov 基线仅 rb 存在（1/8）** — v2 修正
+
+  | 基线文件 | 状态 | 说明 |
+  |---------|------|------|
+  | `baseline_points_rb_nocov.jsonl` | ✅ 588 行，含 `protocol_fingerprint` | 生产可用 |
+  | `baseline_points_{cj,eg,jd,lh,m,sr,ss}.jsonl` | ❌ **已作废** | 2026-09-16/17 的 **ccl 基线**，首行无 `protocol_fingerprint`；Stage 1 报告 §4.7 声明 cov_fill v1→v2 使其作废 |
+
+  生产读取路径: `aligned_slow_loop.py:153` / `run.py:109` → `load_baseline_points(symbol, cov=None)`
+  → `cascade/baseline_paths.py:12` → `baseline_points_{sym}_nocov.jsonl`。
+  **ccl 基线文件存在 ≠ 生产可用。**
+
+  **处置:** `ensure_baselines`（`praxist_supervisor.py:2188`）已正确使用
+  `gbp.baseline_filename(sym, None)`（nocov 路径；docstring 过期但代码正确）。
+  对 7 个品种其 `n_lines = 0 < 100` → **会自动串行重生**，每品种约 10 min 模型实跑
+  （7 品种 ≈ 70 min）。**列为 T1a 显式步骤与观察项。**
+
+  验收命令:
+  ```
+  ls task_FM/config/baseline_points_*_nocov.jsonl | wc -l   # 期望 8
+  head -1 task_FM/config/baseline_points_m_nocov.jsonl      # 须含 protocol_fingerprint
+  ```
+
+- [x] **提案门禁不会重演饿死** — PR-B6 circuit-breaker 在位，实测拦截率 0%
+- [ ] ⚠️ **`symbol_status.json` 全部非 ACTIVE**:
 
   | 品种 | 状态 | 依据 |
   |------|------|------|
@@ -126,31 +154,55 @@ T7: 板块部分退化 WARN
   | `jd` | **HOLD** | 7 ok verdicts, 0 pass, best=0.468 |
   | `lh` | **HOLD** | 7 ok verdicts, 0 pass, best=0.488 |
 
-  `harvest_proposals` 对 DEAD/HOLD 直接 `_reject`（L1415/L1417）。
-  未登记品种默认 ACTIVE → 8 个有基线品种中 **仅 m / ss / sr / cj / rb 可提案**。
-  **复活前须裁定:** 重置 eg/jd/lh 状态，或接受 5 品种起步。
-- [x] **提案门禁不会重演饿死** — PR-B6 circuit-breaker 在位，实测拦截率 0%
+  `harvest_proposals` 对 DEAD/HOLD 直接 `_reject`（L1415/L1417）；未登记品种默认 ACTIVE
+  → 8 个品种中 **仅 m / ss / sr / cj / rb 可提案**。
+  **复活前须裁定:** 重置 eg/jd/lh，或接受 5 品种起步。
 - [ ] **`no_failure_delta` 拒绝率需观察** — 2026-09-24 的 ~100% 拒绝是停滞根因之一
+- [ ] ⚠️ **无基线品种会落 `no_baseline`** — `cf/i/jm/ma/p/sh` 在 `ALLOWED_SYMBOLS` 内、
+  有裁决但无任何基线 → 提案后 `dm_status=no_baseline`、`p_value=None`。
+  这是「8 品种中仅 5 个可提案」之外的**第二层可行性收窄**，须在结论中声明。
 
-**风险:** 复活后可能因其他未知门禁再次饿死。**缓解:** 首轮观察
-`reject_reasons` 分布，任一 reason 占比 > 80% 立即暂停归因。
+**风险:** 复活后可能因其他未知门禁再次饿死。**缓解:** 首轮观察 `reject_reasons` 分布，
+任一 reason 占比 > 80% 立即暂停归因。
 
-**预计:** 2 天（含观察窗口）
+**预计:** 2.5 天（含 70 min 基线重生 + 观察窗口）
+
+### T1b: 手算核对预测点（spec §8.1 出口核验）— v2 新增
+
+**目标:** 兑现 spec §8.1 出口核验「取 2–3 个品种、固定窗口与 cutoff，手算核对一小批
+预测点，证明对齐与基线配对正确」。
+
+Stage 1 报告 §4 第 2 条自述「**未做**逐点手算……留待阶段 2 或按需补做」，
+Stage 2 未做，v1 计划亦未收录 —— 与 T2 同构的未实证项。
+
+**交付:**
+- 取 `rb`（有 nocov 基线）+ 1 个其他品种，固定窗口与 cutoff
+- 手算 3–5 个预测点的 `dir_ok` / `delta_pred` / `delta_real`
+- 手算变体与基线的 cutoff 交集，与裁决的 `dm_common_count` 对账
+- 产出对账记录（可人工复算）
+
+**依赖:** T1a（需真实裁决流与基线）。
+
+**预计:** 0.5 天
 
 ### T2: 三路消融审计集实跑
 
-**目标:** 兑现 spec §8.5 约束 5 的「消融显示输入不变」核验。
+**目标:** 兑现 spec **§8.2 出口核验**（「用少量代表性协变量做完整消融，确认输入确实改变模型」）
+—— §8.5 约束 5 是其后置条款。
 
 **交付:**
-- 对 `config/ablation_audit_config.json` 定义的 7 品种 × 5 协变量，
+- 对 `config/ablation_audit_config.json` 的 7 品种 × 5 协变量，
   以 `--ablation-mode {full,content,structural,baseline}` 各跑一遍
-- 产出对照表：`full` vs `content`（内容效应）· `full` vs `structural`（通道效应）
+- 对照表: `full` vs `content`（内容效应）· `full` vs `structural`（通道效应）
   · `structural` vs `baseline`（代码路径差异）
-- 结论：协变量输入是否真的改变了预测（若 `content` ≈ `full`，则"内容"无效应）
+- 结论: 协变量输入是否真的改变预测
 
-**依赖:** 与 T1 并行可行（回测不依赖三环存活），但**结论需在 T1 的 A1 裁决流上复核**。
+**前置检查（v2 新增）:**
+- [ ] ⚠️ **`fu` 的可行性未验证** — 审计集含 `fu`（补 energy_chem 覆盖），
+  但 `fu` **无基线、无裁决、未见 checkpoint 证据**。
+  启动前须先跑一个 `fu` 的 `full` 模式**冒烟**，确认模型 checkpoint 可用。
 
-**预计:** 1.5 天
+**预计:** 1.5 天（+ 冒烟 0.5 天）
 
 ---
 
@@ -159,16 +211,13 @@ T7: 板块部分退化 WARN
 ### T3: PR-B4 dir_acc 口径变更改档
 
 Stage 2 计划中 PR-B4（dir_acc 口径变更）因影响面过大延期。
-**本阶段须在计划文档中正式改档**（而非仅在报告里留一行），并说明:
-- 变更后的口径定义
-- 对已有裁决的影响面（143 条 + T1 新增）
-- 是否需要迁移
+**本阶段须在计划文档中正式改档**，说明: 变更后口径定义 · 对已有裁决的影响面
+（143 条 + T1a 新增）· 是否需要迁移。
 
 ### T4: 审计集裁定记录
 
-PR-B5 评审 H2 指出：审计集加入 `fu`（补 energy_chem 覆盖）触及
-spec §4.2 W2.3「固定审计集」的「固定」语义。
-**须补一条裁定记录:** 审计集是否允许扩充？扩充是否影响跨阶段可比性？
+PR-B5 评审 H2: 审计集加入 `fu` 触及 spec §4.2 W2.3「固定审计集」的「固定」语义。
+**须补裁定记录:** 审计集是否允许扩充？扩充是否影响跨阶段可比性？
 
 ---
 
@@ -183,91 +232,106 @@ spec §4.2 W2.3「固定审计集」的「固定」语义。
 | PR-C5 | 协变量族**诊断矩阵**（只诊断，不自动归档） | `covariate_family_verdict.json`, 诊断脚本 |
 | PR-C6 | horizon 尾填充（W5）：`horizon_known` 分类 + 证据格式 + 前视不变量 | `covariate_pool.json`, `features.py`, `hourly_model.py` |
 
-### T6: PR-B1 接线（评审登记项）
+### T5 的 §8.3 核验交付物（v2 新增 — 不得只引用 spec）
 
-PR-B1 已重定性为库实现（Stage 2 决策）。本阶段接线前须先解决:
-- **64-bit 截断**: SHA-256 截断至 16 hex（64 bit），须评估是否改为全长
-- **回退吞异常**: `compute_variant_id` 的回退路径静默吞异常，须区分
-  "预期失败"与"编程错误"
-- **接线前置**: 须在 T1 产出的 A1 完整裁决流上验证，不得在死数据上接线
+spec §8.3 的核验项须逐条认领到具体交付物，避免重演 Stage 1 v2
+「67 测试全绿却有 4 个 CRITICAL 空转」的假闭合:
+
+| spec §8.3 核验项 | 交付物 | 认领 PR |
+|-----------------|-------|--------|
+| 已知自相关序列手算长程方差，与代码结果比较 | 黄金用例文件（完整序列 + 参数 + **精确预期值**） | PR-C1 |
+| 负自相关 / 边界滞后 / 重叠预测场景 | 各 ≥1 专项用例 | PR-C1 / PR-C3 |
+| **三套公式分别验证**（`n_eff` 实测 ESS / DM 标准误 / 功效规划） | 三套独立用例；**禁止**一套通过即视为三套通过 | PR-C1 / PR-C3 |
+| 断言实现中**不存在**「长程方差 × VIF」混用路径 | 源码断言测试（§4.3 W3.5 二选一） | PR-C1 |
+| 黄金用例写明带宽约定 / 均值中心化 / 样本方差分母 / 有限样本修正 | 用例 docstring 强制字段 | PR-C1 |
+| 重叠预测: 实测 HAC vs 名义 VIF 的区分 | 断言名义 VIF 不得用于检验校正 | PR-C1 |
+| 手算对账记录 | 独立记录文件 | PR-C3 |
+
+### T6: PR-B1 接线 + Stage 2 登记的小项
+
+**接线前置:** 须在 T1a 产出的裁决流上验证，不得在死数据上接线。
+
+**PR-B1 评审登记项（v2 补全 — v1 仅覆盖前两项）:**
+- 64-bit 截断（SHA-256 截断至 16 hex）评估
+- 回退路径静默吞异常 → 区分「预期失败」与「编程错误」
+- golden 值测试
+- 返回类型一致性（`(str, dict)` vs `(str, None)`）
+- `validate_verdict_v2` 的 nullable 变量命名
+- `compute_seed_fingerprint` seed 范围校验
+- `sys` import 位置
+
+**PR-B2 评审登记项:**
+- 四类诊断互斥丢失信息 / 空 context 的 RuntimeWarning / 函数内惰性 import / 测试 seed
+
+**PR-B5 评审登记项:**
+- L3: resume 冲突检查在模型加载（~800MB）之后
+- N3: `predict()` 未暴露 seed 参数
 
 ### T7: 板块部分退化 WARN
 
-PR-B6 评审建议：`n_failed >= sector_size * 0.5` 时打 WARN，用于预警
-"板块部分退化"（当前 circuit-breaker 是二元 block/pass，无预警能力）。
+PR-B6 评审建议: `n_failed >= sector_size * 0.5` 时打 WARN，
+用于预警「板块部分退化」（当前 circuit-breaker 是二元 block/pass，无预警能力）。
 
 ---
 
 ## 阻塞项 — D5 裁定（**本计划的关键路径**）
 
-**spec §8.5 硬约束:**
-
-> 2. **D5 未裁定 → PR-A1 与 PR-D2 均不得实施**（阶段 1 其余项可并行）。
+**spec §8.5 硬约束 2:** 「D5 未裁定 → PR-A1 与 PR-D2 均不得实施」。
 
 PR-A1（cutoff 语义 + checkpoint 键）落地后须:
 1. 重新生成全部 nocov 基线
 2. 重跑 DM 配对验证
 
-### 与 T1 的依赖关系（修正后结论）
+### 与 T1 的依赖关系（v2 修正表述）
 
-**先前判断「A1 接线验证与 cutoff 语义正交」是错的**，证据见 T1 的「关键修正」:
+v1 的「A1 接线验证与 cutoff 语义正交」**表述过强**，正确表述:
 
-| A1 字段 | 是否依赖 cutoff 语义 |
-|---------|-------------------|
-| `protocol_fingerprint` / `cov_fingerprint` / `dir_acc*` / `run_mode` / `covariates_used` | **否** — 与 cutoff 无关 |
-| `pair_set_hash` / `raw_cutoff_set_hash` | **是** — 直接哈希共同 cutoff 集合 |
-| `dm_common_count` / `d_series_n_eff` / `p_value` | **是** — 派生自配对结果 |
+| 层面 | 与 cutoff 语义的关系 |
+|------|-------------------|
+| **字段管线**（判据 A 的 1/2/4 项） | **正交** — 字段是否落盘与 cutoff 无关 |
+| **统计输出**（`pair_set_hash` / `dm_status` / `dm_common_count` / `d_series_n_eff` / `baseline_dir_acc` / `p_value` / 判据 B'） | **完全下游** — D5 若裁定改 `bar_close`，全部 cutoff 时间戳 +1h → 配对交集 / 方向标签 / DM 序列全变 → **T1 的统计输出全部作废** |
 
-**因此:**
-- T1 的**判据 A（接线层）**与 cutoff 语义正交 ✅ 可在 PR-A1 前进行
-- T1 的**判据 B（证据层）**依赖 PR-A1 ❌ **不可**在 PR-A1 前达成
+**因此:** T1 验证的是**接线与字段完备性**；其**统计输出在 D5 裁定后须全部重跑**，
+**不作为持久证据**。
 
-### 裁定建议
+### PR-A1 的协议指纹衔接（v2 新增）
 
-**D5 → PR-A1 应作为 T1 判据 B 的硬前置，与 T1 判据 A 并行推进：**
+实测 `compute_protocol_fingerprint`（`evaluator.py:279-292`）当前**不含** cutoff 约定分量，
+而 spec §4.1（L397）要求「cutoff 约定（bar_open/bar_close）| D5 裁定结果」**进入协议指纹**。
 
-1. **立即可做（不依赖 D5）:** T1 判据 A + T2（消融实跑）
-   —— 二者分别验证「A1 字段被写入」与「协变量输入是否有效应」，均与 cutoff 正交
-2. **D5 裁定后:** 实施 PR-A1 → 重生成 nocov 基线 → 重跑 DM → T1 判据 B
-3. **不得**在 PR-A1 前宣称「Stage 1 生产层闭合」
+**PR-A1 落地时必须**将 cutoff 约定并入 `compute_protocol_fingerprint`
+或 bump `PROTOCOL_FINGERPRINT_VERSION` —— 否则 A1 前后裁决指纹逐字节相同却不可比，
+**可比性守卫（`comparable()`）失效**。
 
-**须在批准评审中明确:**
-- D5 的**裁定责任方**与**时限**（当前计划未指定）
-- 若 D5 长期无法裁定，判据 B 将无限期挂起 —— 此时应显式声明
-  「Stage 1 生产层闭合延期」，而非默默降格
+### D5 裁定责任方与时限（v2 新增）
+
+| 项 | 内容 |
+|----|------|
+| **责任方** | **宿主本人**（D5 是研究方向决策，非工程决策） |
+| **裁定窗口** | T1a 启动前 |
+| **默认分支** | 若 T1a 启动时仍未裁定：按 spec §4.1 W1.6 的 **(b) 维持 `bar_open` 现状**，并在裁决落 `cutoff_convention` 字段；T1a 结论中**显式声明**统计输出待重跑 |
+| **逾期处理** | 判据 B' 无限期挂起时，须显式声明「Stage 1 统计层闭合延期」，**不得默默降格** |
 
 ---
 
 ## 出口判据
 
-1. **T1 判据 A 全部满足** → 解除 Stage 1/2 的「接线从未跑过」质疑
-2. **T1 判据 B 满足（`pass_variants() > 0`）** → 解除 Stage 1/2 的**生产层**降级声明
-   （**依赖 PR-A1 落地**；若 D5 未裁定，本项显式挂起并声明）
-3. **T2 产出消融对照结论** → 兑现 spec §8.5 约束 5「消融显示输入不变」
-4. **T3/T4 改档与裁定记录入库**
-5. **PR-C1..C6 全绿** + spec §8.3 的核验清单逐项通过（见下方「spec §8.3 核验清单落地」）
-6. **D5 裁定状态明确**（已裁定 / 明确延期及影响 + 责任方 + 时限）
+1. **T1a 判据 A 全部满足** → 解除 Stage 1/2 的「接线从未跑过」质疑
+2. **T1a 判据 B' 满足** → 解除 Stage 1/2 的**统计层**降级声明（**依赖 PR-A1**；
+   若 D5 未裁定则按默认分支挂起并声明）
+3. **T1b 手算对账记录入库** → 兑现 spec §8.1 出口核验
+4. **T2 产出消融对照结论** → 兑现 spec §8.2 出口核验
+5. **T3/T4 改档与裁定记录入库**
+6. **PR-C1..C6 全绿** + §8.3 核验交付物（见 T5 表）逐项产出
+7. **D5 裁定状态明确**（已裁定 / 按默认分支挂起 + 声明）
+
+**判据 C（`pass_variants() > 0`）不作为阶段 3 出口判据** —— 结构性依赖 PR-D1（阶段 4）。
 
 **阶段 3 核验未通过 → 不得进入阶段 4**（spec §8.5 约束 4）。
 
-### spec §8.3 核验清单落地（不得仅引用 spec）
-
-spec §8.3 列出的阶段 3 出口核验项，须逐条落入本计划的测试与判据:
-
-| spec §8.3 核验项 | 落地形式 |
-|-----------------|---------|
-| 已知自相关序列手算长程方差，与代码结果比较 | 黄金用例（完整序列 + 参数 + **精确预期值**） |
-| 验证负自相关 / 边界滞后 / 重叠预测场景 | 各 ≥1 个专项用例 |
-| **分别**验证三套公式（`n_eff` 实测 ESS / DM 标准误 / 功效规划） | 三套独立用例；**禁止**一套通过即视为三套通过 |
-| 断言实现中**不存在**「长程方差 × VIF」混用路径 | 静态断言测试（§4.3 W3.5 二选一） |
-| 固定黄金用例写明带宽约定 / 均值中心化 / 样本方差分母 / 有限样本修正 | 用例 docstring 强制字段 |
-| 重叠预测相关结构：实测 HAC vs 名义 VIF 的区分 | 断言名义 VIF 不得用于检验校正 |
-
-> 本表为 Stage 3 计划对 spec 核验清单的**承接**，避免「引用了 spec 但没落到计划」。
-
 ---
 
-## 依赖与硬约束（引用 spec §8.5，不重复罗列）
+## 依赖与硬约束（引用 spec §8.5）
 
 1. 阶段 4 前置 = 阶段 1–3 全部 PR + D5 裁定 + 目标效应裁定
 2. D5 未裁定 → PR-A1 / PR-D2 不得实施
@@ -275,7 +339,20 @@ spec §8.3 列出的阶段 3 出口核验项，须逐条落入本计划的测试
 4. 阶段 3 核验未通过 → 不得进入阶段 4
 5. 阶段 2 核验未通过（消融显示输入不变）→ 阶段 4 不得宣称任何协变量有效
 6. 阶段 2 是诊断项，不阻塞阶段 1 交付
-7. 每个 PR 必须带绿测试
+7. 每个 PR 必须带绿测试，**禁止把「下一步再写测试」写进 diff**（v2 补全后半句）
+
+---
+
+## 孤儿项处置（v2 新增 — 不留静默孤儿）
+
+| 项 | 来源 | 处置 |
+|----|------|------|
+| `_primary_fp` 排名守卫 | Stage 1 报告 §8（HIGH，明确推迟阶段 2，「待宿主追认」） | **收录进 T5**（门槛一致性，与 PR-C4 同域） |
+| PR-B1 其余小项 | Stage 2 报告 §8 | 收录进 **T6**（见 T6 清单） |
+| PR-B2 四项 | Stage 2 报告 §8 | 收录进 **T6** |
+| PR-B5 L3/N3 | Stage 2 报告 §8 | 收录进 **T6** |
+| `get_klines_1h` 缺 `adjustment_policy` 标注 | Stage 1 报告 §8（LOW） | 收录进 **T5**（PR-C4 文档域） |
+| `baseline_metrics.json` 键冲突 | Stage 1 报告 §8（MEDIUM） | 收录进 **T1a**（基线重生时一并核） |
 
 ---
 
@@ -283,11 +360,16 @@ spec §8.3 列出的阶段 3 出口核验项，须逐条落入本计划的测试
 
 | 本计划项 | Stage 2 报告出处 |
 |---------|-----------------|
-| T1 registry 复活 | §9.2（升格为 P0）· §7 |
-| T2 三路消融实跑 | 本计划新增（Stage 2 未实证项） |
+| T1a registry 复活 + 基线重生 | §9.2（升格为 P0）· §7 |
+| T1b 手算核对 | **本计划新增**（Stage 1 §8.1 未实证项） |
+| T2 三路消融实跑 | **本计划新增**（Stage 2 未实证项，对应 spec §8.2） |
 | T3 PR-B4 改档 | §9.3 第 2 项 |
 | T4 审计集裁定 | §9.3 第 3 项 |
 | T5 PR-C1..C6 | spec §8.3 |
-| T6 PR-B1 接线 | §9.3 第 4 项 |
+| T6 PR-B1 接线 | §9.3 第 4 项 + §8 登记项 |
 | T7 板块退化 WARN | §9.3 第 5 项 |
 | D5 / PR-A1 | §9.4 |
+
+**需同步修订 Stage 2 报告 §9.1:** 其解除条件当前绑定「confirmation 裁决」，
+而 confirmation 依赖 PR-D1（阶段 4）→ **循环依赖**。
+须改为绑定「判据 A + 判据 B'」（阶段 3 可达成）。

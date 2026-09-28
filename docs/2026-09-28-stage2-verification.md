@@ -305,11 +305,33 @@ registry 在 A1 接线落地前 3 天即冻结 —— **不可能有任何裁决
 > **接线从未在生产运行过**。143/143 裁决缺全部 A1 字段，`pass_variants` 返回 0。
 >
 > 因此「过门具备证据含义」这一阶段使命，当前只兑现了**施工图**，未兑现**实证**。
-> registry 复活并产出第一批 A1 完整的 confirmation 裁决之前，本条件不解除。
 >
 > ⚠️ **不得以「320 tests」或「63.1%」掩盖此事实**：
 > - 320 tests 证明的是**代码正确性**，非生产有效性
 > - 63.1% 是**质量门评分**通过率，**不是** `pass_variants` 晋升率（§7 影响第 3 条）
+
+#### 解除条件（v3 修订 — 修正循环依赖）
+
+> **v2 原写法**: 「registry 复活并产出第一批 A1 完整的 **confirmation** 裁决之前，本条件不解除」
+>
+> **该条件循环依赖，不可达成**: `pass_variants()` 显式排除 `run_mode == "exploration"`
+> （`registry_lib.py:456`），而 `build_summary` 默认 `run_mode="exploration"`
+> （`evaluator.py:318`），生产路径均不传 `run_mode` → 生产裁决**全部是 exploration**
+> （Stage 1 报告 §5 自述「这是设计意图」）。要产出 confirmation 裁决须有已锁定
+> `prereg_id`（spec §1.4），而 prereg 是 **PR-D1（阶段 4）** 的交付物。
+> 即：解除条件依赖阶段 4 机制 → 在阶段 3 内永不解除。
+
+**修订后的解除条件（两层，均可于阶段 3 达成）:**
+
+| 层 | 条件 | 达成任务 |
+|----|------|---------|
+| **接线层** | 判据 A: 新增裁决 A1 字段非空 + `a1_missing_fields()` 为空 + `run_mode` 合法 + `dm_status`/`pair_set_hash` 有值 | Stage 3 计划 T1a |
+| **统计层** | 判据 B': 至少 1 条裁决 `pairing_valid=True` 且 `p_value` 非 None | Stage 3 计划 T1a（依赖 PR-A1） |
+
+**「过门具备证据含义」（判据 C: `pass_variants() > 0`）属阶段 4 属性**，
+由 spec §1.4 的 confirmation/prereg 设计决定，**不作为 Stage 1/2 降级声明的解除条件**。
+
+详见 Stage 3 计划 `docs/superpowers/plans/2026-09-28-covariate-credibility-stage3.md` §T1a。
 
 ### 9.2 Stage 3 优先级重排（依审核裁定）
 
