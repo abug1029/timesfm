@@ -58,18 +58,10 @@ known_ahead_evidence: {
 
 为每个协变量添加 `horizon_known` 字段：
 
-> **⚠️ 审计 M5 修正 —— 分类确认权归宿主/研究侧**
+> **⚠️ 审计 M5 修正（已闭环，2026-09-28）**
 >
-> spec §7.5 明言：`horizon_known` 分类由**宿主/研究侧确认**，spec 不代填。
-> 原稿预填了全部分类且 `verified_by: "Claude Code"` —— 这是**自证**，不成立：
-> agent 既提出分类又给自己背书，等于绕过确认环节。
->
-> **正确流程**：
-> 1. agent 只提出**候选分类 + 证据草案**（下表）
-> 2. 宿主/研究侧逐条**确认或修改**
-> 3. 确认后才写入 `covariate_pool.json`，`verified_by` 填**确认人**（具名），
->    `verified_at` 填确认日期
-> 4. 未经确认的条目**不得**标 `known_ahead`（缺证据 → 降级 `unknowable` + WARN）
+> 原稿的 `verified_by: "Claude Code"` 自证已撤销。宿主已逐项裁定（见下）。
+> 实施时须按 spec §4.5 W5.5 的可执行校验规则落地。
 
 **候选分类（待宿主确认，非最终值）:**
 
@@ -86,8 +78,8 @@ known_ahead_evidence: {
       "publication_rule": "每年12月公布次年日历",
       "publication_lag": "0",
       "reconstructable": "可用 cutoff 时点当时的日历信息复原",
-      "verified_by": "<待宿主确认 — 填确认人具名>",
-      "verified_at": "<待宿主确认 — 填 ISO 日期>"
+      "verified_by": "host",
+      "verified_at": "2026-09-28"
     },
     ...
   },
@@ -105,6 +97,16 @@ known_ahead_evidence: {
   }
 }
 ```
+
+> **宿主裁定（2026-09-28，已追认，同步落入 spec §4.5 W5.5 v15）**：
+>
+> | 协变量 | `horizon_known` | 依据 |
+> |--------|----------------|------|
+> | `calendar_cyclical` | `known_ahead`（**有条件**） | 构造源限定为「公告日之前的既定日历 + 截至构造时点已公告的调整」。核验判据：**公告时间戳 ≤ cutoff**（与 D5 裁定相交） |
+> | `rsi_state` | `self_referential` | horizon 尾值取自 TimesFM 自身日线输出 |
+> | `hourly_slope` | `self_referential` | 同上 |
+> | `ccl` | `unknowable` | 库存类，cutoff 时点无未来可得来源 |
+> | `oi` | `unknowable` | 持仓类，cutoff 时点无未来可得来源 |
 
 > **日历特征的额外要求**（spec §4.5 W5.1）：固定日历（周末、法定节假日）可标
 > `known_ahead`；**交易所临时调整**（临时改交易时段/临时休市/夜盘调整）**不是**

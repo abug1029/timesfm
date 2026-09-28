@@ -10,6 +10,26 @@
 > - **v11（2026-09-24）** — 按第九轮专家审核做**收尾级修补**（架构不变，专家建议批准实施）。① **优先级链调整**：`set_mismatch_descriptive`（缺失不可接受 → **推断框架失效**）**前移**至 `d_bar_nonpositive`（均值非正 → **数据结果属性**）之前——失效原因优先级高于结果属性；矩阵中 `d_bar_nonpositive` 的 `pairing_valid` 由自指的"由缺失条件定"改为 **`True`**（到达此状态时缺失必已判定为可接受）。② **`random` 分支可达性脚注**：§7.8 裁定前 `missing_pattern` 实际可取值仅 `state_correlated` / `undeterminable`，`random` 需待判定方法固定后方可赋值（消除 W1.5 正文与 §7.8 保守默认之间的可达性缺口）。③ **测试 66 显式化缺失前提**（"按随机模式构造"），使断言 `set_mismatch_ok` 不随 §7.8 裁定结果失效。测试仍 70 条。
 > - **v12（2026-09-24）** — 按第十轮专家审核做**实施层降级**（语义不变，压缩记账厚度）。专家判定核心使命（让"过门"具备证据含义）已完整闭合、spec 主体可批准，但三处**触发概率与防护收益不对称**的机制应降级：① **缺失机制字段收敛**：核心强制字段收敛为 `n_avail_variant`/`n_avail_baseline`/`n_common` + 布尔 `missingness_admissible`；`missing_rate_by_bucket`/`missing_pattern`/`n_missing_*` 降为 **L2 诊断**（§7.8 裁定前非强制采集）；守卫语义不变（不可证明随机即 `False`）。② **哈希层次约束**：§8.6 新增——除 `research_target_hash` / `protocol_fingerprint` 外其余哈希为**实现细节**，不进人工审阅界面与报告正文；golden 精确值测试只保留 `research_target_hash` 一处。③ **`dm_status` 收敛**：`d_bar_nonpositive` 降为诊断字段 `d_bar_le_zero`（其语义本已由 p 值表达），状态枚举 8→**7**，优先级链缩短；"首个匹配者胜"断言保留。测试仍 70 条。
 > - **v13（2026-09-24）** — 按第十一轮专家审核做**跨章节命名同步**（唯一残余，语义不变；专家判定"补一处表格后即可终批"）。① **§1.2 字段分级表同步 v12**：A1 行补 `dm_common_count`（＝`n_common`）/`n_avail_variant`/`n_avail_baseline`/`missingness_admissible`/`d_series_n_eff`；明确 L2 诊断字段不进分级表。② **统一旧名**：W1.2 `meets_min_info` 的 `dm_pair_count` → `dm_common_count`（全文单一名）。③ **A1 vs §8.6 边界一句澄清**：A1 管 verdict 完整性（机器校验存在性），§8.6 管人机界面（哈希可否进报告正文），二者不矛盾。④ **§4.7 W6.5 重算清单**：增 `d_series_n_eff`；并澄清 `effective_min`（gate 阈值）与 `effective_min_n`（配对 ESS 下限）**同名不同物**，保留前者正确。测试仍 70 条。
+> - **v15（2026-09-28）** — 按宿主裁定**三处结构性修订**。
+>   ① **W6.5 字段改名**：为避开代码中已存在的 Signal-based `n_total`/`n_active`
+>      （`evaluator.py:191-211` active_mask_metrics，143 行 registry 中 5 行已带
+>      `n_active`，gated 硬门消费 `n_active` 做样本量判定），方向口径的分母字段改名为
+>      **`n_dir_total` / `n_dir_active`**；`n_zero_move`/`n_roll_excluded`/
+>      `n_zero_ratio`/`n_roll_ratio` 无冲突保持。重算清单与测试条目同步更名。
+>   ② **审计集规模**：§1.1 L2「2–3 品种」改为 **7 品种**；§4.2 W2.3 引用与
+>      测试条目同步更新。理由：审计集扩充到 7 品种（SS/SR/M/JD/LH/CJ/FU）
+>      是为覆盖黑色系+能化+农产品全板块；spec 字面规模不足时按宿主裁定扩容。
+>   ③ **§4.5 W5 追加 W5.5 裁定记录**（宿主 2026-09-28 裁定）：
+>      · `rsi_state`/`hourly_slope` 确认 `self_referential`；
+>      · `ccl`/`oi` 确认 `unknowable`；
+>      · `calendar_cyclical` **有条件确认 `known_ahead`** —— 构造源限定为
+>        「公告日之前的既定日历 + 截至构造时点已公告的调整」，核验判据为
+>        「**公告时间戳 ≤ cutoff**」（与 D5 裁定相交）；
+>      · `known_ahead_evidence.verified_by` 加**宿主/研究侧身份白名单**，
+>        agent 身份写入即 schema 校验失败（用 schema 而非纪律防自证）；
+>      · 六字段证据**注册时填、不可追溯补填**；历史缺证据 → 降级 `unknowable` + WARN；
+>      · 降级须**填充行为同步降级**（标签降级 → 填充路径降为「填末值」，WARN 才有牙齿）；
+>      · 升级**不追溯**（升级时点之后产生的裁决才可用该信息资格，历史裁决不追溯改变）。
 > - **v14（2026-09-24）** — 按第十二轮专家审核**用文本修补消除 PR-A6/PR-A1 的作用域张力**（不靠章节优先级裁定）。① **W1.3 作用域标记**：窗口对齐根因修复（`eval_start` 按绝对 cutoff 时间戳对齐、checkpoint 键改 `(symbol, cutoff_ts)`）**属 PR-A1、受 D5 阻断**，不在 PR-A6 交付内；PR-A1 前状态机预期以 `insufficient_common`/`no_common_cutoff` 暴露漂移，**属 fail-loud 设计行为、非缺陷**，运维侧禁止过滤该 WARN。② **§8.0 反向指针**：PR-A6 行注明"含 `aligned_slow_loop.py` 键改造的窗口对齐部分随 PR-A1 受 D5 阻断"。③ **测试前提提示**：测试 65/66 构造的是 cutoff 列表差异，天然不依赖 PR-A1；任何隐含"对齐已正确"前提（如共享 checkpoint 键语义）的用例，其跑通条件在 PR-A1 之后，须在 plan 中注明，避免"D5 前绿、D5 后黄"的假信号。测试仍 70 条。
 > - **v7（2026-09-24）** — 修三项实质问题。D5 与阶段 1 拆档（PR-A1 显式 `[D5 阻断]`）；L1 的 `pass` 与 L3 的 `confirmed` 分层；HAC/VIF 核验（名义 VIF ≠ Bartlett；三套公式分别验证）；`meets_min_info` 显式含 `n_eff >= 50`；family 边界结构化；`T_max` 时钟明确。
 > - **v6（2026-09-24）** — 清除规则残留冲突。删除 W1.2 残留旧判据；`n_eff` 定为 L3 确认前置、不阻断 L1/L2 与探索；family 边界可执行化；样本量口径二选一；确认检验损失定义唯一（方向命中差）；A 级拆 A1/A2（不吃 L1 交付）；主口径按运行模式；`run_mode`/`run_label` 分离；测试编号重排 1–59。
@@ -573,7 +593,7 @@ verdict 新增 `cov_effective`，对每个实际键记录：`std`、`n_unique`�
 | 场景 | 要求 |
 |---|---|
 | **常规变体** | 只需与**无协变量基线**配对（§1.1 L1 已强制），**不跑**三路消融 |
-| **固定小型审计集**（§1.1 L2：2–3 品种 × 少量代表性协变量） | 跑**完整三路**对照，确认通道结构影响 |
+| **固定审计集**（§1.1 L2：7 品种 × 少量代表性协变量；SS/SR/M/JD/LH/CJ/FU，覆盖黑色系+能化+农产品板块） | 跑**完整三路**对照，确认通道结构影响 |
 | **异常变体 / 进入确认候选的变体** | 补跑完整三路消融 |
 
 **三路定义**（仅审计集与候选变体）：
@@ -1010,6 +1030,51 @@ known_ahead_evidence: {
 
 **注**：W5 会改变协变量的输入矩阵，因此 **W5 落地后全部历史 verdict 不可与新 verdict 比较**。§4.1 W1.5 的窗口指纹必须扩展一位 `cov_fill_version`，跨版本比较一律禁止。
 
+
+
+#### W5.5 宿主裁定记录（v15 追加，2026-09-28）
+
+> 本节记录 W5 分类的具体裁定与可执行校验规则。W5.1–W5.4 是通用框架；本节是首个落地案例。
+
+**① 分类逐项确认**：
+
+| 协变量 | `horizon_known` | 依据 |
+|--------|----------------|------|
+| `calendar_cyclical` | `known_ahead`（**有条件**） | 构造源限定为「公告日之前的既定日历 + 截至构造时点已公告的调整」。核验判据：**公告时间戳 ≤ cutoff**（与 D5 裁定相交） |
+| `rsi_state` | `self_referential` | horizon 尾值取自 TimesFM 自身日线输出（PR-B5 消融实证） |
+| `hourly_slope` | `self_referential` | 同上 |
+| `ccl` | `unknowable` | 库存类，cutoff 时点无未来可得来源 |
+| `oi` | `unknowable` | 持仓类，cutoff 时点无未来可得来源 |
+
+**② `known_ahead_evidence` 六字段的填写与准入规则**：
+
+- **填写人**：宿主（研究侧身份）。agent 身份写入 `verified_by` 即 schema 校验失败。
+- **合法取值白名单**：`verified_by ∈ {host, designated_researcher}`（可扩但须显式登记）。
+- **填写时机**：协变量**首次注册**进协变量库时填。不可追溯补填。
+- **降级规则**：历史已注册条目缺证据 → 降级 `unknowable` + WARN。
+- **升级**：补齐宿主确认后允许升级回 `known_ahead`，但**升级时点之后产生的裁决才可用该信息资格**；历史裁决不追溯改变。
+
+**③ 降级的可执行语义（schema 与填充路径一致）**：
+
+- 分类值驱动填充策略（spec W5.2 表格第三列的映射）。
+- 标签降级时填充行为**必须同步降为「填末值」**（即 `persistence` 路径）。
+- **禁止**：分类标 `unknowable` 但仍走 `known_ahead` 的「填真实未来值」代码分支。
+- 校验入口：协变量加载时断言 `(horizon_known == "known_ahead") iff (走 known_ahead 填充路径)`。
+
+**④ calendar_cyclical 构造源的核验规则**：
+
+- 每个日历调整记录必须带**公告时间戳**（`announced_at`）。
+- 构造时断言：`announced_at <= cutoff` 的条目才参与 `calendar_cyclical` 构造。
+- 不满足则降级 `unknowable` + WARN。
+- `known_ahead_evidence.source` 须写明数据来源（如 "exchange X holiday calendar + exchange公告存档"）。
+
+**⑤ Schema 校验（PR-C6 实施项）**：
+
+- `known_ahead_evidence.verified_by ∈ {host, designated_researcher}`，否则注册失败。
+- `horizon_known ∈ {known_ahead, persistence, self_referential, unknowable}`。
+- `horizon_known == known_ahead` 时 `known_ahead_evidence` 六字段**全部必填**。
+- 校验失败 → 降级 `unknowable` + WARN（不进注册但可继续运行）。
+
 ### 4.6 阶段二 — 品种分级（全局 24 品种）
 
 按 W1–W4 落地后的新口径重跑，对全部 24 个目标品种出统一判定：
@@ -1152,11 +1217,11 @@ verdict 记录 `proposer_model`、`proposer_provider`、`run_id`、`peer_role`�
 
 | 字段 | 含义 |
 |---|---|
-| `n_total` | 名义点数（剔除前） |
-| `n_active` | 实际进入 `dir_acc` 分母的点数 |
+| `n_dir_total` | 名义点数（剔除前） |
+| `n_dir_active` | 实际进入 `dir_acc` 分母的点数 |
 | `n_zero_move` | 零变动剔除数 |
 | `n_roll_excluded` | 跨换月剔除数（若启用 roll 守卫） |
-| `n_zero_ratio` / `n_roll_ratio` | 上述两者占 `n_total` 的比例 |
+| `n_zero_ratio` / `n_roll_ratio` | 上述两者占 `n_dir_total` 的比例 |
 | `dir_acc` | **主口径**（预注册约定，见下） |
 | `dir_acc_full` | 不剔除任何点的原始口径 |
 | `dir_acc_ex_roll` | 仅剔除跨换月、不剔零变动 |
@@ -1197,7 +1262,7 @@ verdict 记录 `proposer_model`、`proposer_provider`、`run_id`、`peer_role`�
 重算是**离线后处理，不需要重跑模型**：checkpoint（`data/cache/aligned_checkpoints/<variant_id>.jsonl`）逐点存有 `delta_real` 与 `dir_ok`，基线文件（`baseline_points_*.jsonl`）同样。因此 143 条 verdict 的新口径 `dir_acc` 可在秒级重算完成。
 
 - 重算脚本必须**幂等**且**只写新字段**（`dir_acc_v2` / `n_zero_move`），**不覆盖**原 `dir_acc`——保留原值以便对照口径差异。
-- 重算覆盖：`dir_acc`、`dir_acc_full`、`dir_acc_ex_roll`、`n_active`、`n_zero_move`、`n_roll_excluded`、`n_zero_ratio`、`n_roll_ratio`、`effective_min`、`gate_pass`、`detection_threshold_vs_random`、`detection_threshold_vs_baseline`、`dir_acc_ci_lo/hi`、`delta_ci_lo/hi`、`d_series_n_eff`（**有基线时可算，否则 `null`**）。
+- 重算覆盖：`dir_acc`、`dir_acc_full`、`dir_acc_ex_roll`、`n_dir_active`、`n_zero_move`、`n_roll_excluded`、`n_zero_ratio`、`n_roll_ratio`、`effective_min`、`gate_pass`、`detection_threshold_vs_random`、`detection_threshold_vs_baseline`、`dir_acc_ci_lo/hi`、`delta_ci_lo/hi`、`d_series_n_eff`（**有基线时可算，否则 `null`**）。
   > **v13 命名澄清（勿混淆）**：`effective_min` 是 **gate 的品种自适应阈值**（v23：`max(0.50, min(0.52, baseline_dir_acc))`），**不是** W1.5 的 `effective_min_n`（配对差序列 ESS 下限）——二者**同名不同物**，重算清单保留 `effective_min` 正确，另**增** `d_series_n_eff` 以覆盖 v10 后的配对口径。
 
 **必须同时说清（不得混淆）**：重算**只解决口径，不解决窗口漂移**。历史 verdict 不可比的主因是 X7（checkpoint 按位置索引续跑 → 单条记录内部可能混两个窗口）与 E9（窗口随数据末端滑动）。**重算救不了这个**。因此：
@@ -1240,7 +1305,7 @@ verdict 落 `context_hash`：该 cutoff 的 context 窗口（480 bar 的收盘�
 5. `bfill` 移除后，含 NaN 的 context 不再用未来值填充（构造用例断言）。
 6. **换月量化**：跨换月 cutoff 的占比 `n_roll_ratio` 被落盘；`dir_acc` 与 `dir_acc_ex_roll` 两值 + 差值配对 CI 均被产出。
 7. **主口径预注册**：`preregistry` 未声明主口径即校验失败；断言主口径**不是**"仅剔跨换月"。
-8. **指标报告完整性**（A 级字段）：缺 `n_total`/`n_active`/`n_zero_move`/`n_roll_excluded`/`n_zero_ratio`/`n_roll_ratio`/`dir_acc`/`dir_acc_full`/`dir_acc_ex_roll` 任一项 → verdict **不完整**，不得进入成功判定。
+8. **指标报告完整性**（A 级字段）：缺 `n_dir_total`/`n_dir_active`/`n_zero_move`/`n_roll_excluded`/`n_zero_ratio`/`n_roll_ratio`/`dir_acc`/`dir_acc_full`/`dir_acc_ex_roll` 任一项 → verdict **不完整**，不得进入成功判定。
 9. **字段分级**：A 级缺失 → 不完整；B 级缺失 → verdict **有效**但标"不可复现" + WARN；**C 级缺失 → verdict 完全有效**（v3 会误判无效）。
 10. **`n_eff` 边界**：常数序列返回 **1** 且 `n_eff_status="degenerate_constant"`（不得 `0/0` 或 NaN）；`n<30` → `None`/`insufficient_n`；`sigma_LR^2<=0` 夹取为 `sigma0^2` + WARN；`n_eff <= n` 恒成立。
 11. `measured_n_eff` 对已知自相关序列返回与解析值一致的估计。
@@ -1356,7 +1421,7 @@ verdict 落 `context_hash`：该 cutoff 的 context 窗口（480 bar 的收盘�
 25. **`sector_map.py` 须补齐 24 目标品种并纳入 `l`/`pp`**，且扩充须过既有消费者（Regime/VolRisk/Domain-Shift）的影响检查——不得为绕开影响而另起一套板块集合（§4.7 W6.1b）。
 26. **跨板块不匹配即拒绝**；例外须**事前留档**（`approved_by`/`approved_at`）；`basis` 是**审计要求**，不是代码可验证门（§4.7 W6.1d）。
 27. **W4 只出诊断矩阵，归档权在人**；阈值（8 品种/2 板块/60%）是治理阈值而非科学定律，不作自动归档条件（§4.4）。
-28. **三路消融只在固定小型审计集与异常/确认候选变体上运行**（§4.2 W2.3）。
+28. **三路消融只在固定审计集与异常/确认候选变体上运行**（§4.2 W2.3）。
 29. **预训练污染只登记为残余风险**，不做诊断性检验（时间分半无法证伪泄漏却要消耗评估预算）（§4.7 W6.8）。
 30. **品种状态改派生**，取代手写 `symbol_status.json`（§4.6）。
 
@@ -1441,7 +1506,7 @@ verdict 落 `context_hash`：该 cutoff 的 context 窗口（480 bar 的收盘�
 | PR-B2 | 缺失/常数诊断 + 零填充 fail-loud + 审计覆盖全部协变量类型 | `features.py`, `evaluator.py` |
 | PR-B3 | `xreg_fallback` 贯通评估路径 | `evaluator.py`, `monthly_backtest.py`, `aligned_slow_loop.py` |
 | PR-B4 | 单一 `dir_acc` 口径（三值 + 分母报告）+ 历史离线重算 | `evaluation_metrics.py`, `evaluator.py`, 重算脚本 |
-| PR-B5 | 三路消融（**仅固定小型审计集**） | `hourly_model.py`, `monthly_backtest.py` |
+| PR-B5 | 三路消融（**仅固定审计集**） | `hourly_model.py`, `monthly_backtest.py` |
 | PR-B6 | 提案质量门（两类判据 + `sector_map.py` 补齐 + 影响检查 + 跨板块留档许可） | `sector_map.py`, `covariate_pool.json`, `praxist_supervisor.py` |
 
 **核验（阶段 2 出口）**：用少量代表性协变量做完整消融，确认输入**确实改变模型**，

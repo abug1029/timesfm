@@ -71,31 +71,29 @@ v1 把 full-sample 保留为主口径，与规范正相反。
 > **若照 spec 字面复用这些名字，会重造本 PR 要消灭的 X10「同名两义」——
 > 且发生在 gated 路径上。**
 >
-> **处置**：语义保留 spec，**落盘改用嵌套对象**避免与现有 Signal-based 计数器冲突：
+> **处置**：spec v15 已修订，**字段改名以避开冲突**（宿主 2026-09-28 裁定）：
 >
-> ```json
-> "dir_acc_caliber": {
->   "n_total":        <名义点数（剔除前）>,
->   "n_active":       <实际进入 dir_acc 分母的点数>,
->   "n_zero_move":    <零变动剔除数>,
->   "n_roll_excluded":<跨换月剔除数>,
->   "n_zero_ratio":   <n_zero_move / n_total>,
->   "n_roll_ratio":   <n_roll_excluded / n_total>
-> }
-> ```
+> | spec 旧名（冲突） | spec 新名（v15） | 现有代码含义 |
+> |------------------|----------------|-------------|
+> | `n_total`        | **`n_dir_total`** | Signal-based：`Signal != 0` 且 `dir_ok` 可评估的点数 |
+> | `n_active`       | **`n_dir_active`** | Signal-based：同上（`n_active` 在现有代码中指「激活」点数） |
+> | `n_zero_move`    | `n_zero_move`（保留） | 新字段，无冲突 |
+> | `n_roll_excluded` | `n_roll_excluded`（保留） | 新字段，无冲突 |
+> | `n_zero_ratio` / `n_roll_ratio` | 保留 | 引用 `n_dir_total`（新名） |
 >
-> **此偏离须宿主确认**（spec 字面 vs 代码冲突，属实现层裁定）。
+> `_dir_` 前缀标明是**方向口径**分母，与现有 Signal-based 计数器区分。
+> 此裁定与 T3 修订同步落入 spec v15（§4.7 W6.5）；原嵌套对象方案弃用。
 
-| spec 名称 | 落盘路径 | 含义 |
-|-----------|---------|------|
-| `n_total` | `dir_acc_caliber.n_total` | 名义点数（剔除前） |
-| `n_active` | `dir_acc_caliber.n_active` | 实际进入 `dir_acc` 分母的点数 |
-| `n_zero_move` | `dir_acc_caliber.n_zero_move` | 零变动剔除数 |
-| `n_roll_excluded` | `dir_acc_caliber.n_roll_excluded` | 跨换月剔除数（若启用 roll 守卫） |
-| `n_zero_ratio` / `n_roll_ratio` | `dir_acc_caliber.*` | 上述两者占 `n_total` 的比例 |
-| `dir_acc` | `dir_acc`（顶层，**已存在**） | **主口径**（预注册约定，见下） |
-| `dir_acc_full` | `dir_acc_full`（顶层，**已存在**） | 不剔除任何点的原始口径 |
-| `dir_acc_ex_roll` | `dir_acc_ex_roll`（顶层，**已存在**） | 仅剔除跨换月、不剔零变动 |
+| spec 名称（v15 后） | 落盘路径 | 含义 |
+|--------------------|---------|------|
+| `n_dir_total` | 顶层新字段 | 名义点数（剔除前） |
+| `n_dir_active` | 顶层新字段 | 实际进入 `dir_acc` 分母的点数（零变动剔除后） |
+| `n_zero_move` | 顶层新字段 | 零变动剔除数 |
+| `n_roll_excluded` | 顶层新字段 | 跨换月剔除数（若启用 roll 守卫） |
+| `n_zero_ratio` / `n_roll_ratio` | 顶层新字段 | 上述两者占 `n_dir_total` 的比例 |
+| `dir_acc` | 顶层（**已存在**） | **主口径**（预注册约定，见下） |
+| `dir_acc_full` | 顶层（**已存在**） | 不剔除任何点的原始口径 |
+| `dir_acc_ex_roll` | 顶层（**已存在**） | 仅剔除跨换月、不剔零变动 |
 
 > **`n_zero_move` 命名提示**：现有 `n_zero` 意为「`Signal == 0`，门未激活」，
 > 与本项「`|Δreal| < eps`」无关。两者并存时须在 schema 注释中显式区分
@@ -198,15 +196,12 @@ dir_acc_full = float(np.mean(dir_ok))
 
 # (3) dir_acc_ex_roll 保持「仅剔跨换月」（现有逻辑不变）
 
-# (4) 新增分母计数（嵌套对象，避免与 Signal-based n_active/n_total 冲突）
-dir_acc_caliber = {
-    "n_total": int(n),
-    "n_active": int(keep_active.sum()),
-    "n_zero_move": int(zero_move.sum()),
-    "n_roll_excluded": n_roll_excluded,
-    "n_zero_ratio": float(zero_move.sum() / n) if n else 0.0,
-    "n_roll_ratio": n_roll_ratio,
-}
+# (4) 新增方向口径分母计数（v15 字段名：n_dir_total/n_dir_active，避免与 Signal-based n_active/n_total 冲突）
+n_dir_total = int(n)
+n_dir_active = int(keep_active.sum())
+n_zero_move = int(zero_move.sum())
+# n_roll_excluded, n_roll_ratio 已在上方计算（现有逻辑不变）
+n_zero_ratio = float(n_zero_move / n_dir_total) if n_dir_total else 0.0
 ```
 
 **关于 `active_dir_acc` 改名（复核 HIGH-1 修正）**：
@@ -254,7 +249,10 @@ dir_acc_caliber = {
 
 | 字段 | 加入 `VERDICT_FIELDS_V2` | 加入 `..._NULLABLE` | 理由 |
 |------|:---:|:---:|------|
-| `dir_acc_caliber`（嵌套对象） | ✅ | ✅ | 非 gated 运行可能不产出全部分母 |
+| `n_dir_total` | ✅ | ✅ | 非 gated 运行可能不产出全部分母 |
+| `n_dir_active` | ✅ | ✅ | 同上 |
+| `n_zero_move` | ✅ | ✅ | 同上 |
+| `n_zero_ratio` | ✅ | ✅ | 同上
 | `dir_acc_v2` | ✅ | ✅ | 仅重算脚本写入 |
 | `gate_basis` | ✅ | ✅ | 已存在于 verdict（`evaluator.py:462`），补登记 |
 | `active_dir_acc` | ✅ | ✅ | **必须 nullable** —— 仅 gated 变体有 |
@@ -284,7 +282,7 @@ dir_acc_caliber = {
 
 **新增：**
 
-- `tests/test_dir_acc_caliber.py`：三值口径 + 分母全套正确性（构造含零变动的样本）
+- `tests/test_dir_acc_caliber_v15.py （建议改名为 test_dir_acc_denominators.py）`：三值口径 + 分母全套正确性（构造含零变动的样本）
   - 黄金用例：real deltas `[0, +5, 0]` → `dir_acc == 1.0`、`n_zero_move == 2`、
     `n_active == 1`、`dir_acc_full == 1/3`（spec W6.5① 的直接断言）
 - `tests/test_recompute_dir_acc.py`：幂等性 + **不覆盖**原 `dir_acc`
