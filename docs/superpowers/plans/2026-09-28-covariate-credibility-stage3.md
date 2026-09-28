@@ -191,7 +191,59 @@ T7: 板块部分退化 WARN
 
 **预计:** 2.5 天（含 70 min 基线重生 + 观察窗口）
 
+#### T1a-实测发现①: 验收判据缺「指纹一致性」层（v5 新增）
+
+**实测（2026-09-28 14:0x）:** 8 份 nocov 基线全部生成、均 588 行、
+首行均含 `protocol_fingerprint` —— **原判据「8 文件 ≥100 行」通过**。
+但**指纹一致性失败**：
+
+| 基线 | 指纹 | 说明 |
+|------|------|------|
+| cj / eg / jd / lh / m / sr / ss（7 份，09-28） | `bd851c9ca0730dc5…` | = 当前 `compute_protocol_fingerprint()` ✅ |
+| **rb**（09-27，PR-A1 落地前） | `6b8e312085c1a424…` | **protocol_v1，跨协议不可比** ❌ |
+
+**根因:** `ensure_baselines`（`praxist_supervisor.py:2199`）仅按
+**`n_lines < 100`** 判断是否需要重生。rb 已有 588 行 → **被跳过** →
+保留 PR-A1 之前的指纹。
+
+**后果:** rb 基线与其他 7 份**协议不兼容** → 涉及 rb 的 DM 配对落
+`dm_status=protocol_mismatch`，无法确认。而 rb 恰是唯一预先有基线的品种。
+
+**处置（已实施）:**
+1. rb 旧基线备份至 `baseline_points_rb_nocov.jsonl.stale_protocol_v1`（可回滚）
+2. 重生 rb 基线（孤儿化，~15 min）
+3. **修 `ensure_baselines`**: 增加协议指纹校验（不符即重生）
+
+**plan 验收判据修订（v5）:**
+
+```bash
+# 原判据（不足 —— 只验数量与行数）
+ls task_FM/config/baseline_points_*_nocov.jsonl | wc -l   # = 8
+
+# 补：指纹一致性（必须唯一）
+for f in task_FM/config/baseline_points_*_nocov.jsonl; do
+  head -1 "$f" | python3 -c \
+    "import json,sys; print(json.loads(sys.stdin.read())['protocol_fingerprint'])"
+done | sort -u | wc -l   # 必须 = 1
+```
+
+> **教训（写入计划以免重演）:** 「文件存在 + 行数达标」**不等于**「可用」。
+> 任何以「重生/重建」为处置的判据，都必须同时校验**语义版本标识**
+> （此处为协议指纹），否则版本升级会静默留下混用数据。
+
+#### T1a-实测发现②: `ensure_baselines` 不校验协议指纹（v5 新增 — 已修复）
+
+| 项 | 内容 |
+|----|------|
+| **缺陷** | `ensure_baselines` 只检查 `baseline_metrics` 条目与 `n_lines >= 100`，**不检查协议指纹** |
+| **触发** | PR-A1 将 `PROTOCOL_FINGERPRINT_VERSION` 升级为 `protocol_v2` 后，凡已满足行数的旧基线一律被跳过 |
+| **表现** | 基线「存在且行数达标」但跨协议不可比；`comparable()` 拒绝配对 → `dm_status=protocol_mismatch`，归因困难 |
+| **修复** | 新增 `_baseline_protocol_fingerprint()` + `_current_protocol_fingerprint()`；`ensure_baselines` 在行数检查后增加指纹比对，不符/缺失/不可读 → 重生并打 WARN；当前指纹不可得时**跳过校验并告警**（不得误删可用基线） |
+| **测试** | `tests/test_ensure_baselines_fingerprint.py`（13 条：ok/missing/unreadable/空文件/缺文件/混合场景/回归保护） |
+| **性质** | 这是本轮实测发现的**真实代码缺陷**，非文档问题 |
+
 ### T1b: 手算核对预测点（spec §8.1 出口核验）— v2 新增
+
 
 **目标:** 兑现 spec §8.1 出口核验「取 2–3 个品种、固定窗口与 cutoff，手算核对一小批
 预测点，证明对齐与基线配对正确」。

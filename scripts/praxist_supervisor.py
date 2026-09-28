@@ -2196,12 +2196,62 @@ def _maybe_harvest(st, goal, log):
     return True
 
 
+def _baseline_protocol_fingerprint(points_path):
+    """读取基线首行的 protocol_fingerprint。
+
+    Returns:
+        (status, fp):
+          ("ok", <str>)      指纹存在
+          ("missing", None)  首行无该键（pre-A1 遗留基线）
+          ("unreadable", None) 文件不可读 / 首行非法 JSON
+
+    2026-09-28 新增（T1a 实测发现的缺口）:
+      原先 ensure_baselines 只按 n_lines<100 判断，导致 PR-A1 引入
+      protocol_v2 后，rb 的旧基线（588 行、protocol_v1 指纹）被**静默保留**，
+      与其他 7 份新基线跨协议不可比。本函数用于补上该层校验。
+    """
+    try:
+        with open(points_path, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    return ("unreadable", None)
+                fp = rec.get("protocol_fingerprint")
+                return ("ok", fp) if fp else ("missing", None)
+    except OSError:
+        return ("unreadable", None)
+    return ("missing", None)
+
+
+def _current_protocol_fingerprint():
+    """当前协议指纹；不可得时返回 None（此时跳过指纹校验并告警）。"""
+    try:
+        from task_FM.evaluations.fm_eval.evaluator import (
+            compute_protocol_fingerprint,
+        )
+        return compute_protocol_fingerprint()
+    except Exception as e:            # noqa: BLE001
+        print(f"[WARN] ensure_baselines: 无法计算当前协议指纹 ({e})；跳过指纹校验",
+              file=sys.stderr)
+        return None
+
+
 def ensure_baselines(symbols, root):
     """Check baseline_metrics.json + baseline_points_{symbol}.jsonl validity.
 
     For each symbol, check that baseline_metrics has a valid entry AND
-    baseline_points_{symbol}.jsonl has >= 100 valid lines. If not, serially
-    call generate_baseline_points.generate.
+    baseline_points_{symbol}.jsonl has >= 100 valid lines **AND its
+    protocol_fingerprint matches the current one**. If any check fails,
+    serially call generate_baseline_points.generate.
+
+    2026-09-28 修正（T1a 实测发现）:
+      原实现只检查行数，不检查协议指纹。PR-A1 将指纹升级为 protocol_v2 后，
+      已有足够行数的旧基线（如 rb，588 行 / protocol_v1）被静默跳过，
+      导致其与新生基线跨协议不可比 —— 而 comparable() 会因此拒绝配对，
+      表现为 dm_status=protocol_mismatch，难以归因。现补上指纹校验。
     """
     try:
         import generate_baseline_points as gbp
@@ -2218,6 +2268,7 @@ def ensure_baselines(symbols, root):
         # Skip generation under pytest to avoid slow model calls in tests
         if "pytest" in sys.modules:
             return
+    cur_fp = _current_protocol_fingerprint()
     for sym in sorted(symbols):
         sym_lower = sym.lower()
         points_path = os.path.join(config_dir, gbp.baseline_filename(sym_lower, None))
@@ -2246,6 +2297,32 @@ def ensure_baselines(symbols, root):
                 gbp.generate(sym_lower, None, root)   # E7: 无协变量基线
             except Exception as e:
                 print(f"[ERROR] ensure_baselines: generate failed for {sym_lower} (n_lines={n_lines}): {e}", file=sys.stderr)
+            continue
+
+        # ── 协议指纹校验（2026-09-28 新增）──
+        # 行数够不等于可用：指纹不符则跨协议不可比，必须重生。
+        if cur_fp is None:
+            continue
+        status, base_fp = _baseline_protocol_fingerprint(points_path)
+        if status != "ok":
+            reason = ("首行缺 protocol_fingerprint（pre-A1 遗留基线）"
+                      if status == "missing" else "基线首行不可读")
+            print(f"[WARN] ensure_baselines: {sym_lower} {reason} → 重生",
+                  file=sys.stderr)
+        elif base_fp != cur_fp:
+            print(
+                f"[WARN] ensure_baselines: {sym_lower} 基线协议指纹不符 "
+                f"({base_fp[:16]}… != {cur_fp[:16]}…) → 重生（跨协议不可比）",
+                file=sys.stderr,
+            )
+        else:
+            continue          # 行数与指纹均合格
+        try:
+            gbp.generate(sym_lower, None, root)
+        except Exception as e:
+            print(f"[ERROR] ensure_baselines: generate failed for {sym_lower} "
+                  f"(fingerprint mismatch): {e}", file=sys.stderr)
+
 
 
 def wait_for_batch(batch_id, batch_records, registry_path, timeout=7200):
