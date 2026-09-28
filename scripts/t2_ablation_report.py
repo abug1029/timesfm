@@ -98,16 +98,38 @@ def main():
         d_struct = diff(da(f), da(s))
         d_path = diff(da(s), da(b))
 
-        # 「输入改变模型」= 四口径不全相同（任一差异超出浮点噪声 1e-9）
+        # 「输入改变模型」判定 —— 必须用连续指标交叉验证。
+        # 只看 dir_acc 会漏判：n 小时 dir_acc 是二值命中计数（k/n 粒度），
+        # 不同连续输出可能落在同一命中数上。实测证据：
+        #   jd_calendar_cyclical  baseline pred_end=3052.2571
+        #                           structural pred_end=3049.5288
+        # 两者 pred_end 不同但 dir_acc 均为 0.8330。
+        # 故判据 = dir_acc 有差异 **或** endpoint_mape 有差异（相对容差 1e-6）。
+        def mape(v):
+            return v.get("endpoint_mape") if v else None
+
         vals = [da(x) for x in (f, c, s, b)]
         present = [v for v in vals if v is not None]
-        changed = len(set(round(v, 9) for v in present)) > 1 if present else False
+        changed_diracc = len(set(round(v, 9) for v in present)) > 1 if present else False
+
+        mvals = [mape(x) for x in (f, c, s, b)]
+        mpresent = [v for v in mvals if v is not None]
+        changed_mape = len(set(round(v, 6) for v in mpresent)) > 1 if mpresent else False
+
+        changed = changed_diracc or changed_mape
 
         fmtc = fmt(d_content) if d_content is not None else "—"
         fmts = fmt(d_struct) if d_struct is not None else "—"
         fmtp = fmt(d_path) if d_path is not None else "—"
 
-        verdict = "✅ 是" if changed else "❌ 否（四值同一）"
+        if changed_diracc and changed_mape:
+            verdict = "✅ 是（dir_acc + mape 双证）"
+        elif changed_mape:
+            verdict = "✅ 是（仅 mape；dir_acc 二值粒度未分辨）"
+        elif changed_diracc:
+            verdict = "✅ 是（仅 dir_acc）"
+        else:
+            verdict = "❌ 四口径同一"
         (changed_groups if changed else unchanged_groups).append((sym, cov))
 
         lines.append(
@@ -136,8 +158,15 @@ def main():
                      "逐项收窄，而非全盘接受或全盘否定。\n")
     else:
         lines.append("### 对 Stage 2 降级声明的影响\n")
-        lines.append("四口径全同 —— 协变量通道虽被调用，但对预测输出无影响，"
-                     "**Stage 1/2 的降级声明成立**。\n")
+        lines.append("四口径全同 —— 协变量通道虽被调用，但在本样本上未观察到"
+                     "对输出方向的影响。**注意：n=6 时 dir_acc 是二值命中计数，"
+                     "分辨率不足以区分「路径相同」与「路径不同但方向一致」**，"
+                     "故此结果不足以支撑「降级声明成立」的定论。\n")
+
+    lines.append("## ⚠️ 脚本行为说明\n")
+    lines.append("本脚本是**破坏性写入** —— 重跑会覆盖本文件中人工补充的"
+                 "「方法论限制」小节。若需保留人工分析，请先备份，"
+                 "或将人工段落改为由脚本读取的独立片段。\n")
 
     text = "\n".join(lines)
     OUT.parent.mkdir(parents=True, exist_ok=True)
