@@ -856,13 +856,30 @@ def _effective_clue_lines(items):
 
 
 def load_covariate_pool():
-    """读协变量池 covariate_pool.json → cov dict。fail-open 返回 {}。"""
+    """读协变量池 covariate_pool.json → cov dict。fail-open 返回 {}。
+
+    读取时校验 horizon_known 契约（spec §4.5 W5.1）。校验失败**不**阻断
+    （与 fail-open 加载一致），但必须把问题打到 stderr —— 一个漏填证据的
+    known_ahead 会让下游填充逻辑白得「未来已知」这个最强假设，
+    静默通过等于把错误假设喂给消融实验。
+    """
     try:
         with open(POOL_PATH, encoding="utf-8") as f:
-            return (json.load(f) or {}).get("covariates", {})
+            pool = json.load(f) or {}
     except Exception as e:
         print("[WARN] covariate pool load failed (fail-open): %s" % e, file=sys.stderr)
         return {}
+
+    try:
+        from cascade.cov_family import validate_horizon_known
+        problems = validate_horizon_known(pool)
+        if problems:
+            print("[WARN] covariate pool horizon_known 契约违规 %d 处：%s"
+                  % (len(problems), "; ".join(problems[:5])), file=sys.stderr)
+    except Exception as e:  # 校验器本身出错不得阻断加载
+        print("[WARN] horizon_known 校验未能执行: %s" % e, file=sys.stderr)
+
+    return pool.get("covariates", {})
 
 
 def load_symbol_status(path=None):

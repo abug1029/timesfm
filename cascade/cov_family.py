@@ -23,6 +23,56 @@ ALLOWED_FAMILIES = {
 _WB_BEFORE = r"(?<![a-zA-Z0-9])"
 _WB_AFTER = r"(?![a-zA-Z0-9])"
 
+# PR-C6 (spec §4.5 W5.1): horizon 可知性受控词表。
+HORIZON_KNOWN_VALUES = frozenset({
+    "known_ahead", "persistence", "self_referential", "unknowable",
+})
+
+# known_ahead 必须带的证据字段。取自 `calendar_cyclical` 的**实际**数据契约
+# （不是另立一套）：spec W5.1 要求「交易所临时调整不算 known_ahead，除非
+# 当时已公告」，对应到字段就是 publication_rule / publication_lag 必须存在
+# —— 它们是「何时可知」的判据，缺了就无法审计该假设。
+KNOWN_AHEAD_EVIDENCE_FIELDS = (
+    "source", "publication_rule", "publication_lag",
+    "reconstructable", "verified_by", "verified_at",
+)
+
+
+def validate_horizon_known(pool: dict) -> list:
+    """校验每个协变量的 horizon_known 契约，返回问题清单（空 = 通过）。
+
+    spec §4.5 W5.1 要求 known_ahead 必须附证据。此前该约束只活在
+    测试与生成脚本里，生产加载路径不校验 —— 新增一个漏填证据的
+    known_ahead 会静默通过，把「未来已知」这个最强假设白送给下游填充逻辑。
+
+    fail-loud 而非 fail-open：返回问题清单由调用方决定处置。
+    """
+    problems = []
+    covs = pool.get("covariates")
+    if not isinstance(covs, dict):
+        return ["covariates 不是 dict，无法校验 horizon_known"]
+
+    for name, v in covs.items():
+        if not isinstance(v, dict):
+            problems.append("%s: 条目不是 dict" % name)
+            continue
+        hk = v.get("horizon_known")
+        if hk not in HORIZON_KNOWN_VALUES:
+            problems.append(
+                "%s: horizon_known=%r 不在受控词表 %s"
+                % (name, hk, sorted(HORIZON_KNOWN_VALUES)))
+            continue
+        if hk == "known_ahead":
+            ev = v.get("known_ahead_evidence")
+            if not isinstance(ev, dict):
+                problems.append("%s: known_ahead 缺 known_ahead_evidence" % name)
+                continue
+            missing = [k for k in KNOWN_AHEAD_EVIDENCE_FIELDS if not ev.get(k)]
+            if missing:
+                problems.append(
+                    "%s: known_ahead_evidence 缺字段 %s" % (name, missing))
+    return problems
+
 
 def _wb(keyword: str) -> str:
     """Wrap keyword in boundary assertions (underscore-safe)."""

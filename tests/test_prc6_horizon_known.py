@@ -132,3 +132,57 @@ def test_no_persistence_in_current_pool():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# ── 运行时校验（审核 MEDIUM-6：证据此前只活在测试里）────────────────
+
+def test_validate_horizon_known_accepts_real_pool():
+    """生产池必须通过校验 —— 否则校验器就是在报假警。"""
+    import json
+    from pathlib import Path
+    from cascade.cov_family import validate_horizon_known
+
+    pool = json.loads(
+        Path("task_FM/config/covariate_pool.json").read_text(encoding="utf-8"))
+    assert validate_horizon_known(pool) == []
+
+
+def test_validate_horizon_known_rejects_missing_evidence():
+    """known_ahead 缺证据必须被拒（spec W5.1）。"""
+    from cascade.cov_family import validate_horizon_known
+
+    pool = {"covariates": {"c": {"horizon_known": "known_ahead"}}}
+    probs = validate_horizon_known(pool)
+    assert len(probs) == 1 and "known_ahead_evidence" in probs[0]
+
+
+def test_validate_horizon_known_rejects_partial_evidence():
+    """证据不完整也要拒 —— 缺 publication_rule 就无法审计「何时可知」。"""
+    from cascade.cov_family import validate_horizon_known
+
+    pool = {"covariates": {"c": {
+        "horizon_known": "known_ahead",
+        "known_ahead_evidence": {"source": "x", "verified_by": "host"},
+    }}}
+    probs = validate_horizon_known(pool)
+    assert len(probs) == 1 and "缺字段" in probs[0]
+
+
+def test_validate_horizon_known_rejects_unknown_value():
+    from cascade.cov_family import validate_horizon_known
+
+    pool = {"covariates": {"c": {"horizon_known": "probably_fine"}}}
+    probs = validate_horizon_known(pool)
+    assert len(probs) == 1 and "受控词表" in probs[0]
+
+
+def test_validate_horizon_known_allows_non_known_ahead_without_evidence():
+    """只有 known_ahead 需要证据，其余三类不强制。"""
+    from cascade.cov_family import validate_horizon_known
+
+    pool = {"covariates": {
+        "a": {"horizon_known": "persistence"},
+        "b": {"horizon_known": "self_referential"},
+        "c": {"horizon_known": "unknowable"},
+    }}
+    assert validate_horizon_known(pool) == []
