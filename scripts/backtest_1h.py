@@ -132,8 +132,10 @@ def run_backtest_symbol(symbol: str, store: DataStore,
     for i, cutoff_idx in enumerate(eval_indices):
         cutoff_dt_raw = all_1h["dt"].iloc[cutoff_idx]
         bar_ts = pd.to_datetime(cutoff_dt_raw)
-        cutoff_date = str(bar_ts)[:10]
-        cutoff = bar_ts.strftime("%Y-%m-%d %H:%M:%S")
+        # D5 修正: cutoff 应为 bar 收盘时间（dt + 1h），而非开盘时间
+        close_ts = bar_ts + pd.Timedelta(hours=1)
+        cutoff_date = str(close_ts)[:10]
+        cutoff = close_ts.strftime("%Y-%m-%d %H:%M:%S")
         base_price = float(all_1h["close_price"].iloc[cutoff_idx])
 
         # 真实值: 锁定同一合约

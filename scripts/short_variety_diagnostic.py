@@ -259,8 +259,10 @@ def run_diagnostic_backtest(symbol, daily_model, hourly_model,
             continue
 
         bar_ts = pd.Timestamp(all_1h["dt"].iloc[idx])
-        cutoff = bar_ts.strftime("%Y-%m-%d %H:%M:%S")
-        dt = bar_ts.strftime("%Y-%m-%d")
+        # D5 修正: cutoff 应为 bar 收盘时间（dt + 1h），而非开盘时间
+        close_ts = bar_ts + pd.Timedelta(hours=1)
+        cutoff = close_ts.strftime("%Y-%m-%d %H:%M:%S")
+        dt = close_ts.strftime("%Y-%m-%d")
         base = float(all_1h["close_price"].iloc[idx])
         real = all_1h["close_price"].iloc[idx+1:idx+1+HORIZON].values.astype(np.float64)
 

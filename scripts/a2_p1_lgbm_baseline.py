@@ -297,7 +297,9 @@ def run_symbol(symbol: str, max_points: int | None, dense_step: int,
         if scheme is None:
             scheme_preds.append(float('nan'))  # 未配置，不伪装为 0
             continue
-        cutoff = pd.Timestamp(df_1h["dt"].iloc[b]).strftime("%Y-%m-%d %H:%M:%S")
+        # D5 修正: cutoff 应为 bar 收盘时间（dt + 1h），而非开盘时间
+        bar_ts = pd.Timestamp(df_1h["dt"].iloc[b])
+        cutoff = (bar_ts + pd.Timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
         try:
             with BacktestDataStore(sym_lower, cutoff) as bts:
                 dr = daily.predict(sym_lower, bts)
