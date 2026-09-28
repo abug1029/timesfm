@@ -247,6 +247,17 @@ data_store.py）。正确边界应为 `dt < cutoff_ts`。
 协议指纹、nocov 基线全部需要重跑（与 D5 的影响相同）。这是宿主决策，
 不在本轮自行处理。**已在此登记，未静默。**
 
+> **2026-09-28 更新：已修复**（commit `968945f`）。
+> 新增 `BacktestDataStore._h1_upper_bound()` = `cutoff_ts − 1h`，
+> `get_main_contract_1h` 用它作上界；`monthly_backtest` 的 context_hash
+> 切片同步收紧。实测 12/12 与模型窗口逐值一致且无泄漏。
+> 测试零新增失败（1484 passed / 13 failed，13 项均为既有）。
+> 契约测试 `test_midday_excludes_later_same_day_bars` 已更新并注明变更理由。
+>
+> ⚠️ **待办：全部 baseline 需重跑**。模型输入已改变，nocov 基线、
+> 配对交集、DM 序列、协议指纹均会变化 —— 影响面同 D5。
+> 在重跑完成前，**现有裁决与新裁决不可比**（protocol_fingerprint 应随之变化）。
+
 **⑥ 其他已核实但未处置**（`scripts/add_horizon_known.py`）
 
 - 降级时不删除残留 `known_ahead_evidence` → 陈旧证据零告警存活
