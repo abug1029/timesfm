@@ -579,6 +579,15 @@ def map_summary(s):
         "dir_acc_ex_roll": _f(s.get("dir_acc_ex_roll", s.get("dir_acc")), 0.5),
         "n_roll_excluded": _i(s.get("n_roll_excluded"), 0),
         "n_roll_ratio": _f(s.get("n_roll_ratio"), 0.0),
+        # PR-B4 (spec W6.5①) 主口径分母构成。**显式传 None 作默认值** ——
+        # `_i` 的默认是 0，而旧裁决根本没有这些键，用 0 冒充「剔了 0 个点」
+        # 是把「未知」伪装成「已知且为零」。与本项目 M1 字段同一原则。
+        # 注：此映射是链条的一环，漏了它则 build_summary 侧取到恒 None
+        # （审计 N1 的断链点就在此处）。
+        "n_dir_total": _i(s.get("n_dir_total"), None),
+        "n_dir_active": _i(s.get("n_dir_active"), None),
+        "n_zero_move": _i(s.get("n_zero_move"), None),
+        "n_zero_ratio": _f(s.get("n_zero_ratio")),
         "endpoint_mape": _f(s.get("endpoint_mape"), 0.0),
         "endpoint_bias_pct": _f(s.get("endpoint_bias_pct"), 0.0),
         "path_corr": _f(s.get("path_corr")),

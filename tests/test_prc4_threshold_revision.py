@@ -242,3 +242,49 @@ def test_context_hash_none_for_legacy_points():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# ── evaluator 级分母字段链路（审计 N1 指出的测试盲区）────────────────
+# test_prb4 只 import calc_prediction_quality（指标层），
+# 覆盖不到 map_summary → build_summary 这一段的断链。
+
+def _summary_with_denominators(**over):
+    s = {
+        "n": 100, "n_eff": 80, "dir_acc": 0.6, "dir_acc_full": 0.6,
+        "dir_acc_ex_roll": 0.6, "n_roll_excluded": 0, "n_roll_ratio": 0.0,
+        "endpoint_mape": 1.0, "endpoint_bias_pct": 0.5, "path_corr": 0.8,
+        "weighted_dir_acc": 0.6, "mae": 0.5, "mape": 1.0, "decay": 1.0,
+        "covariates_used": True,
+    }
+    s.update(over)
+    return s
+
+
+def test_denominator_fields_reach_verdict_metrics():
+    """spec W6.5① 的分母字段必须穿透到 verdict.metrics。
+
+    审计 N1：指标层算出了 n_dir_total 等，但 map_summary 未映射、
+    build_summary 侧取到恒 None —— 分母审计链断裂。
+    """
+    from task_FM.evaluations.fm_eval.evaluator import build_summary
+
+    s = _summary_with_denominators(
+        n_dir_total=100, n_dir_active=88, n_zero_move=12, n_zero_ratio=0.12)
+    m = build_summary(s, {"symbol": "ss", "cov_override": "rsi_state",
+                          "stage": "aligned"})["metrics"]
+    assert m["n_dir_total"] == 100
+    assert m["n_dir_active"] == 88
+    assert m["n_zero_move"] == 12
+    assert m["n_zero_ratio"] == pytest.approx(0.12)
+
+
+def test_denominator_fields_none_not_zero_for_legacy():
+    """旧裁决无分母字段时必须报 None(未知)，不得报 0(剔了 0 个点)。"""
+    from task_FM.evaluations.fm_eval.evaluator import build_summary
+
+    m = build_summary(_summary_with_denominators(),
+                      {"symbol": "ss", "cov_override": "rsi_state",
+                       "stage": "aligned"})["metrics"]
+    for k in ("n_dir_total", "n_dir_active", "n_zero_move", "n_zero_ratio"):
+        assert m[k] is None, "%s 应为 None，实际 %r" % (k, m[k])
+
