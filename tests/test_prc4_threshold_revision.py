@@ -288,3 +288,26 @@ def test_denominator_fields_none_not_zero_for_legacy():
     for k in ("n_dir_total", "n_dir_active", "n_zero_move", "n_zero_ratio"):
         assert m[k] is None, "%s 应为 None，实际 %r" % (k, m[k])
 
+
+# ──────────────────────────────────────────────────────────────
+# N3: get_klines_1h docstring 必须含 adjustment_policy 标注
+# ──────────────────────────────────────────────────────────────
+
+def test_get_klines_1h_docstring_mentions_adjustment_policy():
+    """data_store.get_klines_1h 的 docstring 必须声明 adjustment_policy.
+
+    Stage 1 报告 §8 (LOW): 该函数是评估路径的数据源之一, 但其 docstring
+    一直只写 "读取 1H K线数据 (含指标)", 未声明复权策略与是否用于评估路径.
+    plan v5 验收: docstring 含 adjustment_policy 说明 + 评估路径声明.
+    """
+    from data.data_store import DataStore
+
+    doc = DataStore.get_klines_1h.__doc__ or ""
+    assert "adjustment_policy" in doc, (
+        "get_klines_1h docstring 缺 adjustment_policy 标注. 当前: %r" % doc)
+    # 必须声明该函数不执行复权 (与 get_main_continuous 同口径).
+    assert ("不复权" in doc or "不执行复权" in doc or
+            "never adjust" in doc.lower() or "no adjustment" in doc.lower() or
+            "skipped" in doc.lower()), (
+        "get_klines_1h docstring 未声明是否执行复权. 当前: %r" % doc)
+

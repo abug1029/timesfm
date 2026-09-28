@@ -683,12 +683,42 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
              ""]
     items = list(snapshot.values()) if isinstance(snapshot, dict) else []
 
+    # ── N3: _primary_fp 排名守卫 (spec W1.5「排序与比较的守卫」) ──
+    # 不同 protocol_fingerprint 的 dir_acc 不可直接比较 (协议不同 = 评估口径不同).
+    # 主协议组选择: 优先含 confirmation 运行的组, 否则成员最多的组.
+    # 其余协议组的 verdict 不进主排名, 单独标注.
+    _proto_groups = {}
+    for _v in items:
+        _fp = _v.get("protocol_fingerprint")
+        _proto_groups.setdefault(_fp, []).append(_v)
+    _primary_fp = next(
+        (fp for fp, g in _proto_groups.items()
+         if any(str(_v.get("run_mode")) == "confirmation" for _v in g)),
+        None)
+    if _primary_fp is None and _proto_groups:
+        _primary_fp = max(_proto_groups, key=lambda f: len(_proto_groups[f]))
+    _items = sorted(_proto_groups.get(_primary_fp, items),
+                    key=lambda v: str(v.get("symbol") or "").lower())
+    _other_proto_count = len(_proto_groups) - (1 if _primary_fp is not None else 0)
+    # 按品种预计算主协议组 best dir_acc (排名字段只取主组).
+    _best_by_sym = {}
+    for v in _items:
+        _sym = str(v.get("symbol") or "").lower()
+        _da = v.get("dir_acc")
+        if isinstance(_da, (int, float)) and not isinstance(_da, bool):
+            _da = float(_da)
+            if _da == _da and -1e308 < _da < 1e308:
+                if _sym not in _best_by_sym or _da > _best_by_sym[_sym]:
+                    _best_by_sym[_sym] = _da
+
     # ## Symbol status (full GOAL_SYMBOLS_SET, never truncated)
     lines.append("## Symbol status")
+    lines.append(
+        "按协议指纹分组排名；另有 %d 个协议组的 verdict 未进主排名。"
+        % _other_proto_count)
     for sym in sorted(GOAL_SYMBOLS_SET):
         n_ok = 0
         n_pass = 0
-        best = None
         for v in items:
             if str(v.get("symbol") or "").lower() != sym:
                 continue
@@ -696,12 +726,7 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
                 n_ok += 1
             if v.get("gate_pass"):
                 n_pass += 1
-            da = v.get("dir_acc")
-            if isinstance(da, (int, float)) and not isinstance(da, bool):
-                da = float(da)
-                if da == da and -1e308 < da < 1e308:
-                    if best is None or da > best:
-                        best = da
+        best = _best_by_sym.get(sym)
         rec = status_map.get(sym) or {}
         st = str(rec.get("status") or "ACTIVE").upper()
         if st == "DEAD":

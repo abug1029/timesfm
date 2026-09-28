@@ -1316,6 +1316,40 @@ def test_materialize_known_verdicts_effective_clues(tmp_path):
 
 
 # ──────────────────────────────────────────────────────────────
+# N3: _primary_fp 排名守卫 (spec W1.5「排序与比较的守卫」)
+# ──────────────────────────────────────────────────────────────
+
+def test_materialize_known_verdicts_primary_fp_ranking_guard(tmp_path):
+    """不同 protocol_fingerprint 的 dir_acc 不可直接比较 (spec W1.5).
+
+    构造两条同品种裁决:
+      - v1: fp=AAA, run_mode=confirmation, dir_acc=0.60 (主协议组)
+      - v2: fp=BBB, run_mode=exploration, dir_acc=0.90 (次协议组)
+    无守卫时 best=0.900 (跨协议误比); 有守卫时 best=0.600 (只看主组).
+    """
+    dest = tmp_path / "known_verdicts.inc.md"
+    snap = {
+        "m_fpA": _v("m_fpA", symbol="m", protocol_fingerprint="fp_AAA",
+                    run_mode="confirmation", gate_pass=True, dir_acc=0.60),
+        "m_fpB": _v("m_fpB", symbol="m", protocol_fingerprint="fp_BBB",
+                    run_mode="exploration", gate_pass=True, dir_acc=0.90),
+    }
+    sup.materialize_known_verdicts(
+        snap, str(dest),
+        proposed_ids=set(), status_map={}, queue_ids=set())
+    text = dest.read_text(encoding="utf-8")
+    # 找到 symbol status 段中 m 品种的行, 其 best= 必须只取主协议组 (0.600).
+    m_line = next(ln for ln in text.splitlines()
+                  if ln.startswith("- m:") or ln.startswith("- m: "))
+    # best=0.600 来自主协议组 fp_AAA; 若跨协议误比则会取到 0.900.
+    assert "best=0.600" in m_line, (
+        "_primary_fp 守卫缺失: best 应只取主协议组 (fp_AAA, 0.600), "
+        "但实际行为跨协议比较了 fp_BBB (0.900). 行: %s" % m_line)
+    # 次协议组数量标注可见.
+    assert "另有 1 个协议组的 verdict 未进主排名" in text
+
+
+# ──────────────────────────────────────────────────────────────
 # M3: _load_dotenv / _check_required_env coverage
 # ──────────────────────────────────────────────────────────────
 

@@ -514,7 +514,13 @@ class DataStore:
     def get_klines_1h(self, contract_code: str = None,
                       start_date=None, end_date=None,
                       limit=None) -> pd.DataFrame:
-        """读取 1H K线数据 (含指标)"""
+        """读取 1H K线数据 (含指标).
+
+        adjustment_policy: 本函数只做 SELECT *, 不执行复权 (与 get_main_continuous
+        同口径 — schema 中 raw_close 恒存在, resolve_adjustment_policy 返回
+        "skipped_raw_close_column_present", 复权分支被跳过).
+        评估路径: 评估/回测读 1H 数据也经本函数, 因此评估用的价格未经复权.
+        """
         sql = "SELECT * FROM kline_1h WHERE 1=1"
         params = []
         if contract_code:
