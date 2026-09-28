@@ -92,42 +92,55 @@ def test_schema_version_bumped():
     assert pool.get("updated") == "2026-09-28"
 
 
-def test_horizon_known_distribution():
-    """测试 horizon_known 分布合理"""
+def test_horizon_known_covers_every_covariate():
+    """每个协变量都必须有合法的 horizon_known —— 不断言具体分布。
+
+    原测试断言 `self_referential >= 10` / `unknowable >= 5` /
+    `known_ahead >= 1`，把**当前（争议中）的标签分布**冻住了。
+    一旦按 spec 定义修正标签，这些下界会假失败并反过来阻止修正。
+    覆盖性才是应当长期成立的条件。
+    """
+    from cascade.cov_family import HORIZON_KNOWN_VALUES
+
     pool_path = Path("task_FM/config/covariate_pool.json")
     with open(pool_path, encoding="utf-8") as f:
         pool = json.load(f)
 
     covariates = pool.get("covariates", {})
+    assert covariates, "协变量池为空"
 
-    counts = {}
-    for cov_config in covariates.values():
-        hk = cov_config.get("horizon_known", "unknown")
-        counts[hk] = counts.get(hk, 0) + 1
-
-    # 应有至少 1 个 known_ahead（calendar_cyclical）
-    assert counts.get("known_ahead", 0) >= 1
-    # 应有多个 self_referential（价格衍生类）
-    assert counts.get("self_referential", 0) >= 10
-    # 应有多个 unknowable（库存/基差类）
-    assert counts.get("unknowable", 0) >= 5
-
-
-def test_no_persistence_in_current_pool():
-    """测试当前协变量池无 persistence 分类（设计选择）"""
-    pool_path = Path("task_FM/config/covariate_pool.json")
-    with open(pool_path, encoding="utf-8") as f:
-        pool = json.load(f)
-
-    covariates = pool.get("covariates", {})
-
-    # 当前所有协变量要么是 known_ahead / self_referential / unknowable
-    # persistence 是预留分类，当前未使用
     for cov_name, cov_config in covariates.items():
         hk = cov_config.get("horizon_known")
-        assert hk != "persistence", (
-            f"{cov_name} 不应标为 persistence（当前设计选择）"
-        )
+        assert hk in HORIZON_KNOWN_VALUES, (
+            f"{cov_name} 的 horizon_known={hk!r} 不在受控词表内")
+
+
+def test_persistence_is_a_legal_label_not_banned():
+    """`persistence` 是 spec 受控词表的合法取值，**不得**被测试禁止。
+
+    原测试 `test_no_persistence_in_current_pool` 断言池内任何协变量都
+    不得标 `persistence`。但 spec §4.5 W5.1 的四选一词表把 `persistence`
+    定义为「未来不可知，但可用末值延续近似」，且 W5.2 明确把它当**填充
+    策略**（「其余三类：填末值」）。
+
+    禁止该标签会把语义上恰好是 persistence 的协变量挤进
+    `self_referential` 或 `unknowable` —— 那不是判断，是测试把唯一
+    正确的标签堵死了。故此处只断言「取值在受控词表内」，
+    不再对分布做断言。
+
+    注：池内当前标签与 spec W5.5① 宿主裁定的关系见 STATE.md
+    「PR-C6 未完成项与待裁定冲突」。
+    """
+    from cascade.cov_family import HORIZON_KNOWN_VALUES
+
+    pool_path = Path("task_FM/config/covariate_pool.json")
+    with open(pool_path, encoding="utf-8") as f:
+        pool = json.load(f)
+
+    for cov_name, cov_config in pool.get("covariates", {}).items():
+        hk = cov_config.get("horizon_known")
+        assert hk in HORIZON_KNOWN_VALUES, (
+            f"{cov_name} 的 horizon_known={hk!r} 不在受控词表内")
 
 
 if __name__ == "__main__":

@@ -133,6 +133,94 @@ variant_id 中带模式后缀，但判定逻辑需双指标交叉验证。
 3. **"先读 spec 再信审核"**：审核未报的 2 项（状态名、`data_revised`）
    只有对照 spec 边界表逐字核对才发现。
 
+### PR-C6 未完成项与待裁定冲突（2026-09-28，**阻塞 W5.2**）
+
+第四路审核（`horizon_known` 领域审核）报出 PR-C6 **只交付了 1/3**。
+已逐条独立复核（含可执行探针），结论如下。
+
+**① PR-C6 范围缺口（确认）**
+
+plan 的 P2 表把 PR-C6 文件范围列为
+`covariate_pool.json, features.py, hourly_model.py`。实测：
+
+| 文件 | `horizon_known` 引用数 |
+|------|---------------------|
+| `cascade/features.py` | **0** |
+| `cascade/hourly_model.py` | **0** |
+
+即 spec W5.2（按标签分支填充）、W5.3（前视不变量，**spec 自述"安全关键项"**）、
+W5.5③（加载时断言 `known_ahead` iff 走 known_ahead 填充路径）**全部未实现**。
+`horizon_fill` / `horizon_std` / `horizon_exogenous` 三个字段也不存在。
+
+**当前定性**：`horizon_known` 是「只校验、不生效」的字段 —— 它不改变任何
+数组，故**当前不污染任何实验**，但也**不提供它承诺的任何保护**。
+危险在于它是定时炸弹：W5.2 一旦落地，标签会立刻决定填充行为，
+且 spec L1031 明确「W5 落地后历史 verdict 不可与新 verdict 比较」。
+**正确顺序：先修标签 → 再解禁令 → 最后才接线 W5.2。**
+
+**② 宿主裁定 vs 代码的冲突（**需宿主二选一**）**
+
+spec W5.5① 是**宿主裁定**，点名 `rsi_state` / `hourly_slope` 为
+`self_referential`，理由写作「horizon 尾值取自 TimesFM 自身日线输出」。
+
+**该理由被代码证伪**（可执行探针，非阅读推断）：
+
+| 协变量 | 代码位置 | horizon 实际构造 | 探针结果 |
+|--------|---------|-----------------|---------|
+| `rsi_state` | `features.py:1047-1048` | `_generate_rsi_state_horizon(last_ctx_state)` — context 末态衰减 | 把 `predicted_daily_closes` 扰动 ×1.5+30 **→ horizon 逐值不变**；末态=2.0 时 horizon=`[2,2,1,1,0,0,…]` |
+| `hourly_slope` | `features.py:1227` | `np.full(horizon, last_valid)`，`last_valid` 取自 **1H 收盘价** | 注释自述「短期动量延续假设」 |
+
+`_build_rsi_state_from_daily` 的 docstring 自述：
+> 「predicted_daily 参与全日 RSI 计算，**但不映射到 context**；horizon 从
+> context 末端连续衰减，避免用远期预测状态在边界跳变。」
+
+即代码在某次修改后已不再是「取自模型输出」，而 spec 的举例未同步。
+按 W5.1 的**定义**（`self_referential` = 未来值来自模型自身输出），
+二者应归 `persistence`（末值延续近似）。
+
+**但不得由 agent 单方面改判**：这是宿主裁定，且
+**影响面有限** —— `self_referential` 与 `persistence` 在 W5.2 下
+**填充行为完全相同**（都是「填末值」），「是否算外生信息」也都是 ❌。
+差别仅在标签的语义准确性。
+
+**③ `calendar_cyclical` 的 `known_ahead` 资格（**需宿主裁定**）**
+
+spec 自身矛盾，两个条款指向相反结论：
+
+| 条款 | 内容 |
+|------|------|
+| W5.5① | `calendar_cyclical` = `known_ahead`（**有条件**）：核验判据「公告时间戳 ≤ cutoff」 |
+| W5.1 | 「交易所**临时调整**（临时更改交易时段、临时休市、夜盘调整）→ **不是** known_ahead，除非当时已公告；默认按 `unknowable`」 |
+| W5.5② | 「**不可追溯补填**」「历史已注册条目缺证据 → 降级 `unknowable` + WARN」 |
+
+实测事实：
+- 构造源是 `detect_trading_hours`（`data_validator.py:562-581`）= **从历史 1H 数据统计每小时频率反推**，不是交易所公布日历
+- W5.5④ 要求的 `announced_at` 公告时间戳：全仓 **grep 零命中**，核验规则未实现
+- `calendar_cyclical` 的 `track_record: "v22线索"` 说明是历史注册条目，
+  而 `add_horizon_known.py` 于 2026-09-28 一次性补填证据 → 与 W5.5②「不可追溯补填」冲突
+
+**必须向宿主明示的后果**：若按 W5.1 降级为 `unknowable`，
+**全池 `known_ahead` 归零** → W5.4 验收条件「至少一个 known_ahead 协变量
+满足 `horizon_std > 0`」**必然失效**。这不是 agent 能替宿主做的取舍。
+
+**④ 已修复（不涉及裁定的部分）**
+
+`tests/test_prc6_horizon_known.py` 原有两个测试把**争议中的标签分布**冻死：
+
+| 原测试 | 问题 | 处置 |
+|--------|------|------|
+| `test_no_persistence_in_current_pool` | 断言池内**任何**协变量不得标 `persistence`。而 `persistence` 是 spec 受控词表的合法值，且语义上恰好是 persistence 的协变量会被挤进别的标签 —— **测试把唯一正确的标签堵死了** | 改为「取值须在受控词表内」 |
+| `test_horizon_known_distribution` | 断言 `self_referential >= 10` / `unknowable >= 5` / `known_ahead >= 1`，冻住争议分布，一旦修正标签即假失败 | 改为覆盖性断言 |
+
+**⑤ 其他已核实但未处置**（`scripts/add_horizon_known.py`）
+
+- 降级时不删除残留 `known_ahead_evidence` → 陈旧证据零告警存活
+- `CALENDAR_EVIDENCE` 是模块级常量按引用赋值 → 多个 known_ahead 会共享同一 dict
+- `pool["updated"]` 硬编码日期，重跑永不更新
+- 池内 `horizon_known_note` 称「其余三类 horizon 尾填末值」，而
+  `oi`/`ccl`/`pca_momentum`/`oi_gated_momentum` 实际**全零填充**，note 与代码不符
+
+
 ### 宿主裁定（2026-09-28）
 
 | 裁定 | 内容 | spec 位置 |
