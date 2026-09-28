@@ -48,6 +48,11 @@ def _make_point(i: int, base: float = 100.0) -> dict:
         "path_corr": None,
         "roll_in_horizon": False,
         "covariates_used": True,
+        # PR-C4 W6.7: context 窗口内容摘要（480 根 1H 收盘序列的 SHA-256 前 16 位）
+        "context_hash": "0123456789abcdef",
+        # PR-B5: resume 时保留的消融标签（该键自 PR-B5 起就在
+        # _CHECKPOINT_POINT_KEYS 里，fixture 当时漏了，本测试一直是红的）
+        "ablation_mode": "full",
     }
 
 

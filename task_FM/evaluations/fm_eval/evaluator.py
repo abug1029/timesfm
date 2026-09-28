@@ -322,44 +322,39 @@ def compute_cov_fingerprint(matrix, keys):
 
 
 def _compute_context_hash(points) -> Optional[str]:
-    """计算 context 窗口的内容哈希（PR-C4 W6.7 历史修订防护）。
+    """汇总 context 窗口内容哈希（PR-C4 W6.7 历史修订防护）。
+
+    逐点摘要在**回测写入点**由 `monthly_backtest` 就地计算
+    （480 根 1H 收盘序列的 SHA-256 前 16 位），本函数只做逐点摘要的汇总。
+
+    为什么不就地算：verdict 侧拿不到 context 窗口原文 —— checkpoint 逐点只存
+    `real_end`（**未来真值**）。曾有一版 fallback 用 `real_endpoint` 兜底，
+    那是把未来信息混入历史修订判据，且生产点根本没有该键，导致哈希恒为 None、
+    W6.7 防护全程惰性。现改为：拿不到摘要就诚实返回 None（未知），
+    不拿别的量冒充。
 
     Args:
-        points: 预测点列表（每个点含 context 信息）
+        points: 预测点列表
 
     Returns:
-        SHA-256 哈希前 16 位，或 None（若无 points）
-
-    用途：后续重算时比对 context_hash，若变化则标记 data_revised=True，
-    退出成功判定（spec W6.7）。
+        汇总哈希前 16 位；无任何点带摘要时返回 None
     """
     if not points:
         return None
 
-    # 提取所有点的 context 信息（若存在）
-    context_data = []
+    digests = []
     for p in points:
         if isinstance(p, dict):
-            # 优先使用 context_window，否则用 cutoff + real_endpoint 组合
-            ctx = p.get("context_window")
-            if ctx is not None:
-                if isinstance(ctx, np.ndarray):
-                    context_data.append(ctx.tobytes())
-                else:
-                    context_data.append(str(ctx).encode("utf-8"))
-            else:
-                # fallback: 用 cutoff + real_endpoint 组合
-                cutoff = p.get("cutoff")
-                real_end = p.get("real_endpoint")
-                if cutoff is not None and real_end is not None:
-                    context_data.append(f"{cutoff}:{real_end}".encode("utf-8"))
+            ch = p.get("context_hash")
+            if ch:
+                digests.append(str(ch))
 
-    if not context_data:
+    if not digests:
         return None
 
-    # 合并所有 context 并计算哈希
-    combined = b"|".join(context_data)
-    return hashlib.sha256(combined).hexdigest()[:16]
+    # 按 cutoff 排序后汇总，保证点序不同不影响结果
+    digests.sort()
+    return hashlib.sha256("|".join(digests).encode("utf-8")).hexdigest()[:16]
 
 
 def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch_id=None, run_mode="exploration", points=None, cov_matrix=None, cov_keys=None):
@@ -478,11 +473,18 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         # E6: DM 配对诊断 (variant_series/baseline_series 是中间产物, 不落 verdict)
         **{k: v for k, v in dm_diag.items()
            if k not in ("variant_series", "baseline_series")},
-        # PR-C4 W6.6: 门槛一致性（gate_basis 标记）
-        "gate_basis": "baseline" if baseline_dir_acc is not None else "fallback_0.52",
+        # PR-C4 W6.6: 门槛一致性。**不写 gate_basis** —— 那个键的既有词表
+        # （active / full_fallback）说的是「用哪个**总体口径**当门参照」，
+        # 与 W6.6 的「**阈值参照**是否缺失」是两件事；混用一个键会让无基线的
+        # 非 gated run 落 gate_basis="fallback_0.52"，被误读成 gated pool 加载失败。
+        # 故独立成键：baseline=有基线，fallback_0.52=无基线（不参与跨品种比较与成功判定）。
+        "threshold_basis": "baseline" if baseline_dir_acc is not None else "fallback_0.52",
         # PR-C4 W6.7: 历史修订防护（context_hash）
         "context_hash": _compute_context_hash(points or s.get("points")),
-        "data_revised": False,  # 重算时比对，若变化则标记为 True
+        # W6.7 的比对发生在**重算路径**（拿历史 verdict 的 context_hash 比对），
+        # 不在单次 build_summary 内。None = 「尚未比对」，不是「未修订」；
+        # 恒写 False 会把未知伪装成已证否。
+        "data_revised": None,
         # PR-C4 W6.8: 预训练污染登记（仅登记，不做诊断性检验）
         "pretrain_risk": {
             "status": "registered",
@@ -500,6 +502,12 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
             "dir_acc": m["dir_acc"],
             "dir_acc_full": m["dir_acc_full"],
             "dir_acc_ex_roll": m["dir_acc_ex_roll"],
+            # PR-B4 (spec W6.5) 主口径分母构成 —— 与 dir_acc 同进 verdict，
+            # 否则读者无法判断这个分式剔掉了多少点。
+            "n_dir_total": m.get("n_dir_total"),
+            "n_dir_active": m.get("n_dir_active"),
+            "n_zero_move": m.get("n_zero_move"),
+            "n_zero_ratio": m.get("n_zero_ratio"),
             "n_roll_excluded": m["n_roll_excluded"],
             "n_roll_ratio": m["n_roll_ratio"],
             "endpoint_mape": m["endpoint_mape"],

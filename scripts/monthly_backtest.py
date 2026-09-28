@@ -23,6 +23,7 @@
 import sys
 import os
 import json
+import hashlib
 import pickle
 import json as _json
 from datetime import datetime
@@ -109,6 +110,7 @@ _CHECKPOINT_POINT_KEYS = (
     "mae", "mape", "mae_h1", "mae_h2", "coverage", "pnl", "real_range", "roll_in_horizon",
     "endpoint_mape", "endpoint_bias_pct", "path_corr",
     "covariates_used",
+    "context_hash",  # PR-C4 W6.7: context 窗口内容摘要
     "ablation_mode",  # PR-B5: resume 时保留消融标签
 )
 
@@ -343,6 +345,15 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
         dt = close_ts.strftime("%Y-%m-%d")  # 报告/cutoff 展示用日历日
         cutoff = close_ts.strftime("%Y-%m-%d %H:%M:%S")
         base = float(all_1h["close_price"].iloc[idx])
+        # spec W6.7 历史修订防护：context 窗口（CONTEXT_BARS 根 1H 收盘序列，
+        # 截至 cutoff bar 含）的**内容哈希**。在写入点算、只落摘要，
+        # 既不膨胀 checkpoint，也不把 context 原文带进 verdict。
+        # 窗口与 BacktestDataStore.get_main_contract_1h(limit=CONTEXT_BARS) 对齐
+        # —— 即模型实际看到的序列。
+        _ctx = all_1h["close_price"].iloc[idx - CONTEXT_BARS + 1: idx + 1].values
+        _ctx_hash = hashlib.sha256(
+            np.ascontiguousarray(_ctx, dtype=np.float64).tobytes()
+        ).hexdigest()[:16]
         real = all_1h["close_price"].iloc[idx+1:idx+1+HORIZON].values.astype(np.float64)
         # D1/D2 换月守卫: horizon 内若发生合约切换, delta_real 混合两个合约的价格,
         # 方向标签不可比, 须从 dir_acc 分母剔除
@@ -468,6 +479,7 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
 
             point = {
                 "cutoff": cutoff, "cutoff_date": dt, "base": base,
+                "context_hash": _ctx_hash,
                 "pred_end": float(pred[-1]), "real_end": float(real[-1]),
                 "delta_pred": float(delta_pred), "delta_real": float(delta_real),
                 "dir_ok": dir_ok, "dir12_ok": dir12_ok,
@@ -604,6 +616,12 @@ def summarize(data):
         "xreg_fallback_rate": (None if any("xreg_fallback" not in p for p in ok)
                                else (sum(1 for p in ok if p.get("xreg_fallback", False)) / n if n > 0 else 0.0)),
         "dir_acc_full": round(pq["dir_acc_full"], 3),
+        # PR-B4 (spec W6.5) 主口径的分母构成 —— 读者必须能看到剔了多少，
+        # 否则 dir_acc 是个无从判断的分式。
+        "n_dir_total": int(pq["n_dir_total"]),
+        "n_dir_active": int(pq["n_dir_active"]),
+        "n_zero_move": int(pq["n_zero_move"]),
+        "n_zero_ratio": round(pq["n_zero_ratio"], 4),
         "dir_acc_ex_roll": round(pq["dir_acc_ex_roll"], 3),
         "n_roll_excluded": int(pq["n_roll_excluded"]),
         "n_roll_ratio": round(pq["n_roll_ratio"], 4),

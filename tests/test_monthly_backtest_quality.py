@@ -31,8 +31,14 @@ def test_summarize_dir_ok_zero_move_is_miss():
     }
     s = mb.summarize(data)
     assert s is not None
-    # dir_acc from calc_prediction_quality: zero-move = miss -> 1/2 = 0.5
-    assert abs(s["dir_acc"] - 0.5) < 1e-6, f"dir_acc={s['dir_acc']} expected 0.5"
+    # 主口径（spec W6.5）：零变动剔出分母 -> 1 个有效点全中 = 1.0
+    assert abs(s["dir_acc"] - 1.0) < 1e-6, f"dir_acc={s['dir_acc']} expected 1.0"
+    # 旧口径（零变动计 miss）不丢弃，改名 dir_acc_full 保留 = 1/2
+    assert abs(s["dir_acc_full"] - 0.5) < 1e-6, f"dir_acc_full={s['dir_acc_full']}"
+    # 分母口径字段必须落盘，供读者判断样本被剔了多少
+    assert s["n_dir_total"] == 2
+    assert s["n_dir_active"] == 1
+    assert s["n_zero_move"] == 1
     # point_dir_ok_list preserves per-point stored dir_ok
     assert s["point_dir_ok_list"] == [
         ("2024-06-15 09:00:00", False),
@@ -80,11 +86,14 @@ def test_dir_acc_from_calc_prediction_quality_not_net():
     }
     s = mb.summarize(data)
     assert s is not None
-    # calc_prediction_quality: point 1 has zero real move -> dir_ok=False
-    # point 2: correct -> dir_ok=True
-    # dir_acc = 1/2 = 0.5
-    assert abs(s["dir_acc"] - 0.5) < 1e-6, (
-        f"dir_acc={s['dir_acc']} should be 0.5"
+    # calc_prediction_quality: point 1 是零变动，point 2 方向正确。
+    # 主口径（spec W6.5）零变动剔出分母 -> dir_acc = 1/1 = 1.0
+    assert abs(s["dir_acc"] - 1.0) < 1e-6, (
+        f"dir_acc={s['dir_acc']} should be 1.0"
+    )
+    # 旧口径（零变动计 miss）改名保留：1/2 = 0.5
+    assert abs(s["dir_acc_full"] - 0.5) < 1e-6, (
+        f"dir_acc_full={s['dir_acc_full']} should be 0.5"
     )
     # But dir_acc_points still reflects stored dir_ok (legacy)
     assert abs(s["dir_acc_points"] - 1.0) < 1e-6

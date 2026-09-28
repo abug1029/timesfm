@@ -201,18 +201,12 @@ def diebold_mariano_p(
     # Lag order: q = max(1, horizon//step - 1)
     q = max(1, horizon // max(1, step) - 1)
     
-    # Newey-West HAC variance estimator (using /T, positive semi-definite)
-    gamma = np.zeros(q + 1)
-    for j in range(q + 1):
-        # γ_j = sum_{t=j+1}^{T} (d_t - d_bar)(d_{t-j} - d_bar) / T
-        gamma[j] = np.sum((d[j:] - d_bar) * (d[:-j] - d_bar)) / T if j > 0 else np.sum((d - d_bar) ** 2) / T
-    
-    # Bartlett 核权重
-    V = gamma[0]
-    for j in range(1, q + 1):
-        weight = 1.0 - j / (q + 1)
-        V += 2.0 * weight * gamma[j]
-    V /= T  # 均值的方差（规格 §4.2.2 要求）
+    # Newey-West Bartlett HAC 长程方差 —— **复用 compute_hac_se**。
+    # spec §4.1 W1.2：n_eff 与 DM 检验共用同一估计量，禁止另写一套。
+    sigma_lr_sq = compute_hac_se(d, q=q)
+
+    # 均值的方差（规格 §4.2.2 要求）
+    V = sigma_lr_sq / T
     if V <= 1e-12:
         return 1.0
     
@@ -408,7 +402,8 @@ def compute_hac_se(
 ) -> float:
     """Bartlett 核 HAC 长程方差估计（spec §4.1 W1.2 唯一家）。
 
-    与 `measured_n_eff` 共用同一估计量，禁止另写一套。
+    与 `measured_n_eff` **和** `diebold_mariano_p` 共用同一实现，禁止另写一套。
+    （DM 直接调用本函数取 sigma_LR^2，再除以 T 得均值方差 V。）
 
     Args:
         x: 时间序列
@@ -428,15 +423,17 @@ def compute_hac_se(
     if n < 2:
         return 0.0
 
+    # 滞后阶数不得超过 n-1，否则重叠切片为空。
+    q = int(min(q, n - 1))
+
     x_centered = x - np.mean(x)
 
-    # 自协方差序列
+    # 自协方差序列（Newey-West 约定：分母统一用 n，核正半定）
+    # spec §4.1 W1.2「与 DM 检验共用同一估计量」——diebold_mariano_p
+    # 复用本函数，**禁止**在此另立分母约定。
     gamma = np.zeros(q + 1)
     for j in range(q + 1):
-        if j == 0:
-            gamma[j] = np.mean(x_centered ** 2)
-        else:
-            gamma[j] = np.mean(x_centered[j:] * x_centered[:-j])
+        gamma[j] = np.sum(x_centered[j:] * x_centered[: n - j]) / n
 
     # Bartlett 核权重（线性衰减 1 - j/(q+1)）
     weights = np.array([1.0 - j / (q + 1) for j in range(q + 1)])

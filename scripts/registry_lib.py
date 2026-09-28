@@ -1,5 +1,5 @@
 """verdict 注册表与 aligned 队列的共享库 (三环文件总线)"""
-import json, os, contextlib, fcntl, time, pathlib
+import json, os, sys, contextlib, fcntl, time, pathlib
 
 # §1.4 双运行模式：唯一机器枚举字段。成功判定读 run_mode，不读 run_label。
 RUN_MODES = frozenset({"exploration", "confirmation"})
@@ -19,12 +19,18 @@ VERDICT_FIELDS_V2 = {
     "baseline_dir_acc", "effective_min",
     "run_mode", "run_label",
     "dir_acc_full", "dir_acc_ex_roll", "n_roll_excluded", "n_roll_ratio",
+    # PR-B4 (spec W6.5) 主口径分母构成
+    "n_dir_total", "n_dir_active", "n_zero_move", "n_zero_ratio",
     "protocol_fingerprint", "sample_fingerprint", "cov_fingerprint", "weight_fingerprint", "seed_fingerprint",
     "dm_status", "dm_common_count", "dm_unmatched_variant", "dm_unmatched_baseline",
     "pair_set_hash", "raw_cutoff_set_hash", "d_series_n_eff", "d_bar_le_zero",
     "n_avail_variant", "n_avail_baseline", "missingness_admissible",
     "covariates_used", "pairing_valid",
     "xreg_fallback_count", "xreg_fallback_rate",
+    # PR-B5 三路消融: 模式标签（PR-C4 接线时落 verdict）
+    "ablation_mode",
+    # PR-C4: W6.6 阈值参照 / W6.7 历史修订防护 / W6.8 预训练登记
+    "threshold_basis", "context_hash", "data_revised", "pretrain_risk",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
@@ -33,12 +39,17 @@ VERDICT_FIELDS_V2_NULLABLE = {
     "baseline_dir_acc", "effective_min",
     "run_mode", "run_label",
     "dir_acc_full", "dir_acc_ex_roll", "n_roll_excluded", "n_roll_ratio",
+    "n_dir_total", "n_dir_active", "n_zero_move", "n_zero_ratio",
     "protocol_fingerprint", "sample_fingerprint", "cov_fingerprint", "weight_fingerprint", "seed_fingerprint",
     "dm_status", "dm_common_count", "dm_unmatched_variant", "dm_unmatched_baseline",
     "pair_set_hash", "raw_cutoff_set_hash", "d_series_n_eff", "d_bar_le_zero",
     "n_avail_variant", "n_avail_baseline", "missingness_admissible",
     "covariates_used", "pairing_valid",
     "xreg_fallback_count", "xreg_fallback_rate",
+    # PR-B5 消融模式 / PR-C4 W6.6-6.8：均为**新增可选**字段，
+    # 历史裁决没有它们，故必须同时登记进 _NULLABLE（否则 validate 会
+    # 把整本 registry 判为非法）。
+    "ablation_mode", "threshold_basis", "context_hash", "data_revised", "pretrain_risk",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",
@@ -111,19 +122,42 @@ def queue_load(path):
     return [r for r in (_iter_jsonl(path) or []) if isinstance(r, dict) and "variant_id" in r]
 
 def queue_enqueue(path, rows, dead, existing):
+    """入队并按 variant_id 去重。
+
+    **去重键是 variant_id**，即约定 `variant_id` 全局唯一，消融模式必须
+    并入其中（`scripts/t2_run_ablation.py` 就是把 mode 拼进 vid 的）。
+    否则同 (symbol, cov) 的 full 与 baseline 会被当成同一条而丢掉一条。
+
+    该约定靠自觉会失效：若同 vid 携带**不同** ablation_mode，说明调用方
+    违反了约定。这属于配置冲突而非重复劳动，静默 `continue` 会把它藏起来，
+    故此处 fail-loud（写 stderr），不静默丢弃。
+    """
     if not rows:
         return 0
+    conflicts = []
     with _queue_lock(path):
-        inq = {r["variant_id"] for r in queue_load(path)}
+        inq_rows = queue_load(path)
+        inq = {r["variant_id"] for r in inq_rows}
+        inq_mode = {r["variant_id"]: r.get("ablation_mode") for r in inq_rows}
         added = 0
         with open(path, "a", encoding="utf-8") as f:
             for r in rows:
                 vid = r["variant_id"]
+                mode = r.get("ablation_mode") or "full"
                 if vid in dead or vid in existing or vid in inq:
+                    # 同 vid 不同 mode = 两个不同实验，丢弃其一必有损失
+                    if vid in inq and inq_mode.get(vid) not in (None, mode):
+                        conflicts.append((vid, inq_mode.get(vid), mode))
                     continue
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
                 inq.add(vid)
+                inq_mode[vid] = mode
                 added += 1
+    for vid, queued_mode, want_mode in conflicts:
+        sys.stderr.write(
+            "[queue_enqueue] variant_id 冲突：%s 已以 ablation_mode=%s 在队，"
+            "本次请求 mode=%s 被丢弃。variant_id 必须并入消融模式（见 "
+            "scripts/t2_run_ablation.py）。\n" % (vid, queued_mode, want_mode))
     return added
 
 def queue_claim(pending_path, inprogress_path):

@@ -436,6 +436,10 @@ def calc_prediction_quality(
 
     endpoint_mape = float(np.mean(np.abs(p_end - r_end) / base) * 100) if n else 0.0
     endpoint_bias_pct = float(np.mean((delta_pred - delta_real) / base * 100)) if n else 0.0
+    # 幅度加权口径：与主口径 dir_acc 的**分母哲学不同**（此处是连续权重，
+    # 主口径是二值阈值）。刻意保留全点参与 —— 零变动点的 |Δreal| ≈ 0，
+    # 对分子分母同时贡献 ≈ 0，故数值上与「剔除后重算」等价，
+    # 无需再对齐一次分母，避免制造第二套剔零逻辑。
     abs_delta_real = np.abs(delta_real)
     denom = float(np.sum(abs_delta_real))
     if denom < 1e-8:
@@ -506,36 +510,41 @@ def calc_prediction_quality(
 def measured_n_eff(
     x: np.ndarray,
     h: int = 12,
-    q: int = 11,
+    q: Optional[int] = None,
 ) -> tuple[Optional[float], str]:
     """实测有效样本量（spec §4.1 W1.2 唯一家）。
 
-    与 DM 检验共用同一估计量（Newey-West Bartlett + HLN），禁止另写一套。
+    与 DM 检验共用同一 HAC 实现（`statistical_tests.compute_hac_se`），禁止另写一套。
+    两者**输入序列不同**：本函数作用于方向序列，DM 作用于配对损失差
+    `d_t = v_ok - b_ok` —— 不是同一个统计量，数值不可互换（spec §4.1「与 DM 的关系」）。
 
     定义: n_eff = n * sigma0^2 / sigma_LR^2
-    其中 sigma0^2 为样本方差，sigma_LR^2 为 Bartlett 核 HAC 长程方差
 
     Args:
         x: 时间序列
-        h: 重叠窗口数参数（默认 12 = HORIZON//STEP）
-        q: 最大滞后阶数（默认 11 = h - 1）
+        h: 重叠窗口数（默认 12 = HORIZON // STEP）
+        q: 最大滞后阶数（默认 None → h - 1 = 11，即 spec W1.2 唯一带宽约定）
 
     Returns:
         (n_eff, n_eff_status): 有效样本量和状态
 
-    七类边界规则:
-        - 常数序列: n_eff = 1, status = "degenerate_constant"
-        - 样本不足 (n < 30): n_eff = None, status = "insufficient_n"
-        - 长程方差 <= 0: 夹取为 sigma0^2 + WARN, status = "clipped_to_iid"
-        - NaN/Inf: 抛出异常, status = "nonfinite"
-        - 正常估计: 实测值, status = "ok"
-        - 估计失败: n_eff = None, status = "estimation_failed"
+    边界规则（状态名与 spec §4.1 边界表逐字一致）:
+        - 空 / NaN / Inf:  None, "nonfinite"
+        - 样本不足 n < 30:  None, "insufficient_n"
+        - 常数序列:        1.0, "degenerate_constant"
+        - sigma_LR^2 <= 0: 夹取为 sigma0^2 + WARN, "hac_nonpositive_clamped"
+        - n_eff > n（负自相关）: 夹取上限 n, "clamped_to_n"
+        - 正常估计:        实测值, "ok"
     """
     from cascade.statistical_tests import compute_hac_se
     import logging
 
     x = np.asarray(x, dtype=float).ravel()
     n = len(x)
+
+    # spec W1.2：q = h - 1 是唯一带宽约定，此处是它的实现点。
+    if q is None:
+        q = max(1, h - 1)
 
     # 边界检查：NaN/Inf
     if n == 0 or np.any(np.isnan(x)) or np.any(np.isinf(x)):
@@ -549,30 +558,27 @@ def measured_n_eff(
     if np.std(x) < 1e-10:
         return 1.0, "degenerate_constant"
 
-    # 计算样本方差
-    sigma0_sq = np.var(x, ddof=1)
+    # iid 长程方差。与 compute_hac_se 的 gamma_0 同一分母约定（ddof=0），
+    # 使 sigma_LR^2 == sigma0^2 时 n_eff 恰为 n，不被夹取分支误伤。
+    sigma0_sq = np.var(x)
 
-    # 计算 Bartlett 核 HAC 长程方差
+    # 计算 Bartlett 核 HAC 长程方差（与 DM 检验同一实现）
     sigma_lr_sq = compute_hac_se(x, q=q)
 
-    # 边界处理：长程方差 <= 0
+    # 边界处理：长程方差 <= 0（小样本下可能）→ 夹取为 iid 情形
     if sigma_lr_sq <= 0:
         logging.warning(
-            f"Long-run variance <= 0 ({sigma_lr_sq:.6e}), clipping to sample variance"
+            f"Long-run variance <= 0 ({sigma_lr_sq:.6e}), clipping to iid variance"
         )
-        sigma_lr_sq = sigma0_sq
-        status = "clipped_to_iid"
-    else:
-        status = "ok"
+        return float(n), "hac_nonpositive_clamped"
 
-    # 计算 n_eff
     n_eff = n * sigma0_sq / sigma_lr_sq
 
-    # 数学保证：n_eff <= n
+    # 边界处理：负自相关 → n_eff > n，夹取上限（spec 边界表独立状态）
     if n_eff > n:
-        n_eff = float(n)
+        return float(n), "clamped_to_n"
 
-    return float(n_eff), status
+    return float(n_eff), "ok"
 
 
 def compute_meets_min_info(
@@ -606,10 +612,17 @@ def compute_meets_min_info(
         AND dm_common_count >= min_pairs
         AND n_eff_status in VALID_ESTIMATE
 
-    VALID_ESTIMATE 包括: ok, degenerate_constant, clipped_to_iid, estimation_failed
-    不包括: insufficient_n, nonfinite（这些是错误，不是「统计上不可判定」）
+    VALID_ESTIMATE 与 spec §4.1 边界表的状态名逐字一致:
+        - 有效估计:     ok, clamped_to_n, hac_nonpositive_clamped
+        - 不可判定(信息不足): degenerate_constant
+        - 错误(数据非法): insufficient_n, nonfinite —— **不含**，须修复后重跑
     """
-    VALID_ESTIMATE = {"ok", "degenerate_constant", "clipped_to_iid", "estimation_failed"}
+    VALID_ESTIMATE = {
+        "ok",
+        "clamped_to_n",
+        "hac_nonpositive_clamped",
+        "degenerate_constant",
+    }
 
     return (
         n >= min_n

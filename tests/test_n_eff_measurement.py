@@ -6,14 +6,28 @@ from cascade.evaluation_metrics import measured_n_eff, compute_meets_min_info
 
 
 def test_measured_n_eff_iid():
-    """测试 IID 序列的 n_eff"""
+    """IID 序列的 n_eff 应等于 n。
+
+    状态可能是 "ok" 也可能是 "clamped_to_n"：IID 序列的真实长程方差就是
+    σ0²，但**样本** Bartlett 估计会因抽样噪声略低于 σ0²，于是 n_eff 略超 n
+    而触发夹取。spec §4.1 边界表把这一情形单列为 `clamped_to_n`，
+    报 "ok" 反而是把「夹取触发过」藏起来。
+    """
     np.random.seed(42)
     x = np.random.randn(1000)
     n_eff, status = measured_n_eff(x)
 
-    # IID 序列的 n_eff 应该接近 n
-    assert status == "ok"
-    assert 900 < n_eff < 1100
+    assert status in ("ok", "clamped_to_n")
+    assert n_eff == 1000
+
+
+def test_measured_n_eff_iid_is_not_rejected_by_min_info():
+    """IID 序列不得被信息门误杀 —— clamped_to_n 属有效估计。"""
+    np.random.seed(42)
+    x = np.random.randn(1000)
+    n_eff, status = measured_n_eff(x)
+    assert compute_meets_min_info(n=1000, n_eff=n_eff, n_eff_status=status,
+                                  dm_common_count=1000) is True
 
 
 def test_measured_n_eff_ar1():
@@ -225,3 +239,142 @@ def test_parameter_sharing():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# ── spec §8.3 黄金用例：已知自相关序列手算长程方差，与代码结果比较 ──────
+#
+# 手算依据：AR(1) x_t = rho·x_{t-1} + e_t, e_t ~ N(0,1)
+#   平稳方差  sigma0^2 = 1 / (1 - rho^2)
+#   自协方差  gamma_j  = sigma0^2 · rho^j
+#   Bartlett  LR       = sigma0^2 · (1 + 2·Σ_{j=1..q} (1 - j/(q+1))·rho^j)
+# rho=0.5, q=11 → LR = 1.3333 × 2.666748 = 3.555664
+#                → n_eff = n·sigma0^2/LR = 1000 / 2.666748 = 374.99
+def _analytic_bartlett_lr(rho, q):
+    """AR(1) 的 Bartlett HAC 长程方差解析值（单位创新方差）。"""
+    sigma0_sq = 1.0 / (1.0 - rho ** 2)
+    return sigma0_sq * (1.0 + 2.0 * sum(
+        (1.0 - j / (q + 1)) * rho ** j for j in range(1, q + 1)))
+
+
+def test_hac_se_matches_hand_computed_golden_value():
+    """黄金用例：估计量在大样本上应收敛到手算解析值（spec §8.3）。"""
+    from cascade.statistical_tests import HAC_MAX_LAG_Q, compute_hac_se
+
+    rho = 0.5
+    analytic = _analytic_bartlett_lr(rho, HAC_MAX_LAG_Q)
+    assert analytic == pytest.approx(3.555664, abs=1e-5)
+
+    rng = np.random.default_rng(20260928)
+    vals = []
+    for _ in range(60):
+        e = rng.standard_normal(8000)
+        x = np.empty(8000)
+        x[0] = e[0]
+        for t in range(1, 8000):
+            x[t] = rho * x[t - 1] + e[t]
+        vals.append(compute_hac_se(x, q=HAC_MAX_LAG_Q))
+
+    mc_mean = float(np.mean(vals))
+    mc_se = float(np.std(vals)) / np.sqrt(len(vals))
+    assert mc_mean == pytest.approx(analytic, abs=5 * mc_se), (
+        "MC 均值 %.6f ± %.6f 偏离手算值 %.6f" % (mc_mean, mc_se, analytic))
+
+
+def test_n_eff_golden_value_for_ar1():
+    """黄金用例：AR(1) rho=0.5 的 n_eff 应约为 n / 2.666748。
+
+    单次抽样有 ~3% 噪声（q+1 个自协方差项的估计误差），故取多次抽样均值
+    与解析值比较 —— 检验的是**估计量的期望**，这才是黄金用例要对的东西。
+    """
+    n, rho, reps = 8000, 0.5, 40
+    expected = n / (1.0 + 2.0 * sum(
+        (1.0 - j / 12) * rho ** j for j in range(1, 12)))
+
+    rng = np.random.default_rng(7)
+    vals = []
+    for _ in range(reps):
+        e = rng.standard_normal(n)
+        x = np.empty(n)
+        x[0] = e[0]
+        for t in range(1, n):
+            x[t] = rho * x[t - 1] + e[t]
+        n_eff, status = measured_n_eff(x)
+        assert status == "ok"
+        vals.append(n_eff)
+
+    mc_mean = float(np.mean(vals))
+    mc_se = float(np.std(vals)) / np.sqrt(reps)
+    assert mc_mean == pytest.approx(expected, abs=4 * mc_se), (
+        "MC 均值 %.1f ± %.1f 偏离解析值 %.1f" % (mc_mean, mc_se, expected))
+
+
+def test_dm_and_n_eff_share_one_hac_estimator():
+    """spec §4.1 W1.2：DM 与 n_eff 共用同一 HAC 实现。
+
+    两处曾各写一套自协方差（分母分别用 n-j 和 T），产出不同长程方差。
+    本测试从外部锁死该契约：DM 的 p 值必须等于「用 compute_hac_se 算出的
+    长程方差 / T」所推出的 DM 统计量。
+    """
+    from cascade.statistical_tests import compute_hac_se, diebold_mariano_p
+    from scipy.stats import t as student_t
+
+    rng = np.random.default_rng(11)
+    T = 200
+    b = rng.integers(0, 2, size=T).astype(float)
+    d = rng.binomial(1, 0.6, size=T) - b   # 配对损失差
+    v = b + d                              # 还原 variant，使 d = v - b
+
+    p = diebold_mariano_p(v.tolist(), b.tolist(), horizon=24, step=2)
+
+    # 独立复算：复用 compute_hac_se → V → DM 统计量 → HLN → t 分布
+    q = 11
+    V = compute_hac_se(d, q=q) / T
+    d_bar = float(np.mean(d))
+    h = 24 // 2
+    k_hln = np.sqrt((T + 1 - 2 * h + h * (h - 1) / T) / T)
+    dm_adj = (d_bar / np.sqrt(V)) * k_hln
+    expected = float(np.clip(student_t.sf(dm_adj, df=T - 1), 0.0, 1.0))
+
+    assert p == pytest.approx(expected, rel=1e-12)
+
+
+def test_hac_max_lag_matches_backtest_config():
+    """带宽常数不得与 backtest_config 漂移（spec §4.1 W1.2）。
+
+    `HAC_MAX_LAG_Q = 11` 是写死的，而 spec 的定义是 q = h - 1
+    = HORIZON//STEP - 1。若有人改了 HORIZON 或 STEP 而忘了改这里，
+    n_eff 与 DM 会静默用错带宽。此处把二者钉死 —— 比让 cascade
+    反向依赖 config 更安全（statistical_tests 里 backtest_config
+    是刻意延迟导入的）。
+    """
+    from cascade.statistical_tests import HAC_MAX_LAG_Q
+    from config import backtest_config
+
+    expected = backtest_config.HORIZON // backtest_config.STEP - 1
+    assert HAC_MAX_LAG_Q == expected, (
+        "HAC_MAX_LAG_Q=%d 与 HORIZON//STEP-1=%d 不一致"
+        % (HAC_MAX_LAG_Q, expected))
+
+
+def test_measured_n_eff_q_derives_from_h():
+    """q 缺省时必须是 h - 1（spec W1.2 唯一带宽约定）。"""
+    np.random.seed(3)
+    x = np.random.randn(200)
+    assert measured_n_eff(x, h=12) == measured_n_eff(x, h=12, q=11)
+
+
+def test_measured_n_eff_status_names_match_spec():
+    """状态名必须与 spec §4.1 边界表逐字一致。
+
+    曾用 `clipped_to_iid`，而 spec 钦定 `hac_nonpositive_clamped`；
+    且 spec 把「n_eff > n 夹取」单列为 `clamped_to_n`，曾与 `ok` 混为一谈。
+    """
+    from cascade.evaluation_metrics import compute_meets_min_info
+
+    valid = {"ok", "clamped_to_n", "hac_nonpositive_clamped", "degenerate_constant"}
+    # 逐项构造：只有 VALID_ESTIMATE 内的状态能通过信息门
+    base = dict(n=1000, n_eff=500.0, dm_common_count=500)
+    for st in valid:
+        assert compute_meets_min_info(n_eff_status=st, **base) is True, st
+    for st in ("insufficient_n", "nonfinite", "estimation_failed", "bogus"):
+        assert compute_meets_min_info(n_eff_status=st, **base) is False, st

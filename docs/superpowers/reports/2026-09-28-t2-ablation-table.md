@@ -78,34 +78,61 @@
 | rb | calendar_cyclical | 0.950 | 0.670 | 1.010 | 0.730 |
 | rb | ccl | 0.900 | 0.550 | 0.920 | 0.730 |
 
-**关键观察：四组中 `full` 的 endpoint_mape 均为四模式里最差**
-（jd 两组最差；rb 两组中 full 亦高于 content 与 baseline）。
+**观察（2026-09-28 修正）**：`full` 的 endpoint_mape **并非**四组里都最差。
+
+| 组 | 最差模式 | full 排第几 |
+|----|---------|-----------|
+| jd / calendar_cyclical | **full** 7.486 | 最差 |
+| jd / ccl | **full** 7.229 | 最差 |
+| rb / calendar_cyclical | **structural** 1.014 | 次差（0.950）|
+| rb / ccl | **structural** 0.925 | 次差（0.903）|
+
+初稿写的是「四组中 `full` 均为最差」——**该表述与本节表格矛盾**，
+rb 两组中 `structural` 比 `full` 更差。已按 checkpoint 重算更正。
+
+**方向并不一致**：jd 两组是 full 最差，rb 两组是 structural 最差。
+把这读成「协变量通道有害」缺乏支撑。
+
+⚠️ 双重限制：
+- **n=6**：连续量的 6 点均值仍无误差估计。以 rb 为例，
+  full 与 baseline 的 mape 差约 0.17-0.18；配对检验在 n=6 下
+  最小可检效应量（d≈1.3）远大于该差值，**本样本量无法区分
+  「真实劣化」与「随机波动」**。要检出 15% 相对差异需 n≈30。
+- **非独立**：4 组只有 **2 个独立品种**（jd、rb），同品种两组共享同一批
+  6 个 cutoff 点。「4/4 组方向一致」把 2 个独立实验当 4 个计，
+  **系统性夸大了证据强度**。有效独立样本是 2 个，且这 2 个方向相反。
 
 即：协变量通道**确实进入了计算图**（依据：`covariates_used=True` 且
-四模式 `pred_end` 互不相同，见第 3 条），但**在本样本上降低了短期预测精度**。
+四模式 `pred_end` 互不相同，见第 3 条），但**在本样本上未能观测到
+`full` 优于 `baseline`**。
 
-⚠️ **该观察同样受 n=6 限制**。`endpoint_mape` 虽为连续量，但 6 个点的
-均值无误差估计，无法区分「真实劣化」与「这 6 个点恰好波动」。
-**不能据此断言「协变量有害」**，只能说「在本样本上未观察到 full 优于 baseline，
-且 full 的点均值方向一致地更差」。
+### 3. ⚠️ 修正：rb 两组「路径差 = 0」是二值粒度的假象
 
-### 3. ⚠️ 修正：structural vs baseline 的「差异 0」是二值粒度的假象
+**先更正初稿的事实错误**：初稿称「该列 4 组差异均为 0.0000」——
+**这与本报告自己的表格矛盾**。实测：
 
-本表该列 4 组差异均为 0.0000。**初稿据此推断「两条路径行为一致，
-验证了消融实现正确」—— 该推断不成立。**
+| 组 | structural − baseline (dir_acc) |
+|----|-------------------------------|
+| jd / calendar_cyclical | **+0.1667**（1.0000 vs 0.8333）|
+| jd / ccl | **+0.1667**（1.0000 vs 0.8333）|
+| rb / calendar_cyclical | 0.0000 |
+| rb / ccl | 0.0000 |
 
-直接读 checkpoint 的连续输出可证伪：
+所以「差异为 0」只在 **rb 两组**成立，jd 两组是明确的 1 个命中之差。
+
+**rb 两组的「0」确实是二值粒度假象**。直接读 checkpoint 的连续输出可证伪：
 
 | variant | pred_end（第 0 点） |
 |---------|---------------------|
-| `jd_calendar_cyclical_baseline_aligned_p6` | 3052.2571 |
-| `jd_calendar_cyclical_structural_aligned_p6` | 3049.5288 |
-| `jd_ccl_baseline_aligned_p6` | 3052.2571 |
-| `jd_ccl_structural_aligned_p6` | 3050.7373 |
+| `rb_calendar_cyclical_baseline_aligned_p6` | 3135.7495 |
+| `rb_calendar_cyclical_structural_aligned_p6` | 3124.3530 |
+| `rb_ccl_baseline_aligned_p6` | 3135.7495 |
+| `rb_ccl_structural_aligned_p6` | 3127.9302 |
 
-structural 与 baseline 的 `pred_end` **确实不同**（差 2.73 / 1.52）。
-差异为 0 只是因为 n=6 下 `dir_acc` 是二值命中计数（2/6、5/6 粒度），
-不同连续输出在这 6 个点上的方向恰好落在同一命中数。
+structural 与 baseline 的 `pred_end` **确实不同**（差 11.40 / 7.82，
+远大于 jd 的 2.73 / 1.52）。rb 的 dir_acc 差异为 0 只是因为 n=6 下
+`dir_acc` 是二值命中计数（2/6 粒度），这 6 个点上不同连续输出的方向
+恰好落在同一命中数。
 
 **这暴露了本表方法论的核心缺陷：n=6 时 dir_acc 列的分辨率不足以
 区分「路径相同」与「路径不同但方向一致」。** 二值计数把连续差异压平了。
@@ -117,8 +144,8 @@ structural 与 baseline 的 `pred_end` **确实不同**（差 2.73 / 1.52）。
   → 消融参数确实影响了计算图
 
 因此正确表述是：**消融执行已确认，但「structural ≡ baseline」这一
-本应成立的性质在本轮样本量下无法用 dir_acc 验证。** 需扩大样本或改用
-连续指标（如 endpoint_mape 的配对检验）才能判定。
+本应成立的性质在 rb 两组上无法用 dir_acc 验证**（在 jd 两组上则是
+被证伪的 —— 差异不为 0）。需扩大样本或改用连续指标的配对检验才能判定。
 
 ### 4. rb_calendar_cyclical：dir_acc 四值全同但并非「无影响」
 
@@ -138,8 +165,8 @@ Stage 1/2 的核心降级声明是「协变量未被利用」。
 | 状态 | 判据 | 本轮观测 |
 |------|------|---------|
 | 未接入模型 | full 的输出 ≡ baseline | ❌ **已排除**（`covariates_used=True`，四模式 `pred_end` 互不相同） |
-| 已接入且有效 | full 优于 baseline | ❌ 未观测到（4/4 组 full 的 mape 点均值更差） |
-| 已接入但可能有害 | full 劣于 baseline | ⚠️ 4/4 组方向一致，但 n=6 无误差估计，不足定论 |
+| 已接入且有效 | full 优于 baseline | ❌ 未观测到（2/4 组 full 最差，另 2 组 structural 更差；方向不一致） |
+| 已接入但可能有害 | full 劣于 baseline | ⚠️ 仅 jd 2 组支持，rb 2 组反例；且仅 2 个独立品种，n=6 不足定论 |
 
 **可以确立的**：降级声明中的「**未被利用**」不成立 ——
 协变量确实进入计算图并改变了输出（已由 `pred_end` 互异证实）。
