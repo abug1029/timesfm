@@ -346,23 +346,75 @@ n=8000 下只差 **0.014%**，而 MC 标准误是 **2.2%** —— 旧实现同�
 
 | 项 | 状态 |
 |----|------|
-| baseline 强制重生 | 后台运行中（9 品种，约 2 小时）|
+| ~~baseline 强制重生~~ | ~~后台运行中~~ ✅ 9/9 完成（ss/sr/m/jd/lh/cj/fu/rb/eg）|
 | 6 项 `horizon_known` 留待人工裁定 | 需逐项对照 spec 定义 |
 | PR-C6 W5.2 / W5.3 / W5.5③ | 宿主已定「等裁定后再实现」|
 | `calendar_cyclical` 资格 | 宿主已定「暂挂」|
-| 本轮 4 个新提交的专家审核 | 未派 |
+| ~~本轮 4 个新提交的专家审核~~ | ~~未派~~ ✅ N2/N3/N5 独立复核通过 |
 | `compute_protocol_fingerprint()` 不覆盖数据窗口语义 | 潜在静默失效，已登记 |
 | `scripts/add_horizon_known.py` 4 处缺陷 | 降级残留证据 / 证据对象别名 / `updated` 硬编码 / note 与代码不符 |
 | 13 项既有测试失败 | 已逐条核实归属（root pool 分歧、TimesFM 3.0 遗留、a2_p1 网格边界）|
 
 ---
 
-## 十二、验证
+## 十二、复审发现 N1-N9 + R1/R2 全闭环（924e072 之后）
+
+### N5 — weight_fingerprint 接线 PR-B1
+
+`evaluator.py` 的 `weight_fingerprint` / `seed_fingerprint` 此前恒为 `None`，
+是 PR-B1 留下的 TODO。本次接线：
+
+- 新增 `_compute_weight_fingerprint_safe()`：路径走 `data.config.get_timesfm_model_path()`
+  （环境变量 → `models/timesfm-3.0-pytorch/` → HF hub id），
+  调用 `fingerprint_lib.compute_weight_fingerprint()`。
+- 模块级缓存 `_WEIGHT_FINGERPRINT_CACHE`，同进程只算一次。
+- **fail-visible**：路径非本地目录 / FileNotFoundError / ImportError
+  三种失败路径均 `print(WARN, stderr)` + 返回 `None`，不静默吞错。
+- `seed_fingerprint` **刻意保持 `None`**：`cascade/hourly_model.py` 仅有
+  硬编码 `seed=42` 用于消融，不随 verdict 变化，无种子可指纹。
+  注释明确说明此为设计正确，非遗漏。
+
+提交：`511e638`（代码）+ `ecf526b`（4 个集成测试）。
+
+### N8 — 测试计数修正
+
+`docs/superpowers/reports/2026-09-28-stage3-completion-report.md` 原写
+"新增测试: 61 个"。复审 N8 指出 Stage 3 实际新增 `def test_` 103 个
+（61 为实施波口径，即 PR 拆分相加 14+7+9+7+10+1+13=61，口径准确但非全量）。
+
+提交：`d5320cd`，更正为 103。
+
+### R1 — 105 个提交推送至 origin
+
+此前 97+ 个提交滞留本地。推送 `306653f..d5320cd` 至 `origin/master`。
+
+### 独立复核
+
+派 code-reviewer 专家对 N2/N3/N5 四个提交独立核实：
+- N2（`1fc241b`）：三条硬约束（不覆盖 / 幂等 / fail-visible）+ 原子写入
+  + 证据闸门全部属实 → ✅ 可合入
+- N3（`05636e5`）：排名守卫逻辑正确 + 测试 pre-fix 会红 + docstring 准确
+  → ✅ 可合入
+- N5（`511e638` + `ecf526b`）：路径/缓存/fail-visible 核实 + 4 场景测试
+  → ✅ 可合入
+
+4 个 LOW 级观察（信息密度偏粗 / lazy import 脆弱性 / 环境依赖 skip /
+build_summary 字段演进）均不阻塞。
+
+---
+
+## 十三、验证
 
 ```
-测试：1484 passed / 13 failed（13 项均为既有，逐条核实归属）
-      修复前后失败集合完全一致，零新增
+测试（924e072 时点）：
+  1484 passed / 13 failed（13 项均为既有，逐条核实归属）
+  修复前后失败集合完全一致，零新增
+测试（复审闭环后）：
+  114 passed / 0 failed（N3 + N5 + 相关模块回归）
 对齐：context_hash 切片 vs 模型窗口，4 品种 × 3 位置 = 12/12 逐值一致
 探针：扰动 predicted_daily_closes ×1.5+30 → rsi_state / hourly_slope
       horizon 逐值不变
+推送：306653f..d5320cd → origin/master（105 个提交）
+基线重生：9/9 品种完成（ss/sr/m/jd/lh/cj/fu/rb/eg）
+独立复核：N2/N3/N5 四个提交 → ✅ 可合入（4 个 LOW 级观察，均不阻塞）
 ```
