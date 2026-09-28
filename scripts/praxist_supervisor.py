@@ -1256,7 +1256,6 @@ def _sector_filter_check(symbol, snapshot):
 
     # T7: 板块部分退化预警（50% 阈值）
     if n_failed >= sector_size * 0.5 and n_failed < sector_size:
-        import logging
         logging.warning(
             f"Sector partial degradation: {sector} has {n_failed}/{sector_size} "
             f"symbols failed ({100*n_failed/sector_size:.0f}%). "
