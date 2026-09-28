@@ -9,6 +9,10 @@ from zoneinfo import ZoneInfo
 
 SHANGHAI_TZ = ZoneInfo('Asia/Shanghai')
 
+# spec §4.1 W1.2: 带宽参数唯一约定
+# HORIZON = 24, STEP = 2 → h = HORIZON // STEP = 12, q = h - 1 = 11
+HAC_MAX_LAG_Q = 11
+
 
 def safe_normalize_cutoff(ts: Union[str, int, float, None]) -> Optional[int]:
     """Normalize cutoff timestamp to Unix seconds (Asia/Shanghai).
@@ -396,4 +400,85 @@ def pair_dir_ok_series_with_diagnostics(
                         or counts["dm_unmatched_baseline"])
     return _base(dm_status="set_mismatch_ok" if set_mismatch else "ok",
                  pairing_valid=True, **counts)
+
+
+def compute_hac_se(
+    x: np.ndarray,
+    q: int = HAC_MAX_LAG_Q,
+) -> float:
+    """Bartlett 核 HAC 长程方差估计（spec §4.1 W1.2 唯一家）。
+
+    与 `measured_n_eff` 共用同一估计量，禁止另写一套。
+
+    Args:
+        x: 时间序列
+        q: 最大滞后阶数（默认 11，spec W1.2 钦定）
+
+    Returns:
+        长程方差估计值（sigma_LR^2）
+
+    spec 关键区分:
+        - 这是 Bartlett 核 HAC 长程方差（线性权重 1 - l/(L+1)）
+        - 名义 VIF = 8.0278 是**线性衰减假设的平方权重**，两者不是同一个量
+        - 禁止声称「规划 VIF = DM 长程方差」
+    """
+    x = np.asarray(x, dtype=float).ravel()
+    n = len(x)
+
+    if n < 2:
+        return 0.0
+
+    x_centered = x - np.mean(x)
+
+    # 自协方差序列
+    gamma = np.zeros(q + 1)
+    for j in range(q + 1):
+        if j == 0:
+            gamma[j] = np.mean(x_centered ** 2)
+        else:
+            gamma[j] = np.mean(x_centered[j:] * x_centered[:-j])
+
+    # Bartlett 核权重（线性衰减 1 - j/(q+1)）
+    weights = np.array([1.0 - j / (q + 1) for j in range(q + 1)])
+
+    # 长程方差 = gamma_0 + 2 * sum_{j=1}^q w_j * gamma_j
+    sigma_lr_sq = gamma[0] + 2.0 * np.sum(weights[1:] * gamma[1:])
+
+    return float(sigma_lr_sq)
+
+
+def compute_planning_vif(
+    horizon: int = 24,
+    step: int = 2,
+) -> float:
+    """名义方差膨胀因子 VIF（spec §4.1 W1.2，仅用于情景规划）。
+
+    定义: VIF = 1 + 2 * Sum_{j=1..q} (1 - j/h)^2
+    其中 h = horizon // step, q = h - 1
+
+    spec 关键区分:
+        - 这是**名义 VIF**，基于线性衰减假设的**平方权重**
+        - 不等于 Bartlett HAC 长程方差（线性权重 1 - l/(L+1)）
+        - 仅用于无先导数据时的量级情景
+        - 禁止声称「规划 VIF = DM 长程方差」
+
+    Args:
+        horizon: 预测视野（默认 24）
+        step: 步长（默认 2）
+
+    Returns:
+        名义 VIF 值（horizon=24, step=2 时应为 8.0278）
+    """
+    h = horizon // max(1, step)
+    q = h - 1
+
+    if q < 1:
+        return 1.0
+
+    # VIF = 1 + 2 * sum_{j=1}^q (1 - j/h)^2
+    vif = 1.0
+    for j in range(1, q + 1):
+        vif += 2.0 * (1.0 - j / h) ** 2
+
+    return float(vif)
 

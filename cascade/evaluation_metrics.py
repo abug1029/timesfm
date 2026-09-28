@@ -481,3 +481,119 @@ def calc_prediction_quality(
         "decay": decay,
         "n": n,
     }
+
+
+def measured_n_eff(
+    x: np.ndarray,
+    h: int = 12,
+    q: int = 11,
+) -> tuple[Optional[float], str]:
+    """实测有效样本量（spec §4.1 W1.2 唯一家）。
+
+    与 DM 检验共用同一估计量（Newey-West Bartlett + HLN），禁止另写一套。
+
+    定义: n_eff = n * sigma0^2 / sigma_LR^2
+    其中 sigma0^2 为样本方差，sigma_LR^2 为 Bartlett 核 HAC 长程方差
+
+    Args:
+        x: 时间序列
+        h: 重叠窗口数参数（默认 12 = HORIZON//STEP）
+        q: 最大滞后阶数（默认 11 = h - 1）
+
+    Returns:
+        (n_eff, n_eff_status): 有效样本量和状态
+
+    七类边界规则:
+        - 常数序列: n_eff = 1, status = "degenerate_constant"
+        - 样本不足 (n < 30): n_eff = None, status = "insufficient_n"
+        - 长程方差 <= 0: 夹取为 sigma0^2 + WARN, status = "clipped_to_iid"
+        - NaN/Inf: 抛出异常, status = "nonfinite"
+        - 正常估计: 实测值, status = "ok"
+        - 估计失败: n_eff = None, status = "estimation_failed"
+    """
+    from cascade.statistical_tests import compute_hac_se
+    import logging
+
+    x = np.asarray(x, dtype=float).ravel()
+    n = len(x)
+
+    # 边界检查：NaN/Inf
+    if n == 0 or np.any(np.isnan(x)) or np.any(np.isinf(x)):
+        return None, "nonfinite"
+
+    # 边界检查：样本不足
+    if n < 30:
+        return None, "insufficient_n"
+
+    # 边界检查：常数序列
+    if np.std(x) < 1e-10:
+        return 1.0, "degenerate_constant"
+
+    # 计算样本方差
+    sigma0_sq = np.var(x, ddof=1)
+
+    # 计算 Bartlett 核 HAC 长程方差
+    sigma_lr_sq = compute_hac_se(x, q=q)
+
+    # 边界处理：长程方差 <= 0
+    if sigma_lr_sq <= 0:
+        logging.warning(
+            f"Long-run variance <= 0 ({sigma_lr_sq:.6e}), clipping to sample variance"
+        )
+        sigma_lr_sq = sigma0_sq
+        status = "clipped_to_iid"
+    else:
+        status = "ok"
+
+    # 计算 n_eff
+    n_eff = n * sigma0_sq / sigma_lr_sq
+
+    # 数学保证：n_eff <= n
+    if n_eff > n:
+        n_eff = float(n)
+
+    return float(n_eff), status
+
+
+def compute_meets_min_info(
+    n: int,
+    n_eff: Optional[float],
+    n_eff_status: str,
+    dm_common_count: int,
+    min_n: int = 30,
+    min_n_eff: int = 50,
+    min_pairs: int = 50,
+) -> bool:
+    """计算是否满足确认检验的最低信息要求（spec §4.1 W1.2）。
+
+    改为一个显式布尔字段表达「是否满足确认检验的最低信息要求」。
+
+    Args:
+        n: 样本量
+        n_eff: 有效样本量
+        n_eff_status: n_eff 状态
+        dm_common_count: DM 配对数量
+        min_n: 最小样本量（默认 30）
+        min_n_eff: 最小有效样本量（默认 50）
+        min_pairs: 最小配对数（默认 50）
+
+    Returns:
+        bool: 是否满足最低信息要求
+
+    判定条件:
+        n >= min_n
+        AND n_eff >= min_n_eff
+        AND dm_common_count >= min_pairs
+        AND n_eff_status in VALID_ESTIMATE
+
+    VALID_ESTIMATE 包括: ok, degenerate_constant, clipped_to_iid, estimation_failed
+    不包括: insufficient_n, nonfinite（这些是错误，不是「统计上不可判定」）
+    """
+    VALID_ESTIMATE = {"ok", "degenerate_constant", "clipped_to_iid", "estimation_failed"}
+
+    return (
+        n >= min_n
+        and (n_eff is not None and n_eff >= min_n_eff)
+        and dm_common_count >= min_pairs
+        and n_eff_status in VALID_ESTIMATE
+    )
