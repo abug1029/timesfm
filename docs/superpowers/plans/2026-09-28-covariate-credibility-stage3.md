@@ -300,9 +300,20 @@ PR-B6 评审建议: `n_failed >= sector_size * 0.5` 时打 WARN，
 
 ---
 
-## 阻塞项 — D5 裁定（**本计划的关键路径**）
+## 阻塞项 — D5 裁定（**已解决** 2026-09-28 `d621a1a`）
 
-**spec §8.5 硬约束 2:** 「D5 未裁定 → PR-A1 与 PR-D2 均不得实施」。
+**✅ D5 已裁定并实施**: cutoff 改为 bar 收盘时间（`dt + 1h`），消除 1-bar 前视偏差。
+
+**修复范围**:
+- `scripts/monthly_backtest.py`
+- `scripts/batch_backtest.py`
+- `scripts/backtest_vol_gating_fullchain.py`
+- `scripts/a2_p1_worker.py`
+- `scripts/a2_p2_worker.py`
+
+**测试**: `tests/test_d5_cutoff_fix.py` (5 个测试验证 cutoff 语义)
+
+**原 spec §8.5 硬约束 2**: 「D5 未裁定 → PR-A1 与 PR-D2 均不得实施」— **已解除**。
 
 PR-A1（cutoff 语义 + checkpoint 键）落地后须:
 1. 重新生成全部 nocov 基线
