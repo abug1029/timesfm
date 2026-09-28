@@ -4,8 +4,8 @@ import pytest
 import tempfile
 from pathlib import Path
 from scripts.fingerprint_lib import (
-    compute_cov_fingerprint,
-    compute_protocol_fingerprint,
+    compute_cov_config_fingerprint,
+    compute_protocol_config_fingerprint,
     compute_weight_fingerprint,
     compute_seed_fingerprint,
     compute_variant_id,
@@ -87,7 +87,7 @@ class TestComputeCovFingerprint:
     def test_basic(self):
         """基本功能"""
         config = {"covariate_type": "rsi_state", "horizon": 24}
-        result = compute_cov_fingerprint(config)
+        result = compute_cov_config_fingerprint(config)
 
         assert "keys_sha256" in result
         assert "n_channels" in result
@@ -98,7 +98,7 @@ class TestComputeCovFingerprint:
     def test_nan_handling(self):
         """NaN 处理"""
         config = {"value": float('nan'), "type": "test"}
-        result = compute_cov_fingerprint(config)
+        result = compute_cov_config_fingerprint(config)
         # 应该成功，NaN 被转为字符串
         assert "keys_sha256" in result
 
@@ -106,28 +106,28 @@ class TestComputeCovFingerprint:
         """Inf 拒绝"""
         config = {"value": float('inf')}
         with pytest.raises(ValueError):
-            compute_cov_fingerprint(config)
+            compute_cov_config_fingerprint(config)
 
     def test_deterministic(self):
         """确定性"""
         config = {"type": "rsi_state", "horizon": 24}
-        result1 = compute_cov_fingerprint(config)
-        result2 = compute_cov_fingerprint(config)
+        result1 = compute_cov_config_fingerprint(config)
+        result2 = compute_cov_config_fingerprint(config)
         assert result1["keys_sha256"] == result2["keys_sha256"]
 
     def test_different_order_same_hash(self):
         """不同顺序相同哈希"""
         config1 = {"a": 1, "b": 2}
         config2 = {"b": 2, "a": 1}
-        result1 = compute_cov_fingerprint(config1)
-        result2 = compute_cov_fingerprint(config2)
+        result1 = compute_cov_config_fingerprint(config1)
+        result2 = compute_cov_config_fingerprint(config2)
         # 应该相同，因为规范序列化会按键排序
         assert result1["keys_sha256"] == result2["keys_sha256"]
 
     def test_custom_n_channels(self):
         """自定义通道数"""
         config = {"type": "test", "n_channels": 3}
-        result = compute_cov_fingerprint(config)
+        result = compute_cov_config_fingerprint(config)
         assert result["n_channels"] == 3
 
 
@@ -137,7 +137,7 @@ class TestComputeProtocolFingerprint:
     def test_basic(self):
         """基本功能"""
         config = {"min_n": 350, "min_ic": 0.05, "stage": "aligned"}
-        result = compute_protocol_fingerprint(config)
+        result = compute_protocol_config_fingerprint(config)
 
         assert "protocol_sha256" in result
         assert "hash_version" in result
@@ -146,15 +146,15 @@ class TestComputeProtocolFingerprint:
     def test_deterministic(self):
         """确定性"""
         config = {"min_n": 350}
-        result1 = compute_protocol_fingerprint(config)
-        result2 = compute_protocol_fingerprint(config)
+        result1 = compute_protocol_config_fingerprint(config)
+        result2 = compute_protocol_config_fingerprint(config)
         assert result1["protocol_sha256"] == result2["protocol_sha256"]
 
     def test_inf_rejects(self):
         """Inf 拒绝"""
         config = {"value": float('inf')}
         with pytest.raises(ValueError):
-            compute_protocol_fingerprint(config)
+            compute_protocol_config_fingerprint(config)
 
 
 class TestComputeWeightFingerprint:
@@ -187,6 +187,34 @@ class TestComputeWeightFingerprint:
 
             with pytest.raises(FileNotFoundError, match="No model files found"):
                 compute_weight_fingerprint(str(weights_dir))
+
+    def test_tail_change_detected_same_size(self):
+        """PR-B1 评审修复: 文件大小不变、仅尾部变化也必须检出。
+
+        原实现只哈希前 4KB + 文件大小，对"仅末层权重变化"的重训练
+        会给出相同指纹 → 不同模型被误判为同一实验（假去重）。
+        """
+        head = b"H" * 8192          # 前 8KB 完全相同（远超原 4KB 窗口）
+        with tempfile.TemporaryDirectory() as tmpdir:
+            d = Path(tmpdir)
+            (d / "model.safetensors").write_bytes(head + b"A" * 4096)
+            fp1 = compute_weight_fingerprint(str(d))["weights_sha256"]
+
+            # 同样大小，仅尾部不同
+            (d / "model.safetensors").write_bytes(head + b"B" * 4096)
+            fp2 = compute_weight_fingerprint(str(d))["weights_sha256"]
+
+            assert fp1 != fp2, "尾部变化未被检出（仍在截断哈希）"
+
+    def test_identical_files_same_fingerprint(self):
+        """内容相同 → 指纹相同（防止修复引入随机性）"""
+        payload = b"X" * 10000
+        with tempfile.TemporaryDirectory() as tmpdir:
+            d = Path(tmpdir)
+            (d / "model.safetensors").write_bytes(payload)
+            fp1 = compute_weight_fingerprint(str(d))["weights_sha256"]
+            fp2 = compute_weight_fingerprint(str(d))["weights_sha256"]
+            assert fp1 == fp2
 
     def test_deterministic(self):
         """确定性"""

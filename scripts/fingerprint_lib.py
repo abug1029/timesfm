@@ -1,11 +1,29 @@
 """实验身份指纹系统（PR-B1）
 
-基于内容哈希的实验身份系统，替代字符串 variant_id 去重。
-检测"语义相同但 variant_id 不同"的实验。
+**状态：库实现。生产接线留待 Stage 3。**
+
+`compute_variant_id()` 当前**无生产调用方**（仅测试调用）。原计划（PR-B1 步骤 2）
+要求把指纹嵌入 `variant_id`，但取证后决定不接线，理由：
+
+1. 生产 registry 的 143 条裁决**全部**为 `"{symbol}_{cov}"` 旧格式。
+   改格式会使 `dead_variants()` / `pass_variants()` / 新颖性判定全部落空 ——
+   已失败组合会被当作新颖重新提案，且同一实验可能出现两个 id。
+2. 这 143 条同时**缺失全部 18 个 A1 字段**（`pass_variants` 返回 0），
+   属 pre-Stage-1 遗留数据（registry 冻结于 2026-09-24 06:25，
+   Stage 1 A1 接线落于 2026-09-27）。迁移它们收益存疑。
+3. Stage 1 已在 verdict 上落地 per-verdict 指纹字段
+   （`protocol_fingerprint` / `cov_fingerprint` / `sample_fingerprint`），
+   承载同一"内容可比性"能力，无需在 variant_id 上重复编码。
+
+**命名注意（PR-B1 评审修复）**：本模块的配置指纹函数已重命名为
+`compute_cov_config_fingerprint` / `compute_protocol_config_fingerprint`，
+以区别于 `task_FM/evaluations/fm_eval/evaluator.py` 中 Stage 1 的同名函数
+（后者哈希**数值矩阵** `compute_cov_fingerprint(matrix, keys)`，
+本模块哈希**配置 dict**）。两者语义不同、不可互换。
 
 指纹类型：
-- cov_fingerprint: 协变量配置指纹
-- protocol_fingerprint: 协议配置指纹
+- cov_config_fingerprint: 协变量**配置**指纹（哈希 config dict）
+- protocol_config_fingerprint: 协议**配置**指纹（哈希 config dict）
 - weight_fingerprint: 模型权重指纹
 - seed_fingerprint: 随机种子指纹
 
@@ -57,7 +75,7 @@ def _compute_sha256(data_str):
     return hash_bytes.hex()[:16]
 
 
-def compute_cov_fingerprint(cov_config):
+def compute_cov_config_fingerprint(cov_config):
     """协变量配置指纹
 
     Args:
@@ -89,7 +107,7 @@ def compute_cov_fingerprint(cov_config):
         raise ValueError(f"Failed to compute cov_fingerprint: {e}")
 
 
-def compute_protocol_fingerprint(protocol_config):
+def compute_protocol_config_fingerprint(protocol_config):
     """协议配置指纹
 
     Args:
@@ -120,7 +138,7 @@ def compute_weight_fingerprint(weights_dir):
     """模型权重指纹
 
     扫描权重目录下所有模型文件，计算指纹。
-    对每个文件取前 4KB + 文件大小做 SHA-256，
+    对每个文件流式哈希**完整内容**（SHA-256），
     然后合并所有文件指纹再做一次 SHA-256。
 
     Args:
@@ -151,16 +169,14 @@ def compute_weight_fingerprint(weights_dir):
     # 对每个文件计算指纹
     file_fingerprints = []
     for file_path in sorted(model_files):  # 排序保证确定性
-        file_size = file_path.stat().st_size
-
-        # 读取前 4KB
+        # PR-B1 评审修复: 流式哈希**整个文件**，不再只取前 4KB。
+        # 原实现只读前 4KB + 文件大小，对"仅末层权重变化、文件大小不变"的
+        # 重训练会给出相同指纹 → 不同模型被误判为同一实验（假去重）。
+        hasher = hashlib.sha256()
         with open(file_path, 'rb') as f:
-            first_4kb = f.read(4096)
-
-        # 计算文件指纹：大小 + 前 4KB
-        file_data = f"{file_size}:{first_4kb.hex()}"
-        file_sha256 = hashlib.sha256(file_data.encode('utf-8')).hexdigest()
-        file_fingerprints.append(file_sha256)
+            for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                hasher.update(chunk)
+        file_fingerprints.append(hasher.hexdigest())
 
     # 合并所有文件指纹
     combined = ":".join(file_fingerprints)
@@ -212,8 +228,8 @@ def compute_variant_id(symbol, cov, cov_config, protocol_config, weights_dir, se
         str: variant_id
     """
     try:
-        cov_fp = compute_cov_fingerprint(cov_config)
-        proto_fp = compute_protocol_fingerprint(protocol_config)
+        cov_fp = compute_cov_config_fingerprint(cov_config)
+        proto_fp = compute_protocol_config_fingerprint(protocol_config)
         weight_fp = compute_weight_fingerprint(weights_dir)
 
         # 截取指纹前 8 位
