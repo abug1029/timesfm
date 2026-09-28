@@ -1272,7 +1272,20 @@ verdict 记录 `proposer_model`、`proposer_provider`、`run_id`、`peer_role`�
 
 #### W6.6 门槛一致性前置条件（治 X4）
 
-成功判定**要求** `baseline_dir_acc is not None`。无基线的 verdict 落 `gate_basis="fallback_0.52"`，**不参与跨品种比较，也不参与成功判定**，直到无协变量基线补齐。PR-A4 的 `baseline_points_{sym}_nocov.jsonl` 必须覆盖全部**有 verdict 的品种**（当前缺 cf/i/jm/ma/p/sh 六个），而不只是现有 8 个。
+成功判定**要求** `baseline_dir_acc is not None`。无基线的 verdict 落 `threshold_basis="fallback_0.52"`，**不参与跨品种比较，也不参与成功判定**，直到无协变量基线补齐。PR-A4 的 `baseline_points_{sym}_nocov.jsonl` 必须覆盖全部**有 verdict 的品种**（当前缺 cf/i/jm/ma/p/sh 六个），而不只是现有 8 个。
+
+> **v16 字段名更正（2026-09-28，实施时发现）**：本条原写 `gate_basis="fallback_0.52"`。
+> 但 `gate_basis` 已有既定语表 `{active, full_fallback}`，语义是「用哪个**总体口径**
+> 当门参照」（`attach_gated_metrics` 的 gated 子集 / pool 加载失败回退全量）。
+> 把 W6.6 的「**阈值参照**是否缺失」塞进同一个键，会让「无基线的非 gated run」
+> 与「gated pool 加载失败」不可区分 —— 且 `tests/test_fm_evaluator_gated.py`
+> 断言非 gated 输出**不含** `gate_basis`，实测 3 个既有测试因此失败。
+> 故拆为独立键 `threshold_basis ∈ {baseline, fallback_0.52}`，
+> `gate_basis` 保持原词表不变。二者语义正交，不得合并。
+>
+> 注：`threshold_basis` 目前为**纯登记字段** —— 「不参与成功判定」仍由
+> `baseline_dir_acc is None` 隐式表达（见 `compute_effective_min`），
+> 尚未有代码读该键。真正接线属 Stage 4。
 
 #### W6.7 历史修订防护（治 X8）
 
@@ -1331,7 +1344,7 @@ verdict 落 `context_hash`：该 cutoff 的 context 窗口（480 bar 的收盘�
 28. **W6.1c**：构造 `sector_of()=="other"` 的品种，断言它**仍能接受通用类**协变量，板块专属类被拒并落 `sector_unknown`。
 29. **跨板块许可**：无 `cross_sector_approved` 记录的错配提案被**拒绝**；缺 `approved_by`/`approved_at` → 许可无效。**`basis` 只断言字段存在，不断言内容质量**（代码无法验证"理由可复核"）。
 30. **W6.5 重算**：重算的 `dir_acc_v2` 与原 `dir_acc` 在零变动点为 0 时相等；rb 重算后上升（约 +2pp）；脚本幂等；原 `dir_acc` **未被覆盖**。
-31. **W6.6**：`baseline_dir_acc is None` 的 verdict 落 `gate_basis="fallback_0.52"` 且不参与成功判定与跨品种比较。
+31. **W6.6**：`baseline_dir_acc is None` 的 verdict 落 `threshold_basis="fallback_0.52"` 且不参与成功判定与跨品种比较。（v16 由 `gate_basis` 更名 —— 见 §4.7 W6.6 的更正说明。）
 32. **W6.7**：context 内容变化后重算的 verdict 落 `data_revised=true` 并退出成功判定。
 33. **W6.8**：预训练风险登记字段存在；**断言无诊断性检验被强制执行**（已裁定仅登记）。
 34. **`known_ahead` 证据**：缺 `known_ahead_evidence` → 降级 `unknowable` + WARN（不静默）；交易所临时调整类不被判为 `known_ahead`。

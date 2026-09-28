@@ -111,9 +111,11 @@ def test_measured_n_eff_negative_variance():
     for x in candidates:
         x_c = x - np.mean(x)
         q = 11
-        gamma0 = np.mean(x_c ** 2)
+        # 分母统一用 n（与 compute_hac_se 的 Newey-West 约定一致）。
+        # 曾用 np.mean(x_c[j:] * x_c[:-j]) 即 n-j 约定，与生产不同源。
+        gamma0 = np.sum(x_c ** 2) / len(x_c)
         lr = gamma0 + 2 * sum(
-            (1 - j / (q + 1)) * np.mean(x_c[j:] * x_c[:-j])
+            (1 - j / (q + 1)) * np.sum(x_c[j:] * x_c[:len(x_c) - j]) / len(x_c)
             for j in range(1, q + 1)
         )
         if lr < 0:
@@ -124,9 +126,27 @@ def test_measured_n_eff_negative_variance():
         pytest.skip("无法构造出负长程方差的序列（Bartlett 核正半定性保护）")
 
     n_eff, status = measured_n_eff(x)
-    assert status == "clipped_to_iid", "负长程方差必须走夹取分支"
+    # 状态名须与 spec §4.1 边界表一致。旧名 clipped_to_iid 已废弃；
+    # 此处曾被 pytest.skip 恒定掩盖，改名回归因此不可见。
+    assert status == "hac_nonpositive_clamped", (
+        "负长程方差必须走夹取分支，实际 status=%r" % status)
     assert n_eff is not None
     assert n_eff <= n
+
+
+def test_negative_variance_branch_status_name_is_not_stale():
+    """防回归：夹取分支的状态名不得回退为已废弃的 clipped_to_iid。
+
+    原 `test_measured_n_eff_negative_variance` 因负长程方差在 Bartlett 核
+    正半定性下几乎不可达，`pytest.skip` 恒定触发，其中的断言从不执行 ——
+    状态名改名后该断言若运行必红，却被 skip 掩盖。此测试不依赖构造成功，
+    直接断言源码里不再出现旧名。
+    """
+    import inspect
+    from cascade import evaluation_metrics as em
+
+    src = inspect.getsource(em)
+    assert "clipped_to_iid" not in src, "旧状态名 clipped_to_iid 残留"
 
 
 def test_meets_min_info_all_conditions_met():
@@ -378,3 +398,28 @@ def test_measured_n_eff_status_names_match_spec():
         assert compute_meets_min_info(n_eff_status=st, **base) is True, st
     for st in ("insufficient_n", "nonfinite", "estimation_failed", "bogus"):
         assert compute_meets_min_info(n_eff_status=st, **base) is False, st
+
+
+def test_n_eff_actually_uses_shared_hac_estimator():
+    """spec §4.1 W1.2 的原文是「n_eff 与 DM 共用同一估计量」。
+
+    已有测试只锁了 DM 一侧（DM 必须委托 compute_hac_se）。
+    本测试锁 n_eff 一侧：从外部用 compute_hac_se 复算
+    n_eff = n * sigma0^2 / sigma_LR^2，须与 measured_n_eff 一致。
+    若有人给 measured_n_eff 另写一套自协方差，此处会分叉。
+    """
+    from cascade.statistical_tests import HAC_MAX_LAG_Q, compute_hac_se
+
+    rng = np.random.default_rng(5)
+    for n in (200, 500):
+        x = rng.standard_normal(n)
+        for t in range(1, n):
+            x[t] = 0.5 * x[t - 1] + rng.standard_normal()
+
+        n_eff, status = measured_n_eff(x)
+        assert status == "ok", status
+
+        sigma0_sq = np.var(x)                      # ddof=0，与 gamma_0 同约定
+        sigma_lr_sq = compute_hac_se(x, q=HAC_MAX_LAG_Q)
+        assert n_eff == pytest.approx(n * sigma0_sq / sigma_lr_sq, rel=1e-12)
+

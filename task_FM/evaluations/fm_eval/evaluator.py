@@ -343,16 +343,22 @@ def _compute_context_hash(points) -> Optional[str]:
         return None
 
     digests = []
+    n_dict = 0
     for p in points:
         if isinstance(p, dict):
+            n_dict += 1
             ch = p.get("context_hash")
             if ch:
                 digests.append(str(ch))
 
-    if not digests:
+    # 覆盖不全时返回 None（未知），**不**返回一个只覆盖子集的哈希。
+    # 跨本字段引入点的 `--resume` 必然产生「部分点有摘要」的混合 verdict；
+    # 此时给出一个看似正常的 16 位哈希，读者无从知道它只覆盖了一部分
+    # —— 那是把「不完整」伪装成「完整」，正是 fail-visible 要防的。
+    if len(digests) != n_dict:
         return None
 
-    # 按 cutoff 排序后汇总，保证点序不同不影响结果
+    # 按摘要排序后汇总，保证点序不同不影响结果
     digests.sort()
     return hashlib.sha256("|".join(digests).encode("utf-8")).hexdigest()[:16]
 
