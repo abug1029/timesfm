@@ -7,7 +7,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 ## 核心架构
 
 **两阶段级联预测系统：**
-1. **Stage 1 (日线模型)**: `cascade/daily_model.py` — TimesFM 2.5 预测 22 日走势，提取 horizon_slope
+1. **Stage 1 (日线模型)**: `cascade/daily_model.py` — TimesFM 3.0 预测 22 日走势，提取 horizon_slope
 2. **Stage 2 (1H 级联)**: `cascade/hourly_model.py` — 以日线斜率 + 协变量(CCL/OI/RSI 等)进行 1H 预测
 
 **数据流：** TqSdk → SQLite(每品种独立) → 技术指标计算 → TimesFM 预测 → 报告生成
@@ -30,11 +30,11 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 | 用途 | 仓库 / 进程 | 权重路径 |
 |------|-------------|----------|
 | 预测岗 | **其他仓库** `timesFM_fu`（非本 WSL 树） | 其自身路径或该进程的 HF cache；**勿与本仓 `/home/abug/timesfm` 共用权重** |
-| PRAXIST / FM_a cascade 慢路径 | `timesfm`（本仓，WSL `/home/abug/timesfm`） | **本地目录** `/home/abug/timesfm/models/timesfm-2.5-200m-pytorch` |
+| PRAXIST / FM_a cascade 慢路径 | `timesfm`（本仓，WSL `/home/abug/timesfm`） | **本地目录** `/home/abug/timesfm/models/timesfm-3.0-pytorch` |
 
 - 环境变量（优先）：`FM_TIMESFM_MODEL_PATH`（兼容 `TIMESFM_MODEL_PATH` / `TIMESFM_WEIGHTS_DIR`）
 - 解析入口：`data.config.get_timesfm_model_path()`；cascade `DailyModel`/`HourlyModel` 经此加载
-- HF hub id `google/timesfm-2.5-200m-pytorch` 仅作缺本地权重时的最后回退；PRAXIST 正式跑应保证本地目录已填充
+- HF hub id `google/timesfm-3.0-200m-pytorch` 仅作缺本地权重时的最后回退；PRAXIST 正式跑应保证本地目录已填充
 - 权重目录 gitignore：`models/timesfm-*/`；填充方式：从 HF cache snapshot **复制**（非 runtime 直连共享 cache）或 `huggingface-cli download --local-dir`
 
 ## PRAXIST 运行环境（WSL2）
