@@ -73,6 +73,14 @@ class TestNormalizeCutoff(unittest.TestCase):
 
 class TestBarExactCutoff(unittest.TestCase):
     def test_midday_excludes_later_same_day_bars(self):
+        """cutoff = 10:00 是「信息已知时刻」，故只到 **09:00 那根** 为止。
+
+        契约变更（2026-09-28）：原断言 `10:00` 那根**被纳入**。
+        但 `kline_1h.dt` 是 bar **开盘**时间，10:00 那根要到 11:00 才收盘
+        —— 在 cutoff=10:00 时刻它尚未收盘，纳入即前视。且它恰是回测里
+        预测目标的第一根（`monthly_backtest` 以评估 bar 的收盘时间为 cutoff）。
+        故上界收紧为 `cutoff_ts − 1h`，本测试随之更新。
+        """
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "futures_zz.db"
             _seed_1h_db(db, "zz")
@@ -80,11 +88,13 @@ class TestBarExactCutoff(unittest.TestCase):
                 store = BacktestDataStore("zz", "2026-03-10 10:00:00")
                 try:
                     df = store.get_main_contract_1h(limit=100)
-                    self.assertFalse(df.empty, "expected 1H rows up to 10:00")
+                    self.assertFalse(df.empty, "expected 1H rows up to 09:00")
                     max_dt = pd.Timestamp(df["dt"].max())
-                    self.assertLessEqual(max_dt, pd.Timestamp("2026-03-10 10:00:00"))
+                    self.assertLessEqual(max_dt, pd.Timestamp("2026-03-10 09:00:00"))
                     dts = set(pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d %H:%M:%S"))
-                    self.assertIn("2026-03-10 10:00:00", dts)
+                    self.assertIn("2026-03-10 09:00:00", dts)
+                    # 09:00 那根收盘于 10:00 == cutoff，恰在已知边界上
+                    self.assertNotIn("2026-03-10 10:00:00", dts)  # 收盘 11:00，未收盘
                     self.assertNotIn("2026-03-10 11:00:00", dts)
                     self.assertNotIn("2026-03-10 14:00:00", dts)
                     self.assertNotIn("2026-03-11 09:00:00", dts)

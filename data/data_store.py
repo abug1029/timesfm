@@ -872,18 +872,39 @@ class BacktestDataStore(DataStore):
             end_date=target_day, limit=limit, **kwargs
         )
 
+    def _h1_upper_bound(self) -> str:
+        """1H 截断上界 = cutoff_ts − 1h。
+
+        `kline_1h.dt` 是 bar 的**开盘**时间，一根 bar 要到 `dt + 1h` 才收盘。
+        cutoff_ts 是「信息已知时刻」（= 评估 bar 的收盘时间），故此刻**尚未
+        收盘**的 bar 不得纳入：开盘于 cutoff_ts 的那根，其收盘在 cutoff_ts+1h。
+
+        用 `dt <= cutoff_ts` 会把它一并纳入 —— 模型于是看到了一根 cutoff 之后
+        才收盘的 bar，而它恰是预测目标的第一根。D5 修正了 cutoff 语义
+        （开盘时间 → 收盘时间）但未同步本边界，此处在数据层补齐。
+
+        上界取 `cutoff_ts − 1h` 而非 `dt < cutoff_ts`：后者在 cutoff_ts 未与
+        bar 边界对齐时（如 11:30）会误纳开盘于 11:00、收盘于 12:00 的 bar。
+        """
+        ts = pd.Timestamp(self.cutoff_ts) - pd.Timedelta(hours=1)
+        return ts.strftime("%Y-%m-%d %H:%M:%S")
+
     def get_main_contract_1h(self, limit=480):
-        """1H 数据: 截断到 cutoff_ts (含)，优先 {SYM}_MAIN 与标签序列对齐。"""
+        """1H 数据: 截断到 **cutoff_ts 时刻已收盘**的最后一根 bar。
+
+        优先 {SYM}_MAIN 与标签序列对齐。上界见 `_h1_upper_bound`。
+        """
         symbol = self.symbol.upper()
+        upper = self._h1_upper_bound()
         for code in (f"{symbol}_MAIN", f"{symbol}_CONT"):
             cnt = self.conn.execute(
                 "SELECT COUNT(*) FROM kline_1h WHERE contract_code = ? AND dt <= ?",
-                (code, self.cutoff_ts),
+                (code, upper),
             ).fetchone()[0]
             if cnt > 0:
                 return self.get_klines_1h(
                     contract_code=code,
-                    end_date=self.cutoff_ts,
+                    end_date=upper,
                     limit=limit,
                 )
         contract_code = self._get_main_contract_at_cutoff()
@@ -891,7 +912,7 @@ class BacktestDataStore(DataStore):
             return pd.DataFrame()
         return self.get_klines_1h(
             contract_code=contract_code,
-            end_date=self.cutoff_ts,
+            end_date=upper,
             limit=limit,
         )
 

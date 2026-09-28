@@ -348,23 +348,21 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
         # spec W6.7 历史修订防护：context 窗口的**内容哈希**。在写入点算、
         # 只落摘要，既不膨胀 checkpoint，也不把 context 原文带进 verdict。
         #
-        # 窗口**必须复刻模型实际消费的那一段**，判据与
-        # `BacktestDataStore.get_main_contract_1h` 逐字相同：
-        #     dt <= cutoff_ts，取最后 CONTEXT_BARS 根
-        # 曾用 `iloc[idx-CONTEXT_BARS+1 : idx+1]`，实测**差整整一根**
-        # （2026-01-09 一例：本式得 …10:00，模型实得 …11:00）。
-        # 原因是 dt 为 bar **开盘**时间，而 cutoff = dt[idx]+1h 恰等于
-        # dt[idx+1]，故 `<=` 会把 idx+1 那根一并纳入。
+        # 窗口**必须复刻模型实际消费的那一段**，上界与
+        # `BacktestDataStore._h1_upper_bound()` 逐字相同：
+        #     dt <= (cutoff_ts − 1h)，取最后 CONTEXT_BARS 根
         #
-        # ⚠️ 这也意味着模型输入含一根 **cutoff 之后才收盘**的 bar
-        # （dt[idx+1] 开盘于 cutoff、收盘于 cutoff+1h）—— 属 D5 未覆盖的
-        # 既有前视问题，已在 STATE.md 登记，不在此处静默处理。
+        # 为什么减 1h：`all_1h["dt"]` 是 bar **开盘**时间，一根 bar 要到
+        # dt+1h 才收盘。cutoff 是「信息已知时刻」，故开盘于 cutoff 的那根
+        # （收盘于 cutoff+1h）不得纳入 —— 否则模型看到的是预测目标的第一根。
         #
-        # 注：`all_1h["dt"]` 是 TEXT 列（`YYYY-MM-DD HH:MM:SS`），store 的
-        # SQL 也是字符串比较，故此处必须比 `cutoff` 字符串而非 Timestamp
-        # —— 拿 Timestamp 比会 TypeError。
+        # 注：`dt` 是 TEXT 列（`YYYY-MM-DD HH:MM:SS`），store 的 SQL 也是
+        # 字符串比较，故此处必须比字符串而非 Timestamp（拿 Timestamp 比会
+        # TypeError —— 第一版就踩了）。
+        _ctx_upper = (close_ts - pd.Timedelta(hours=1)).strftime(
+            "%Y-%m-%d %H:%M:%S")
         _ctx = all_1h.loc[
-            all_1h["dt"] <= cutoff, "close_price"
+            all_1h["dt"] <= _ctx_upper, "close_price"
         ].iloc[-CONTEXT_BARS:].values
         _ctx_hash = hashlib.sha256(
             np.ascontiguousarray(_ctx, dtype=np.float64).tobytes()
