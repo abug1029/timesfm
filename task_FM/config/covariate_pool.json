@@ -16,25 +16,25 @@
    "status": "active",
    "mechanism": "RSI(14)超买超卖体制：极端读数后均值回归，体制状态(超买/中性/超卖)引导方向。",
    "track_record": "rsi_state: v22线索(旧PF口径,未v23复测,非证据)",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "rsi6": {
    "family": "momentum",
    "status": "active",
    "mechanism": "RSI(6)短周期超买超卖，比rsi_state更灵敏，捕捉短线极端反转。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "rsi12": {
    "family": "momentum",
    "status": "active",
    "mechanism": "RSI(12)中周期超买超卖，灵敏度介于rsi6与rsi_state之间。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "rsi24": {
    "family": "momentum",
    "status": "active",
    "mechanism": "RSI(24)长周期超买超卖，噪声更小、信号更稳但滞后。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "rsi_slope": {
    "family": "momentum",
@@ -46,7 +46,7 @@
    "family": "momentum",
    "status": "active",
    "mechanism": "QStick=收盘-开盘的均值，量化净买卖压力方向与持续性。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "oi": {
    "family": "inventory",
@@ -97,31 +97,31 @@
    "status": "active",
    "mechanism": "Heikin-Ashi实体方向与大小：平滑后的K线实体动能，过滤噪声识别趋势延续。",
    "track_record": "ha_body: v22线索(旧PF口径,未v23复测,非证据)",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "reversal_shadow": {
    "family": "momentum",
    "status": "active",
    "mechanism": "反转影线比率：长上/下影线相对ATR占比，极端影线标志遇阻/遇撑反转。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "reversal_shadow_gated_02": {
    "family": "momentum",
    "status": "active",
    "mechanism": "反转影线门控版(最小影线/ATR=0.2)：仅在影线足够显著时触发反转信号。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "reversal_shadow_gated_03": {
    "family": "momentum",
    "status": "active",
    "mechanism": "反转影线门控版(最小影线/ATR=0.3)：更严格的显著影线阈值。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "reversal_shadow_gated_05": {
    "family": "momentum",
    "status": "active",
    "mechanism": "反转影线门控版(最小影线/ATR=0.5)：最严格阈值，仅极端影线触发。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "calendar_cyclical": {
    "family": "calendar",
@@ -149,7 +149,7 @@
    "family": "momentum",
    "status": "active",
    "mechanism": "Hurst指数：判别趋势持续性(H>0.5)或均值回归(H<0.5)体制，元信号。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "regime_gated": {
    "family": "momentum",
@@ -161,7 +161,7 @@
    "family": "volatility",
    "status": "active",
    "mechanism": "滚动标准差：波动率水平，高波风险规避、低波蓄势突破。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "vor": {
    "family": "volatility",
@@ -175,7 +175,7 @@
    "status": "active",
    "mechanism": "布林带挤压：带宽收敛至极窄预示波动即将扩张，突破方向跟随。",
    "track_record": "bb_squeeze: v22线索(旧PF口径,未v23复测,非证据)",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "nvi": {
    "family": "inventory",
@@ -188,7 +188,7 @@
    "family": "momentum",
    "status": "active",
    "mechanism": "小时级别价格斜率：短期趋势动能方向与强度。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "gated_slope": {
    "family": "momentum",
@@ -201,13 +201,13 @@
    "status": "active",
    "mechanism": "抛物线SAR距离：价格与SAR的距离衡量趋势持仓位置与反转距离。",
    "track_record": "sar_dist: v22线索(旧PF口径,未v23复测,非证据)",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "ao_accel": {
    "family": "momentum",
    "status": "active",
    "mechanism": "Awesome Oscillator加速度：动量的二阶变化，提前捕捉趋势启动/衰竭。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "oi_gated_momentum": {
    "family": "momentum",

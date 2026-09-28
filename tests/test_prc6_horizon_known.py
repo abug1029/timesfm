@@ -50,11 +50,19 @@ def test_host_rulings_respected():
 
     covariates = pool.get("covariates", {})
 
-    # 宿主裁定（2026-09-28）
+    # 宿主裁定（2026-09-28）。
+    #
+    # ⚠️ rsi_state / hourly_slope 已由宿主**改判** self_referential →
+    # persistence：spec W5.5① 原裁理由是「horizon 尾值取自 TimesFM 自身
+    # 日线输出」，该理由被可执行探针证伪 —— 扰动 predicted_daily_closes
+    # ×1.5+30，二者 horizon 逐值不变（rsi_state 末态=2.0 时产出
+    # [2,2,1,1,0,0,…]，即 context 末态衰减；hourly_slope 是
+    # np.full(horizon, last_valid)，last_valid 取自 1H 收盘价）。
+    # 按 W5.1 的定义（self_referential = 未来值来自模型自身输出）应归 persistence。
     expected = {
-        "calendar_cyclical": "known_ahead",
-        "rsi_state": "self_referential",
-        "hourly_slope": "self_referential",
+        "calendar_cyclical": "known_ahead",   # 宿主已定「暂挂」，暂维持
+        "rsi_state": "persistence",
+        "hourly_slope": "persistence",
         "ccl": "unknowable",
         "oi": "unknowable",
     }
