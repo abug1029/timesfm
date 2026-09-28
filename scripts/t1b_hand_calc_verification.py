@@ -26,18 +26,28 @@ def verify_prediction_point(point, idx):
     delta_pred = point.get("delta_pred")
     delta_real = point.get("delta_real")
     dir_ok = point.get("dir_ok")
+    base = point.get("base")
+    pred_end = point.get("pred_end")
+    real_end = point.get("real_end")
 
-    # 手动计算 dir_ok
-    if abs(delta_real) < 1e-8:
-        expected_dir_ok = False  # 零变动
+    # 关键口径（monthly_backtest.py:425-426）：
+    #   dir_ok 用 **端点** delta（pred_end - base），不是 checkpoint 里存的
+    #   delta_pred 字段（那是 position_from_forecast 的信号口径加权值）。
+    #   两者故意不同 —— 照搬 delta_pred 字段核对 dir_ok 必然误判。
+    delta_pred_endpoint = pred_end - base
+    delta_real_endpoint = real_end - base
+    eps = 1e-8
+    if abs(delta_real_endpoint) < eps:
+        expected_dir_ok = False
     else:
-        expected_dir_ok = (delta_pred * delta_real) > 0
+        expected_dir_ok = (delta_pred_endpoint * delta_real_endpoint) > 0
 
-    match = "✅" if dir_ok == expected_dir_ok else "❌"
+    match = "OK" if dir_ok == expected_dir_ok else "MISMATCH"
 
     print(f"  点 {idx}: cutoff={cutoff}")
-    print(f"    delta_pred={delta_pred:.4f}, delta_real={delta_real:.4f}")
-    print(f"    dir_ok={dir_ok}, expected={expected_dir_ok} {match}")
+    print(f"    端点 delta_pred={delta_pred_endpoint:.4f}, 端点 delta_real={delta_real_endpoint:.4f}")
+    print(f"    dir_ok={dir_ok}, 手算={expected_dir_ok} [{match}]")
+    print(f"    (参考: 信号口径 delta_pred 字段={delta_pred:.4f} —— 不参与 dir_ok)")
 
     return dir_ok == expected_dir_ok
 
@@ -72,7 +82,7 @@ def main():
             if verify_prediction_point(points[i], i):
                 correct += 1
             total_points += 1
-            total_correct += correct
+        total_correct += correct
 
         print(f"  核对结果: {correct}/{n_verify} 正确\n")
 
