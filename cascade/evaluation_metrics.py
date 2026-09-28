@@ -414,12 +414,26 @@ def calc_prediction_quality(
     delta_pred = p_end - base_raw
     delta_real = r_end - base_raw
     eps = 1e-8
+
+    # PR-B4 (spec W6.5): 主口径 = 剔零变动（零变动从分母剔除）
+    zero_move = np.abs(delta_real) < eps
+    keep_active = ~zero_move
+
     dir_ok = np.where(
-        np.abs(delta_real) < eps,
-        False,
+        zero_move,
+        False,  # 零变动点 dir_ok=False（但会从分母剔除）
         np.sign(delta_pred) == np.sign(delta_real),
     )
-    dir_acc = float(np.mean(dir_ok)) if n > 0 else 0.0
+
+    # 主口径：剔零变动（spec W6.5①）
+    n_dir_total = int(n)
+    n_dir_active = int(keep_active.sum())
+    n_zero_move = int(zero_move.sum())
+    dir_acc = float(np.mean(dir_ok[keep_active])) if keep_active.any() else 0.0
+
+    # full 口径：不剔除任何点（独立计算，非别名）
+    dir_acc_full = float(np.mean(dir_ok)) if n > 0 else 0.0
+
     endpoint_mape = float(np.mean(np.abs(p_end - r_end) / base) * 100) if n else 0.0
     endpoint_bias_pct = float(np.mean((delta_pred - delta_real) / base * 100)) if n else 0.0
     abs_delta_real = np.abs(delta_real)
@@ -455,23 +469,29 @@ def calc_prediction_quality(
         mae_h1 = float(np.mean(np.abs(p_paths[..., :mid] - r_paths[..., :mid])))
         mae_h2 = float(np.mean(np.abs(p_paths[..., mid:] - r_paths[..., mid:])))
         decay = float(mae_h2 / max(mae_h1, 1e-6))
-    # D1/D2 分母口径：full 不剔除；ex_roll 剔除跨换月点
-    dir_acc_full = dir_acc
+    # D1/D2 分母口径：ex_roll 剔除跨换月点（在主口径基础上）
     if roll_flags is not None and len(roll_flags) == n:
-        keep = ~np.asarray(roll_flags, dtype=bool)
-        n_roll_excluded = int((~keep).sum())
-        dir_acc_ex_roll = float(np.mean(dir_ok[keep])) if keep.any() else 0.0
+        keep_roll = ~np.asarray(roll_flags, dtype=bool)
+        n_roll_excluded = int((~keep_roll).sum())
+        # ex_roll 在主口径（剔零变动）基础上再剔跨换月
+        keep_both = keep_active & keep_roll
+        dir_acc_ex_roll = float(np.mean(dir_ok[keep_both])) if keep_both.any() else 0.0
     else:
         n_roll_excluded = 0
         dir_acc_ex_roll = dir_acc
-    n_roll_ratio = (n_roll_excluded / n) if n > 0 else 0.0
+    n_zero_ratio = (n_zero_move / n_dir_total) if n_dir_total > 0 else 0.0
+    n_roll_ratio = (n_roll_excluded / n_dir_total) if n_dir_total > 0 else 0.0
 
     return {
-        "dir_acc": dir_acc,
-        "dir_acc_full": dir_acc_full,
-        "dir_acc_ex_roll": dir_acc_ex_roll,
-        "n_roll_excluded": n_roll_excluded,
-        "n_roll_ratio": n_roll_ratio,
+        "dir_acc": dir_acc,  # 主口径：剔零变动（spec W6.5①）
+        "dir_acc_full": dir_acc_full,  # full 口径：不剔除任何点
+        "dir_acc_ex_roll": dir_acc_ex_roll,  # 剔零变动 + 剔跨换月
+        "n_dir_total": n_dir_total,  # 名义点数（剔除前）
+        "n_dir_active": n_dir_active,  # 实际进入 dir_acc 分母的点数
+        "n_zero_move": n_zero_move,  # 零变动剔除数
+        "n_roll_excluded": n_roll_excluded,  # 跨换月剔除数
+        "n_zero_ratio": n_zero_ratio,  # 零变动占比
+        "n_roll_ratio": n_roll_ratio,  # 跨换月占比
         "endpoint_mape": endpoint_mape,
         "endpoint_bias_pct": endpoint_bias_pct,
         "path_corr": path_corr,

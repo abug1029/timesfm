@@ -53,14 +53,22 @@ def test_calc_prediction_quality_endpoint_only():
     assert result["mae"] is None and result["mape"] is None and result["decay"] is None
 
 def test_calc_prediction_quality_dir_ok_zero_delta():
+    # PR-B4 (spec W6.5): 主口径剔零变动
     # base=[100,200,300]; real deltas = 0, +5, 0; pred deltas = +5, +5, 0
-    # 点1 真实无变动 → False; 点2 同号 → True; 点3 真实无变动 → False → 1/3
+    # 点1 真实无变动 → 剔出分母; 点2 同号 → True; 点3 真实无变动 → 剔出分母
+    # 主口径: 1/1 = 1.0 (仅点2 进入分母且命中)
+    # full 口径: 1/3 (点1/3 算 miss)
     result = calc_prediction_quality(
         [105.0, 205.0, 300.0],
         [100.0, 205.0, 300.0],
         [100.0, 200.0, 300.0],
     )
-    assert abs(result["dir_acc"] - 1.0 / 3.0) < 1e-6
+    # 主口径：剔零变动
+    assert abs(result["dir_acc"] - 1.0) < 1e-6, "主口径应剔零变动"
+    assert result["n_zero_move"] == 2
+    assert result["n_dir_active"] == 1
+    # full 口径：不剔除
+    assert abs(result["dir_acc_full"] - 1.0 / 3.0) < 1e-6, "full 口径含零变动"
 
 def test_calc_prediction_quality_endpoint_mape_floor():
     result = calc_prediction_quality([0.5, 0.6], [0.4, 0.5], [0.5, 0.6])
