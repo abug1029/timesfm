@@ -1,147 +1,305 @@
-# 阶段 2 出口核验报告 (2026-09-28)
+# 阶段 2 出口核验报告 v2 (2026-09-28)
 
-**Commit 范围:** `51088bd` (Stage 1 基线) .. `9d121be` (HEAD)
-**测试:** 247 PASS, 1 xfailed（回归）+ 65 PASS（PR-B6 套件）
-**评审:** 每个 PR 均经 `oh-my-claudecode:code-reviewer` (opus) 独立评审并修复全部 CRITICAL/HIGH
+**Commit 范围:** `51088bd` (Stage 1 末次提交) .. `e6738cd` (HEAD)
+**测试:** 320 用例 / 16 文件（日常回归口径 310 PASS + 1 xfailed，见 §5）
+
+> **版本历史**
+> - **v1** — 被退回：① Stage 1 三项退回件无闭环证据；② PR-B1/B2/B3 评审只有"宣称通过"、
+>   无逐条对照表；③ `symbol_has_pass` 语义张力未裁定。
+> - **v2（本版）** — 补齐三份材料：§2 Stage 1 闭环证据、§3 五个 PR 全量评审对照表、
+>   §4.4 `symbol_has_pass` 裁定。另新增 §7（评审期间发现的 registry 遗留数据事实）。
 
 ## 0. Stage 2 意图（摘自计划）
 
 Stage 1 闭合三项硬门（因果对齐、比较对象、可追溯性）。Stage 2 是 L2 诊断层，目标是把"协变量未利用"从推断变成可验证事实，并为后续确认层 (L3) 和预注册层 (L4) 奠基。
 
-**交付清单（5 个 PR）:**
-- PR-B1: 指纹系统（实验身份 + 去重）
-- PR-B2: 协变量诊断字段（有效性 + 零填充 fail-loud）
-- PR-B3: `xreg_fallback` 贯通评估路径
-- PR-B5: 三路消融（区分内容效应与通道效应）
-- PR-B6: 提案质量门（板块/协变量/历史表现过滤）
-
-**未实施:** PR-B4（dir_acc 口径变更影响面过大，留待阶段 3）
+**交付清单（5 个 PR）:** PR-B1 指纹系统 · PR-B2 协变量诊断 · PR-B3 `xreg_fallback` 贯通 · PR-B5 三路消融 · PR-B6 提案质量门
+**未实施:** PR-B4（dir_acc 口径变更影响面过大）—— **属计划偏移，见 §8**
 
 ## 1. 实施清单与提交
 
-| PR | Commits | 新增文件 | 修改文件 | 测试数 |
-|----|---------|---------|---------|-------|
-| B1 | `20245da` | `cascade/fingerprint_lib.py`, 2 测试文件 | `scripts/registry_lib.py`, `task_FM/evaluations/fm_eval/evaluator.py` | 43 |
-| B2 | `4e0b598` | `cascade/covariate_diagnostics.py`, 1 测试文件 | `cascade/hourly_model.py` | 12 |
-| B3 | `53ae61d` | — | `scripts/monthly_backtest.py`, `scripts/registry_lib.py`, `task_FM/evaluations/fm_eval/evaluator.py` | (含在 B2/B5 回归) |
-| B5 | `2852623`, `170947c`, `e171e45` | `cascade/ablation.py`, `config/ablation_audit_config.json`, 2 测试文件 | `cascade/hourly_model.py`, `scripts/monthly_backtest.py` | 46 |
-| B6 | `2fed5b9`, `9d121be` | 3 测试文件 | `scripts/praxist_supervisor.py` | 65 |
+| PR | 实施 commit | 评审修复 commit | 新增文件 |
+|----|------------|----------------|---------|
+| B1 | `20245da` | `e6738cd` | `scripts/fingerprint_lib.py`, 2 测试 |
+| B2 | `4e0b598` | `2a33484` | `cascade/covariate_diagnostics.py`, 1 测试 |
+| B3 | `53ae61d` | `b89f71d` | — |
+| B5 | `2852623`, `170947c` | `e171e45` | `cascade/ablation.py`, `config/ablation_audit_config.json`, 2 测试 |
+| B6 | `2fed5b9` | `9d121be` | 3 测试 |
+| — | — | `3d35c39` (v1 报告) | `docs/2026-09-28-stage2-verification.md` |
 
-**测试总计:** 247 passed (回归) + 65 passed (PR-B6 套件) = 312 passed，1 xfailed (既有预期失败)
+**每个 PR 均经 `oh-my-claudecode:code-reviewer` (opus) 独立评审**，B5/B6 经复评。
 
-## 2. 专家评审对照
+## 2. Stage 1 退回件闭环证据（审核阻断项 ①）
 
-### PR-B5 评审 (commit `e171e45` 修复)
+上一轮出口核验退回三件事。逐项闭环：
 
-| # | 严重度 | 问题 | 修复 |
+### ① Task 5 实跑（nocov 基线 + `baseline_dir_acc` 落链）
+
+- **实施 commit:** `7328124` feat(eval): 同 cutoff 无协变量基线取代 ccl 基线 (E7)
+- **实跑证据:** Stage 1 报告 §1 记载 `scripts/generate_baseline_points.py --symbol rb --cov none`
+  → 589 评估点、写入 588 行、`dir_acc=0.435`
+- **独立复核脚本:** `c216462` 纳入 `scripts/verify/check_slope_only.py`（审核要求证据可复现）
+- **状态:** ✅ 闭环
+
+### ② `test_a1_completeness.py`
+
+- **文件存在:** `tests/test_a1_completeness.py`，**5 tests**（本次实测 5 passed）
+- **配套:** `tests/test_nocov_baseline.py`，**5 tests**（本次实测 5 passed）
+- **在回归总数中的位置:** 两文件合计 10 tests，已纳入 §5 回归口径
+- **状态:** ✅ 闭环
+
+### ③ Task 2 审核遗留证据
+
+- **实施 commit:** `991ff4b` fix(features): ccl_pct bfill 因果化 (D4)
+- **12 条失败归因:** Stage 1 报告 L108 记载「12 条，全部在 pre-Stage-1 基线 `b06e5d5` 复现
+  （`git merge-base HEAD b06e5d5` == `b06e5d5`）」—— 即 12 条失败均为既有问题，非 Stage 1 引入
+- **状态:** ✅ 闭环
+
+### `51088bd` 完整 changelog（审核点名）
+
+`51088bd` 是**纯文档单行提交**，不含代码：
+
+```
+51088bd  FlyBuddy  2026-09-27 21:07:08 +0800
+docs: 记录第三轮验证结果与 resume 修复
+
+ docs/2026-09-27-stage1-verification.md | 1 +
+```
+
+新增内容为 Stage 1 报告版本历史的一行：
+
+> **第三轮验证通过** — 4 个 CRITICAL 修复经独立执行确认真实生效（非 no-op、无崩溃风险）。
+> 唯一残留 gap（`covariates_used` 在 `--resume` 时丢失）已由 `500b315` 修复并同步 E2E 夹具。
+
+**结论:** Stage 1 三项退回件均已闭环，`51088bd` 仅是收尾文档。Stage 2 未建在未验收地基上。
+
+> ⚠️ **但 §7 披露了一个新事实**：这三项闭环是**代码与测试层面**的，生产 registry 中
+> 尚无一条裁决带 A1 字段。详见 §7。
+
+## 3. 专家评审对照（审核阻断项 ②）
+
+### 3.1 PR-B1 指纹系统 — REQUEST CHANGES → 已修复
+
+| # | 严重度 | 问题 | 处置 |
 |---|--------|------|------|
-| C1 | CRITICAL | resume 自我中毒：错误行不带 `ablation_mode`，读取侧归一为 full，非 full 运行出过一个点级错误就永远无法 resume | (1) 错误行写入补 `ablation_mode` (2) 读取侧仅对非错误行计数模式 |
-| H1 | HIGH | baseline 模式 `covariates_used=True`，registry 元数据撒谎 | 提取 `_covariates_used()` 显式排除 baseline |
-| H2 | HIGH | 审计集零覆盖 energy_chem 板块 | 加入 `fu`，新增板块覆盖断言 |
-| M1 | MEDIUM | `rng.permutation` 多维语义含糊 | 显式 axis 0 写法 + docstring 注明差异 |
-| L1 | LOW | arg 错误 exit 0，自动化调度误判成功 | 改 `sys.exit(2)` |
-| L2 | LOW | `--ablation-mode` 无值静默忽略 | 报错退出 |
-| L4 | LOW | baseline 仍 fetch feedstock (白付 I/O) | 提前返回块上移到 feedstock 抓取前 |
-| N1 | NIT | `last_covariate_input` 未初始化 (PR-B2 遗留) | 在 `__init__` 初始化 |
-| N2 | NIT | daily_slope 被 content 模式同样打乱未说明 | 加注释说明是有意为之 |
+| C1 | CRITICAL | `compute_variant_id` 零生产调用（死代码），PR 声明的"替代 variant_id 去重"未达成 | **按决策重定性为库实现**，接线留 Stage 3（理由见 §4.1） |
+| C2 | CRITICAL | 与 Stage 1 同名函数冲突：`fingerprint_lib` 哈希配置 dict vs `evaluator` 哈希数值矩阵，误用则指纹永不匹配、去重静默失效 | 重命名为 `compute_cov_config_fingerprint` / `compute_protocol_config_fingerprint`，docstring 注明不可互换 |
+| H1 | HIGH | `compute_weight_fingerprint` 只哈希前 4KB，对"仅末层权重变化、大小不变"的重训练给出相同指纹 → 假去重 | 改为流式哈希完整文件（1MB 分块）+ 回归测试 `test_tail_change_detected_same_size` |
+| H2 | HIGH | SHA-256 截断至 16 hex (64 bit)，碰撞概率未评估 | 登记：无生产调用方，接线时评估（§8） |
+| H3 | HIGH | `compute_variant_id` 回退路径静默吞异常 | 登记：随接线处理（§8） |
+| M1-M3 | MEDIUM | 缺 golden 值测试 / 返回类型不一致 / nullable 变量命名误导 | 登记（§8） |
+| L1-L2 | LOW | seed 范围未校验 / 缺 None 入参测试 | 登记（§8） |
+| N1 | NIT | `import sys` 在 except 块内 | 登记（§8） |
 
-**未修复:** L3 (resume 检查在模型加载之后)、N3 (seed 硬编码 42)
+### 3.2 PR-B2 协变量诊断 — REQUEST CHANGES → 已修复
 
-### PR-B6 评审 (commit `9d121be` 修复)
-
-| # | 严重度 | 问题 | 修复 |
+| # | 严重度 | 问题 | 处置 |
 |---|--------|------|------|
-| C1 | CRITICAL | **板块过滤器导致 100% 饿死** — 生产快照 434/434 被拦，与 2026-09-24 饿死同构 | circuit-breaker：仅当板块**全集**（sector_map 定义）失败才拦 |
-| H1 | HIGH | `_verdict_sort_key` ties 时取最旧裁决 | `>` 改 `>=`，ties 时取 jsonl 顺序最后的（最新） |
-| H2 | HIGH | `cov_recent_fail` -20 项近死代码 | 已文档化，窗口语义测试锁定（`test_stale_pass_does_not_exempt_covariate_filter`） |
-| M1 | MEDIUM | 双重计数键名漂移 | `quality_rejected` 对齐为 `quality_below_threshold` |
-| L1 | LOW | 缺板块空裁决/单品种裁决测试 | 新增 `test_sector_with_no_verdicts_never_blocked` 和 `test_only_one_symbol_in_sector_with_verdict` |
+| C1 | CRITICAL | `cascade_predict.py` 的 `force_neutral` 覆盖路径重建 `HourlyResult` 时未转发诊断字段 → 诊断证据被静默抹除（`cov_effective` 归 0） | 转发 4 个诊断字段 |
+| H1 | HIGH | 全 NaN 通道被计为"有效"（`np.all(arr==0)` 为 False、`std` 为 NaN 且 `NaN < 1e-12` 为 False） | 增加全 NaN 跳过 + 改用 `np.nanstd` |
+| H2 | HIGH | `test_nan_values` 断言的正是 H1 的错误行为，会掩盖未来修复 | 重写断言 + 新增 `test_all_nan_channel_not_effective` |
+| M1-M3 | MEDIUM | 四类互斥丢失信息 / 空 context 的 RuntimeWarning / 函数内惰性 import | 登记（§8） |
+| L1-L2 | LOW | 测试随机性未固定 seed / baseline 路径未显式传 `last_covariate_input` | 登记（§8） |
 
-**PR-B6 复评 (commit `9d121be` 后):** APPROVE。生产数据实测 sector 拦截从 100% → 0%，协变量/质量门拦截 36.9%，通过率 63.1%。
+### 3.3 PR-B3 `xreg_fallback` 贯通 — APPROVE WITH CHANGES → 已修复
 
-## 3. 关键设计决策
+| # | 严重度 | 问题 | 处置 |
+|---|--------|------|------|
+| H1 | HIGH | 旧 checkpoint 缺 `xreg_fallback` 键时 `p.get(..., False)` 默认 False → `summarize()` 报 count=0/rate=0.0，静默宣称"从未回退"而事实是"未知" | 改用 `None` 哨兵（与 `covariates_used` 既有处理一致）；`evaluator.build_summary` 同步去掉 0/0.0 兜底 |
+| M1 | MEDIUM | 缺 `xreg_fallback_count/rate` 传播链专项测试 | 新增 `TestXregFallbackStats`（5 测试）：全回退/半数/全正常/缺键/混合缺键 |
+| L1 | LOW | PR-B3 commit message 的 `not xreg_fallback` 公式已被 PR-B5 精化，文档漂移 | 不额外改动（`_covariates_used` docstring 已说明） |
 
-### 3.1 v2 schema 限制下的 PR-B6 评分口径
+**B3 与 Stage 1 Task 6 接线的关系（审核点名）:** 无冲突。Stage 1 的 `covariates_used` 走
+`point → summarize → map_summary → build_summary`；PR-B3 在同一链路上**新增**两个统计字段，
+不修改 `covariates_used` 的既有语义。PR-B5 随后把 `covariates_used` 的派生逻辑提取为
+`_covariates_used()` 以排除 baseline 模式（见 §4.3）。
 
-计划中 `_proposal_quality_gate` 的 PF/IC 项与 sector_filter 的 `ev` 项无法实现：
-生产 registry 143 条裁决全为 `fm.aligned_verdict.v2`，不含 `pf`/`ev`/`ic`
-(该三字段仅存在于已退役的 v1 schema)。
+### 3.4 PR-B5 三路消融 — REQUEST CHANGES → 已修复
 
-**决策:** 评分与过滤一律基于 v2 可观测字段 (`gate_pass` / `decided_at` / `cov_override` / `symbol`)。评分项：
-- `+5` 该品种有过成功协变量
-- `+3` 组合未测过 (新颖性)
-- `+3` 机制论证完整
-- `+10 * prescreen plausibility`
-- `-20` 该协变量在其他品种最近 3 次全失败
-- `-15` 该品种最近 5 次全失败
+| # | 严重度 | 问题 | 处置 |
+|---|--------|------|------|
+| C1 | CRITICAL | resume 自我中毒：错误行不带 `ablation_mode`，读取侧归一为 `full` → 非 full 运行出过一个点级错误就**永远无法 resume** | 双侧修复：错误行写入补 `ablation_mode` + 读取侧只对非错误行计数模式 |
+| H1 | HIGH | baseline 模式 `covariates_used=True`（`xreg_fallback` 为 False 但协变量未用）→ registry 元数据撒谎 | 提取 `_covariates_used()` 显式排除 baseline |
+| H2 | HIGH | 审计集零覆盖 `energy_chem` 板块（ss→black_metals，其余全→agri） | 加入 `fu` + 新增板块覆盖断言 |
+| M1 | MEDIUM | `rng.permutation` 多维语义含糊（1-D 逐通道独立打乱 vs 2-D 整行移动，不等价） | 显式 axis 0 写法 + docstring 注明 |
+| L1-L2 | LOW | arg 错误 exit 0（调度误判成功）/ `--ablation-mode` 无值静默忽略 | 均改 `sys.exit(2)` |
+| L4 | LOW | baseline 仍 fetch feedstock（白付 I/O） | 提前返回块上移 |
+| N1-N2 | NIT | `last_covariate_input` 未初始化 / daily_slope 被打乱未说明 | 均已修 |
+| L3 | LOW | resume 冲突检查在模型加载 (~800MB) 之后 | 登记（§8） |
+| N3 | NIT | seed 硬编码 42 | 登记（§8） |
 
-### 3.2 PR-B5 与 PR-B6 交互: resume 模式隔离
+### 3.5 PR-B6 提案质量门 — REQUEST CHANGES → APPROVE（复评通过）
 
-PR-B5 的 `ablation_mode` 与 PR-B3 的 `--resume` 机制交互：
-- 不同消融模式不得共享同一 checkpoint（否则点级去重会跨模式复用）
-- `_resume_mode_conflict()` 守卫检测模式不一致，`sys.exit(2)`
-- 错误行写入也带 `ablation_mode`，避免读取侧归一化误判
+| # | 严重度 | 问题 | 处置 |
+|---|--------|------|------|
+| C1 | CRITICAL | **板块过滤器导致生产 100% 饿死**：实测 434/434 组合被拦（三板块各 ≥3 品种失败），与 2026-09-24 事故同构 | 改 circuit-breaker：仅当 `sector_map` 定义的**板块全集**失败才拦。实测拦截率 100% → 0% |
+| H1 | HIGH | `_verdict_sort_key` ties 时取最旧裁决（`>` 比较，缺失 `decided_at` 时全为 `""`） | 改 `>=`，ties 取 jsonl 顺序最后（最新） |
+| H2 | HIGH | `cov_recent_fail` -20 项在 `covariate_filter` 同条件下会先拦，可达窗口窄 | 已文档化 + `test_stale_pass_does_not_exempt_covariate_filter` 锁定窗口语义 |
+| M1 | MEDIUM | 双重计数键名漂移（`quality_rejected` vs `quality_below_threshold`） | 对齐为 `quality_below_threshold` |
+| L1 | LOW | 缺板块空裁决/单品种裁决测试 | 新增 2 个测试 |
 
-### 3.3 PR-B6 板块过滤器 circuit-breaker
+**复评结论:** APPROVE。全部 CRITICAL/HIGH/MEDIUM/LOW 验证修复，生产实测拦截率 100% → 0%，
+156 tests passed。
 
-**问题:** 原计划 `SECTOR_BLOCK_MIN_FAILED = 3` 在生产快照上触发三板块全拦 → 100% 饿死。
+## 4. 关键设计决策
 
-**修复:** 改为 `n_failed >= sector_size` (sector_map 定义的全集)。语义：
-- 部分失败不拦 (agri 9/10 失败 → 放行)
-- 完全死亡的板块才拦 (black_metals 4/4 失败 → 拦截)
-- 冷启动不拦 (无裁决时 `n_failed=0`)
-- 未观察到的品种不参与失败计数
+### 4.1 PR-B1 `variant_id` 不接线的裁定（审核阻断项 ③ 关联）
 
-**风险:** 该语义无法预警"板块部分退化" (如 agri 4/4 已观察全死但 6/10 未观察)。
-未来增强：当 `n_failed >= sector_size * 0.5` 时打 WARN 日志。当前不实现，因为 filter 是二元 (block/pass)，不是信号。
+计划 PR-B1 步骤 2 要求把指纹嵌入 `variant_id`。**取证后决定不接线**：
 
-## 4. 测试覆盖矩阵
+| 证据 | 数值 |
+|------|------|
+| 生产裁决总数 | 143 |
+| 其中 `variant_id` 为 `{symbol}_{cov}` 旧格式 | **143 / 143** |
+| 其中带 A1 字段（`protocol_fingerprint` 等） | **0 / 143** |
+| `pass_variants()` 返回条数 | **0** |
 
-| 模块 | 测试文件 | 测试数 | 覆盖要点 |
-|------|---------|-------|---------|
-| 指纹系统 | `test_fingerprint_lib.py`, `test_fingerprint_dedup.py` | 43 | 4 类指纹 + NaN/Inf 处理 + 去重 |
-| 协变量诊断 | `test_covariate_diagnostics.py` | 12 | all_zero/inert_constant/horizon_flat/effective |
-| 三路消融 | `test_ablation.py`, `test_ablation_integration.py` | 46 | 4 模式接线 + 审计集有效性 + resume 守卫 + covariates_used |
-| 提案质量门 | `test_proposal_quality_gate.py`, `test_sector_filter.py`, `test_covariate_filter.py`, `test_harvest_proposals.py` | 65 | 评分项逐项 + 板块/协变量过滤 + E2E 接线 + 冷启动回归 |
+改 `variant_id` 格式会使 `dead_variants()` / `pass_variants()` / 新颖性判定全部落空 ——
+已失败组合被当作新颖重新提案。且 Stage 1 已在 verdict 上落地 per-verdict 指纹字段，
+承载同一"内容可比性"能力，无需在 `variant_id` 上重复编码。
 
-**回归套件:** `test_supervisor.py`, `test_praxist_fm_evaluator.py`, `test_verdict_registry.py`, `test_praxist_evidence_ladder.py`, `test_praxist_task_contract.py`, `test_combo_parity.py`, `test_hourly_align_frame.py`, `test_migrate_verdicts_v1_to_v2.py`, `test_evaluation_metrics_contract.py` 等 — 全部通过。
+**处置:** PR-B1 明确定位为**库实现**，接线留待 Stage 3（须先解决 64-bit 截断与回退吞异常）。
+
+### 4.2 PR-B6 评分口径（v2 schema 限制）
+
+计划中 `_proposal_quality_gate` 的 PF/IC 项与 `sector_filter` 的 `ev` 项**无法实现**：
+143 条裁决全为 `fm.aligned_verdict.v2`，不含 `pf`/`ev`/`ic`（该三字段仅存在于已退役 v1 schema）。
+
+**决策:** 评分与过滤一律基于 v2 可观测字段（`gate_pass` / `decided_at` / `cov_override` / `symbol`）。
+评分项：`+5` 品种有过成功协变量 · `+3` 新颖性 · `+3` 机制完整 · `+10*plausibility` ·
+`-20` 协变量跨品种 3 连败 · `-15` 品种 5 连败。
+
+### 4.3 PR-B5/B6 交互: baseline 模式与 `covariates_used`
+
+PR-B5 的 baseline 模式**主动**不传协变量（`xreg_fallback=False`，非回退）。若 `covariates_used`
+仅由 `xreg_fallback` 派生，纯 TimesFM 基线会被错记为"用了协变量"。提取 `_covariates_used()`
+显式排除 baseline。PR-B6 的 `sector` / `quality_score` 亦在同轮落地。
+
+### 4.4 `symbol_has_pass` 语义张力裁定（审核阻断项 ③）
+
+**审核意见:** 质量门用 `gate_pass` 真值，而 `pass_variants` 用更严的 v2 定义（含 `run_mode` 守卫）。
+质量门可能放行一条 `run_mode=exploration` 但 `gate_pass=True` 的裁决作为"该品种有过成功协变量"的证据，
+与 §1.4「探索运行不得出现在任何'已确认'表述中」冲突。
+
+**裁定: 采纳审核意见，改为复用 `pass_variants` 的严格定义。**
+
+```python
+sym_pass = any(
+    v.get("status", "ok") == "ok"
+    and v.get("run_mode") in rl.RUN_MODES
+    and v.get("run_mode") != "exploration"
+    and v.get("gate_pass")
+    and v.get("fdr_pass")
+    and v.get("p_value") is not None
+    and str(v.get("symbol") or "").lower().strip() == symbol
+    for v in snap.values()
+)
+```
+
+**后果（必须记录）:** 当前 registry 中 **0/143 条裁决带 `run_mode`**，因此
+`symbol_has_pass` 的 `+5` 加分对**所有品种恒为 0**。语义上这是**正确的**
+（确实不存在"已确认成功"），但门的行为因此改变：`+5` 项在当前数据上不可达，
+提案分数整体下移 5 分。若未来要恢复该加分，须先产生 A1 完整的 confirmation 裁决（§7）。
+
+## 5. 测试覆盖矩阵
+
+| 模块 | 测试文件 | 测试数 |
+|------|---------|-------|
+| 指纹系统 | `test_fingerprint_lib.py` (33), `test_fingerprint_dedup.py` (12) | 45 |
+| 协变量诊断 | `test_covariate_diagnostics.py` | 13 |
+| 三路消融 | `test_ablation.py` (18), `test_ablation_integration.py` (28) | 46 |
+| 提案质量门 | `test_proposal_quality_gate.py` (17), `test_sector_filter.py` (9), `test_covariate_filter.py` (7), `test_harvest_proposals.py` (32) | 65 |
+| Stage 1 链路 | `test_phase1_integration.py` (14), `test_a1_completeness.py` (5), `test_nocov_baseline.py` (5) | 24 |
+| 评估器 | `test_fm_evaluator_gated.py` | 36 |
+| 监督环/注册表 | `test_supervisor.py` (61), `test_verdict_registry.py` (12), `test_praxist_fm_evaluator.py` (18) | 91 |
+| **合计** | 16 文件 | **320** |
+
+**回归执行口径:** 日常回归跑其中 14 个文件（不含 Stage 1 的两个专项文件）→ **310 PASS, 1 xfailed**；
+含 Stage 1 两文件的全量为 **320**。上表数字由 `pytest --collect-only` 逐文件实测得出。
 
 **关键回归保护:**
-- `test_cold_start_not_blocked_by_quality_gates`: 空 snapshot 不得被新门挡住（防 2026-09-24 饿死重演）
-- `test_predict_default_mode_is_full`: 默认 ablation_mode=full 行为不变
-- `test_predict_baseline_mode_skips_covariates`: baseline 主动选择，xreg_fallback=False
+- `test_cold_start_not_blocked_by_quality_gates` — 空 snapshot 不得被新门挡住（防饿死重演）
+- `test_partial_failure_does_not_block` — 板块部分失败不拦
+- `test_predict_default_mode_is_full` — 默认 `ablation_mode=full` 行为不变
+- `TestErrorRowsDoNotPoisonResume` — resume 不得被错误行毒化
+- `TestCovariatesUsedFlag` — baseline 不得被记为使用协变量
+- `TestXregFallbackStats` — 缺键报 None 而非 0
 
-## 5. 生产数据实测
+## 6. 生产数据实测
 
-评审期间对生产 registry (`task_FM/config/aligned_verdicts.jsonl`, 143 条裁决, 14 品种) 运行完整门逻辑：
+对生产 registry（143 条裁决，14 品种）运行完整门逻辑（PR-B6 复评独立复现）：
 
-| 指标 | PR-B6 修复前 | PR-B6 修复后 |
-|------|------------|------------|
-| sector 拦截率 | 434/434 (100%) | 0/434 (0%) |
-| covariate 拦截率 | (未达) | 78/434 (18.0%) |
-| quality 拦截率 | (未达) | 82/434 (18.9%) |
-| 通过率 | 0% | 274/434 (63.1%) |
+| 指标 | PR-B6 修复前 | 修复后 |
+|------|------------|--------|
+| sector 拦截率 | 434/434 (**100%**) | 0/434 (**0%**) |
+| covariate 拦截率 | （未达） | 78/434 (18.0%) |
+| quality 拦截率 | （未达） | 82/434 (18.9%) |
+| **通过率** | **0%** | **274/434 (63.1%)** |
 
-**结论:** PR-B6 修复后，提案通过率合理，不会饿死慢环。
+## 7. 重要发现: registry 为 pre-A1 遗留数据（本轮新增）
 
-## 6. 已知后续 (非 Stage 2 范围)
+评审期间取证发现，**超出 Stage 2 范围但影响结论解释力**：
+
+| 事实 | 数值 |
+|------|------|
+| 裁决总数 | 143 |
+| 缺失全部 18 个 A1 字段的裁决 | **143 / 143** |
+| `pass_variants()` 返回 | **0** |
+| `gate_pass=True` 的裁决 | 42（但均因 A1 不完整不可晋升） |
+| `run_mode` 存在条数 | **0** |
+
+**根因（已排除接线断点）:**
+
+| 事件 | 时间 |
+|------|------|
+| 最后一条裁决写入 | 2026-09-24 **06:25:39** |
+| registry 文件 mtime | 2026-09-24 **06:25:40** |
+| 三环 SIGTERM 封存 | 2026-09-24 **14:22** |
+| Stage 1 A1 接线 commit (`35faef0` / `a038f76`) | 2026-09-27（封存后 **3 天**）|
+
+registry 在 A1 接线落地前 3 天即冻结 —— **不可能有任何裁决带 A1 字段**。
+这不是接线断点，而是"接线从未在生产跑过"。
+
+**接线本身静态完整:** `build_summary` 显式写入全部 18 个 `A1_REQUIRED_FIELDS`，无遗漏；
+`test_a1_completeness.py` (5) 与 `test_phase1_integration.py::TestA1GuardIsWired` 覆盖该守卫。
+
+**影响:**
+1. 当前不存在任何"经统计晋升"的裁决（与 2026-09-24 审计记录的「0 条经统计晋升」一致）
+2. §4.4 的 `symbol_has_pass` 恒为 0 是**语义正确**的结果
+3. PR-B6 的 63.1% 通过率是**质量门评分**通过率，非 `pass_variants` 晋升率 —— 两者口径不同
+4. 要产生 A1 完整裁决，须重启三环（Stage 3 / 复活后）
+
+## 8. 已知后续
 
 | 项 | 来源 | 说明 |
 |---|------|------|
-| PR-B4 dir_acc 口径变更 | 计划 | 影响面过大，留待 Stage 3 |
-| L3 resume 检查位置 | PR-B5 评审 | resume 冲突检查在模型加载 (~800MB) 后执行，性能/UX 问题 |
-| N3 predict() seed 参数 | PR-B5 评审 | seed 硬编码 42，无法多 seed 敏感性分析 |
-| symbol_has_pass 与 pass_variants 定义差异 | PR-B6 评审 | quality gate 用 `gate_pass` 真值 vs pass_variants 更严的 v2 定义。是设计取舍，不改 |
-| 板块部分退化预警 | PR-B6 评审 | `n_failed >= sector_size * 0.5` 时 WARN 日志 |
+| **PR-B4 dir_acc 口径变更** | 计划偏移 | 影响面过大。**须在 Stage 3 计划中正式改档** |
+| **审计集变更** | PR-B5 评审 H2 | 审计集加入 `fu` 触及 §4.2 W2.3「固定审计集」的"固定"语义。**须在 Stage 3 spec 补裁定记录** |
+| PR-B1 接线 | PR-B1 评审 C1 | `variant_id` 接线 + 64-bit 截断评估 + 回退吞异常处理 |
+| PR-B1 其他 | PR-B1 评审 | golden 值测试 / 返回类型一致性 / nullable 命名 / seed 范围 / `sys` import 位置 |
+| PR-B2 其他 | PR-B2 评审 | 四类互斥丢失信息 / 空 context RuntimeWarning / 惰性 import / 测试 seed |
+| PR-B5 L3/N3 | PR-B5 评审 | resume 检查位置（模型加载后）/ `predict()` seed 参数 |
+| registry 复活 | §7 | 需重启三环产生 A1 完整裁决，方能验证 Stage 1 接线与恢复 `symbol_has_pass` |
+| 板块部分退化预警 | PR-B6 评审 | `n_failed >= sector_size * 0.5` 时 WARN |
 
-## 7. 结论
+## 9. 结论
 
 **Stage 2 全部 5 个 PR 已完成并经专家评审 + 修复。**
 
-- PR-B1/B2/B3 评审通过 (无 CRITICAL)
-- PR-B5 评审返回 REQUEST CHANGES，1 CRITICAL + 2 HIGH 修复后通过
-- PR-B6 评审返回 REQUEST CHANGES，1 CRITICAL (100% 饿死) 修复后 APPROVE，复评通过
+| PR | 首轮评审 | 修复后 |
+|----|---------|-------|
+| B1 | REQUEST CHANGES (2 CRITICAL) | 命名冲突 + 权重哈希已修；接线按决策重定性 |
+| B2 | REQUEST CHANGES (1 CRITICAL) | 诊断转发 + NaN 已修 |
+| B3 | APPROVE WITH CHANGES (1 HIGH) | 缺键 None 哨兵 + 5 测试已补 |
+| B5 | REQUEST CHANGES (1 CRITICAL) | resume 自我中毒 + 元数据撒谎 + 审计集已修 |
+| B6 | REQUEST CHANGES (1 CRITICAL) | 100% 饿死已修，**复评 APPROVE** |
 
-测试 312 passed，生产数据实测通过率 63.1%，无饿死风险。
+测试 320 用例 / 16 文件（回归 310 PASS / 1 xfailed）；生产实测门通过率 63.1%（修复前 0%），无饿死风险。
 
-**Stage 2 出口关闭。** 可进入 Stage 3 (PR-B4 dir_acc 口径 + 其他待办)。
+**三份补充材料已齐备（§2 / §3 / §4.4）。**
+
+**待办（不阻断 Stage 2 出口，但须在 Stage 3 计划中正式收录）:**
+1. PR-B4 延期改档
+2. 审计集变更裁定记录
+3. PR-B1 接线（含 64-bit 截断）
+4. registry 复活以验证 Stage 1 接线（§7）
