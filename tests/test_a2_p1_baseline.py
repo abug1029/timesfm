@@ -78,49 +78,11 @@ def test_evaluate_gate_no_go():
     verdict = evaluate_gate(lgbm_pred, pure_pred, scheme_pred, actual, base, atr, tick_size=1.0)
     assert verdict["gate"] == "NO-GO"
 
-def _clear_stale_locks(root):
-    """删除持有者进程已死的 a2_p1 锁。
+# 2026-09-29 退役 test_smoke_ss_end_to_end（第七轮审计 L2）
+# 该测试断言 reports/a2_p1_baseline_results.jsonl —— 全仓无任何代码写入该路径
+# （仅测试自身引用 + 2026-08 归档的 plan/spec 文档），断言永远不可能通过。
+# 且其执行路径 cascade/lgbm_features.py 属 A2 Track B，cascade/AGENTS.md 已标注
+# 「已关、无生产入口 import」；venv 亦无 pyarrow/fastparquet，to_parquet 直接抛。
+# 退役的是「一条永不通过的断言」，不是覆盖。详见
+# D:\FlyBuddy\fma-audit\2026-09-29-fma-seventh-audit-stage3-impl.md
 
-    崩溃残留的锁会永久卡住 test_smoke_ss_end_to_end (锁按 O_EXCL 建, 不自动释放)。
-    与 exclusive_result_lock 的"不自动清理"契约一致: 这里只清**进程已死**的,
-    活着的锁 (含别人的进程) 一律保留。
-    """
-    import json
-    import os
-    for lock in pathlib.Path(root, "reports").rglob("*.lock"):
-        try:
-            pid = int(json.loads(lock.read_text(encoding="utf-8"))["pid"])
-        except Exception:
-            continue  # 不是锁元数据, 不动
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            lock.unlink()
-        except PermissionError:
-            pass  # 进程存在但不属于当前用户 -> 视为活着
-
-
-@pytest.mark.slow
-def test_smoke_ss_end_to_end():
-    """端到端: ss 品种, --max-points 100, 验证落盘 + 报告生成 + LGBM 训练数据充足"""
-    import subprocess, sys
-    from data.config import FM_ROOT
-    # build_dense_feature_matrix 用 pandas.to_parquet 做中间落盘 (归档的 A2 Track B),
-    # 需 pyarrow/fastparquet 之一。venv 未装 -> 显式 skip, 与本文件 lightgbm 的处理一致。
-    pytest.importorskip("pyarrow", reason="smoke 路径需 parquet 引擎 (未安装 pyarrow)")
-    _clear_stale_locks(FM_ROOT)
-    r = subprocess.run(
-        [sys.executable,
-         "scripts/a2_p1_lgbm_baseline.py", "ss", "--max-points", "100",
-         "--dense-step", "24", "--refit-every", "5"],
-        capture_output=True, text=True, cwd=str(FM_ROOT), timeout=1800,
-    )
-    assert r.returncode == 0, r.stderr[-2000:]
-    # 验证 JSONL 落盘
-    import pathlib, json
-    out_jsonl = pathlib.Path("reports/a2_p1_baseline_results.jsonl")
-    assert out_jsonl.exists()
-    lines = out_jsonl.read_text(encoding="utf-8").strip().split("\n")
-    assert len(lines) >= 1
-    rec = json.loads(lines[0])
-    assert "gate" in rec and "lgbm_metrics" in rec

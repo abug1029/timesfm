@@ -3,7 +3,7 @@
 - **日期**：2026-09-29
 - **基准**：eecf05a
 - **实施人**：主循环直接实施（派出的 6 个 agent 均被 429 限流击杀，主循环替代）
-- **测试**：13 项预存在失败 → **0 失败**。实测 `1646 passed / 8 skipped / 1 xfailed`（393.84s）
+- **测试**：eecf05a 基线有 **14** 项预存在失败 → **0 失败**。实测 `1646 passed / 8 skipped / 1 xfailed`（393.84s）。13 项由 Phase 9 修复；第 14 项（`test_smoke_ss_end_to_end`）转为 skip，根因是 venv 缺 pyarrow 且测试断言了一条无生产代码写入的遗留路径 —— 见 commit `a068d92` |
 - **提交**：`a068d92`（ponytail 清理 + 第六轮审计修复）→ 本提交（spec-alignment 主体）
 
 ---
@@ -26,9 +26,9 @@
 | 4 | PR-C5 | 族诊断矩阵 | ✅ |
 | 5 | PR-A5 | fingerprint v3 + 9 基线归档 | ✅ |
 | 6 | §8.3 核验 | 独立记录 + 5 集成测试 | ✅ |
-| 7 | PR-B1 | experiment_fingerprint + fail-loud | ✅ |
+| 7 | PR-B1 | experiment_fingerprint + fail-loud | ⚠️ 模块就绪、fail-loud 已退役；**supervisor variant_id 真接线延期**（见「故意未做」）|
 | 8 | Stage 4 前置 | Q1 裁定 Δ=0.10 + Q8 保守默认 | ✅（按计划范围）|
-| 9 | 卫生 | 修复全部 13 预存在失败 | ✅ |
+| 9 | 卫生 | 修复 14 项预存在失败中的 13 项 | ✅ 第 14 项（smoke）转为 skip |
 | 10 | 重启验证 | 16/16 检查通过 | ✅ 就绪 |
 
 ---
@@ -233,7 +233,7 @@ Next phase: PR-D1/D2 implementation (Stage 4 proper)."
 |---|---|---|
 | A | **审计的 `1491/14/5/1` 是在 `git worktree` 里采的**（审计报告自述用 worktree 做对照实验）。worktree 里没有未跟踪的 `reports/` 陈旧锁，所以活仓会多出一条失败。K1 的前提需修正：changelog 的 `1486/13` 与审计的 `1491/14` **都不是活仓数字** | 已在 `ponytail-audit-changelog-2026-09-29.md` 写明勘误 |
 | B | **陈旧锁的根因是 pyarrow 未装**：`a2_p1` run 于 2026-09-18 死在 `pandas.to_parquet`（`cascade/lgbm_features.py:340`），ImportError 导致 worker 硬崩、锁永不释放。故锁不是普通"崩溃残留" | 锁已清；`test_smoke_ss_end_to_end` 加 `pytest.importorskip("pyarrow")`（与该文件既有的 `importorskip("lightgbm")` 一致）。`lgbm_features` 是归档轨道，无生产入口 import |
-| C | 审计的 `a2_p1×3` 与实测 `×2` 不符。实测该文件 2 项失败（`test_eval_grid_matches_worker_boundary`、`test_eval_grid_step_24`），13 项预存在失败总数以本文件与 commit `a068d92` 的实测为准 | 已按实测更正 |
+| C | 审计的 `a2_p1×3` 与实测 `×2` 不符。实测该文件 2 项失败（`test_eval_grid_matches_worker_boundary`、`test_eval_grid_step_24`），`a068d92` 树实测失败数为 13（smoke 当时已转 skip），故「13 vs 14」的差异来自 smoke 是否计入；基线 eecf05a 的预存在失败总数是 **14** | 已按实测更正 |
 | D | `third_party/timesfm-3.0-official` 子模块 dirty：4 个 example 输出图是 LFS 指针 vs 本地重生成内容（`Matplotlib 3.10.9`），非代码变更，对 FM_a 零影响 | 故意不动；还原只会把 PNG 换回 131 字节指针 |
 
 ### 提交拆分
@@ -242,4 +242,5 @@ Next phase: PR-D1/D2 implementation (Stage 4 proper)."
 
 - `a068d92` — ponytail 清理（7 删 / 5 改 / 净 −1326）+ 第六轮 K4/K6/K7/M4 + 陈旧锁与 pyarrow 修复。
   该树实测 13 failed / 96 passed / 1 skipped（6 个文件），13 项全部预存在、本提交零新增失败。
+  （基线 eecf05a 的第 14 项预存在失败即 smoke，在本提交中转为 skip。）
 - 本提交 — spec-alignment Phase 1–10 主体（37 文件，+3724/−105）。全量实测 1646 passed / 8 skipped / 1 xfailed / **0 失败**。
