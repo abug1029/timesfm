@@ -18,11 +18,10 @@
 | `data_validator.py` | `ensure_fresh_data()` 预测前数据门禁 |
 | `vol_risk_filter.py` | 波动熔断 + ThrPolicy + Neutral override |
 | `vol_gating_replay.py` | 离线 thr 重算（不重跑 TimesFM） |
-| `neutral_ab_report.py` | **Neutral A/B 唯一评分源** |
-| `neutral_ab_render.py` | Neutral 报告 Markdown 渲染 |
+| `neutral_ab_report.py` | **Neutral A/B 唯一评分源**（含 Markdown 渲染；原 `neutral_ab_render.py` 已合并） |
 | `lgbm_features.py` | **归档**（A2 Track B 已关）。生产入口 `cascade_predict` / `monthly_backtest` / `copilot` 不 import；仅 A2 脚本与测试仍引用 |
 | `walk_forward.py` | Regime 协变量 IS/OOS 优化器（IR 体系，非 PF/EV） |
-| `regime_features.py` / `regime_classifier.py` | Regime 特征与 KMeans |
+| `regime_features.py` | Regime 特征；KMeans 分类在 `scripts/regime_covariate_analysis.py` |
 | `prediction_tracker.py` | 历史预测 JSON 追踪 |
 | `ccl_monitor.py` | CCL 持仓力量监控 |
 | `live_ledger.py` | 实盘 ledger 辅助 |

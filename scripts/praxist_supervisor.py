@@ -16,6 +16,10 @@ try:
 except ImportError:
     bh_fdr_promote = None
 
+# 惰性解析: 导入期不得要求 praxist 存在，否则新克隆 / CI / worktree 无法收集测试。
+_PRAXIST = None
+
+
 def _resolve_praxist_bin() -> str:
     """Prefer repo .venv praxist; allow PRAXIST_BIN override."""
     candidates = [
@@ -30,7 +34,12 @@ def _resolve_praxist_bin() -> str:
         "install repo .venv or set PRAXIST_BIN" % (FM_ROOT,)
     )
 
-PRAXIST = _resolve_praxist_bin()
+
+def _praxist_bin() -> str:
+    global _PRAXIST
+    if _PRAXIST is None:
+        _PRAXIST = _resolve_praxist_bin()
+    return _PRAXIST
 QUEUE = os.path.join(FM_ROOT, "data", "cache", "aligned_pending.jsonl")
 INPROGRESS = os.path.join(FM_ROOT, "data", "cache", "aligned_pending.inprogress.jsonl")
 REGISTRY = os.path.join(FM_ROOT, "task_FM", "config", "aligned_verdicts.jsonl")
@@ -413,7 +422,7 @@ def _provider_state(provider: str) -> dict:
 
 
 def _praxist(args, env=None):
-    r = subprocess.run([PRAXIST, *args], capture_output=True, text=True, env=env)
+    r = subprocess.run([_praxist_bin(), *args], capture_output=True, text=True, env=env)
     return {"ok": r.returncode == 0, "stdout": r.stdout or "", "stderr": r.stderr or "", "rc": r.returncode}
 
 def _status_rows():
@@ -676,9 +685,7 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
     lines = ["## Known aligned verdicts (supervisor snapshot)",
              "v2 pass (gate_pass=True AND fdr_pass=True AND p_value NOT NULL AND run_mode='confirmation'): already solved, do NOT re-propose.",
              "v1 legacy: pass by ev>0 (legacy econ caliber, schema=v1 entries only).",
-             "hard-gate-but-losing (gate_pass=True but not statistically confirmed): 过硬门但未过统计检验; not a success; do not re-propose as solved.",
-             "v1 legacy: pass by ev>0 (legacy econ caliber, schema=v1 entries only).",
-             "hard-gate-but-losing (gate_pass=True but not (fdr_pass or migrated_pass)): 过硬门但未过 v23 统计检验; not a success; do not re-propose as solved.",
+             "hard-gate-but-losing (gate_pass=True but not (fdr_pass or migrated_pass)): 过硬门但未过统计检验; not a success; do not re-propose as solved.",
              "DEAD (gate_pass=False, status=ok): never revive without a mechanism correction.",
              ""]
     items = list(snapshot.values()) if isinstance(snapshot, dict) else []
@@ -777,7 +784,11 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
     items.sort(key=lambda v: (not v.get("gate_pass", False), _da_key(v)))
     if not items:
         lines.append("(no aligned verdicts yet)")
-    for v in items[:20]:
+    # items 已按 (gate_pass 优先, dir_acc 降序) 排序。截断只能切尾部：
+    # gate_pass 行是「已解出、不要再提」的集合，切掉它会让 peer 重复提案。
+    _shown = [v for v in items if v.get("gate_pass")]
+    _shown += [v for v in items if not v.get("gate_pass")][:max(0, 80 - len(_shown))]
+    for v in _shown:
         gate = bool(v.get("gate_pass", False))
         ev = float(v.get("ev") or 0)
         status = v.get("status", "ok")
@@ -831,6 +842,8 @@ def _effective_clue_lines(items):
     """Live passing / near-miss / weak-family clues. Never a frozen menu."""
     fam_ok = {}
     fam_pass = {}
+    if len(items) > len(_shown):
+        lines.append("verdicts_truncated=%d" % (len(items) - len(_shown)))
     near = []
     for v in items:
         if not isinstance(v, dict) or v.get("status", "ok") != "ok":

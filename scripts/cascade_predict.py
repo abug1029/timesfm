@@ -576,7 +576,22 @@ def _build_report(symbol, daily_result, hourly_result,
     try:
         ccl_alert = ccl_detect_anomalies(symbol, preloaded_df=hourly_df)
         lines.append("")
-        lines.append(ccl_alert.format_report())
+        lines.append(f"### CCL 异动预警 {ccl_alert.emoji} {ccl_alert.overall_level}")
+        lines.append("")
+        lines.append(f"当前: {ccl_alert.latest_label} (CCL={ccl_alert.latest_ccl:+,.0f})")
+        lines.append(f"阈值: P95={ccl_alert.p95:,.0f} / P99={ccl_alert.p99:,.0f}")
+        lines.append("")
+        if ccl_alert.signals:
+            lines.append("| 信号 | 等级 | 描述 |")
+            lines.append("|------|:----:|------|")
+            for s in ccl_alert.signals:
+                em = {"WATCH": "🟡", "WARNING": "🟠", "CRITICAL": "🔴"}.get(s.level, "⚪")
+                lines.append(f"| {s.signal_type} | {em} {s.level} | {s.description} |")
+            if ccl_alert.summary:
+                lines.append("")
+                lines.append(f"**综合判断**: {ccl_alert.summary}")
+        else:
+            lines.append("无异动信号，市场状态正常。")
         lines.append("")
     except Exception as e:
         lines.append("")

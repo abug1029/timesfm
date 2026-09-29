@@ -229,7 +229,7 @@ class TestScoreUniverse(unittest.TestCase):
             self.assertTrue(report.exists())
             payload = json.loads(report.with_suffix(".json").read_text(encoding="utf-8"))
             self.assertEqual(payload["scorer"], "cascade.neutral_ab_report")
-            self.assertEqual(payload["renderer"], "cascade.neutral_ab_render")
+            self.assertEqual(payload["renderer"], "cascade.neutral_ab_report")
             self.assertIn("verdict_policy", payload)
 
 

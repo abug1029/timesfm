@@ -29,7 +29,51 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from cascade.regime_features import extract_rolling_features, summarize_feature_distributions
-from cascade.regime_classifier import RegimeClassifier, classify_market_regime
+# classify_market_regime inlined (cascade/regime_classifier.py deleted)
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+
+
+def classify_market_regime(features_df, n_states=4):
+    """Classify market regimes using K-Means clustering."""
+    scaler = StandardScaler()
+    features_clean = features_df.dropna()
+    if len(features_clean) < n_states * 10:
+        raise ValueError(f'Insufficient data: need {n_states * 10}, got {len(features_clean)}')
+    features_scaled = scaler.fit_transform(features_clean)
+    model = KMeans(n_clusters=n_states, random_state=42, n_init=10, max_iter=300)
+    raw_labels = model.fit_predict(features_scaled)
+    # Reorder by economic meaning
+    adx_col = next((c for c in features_df.columns if c.startswith('rolling_adx_')), None)
+    vol_cone_col = next((c for c in features_df.columns if c.startswith('vol_cone_position_')), None)
+    if adx_col is None or vol_cone_col is None:
+        raise ValueError(f'Missing required columns. Available: {list(features_df.columns)}')
+    fw = features_clean.copy()
+    fw['cluster'] = raw_labels
+    agg = fw.groupby('cluster').agg({adx_col: 'mean', vol_cone_col: 'mean'}).reset_index()
+    sorted_adx = agg.sort_values(adx_col, ascending=False)
+    r0 = sorted_adx.iloc[0]['cluster']
+    remaining = agg[agg['cluster'] != r0]
+    sorted_vol = remaining.sort_values(vol_cone_col, ascending=True)
+    r1 = sorted_vol.iloc[0]['cluster']
+    remaining = remaining[remaining['cluster'] != r1]
+    r2 = remaining.sort_values(vol_cone_col, ascending=False).iloc[0]['cluster']
+    r3 = remaining[remaining['cluster'] != r2].iloc[0]['cluster']
+    mapping = {int(r0): 0, int(r1): 1, int(r2): 2, int(r3): 3}
+    reordered = np.array([mapping[l] for l in raw_labels])
+    labels = pd.Series(np.nan, index=features_df.index)
+    labels.loc[features_clean.index] = reordered
+    # Summary
+    df_a = features_df.copy()
+    df_a['regime'] = labels
+    summary_rows = []
+    for rid in range(n_states):
+        rd = df_a[df_a['regime'] == rid]
+        if len(rd) == 0:
+            continue
+        summary_rows.append({'regime': rid, 'count': len(rd), 'percentage': len(rd) / len(df_a) * 100})
+    summary = pd.DataFrame(summary_rows).sort_values('count', ascending=False)
+    return labels.values, summary
 from cascade.covariate_analysis import (
     compute_covariate_correlation,
     cluster_covariates,

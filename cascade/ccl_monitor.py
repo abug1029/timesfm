@@ -48,30 +48,6 @@ class CCLAlert:
             "WARNING": "🟠", "CRITICAL": "🔴"
         }.get(self.overall_level, "⚪")
 
-    def format_report(self) -> str:
-        """生成报告段落 (Markdown)"""
-        lines = []
-        lines.append(f"### CCL 异动预警 {self.emoji} {self.overall_level}")
-        lines.append("")
-        lines.append(f"当前: {self.latest_label} (CCL={self.latest_ccl:+,.0f})")
-        lines.append(f"阈值: P95={self.p95:,.0f} / P99={self.p99:,.0f}")
-        lines.append("")
-
-        if not self.signals:
-            lines.append("无异动信号，市场状态正常。")
-            return "\n".join(lines)
-
-        lines.append("| 信号 | 等级 | 描述 |")
-        lines.append("|------|:----:|------|")
-        for s in self.signals:
-            emoji = {"WATCH": "🟡", "WARNING": "🟠", "CRITICAL": "🔴"}.get(s.level, "⚪")
-            lines.append(f"| {s.signal_type} | {emoji} {s.level} | {s.description} |")
-
-        if self.summary:
-            lines.append("")
-            lines.append(f"**综合判断**: {self.summary}")
-
-        return "\n".join(lines)
 
 
 # ── 阈值计算 ─────────────────────────────────────────────

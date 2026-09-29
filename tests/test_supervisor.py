@@ -581,7 +581,11 @@ def test_materialize_known_verdicts(tmp_path):
     assert "already solved" not in i_oi_line
     assert "hard-gate-but-losing" in i_oi_line
     # v23 口径: hard-gate-but-losing 指未过 fdr/migrated, 不再用亏钱描述.
-    assert "过硬门但未过 v23 统计检验" in text
+    assert "过硬门但未过统计检验" in text
+    # K6: legend lines appear once each (duplicated v1 legacy / hard-gate rows).
+    for _lg in ("v1 legacy: pass by ev>0",
+                "hard-gate-but-losing (gate_pass=True"):
+        assert text.count(_lg) == 1, "legend duplicated: %s" % _lg
     assert "过硬门但亏钱" not in text
     assert "DEAD" in text
     assert "already solved" in text

@@ -147,10 +147,9 @@ def build_daily_slope_covariate(
                 last_valid_slope = slope_by_day[d]
             context_slopes[i] = last_valid_slope
     else:
-        # 无真实日期: 简化处理 — 最后 n_context 个日线 slope forward-fill
+        # 无真实日期或长度不匹配: forward-fill 有效斜率 (防穿越降级)
         valid_slopes = daily_slopes[~np.isnan(daily_slopes)]
         if len(valid_slopes) > 0:
-            # 将日线 slope 均匀映射到 context
             step = max(1, len(valid_slopes) // n_context)
             for i in range(n_context):
                 idx = min(i * step, len(valid_slopes) - 1)
@@ -327,60 +326,12 @@ def calc_hurst_exponent(returns: np.ndarray, min_scale: int = 5,
 
 
 def calc_rolling_hurst(closes: np.ndarray, window: int = 120,
-                        step: int = 6) -> np.ndarray:
+                        step: int = 6, scale: bool = True) -> np.ndarray:
     """
     滚动 Hurst 指数 (向量化 DFA)
 
-    对每个 bar, 用过去 window 个 bars 的收益率计算 Hurst 指数。
-    输出缩放到 [-1, 1]: (H - 0.5) * 2
-      +1: 强趋势持续性 (H→1, 适合顺势策略)
-       0: 随机游走 (H=0.5, 模型依赖其他特征)
-      -1: 强均值回归 (H→0, 适合逆势策略)
-
-    Horizon 填充: 常数 (Hurst 代表长程记忆性, 变化极慢)
-
-    Args:
-        closes: 1H 收盘价序列
-        window: Hurst 计算窗口 (默认 120 bars ≈ 5 天)
-        step: 滚动步长 (每 step bars 重算一次)
-
-    Returns:
-        缩放后的 Hurst 序列, shape = closes.shape, 值域 [-1, 1]
-    """
-    n = len(closes)
-    # 计算收益率
-    ret = np.diff(closes) / np.where(closes[:-1] != 0, closes[:-1], 1.0)
-    n_ret = len(ret)
-
-    raw_hurst = np.full(n_ret, 0.5)
-
-    # 滚动计算: 每 step bars 重算一次, 中间 forward-fill
-    for i in range(window, n_ret, step):
-        h = calc_hurst_exponent(ret[i - window:i])
-        raw_hurst[max(0, i - step + 1):i + 1] = h
-
-    # 填充开头 (前 window 个收益率)
-    if window < n_ret:
-        first_valid = raw_hurst[window]
-        raw_hurst[:window] = first_valid
-
-    # 对齐到收盘价长度 (收益率比价格短 1)
-    hurst_full = np.empty(n, dtype=float)
-    hurst_full[0] = raw_hurst[0]
-    hurst_full[1:] = raw_hurst
-
-    # 缩放到 [-1, 1]
-    scaled = (hurst_full - 0.5) * 2.0
-    return np.clip(scaled, -1.0, 1.0)
-
-
-def calc_rolling_hurst_raw(closes: np.ndarray, window: int = 120,
-                            step: int = 6) -> np.ndarray:
-    """
-    滚动 Hurst 指数 (原始 H 值, 不缩放)
-
-    返回 H 原始值 (0~1), 0.5=随机游走, >0.5 趋势, <0.5 均值回归。
-    用于 gated_slope 等需要原始 H 值做门控的场景。
+    scale=True:  缩放到 [-1, 1] (用于 XReg 协变量)
+    scale=False: 原始 H 值 0~1 (用于 gated_slope 等门控场景)
     """
     n = len(closes)
     ret = np.diff(closes) / np.where(closes[:-1] != 0, closes[:-1], 1.0)
@@ -394,10 +345,12 @@ def calc_rolling_hurst_raw(closes: np.ndarray, window: int = 120,
     if window < n_ret:
         raw_hurst[:window] = raw_hurst[window]
 
-    # 对齐到收盘价长度
     hurst_full = np.empty(n, dtype=float)
     hurst_full[0] = raw_hurst[0]
     hurst_full[1:] = raw_hurst
+
+    if scale:
+        return np.clip((hurst_full - 0.5) * 2.0, -1.0, 1.0)
     return hurst_full
 
 
