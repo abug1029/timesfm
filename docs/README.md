@@ -44,7 +44,7 @@
 > **协变量规格仍是在用文档**：[2026-09-18-oi-gated-momentum-spec.md](./2026-09-18-oi-gated-momentum-spec.md)
 > ——它被 peer 提示词直接内嵌，改动会影响生产提案面。
 
-Goal / 运行口径：`scripts/praxist_goal.yaml`（2026-09-09 起目标=1 星品种过门 ≥4）。
+Goal / 运行口径：`scripts/praxist_goal.yaml`（2026-09-23 起目标=24 品种全部通过三阶段验证，成功条件见 [praxist.md](./praxist.md)）。
 
 ### 2026-08-08 新口径 rebaseline（必读）
 
@@ -113,7 +113,7 @@ python scripts/a2_p1_restore_manifest.py --restore      # 从备份恢复缺失�
 ## 维护协议
 
 - **唯一权威源**：WSL `/home/abug/timesfm/`（git repo `abug1029/timesfm`）
-- **Windows 副本**：`D:\FlyBuddy\FM_a\` 为 git 工作副本（`git pull` 同步）；`D:\FlyBuddy\timesfm\` 为过期只读副本
+- **Windows 副本**：无 —— 2026-09-29 核实 `D:\FlyBuddy\FM_a\` 与 `D:\FlyBuddy\timesfm\` 在 Windows 侧均已不存在，旧指引作废；一切读写走 WSL 仓
 - **新增文档流程**：在 WSL 侧创建 → 更新 `docs/README.md` 索引 → `docs/AGENTS.md` 路由 → git commit/push
 - **system_design.md 更新触发**：架构变更 / 新模块上线 / 评估口径切换 / 品种状态变更 / 星级调整
 - **会话结束前**：运行 `/neat-freak` 检查文档与代码一致性

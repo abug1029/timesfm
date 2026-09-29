@@ -4,14 +4,14 @@
 
 | 项 | 值 |
 |----|-----|
-| 项目根 | `D:\FlyBuddy\FM_a`（须在此目录启动，或保证 import 路径含根） |
-| Python | `D:\FlyBuddy\shared\timesfm\.venv\` |
+| 项目根 | `/home/abug/timesfm`（WSL2 Ubuntu-22.04；须在此目录启动，或保证 import 路径含根） |
+| Python | `.venv/bin/python`（本仓 venv，Python 3.11） |
 | TqSdk | `.env` 中 `TQSDK_ACCOUNT` / `TQSDK_PASSWORD` |
 | 数据库 | `db/futures_<symbol>.db` |
 
 ```bash
-source D:/FlyBuddy/timesfm/.venv/Scripts/activate
-cd D:/FlyBuddy/FM_a
+cd /home/abug/timesfm
+source .venv/bin/activate
 ```
 
 路径解析：`data.config.FM_ROOT` + `resolve_under_root()` — **模型/配置文件不依赖进程 cwd**。

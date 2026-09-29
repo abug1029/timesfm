@@ -4,7 +4,7 @@
 **不是**：自动下单、Vol 压平、用账本改 `prediction_scheme`。
 
 权威口径：可交易方向 = 加权 1H（`docs/product_positioning.md`）。  
-本流程当前**能记预测路径并对 T+24 终点对账**；Copilot 面板上的「方向」仍是日线斜率，见下方缺口。
+本流程当前**能记预测路径并对 T+24 终点对账**；Copilot 面板「方向」自 C3（`381f31e`，`copilot_trade_signal`）起 = 加权 1H 可交易方向（`position_from_forecast`），日线斜率只填「日线状态」（`regime_direction`）；剩余缺口见下（回填对账口径仍是 T+24 终点等）。
 
 ---
 
@@ -42,9 +42,8 @@
 环境：
 
 ```bash
-# 激活共享底座
-# source /home/abug/timesfm/.venv/bin/activate
-cd D:/FlyBuddy/FM_a
+cd /home/abug/timesfm          # WSL2 Ubuntu-22.04（FM_a / PRAXIST 同仓）
+source .venv/bin/activate      # 本仓 venv（Python 3.11）
 ```
 
 ### 1. 看账本
@@ -111,7 +110,7 @@ python scripts/paper_loop.py health --source all
 
 | 缺口 | 影响 |
 |------|------|
-| Copilot `direction` 仍用日线斜率（`_compute_direction`），未走 `position_from_forecast` | 面板「方向」≠ 回测可交易方向 |
+| ~~Copilot `direction` 仍用日线斜率（`_compute_direction`），未走 `position_from_forecast`~~ → **已闭环（2026-09-29 核实）**：C3（`381f31e`）起 `direction` = 加权 1H（`copilot_trade_signal` → `position_from_forecast`）；勘误：`_compute_direction` 函数并不存在 | ~~面板「方向」≠ 回测可交易方向~~ |
 | 回填 `dir_correct_t24` = `sign(pred_t24 − base)` | 健康表评的是 **T+24 终点**，不是加权 1H |
 | ledger 无 `weighted_pred` 列 | 无法按产品契约复盘纸面仓位 |
 | `cascade_predict` → `track_prediction` 的 asof 是 `now()` | 不要把 cascade 行当纸面样本 |
@@ -119,7 +118,7 @@ python scripts/paper_loop.py health --source all
 | 账本几乎是空的 | 2026-08-17 探查：个位数行；健康表没有统计功效 |
 | 无法记「我主观跟没跟」 | 账本只有模型事件，没有你的动作 |
 
-当前诚实用法：**把 Copilot 当日记（记路径），把 health 当 T+24 终点对错表。不要把面板方向当成纸面开仓方向。**
+当前诚实用法：**把 Copilot 当日记（记路径），把 health 当 T+24 终点对错表。面板「方向」自 C3（`381f31e`）起即加权 1H 可交易方向，可当纸面开仓方向；但回填对账口径仍是 T+24 终点（见上表），两套口径不要混。**
 
 ---
 
