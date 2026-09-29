@@ -4,46 +4,45 @@
 
 > Praxist 裁决口径（v23）见 `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`；过时文档见 docs/archive/README.md。
 
-| 文档 | 内容 |
-|------|------|
-| [runbook.md](./runbook.md) | 环境、采集、幽灵 K 线、单测、故障排查 |
-| [copilot.md](./copilot.md) | 主观领航员用法与报告说明 |
-| [paper_trading.md](./paper_trading.md) | **纸面闭环**：Copilot → ledger → 回填 → 健康表 |
-| [product_positioning.md](./product_positioning.md) | **产品定位**：可交易方向=加权1H；辅助非自动 |
-| [module_freeze.md](./module_freeze.md) | 子策略冻结（Vol OFF / A2 关 / Regime 研究-only） |
-| [param_hygiene.md](./param_hygiene.md) | 参数卫生裁决记录 |
-| [2026-09-17-fm-eval-error-path-audit.md](./2026-09-17-fm-eval-error-path-audit.md) | 评估器错误路径审计：8 bug 清单 + 修复记录 + 下轮跟进 5 项（2026-09-17） |
-| [2026-09-18-oi-gated-momentum-spec.md](./2026-09-18-oi-gated-momentum-spec.md) | oi_gated_momentum 协变量规格（OI 门控动量） |
-| [2026-09-18-oi-gated-momentum-impl-plan.md](./2026-09-18-oi-gated-momentum-impl-plan.md) | oi_gated_momentum 实施计划（五步落地） |
-| [2026-09-18-oi-gated-momentum-data-quality-report.md](./2026-09-18-oi-gated-momentum-data-quality-report.md) | oi_gated_momentum 数据质量报告（指数回填 + 零值防护） |
-| [2026-09-18-oi-gated-momentum-blocking-decision.md](./2026-09-18-oi-gated-momentum-blocking-decision.md) | oi_gated_momentum 阻塞决策（首跑 dir_acc=0.453 保留 active） |
-| [2026-09-19-cleanup-and-fix-log.md](./2026-09-19-cleanup-and-fix-log.md) | 2026-09-19 清理日志（磁盘归档 + /workspace 修复） |
-| [system_design.md](./system_design.md) | 系统设计概览（数据流 + 模块依赖） |
-| [long-task-sop.md](./long-task-sop.md) | 长任务 SOP（回测/慢环操作规范） |
-| [spec_optimization_roadmap.md](./spec_optimization_roadmap.md) | 系统优化规格说明书（基于 system_design v2.4 的可执行优化任务） |
-| [2026-09-17-claude-dual-system-path-map.md](./2026-09-17-claude-dual-system-path-map.md) | Claude Code 双系统 PATH 关系图与排查手册（Windows + WSL） |
-| [vol-risk.md](./archive/history/vol-risk.md) | Vol 风控 / R1 / L1 经济结论与红线（已归档） |
-| [validation_criteria.md](./archive/history/validation_criteria.md) | 固化判据 v2（已归档） |
-| [backtest_registry.md](./archive/history/backtest_registry.md) | 历史协变量实验目录（Phase 扫描；已归档；新口径以 g005e 为准，g005e 结果文件已不在仓内） |
+| 文档 | 内容 | 状态 |
+|------|------|:----:|
+| **先读这三份** | | |
+| [praxist.md](./praxist.md) | **架构概览**：Praxist 本体 vs 本仓三环、方案 A 合同 | 在用 |
+| [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | **运维手册**：启停、429 failover、队列/checkpoint、方案 A 收割、故障速查 | 在用 |
+| [system_design.md](./system_design.md) | 系统设计全景（数据流 + 模块依赖 + 评估口径） | 在用 |
+| **Stage 3 交付（2026-09-29 结案）** | | |
+| [family_boundary_rules.md](./family_boundary_rules.md) | 研究 family 边界规则（90 天封账 / 20 成员上限 / T_max / p=1 适用范围） | 在用 |
+| [fingerprint_component_mapping.md](./fingerprint_component_mapping.md) | spec 七组件 → 承载方映射（跨实现校验索引） | 在用 |
+| [supervisor_restart_backlog.md](./supervisor_restart_backlog.md) | 重启待办（3 项：1 已实施 / 2 登记 / **3 已完成**） | 在用 |
+| [superpowers/reports/2026-09-29-stage3-verification-record.md](./superpowers/reports/2026-09-29-stage3-verification-record.md) | §8.3 出口条件核验记录 | 在用 |
+| [superpowers/specs/2026-09-24-covariate-research-credibility-design.md](./superpowers/specs/2026-09-24-covariate-research-credibility-design.md) | 上游 spec **v15** | 在用 |
+| **Praxist 三环合同** | | |
+| [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（提示词纪律以 2026-09-19 为准） | 在用 |
+| [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 | 在用 |
+| [three_loop_restart_protocol.md](./three_loop_restart_protocol.md) | 重启清理协议：避免 peer 被历史状态残留误导 | 在用 |
+| [loop-constraints.md](../loop-constraints.md) | 循环强制约束（唯一可写区 / 预注册纪律） | 在用 |
+| **日常运维** | | |
+| [runbook.md](./runbook.md) | 环境、采集、幽灵 K 线、单测、A2-P1 完整性工具、故障排查 | 在用 |
+| [long-task-sop.md](./long-task-sop.md) | 长任务 SOP（回测/慢环操作规范） | 在用 |
+| [host_environment_assessment.md](./host_environment_assessment.md) | 宿主评估（顶部有 2026-09-09 WSL 迁移事实表） | 在用 |
+| [praxist_llm_env.md](./praxist_llm_env.md) | LLM 环境变量（Ark 主 / DashScope 备） | 在用 |
+| **产品与卡面** | | |
+| [copilot.md](./copilot.md) | 主观领航员用法与报告说明 | 在用 |
+| [paper_trading.md](./paper_trading.md) | 纸面闭环：Copilot → ledger → 回填 → 健康表 | 在用 |
+| [product_positioning.md](./product_positioning.md) | **产品定位**：可交易方向=加权1H；辅助非自动 | 在用 |
+| [module_freeze.md](./module_freeze.md) | 子策略冻结（Vol OFF / A2 关 / Regime 研究-only） | 在用 |
+| [param_hygiene.md](./param_hygiene.md) | 参数卫生裁决记录 | 在用 |
+| [research/slow_loop_evaluation_points_research.md](./research/slow_loop_evaluation_points_research.md) | 慢环评估点研究 | 在用 |
+| **历史（已归档，勿作当前口径）** | | |
+| [archive/history/vol-risk.md](./archive/history/vol-risk.md) | Vol 风控 / R1 / L1 经济结论与红线 | 已归档 |
+| [archive/history/validation_criteria.md](./archive/history/validation_criteria.md) | 固化判据 v2（已随 v23 退役出裁决链） | 已归档 |
+| [archive/history/backtest_registry.md](./archive/history/backtest_registry.md) | 历史协变量实验目录 | 已归档 |
+| [archive/superseded-2026-09/](./archive/superseded-2026-09/) | **2026-09-29 归档**：27 份一次性调查/阶段核验/已执行计划 | 已归档 |
+| [archive/superpowers-plans/](./archive/superpowers-plans/) | 已执行的历史施工单 | 已归档 |
+| [archive/](./archive/README.md) | 归档总入口（含各子目录说明） | 已归档 |
 
-### PRAXIST 自主研究三环（2026-09）
-
-| 文档 | 内容 |
-|------|------|
-| [praxist.md](./praxist.md) | **架构概览（先读）**：Praxist 本体 vs 本仓三环、方案 A 合同、当前目标与现场 |
-| [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | **运维手册**：启停、429 failover、队列/checkpoint、方案 A 收割、近失误复测、故障速查 |
-| [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（已实施；提示词选题纪律以 2026-09-19 为准） |
-| [2026-09-19-verdict-analysis-report.md](./2026-09-19-verdict-analysis-report.md) | 2026-09-19 裁决分析（81 verdicts；提案过门 0/11） |
-| [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 |
-| [2026-09-19-peer-proposal-quality-verification.md](./2026-09-19-peer-proposal-quality-verification.md) | 提案质量改动单测验证；过门率待下一轮快环 |
-| [superpowers/specs/2026-09-22-typesafe-covariate-prescreen-design.md](./superpowers/specs/2026-09-22-typesafe-covariate-prescreen-design.md) | **TypeSafe Jev 协变量预筛设计**（软建议模式：三问判读 → 调度降权/奖励，不阻断慢环） |
-| [superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md](./superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md) | Jev 预筛输出如何影响 peer 行为（Phase 2/3 演进设计） |
-| [praxist_directive_design.md](./archive/history/praxist_directive_design.md) | 指令/目标 DSL 设计 |
-| [praxist_integration_plan.md](./archive/history/praxist_integration_plan.md) | 三环集成计划 |
-| [praxist_llm_env.md](./praxist_llm_env.md) | LLM 环境变量（Ark 主 / DashScope 备） |
-| [praxist_peer_evaluation_fix.md](./archive/history/praxist_peer_evaluation_fix.md) | 诊断评估可信度分析（方案 A 动机） |
-| [host_environment_assessment.md](./host_environment_assessment.md) | 宿主评估（**顶部有 2026-09-09 WSL 迁移事实表**） |
-| [audit_system_efficiency_20260908.md](./audit_system_efficiency_20260908.md) | 2026-09-08 系统效率审计 |
+> **协变量规格仍是在用文档**：[2026-09-18-oi-gated-momentum-spec.md](./2026-09-18-oi-gated-momentum-spec.md)
+> ——它被 peer 提示词直接内嵌，改动会影响生产提案面。
 
 Goal / 运行口径：`scripts/praxist_goal.yaml`（2026-09-09 起目标=1 星品种过门 ≥4）。
 
@@ -80,48 +79,29 @@ setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.ya
   >> data/cache/supervisor.out 2>&1 < /dev/null &
 ```
 
-## 研究门禁状态（2026-08-07 A2-P1 完整性硬化 + A2-P2 完成）
+## A2 轨道（2026-08-07 结案，Track B 已关闭）
 
-**磁盘事实来源**：
-- A2-P1：`reports/a2_p1_manifest.json`（由 `a2_p1_restore_manifest.py --write-manifest` 生成）
-- A2-P2：`reports/research/20260807_a2_p2_verdict.md`
+**结论**：A2-P1.1 定向修复 **0/5 GO**；A2-P2 残差叠加 **0/5 GO**（stacked PF 全部 < 1.0，
+且低于 scheme PF）→ **Track B 关闭**。LGBM 路径（`cascade/lgbm_features.py`）属归档轨道，
+无生产入口 import；venv 未装 pyarrow/fastparquet，该路径在本机不可执行。
 
-### A2-P1 20 品种可复核状态
+> 上述两个数字为 **v2 历史口径**（2026-08 PF/星级回测），**非 v23 证据**。现行裁决口径唯一权威 =
+> v23 spec + `task_FM/config/aligned_verdicts.jsonl`。
+>
+> 原「磁盘事实来源」（`reports/a2_p1_manifest.json`、`reports/research/20260807_a2_p2_verdict.md`）
+> **已不在仓内**，故本节不再重述逐品种明细表。
 
-| 状态 | 数量 | 品种 |
-|:----:|:----:|:-----|
-| **complete** | 13 | ss, rb, sp, i, jm, m, p, eg, jd, cf, sr, ma, fg |
-| **partial** | 5 | ao(258/396), lh(259/396), ta(397/396, 1 unexpected), ur(331/396), cj(345/396) |
-| **duplicated** | 1 | fu(792 行, 396 唯一 bar, 已生成 .canonical) |
-| **missing** | 0 | — |
+### 仍可用的对账工具
 
-### A2-P1.1 定向修复裁决
+```bash
+python scripts/a2_p1_restore_manifest.py --dry-run      # 扫描主/备份目录，打印 20 品种状态
+python scripts/a2_p1_restore_manifest.py --canonicalize # 对重复写入的 JSONL 去重
+python scripts/a2_p1_restore_manifest.py --restore      # 从备份恢复缺失文件
+```
 
-- FG/TA/BU/AO/UR 去重后 **0/5 GO**，未满足启动 A2-P2 的 ≥2 GO 门槛。
-- 用户批准后启动 A2-P2。
+详见 [runbook.md](./runbook.md) "A2-P1 完整性工具" 章节。
 
-### A2-P2 残差叠加裁决（2026-08-07 完成）
-
-**目标**：测试 LGBM 残差叠加架构能否改善预测质量（`stacked = timesfm_pure + lgbm_residual`）
-
-**执行**：5 品种（FG/TA/BU/AO/UR），总耗时 ~90 分钟
-
-> **历史口径（v2 PF/星级，2026-08 回测）**：本节数字非 v23 证据，裁决以 v23 裁决链（DirAcc/MAPE + DM + BH-FDR）为准。
-
-**裁决结果**：**0/5 GO**
-- Stacked PF 全部 < 1.0（0.838-0.937），且低于 scheme PF
-- 残差叠加架构未改善预测质量，**关闭 Track B**
-
-详细报告：`reports/research/20260807_a2_p2_verdict.md`
-
-### 历史结果对账工具
-
-- `python scripts/a2_p1_restore_manifest.py --dry-run` — 扫描主/备份目录，打印 20 品种状态
-- `python scripts/a2_p1_restore_manifest.py --canonicalize` — 对重复写入的 JSONL 去重
-- `python scripts/a2_p1_restore_manifest.py --restore` — 从备份恢复缺失文件
-- 详见 [runbook.md](./runbook.md) "A2-P1 完整性工具" 章节
-
-## 当前生产姿态（2026-09-20）
+## 当前生产姿态
 
 - **Neutral / Absolute Risk Overlay：默认 OFF**（全宇宙经济门禁未过）
 - **Copilot：预警-only**，不改变预测数值。卡面「可交易方向」= `position_from_forecast`（加权 1H）；日线只作 `regime_direction`
@@ -130,7 +110,7 @@ setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.ya
 - **Phase 11（2026-08-21 结案）**：12 品种协变量替换固化（SS/SP/FU/I/RB/TA/EG/CJ/LH/JD + 3 基线保持 M/P/SR），34 GREEN
 - **Phase 12（2026-08-21）**：BU 组合协变量 `calendar_cyclical+hourly_slope` 固化。该 PF=1.01 边际 GREEN 结论属 v2 历史口径（2026-08 月度回测），非 v23 证据；v23 下以 aligned verdicts 为准
 - 经济表与信用档（v2 历史口径）：见上表 g005e（结果文件已不在仓内；Phase 11/12 后协变量已刷新）；v23 裁决以 aligned verdicts 为准（口径见 [praxist.md](./praxist.md) 与 v23 spec）；运维细节见 [vol-risk.md](./archive/history/vol-risk.md)（已归档）与 `STATE.md`
-- **Praxist 三环（2026-09-20）**：方案 A 运行中；`phase=fast`，`cycles_done=36`，PID 31638。9/19-20 改进：failure_delta 硬门 + DEAD/HOLD 过滤 + 提案质量加固 + 跨 run 重复惩罚 + DEAD 族拒绝（84 tests）。过期以 `data/cache/supervisor_state.json` 为准。架构 [praxist.md](./praxist.md)，运维 [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md)，现场快照见 `STATE.md`
+- **Praxist 三环**：方案 A 运行中。**活计数（`cycles_done` / PID / phase）一律读 `data/cache/supervisor_state.json`，本文档不记录快照** —— 2026-09-29 曾在此钉住 `cycles_done=36` / PID 31638，一周内即失效。架构 [praxist.md](./praxist.md)，运维 [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md)，现场快照见 `STATE.md`
 
 ## 维护协议
 

@@ -192,7 +192,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 
 - `docs/praxist.md` — 架构概览（本体 vs 三环、现行合同、现场快照）
 - `docs/2026-09-19-three-loop-followup-spec.md` — 2026-09-19 跟进合同
-- `docs/2026-09-19-peer-proposal-quality-verification.md` — 提案质量单测验证
+- `docs/archive/superseded-2026-09/2026-09-19-peer-proposal-quality-verification.md` — 提案质量单测验证（已归档）
 - `scripts/praxist_supervisor.py` — 监督环
 - `scripts/aligned_slow_loop.py` — 慢环
 - `scripts/mem_guard.py` — 全局 flock≤2 + MemAvailable 门 + RSS shed（RLIMIT_AS 默认 OFF）

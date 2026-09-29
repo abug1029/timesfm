@@ -400,7 +400,7 @@ python scripts/variety_analysis.py sh --no-predict    # 仅技术面+CCCL，跳�
 
 **核心架构**：
 - `cascade/regime_features.py` — 特征提取（vor_skew, rolling_hurst, rolling_adx, vol_cone_position）
-- `cascade/regime_classifier.py` — K-Means Regime 分类器（4 Regime: high_vol_trend, low_vol_narrow, wide_oscillation, transition）
+- `cascade/realtime_regime_classifier.py` — K-Means Regime 分类器（4 Regime: high_vol_trend, low_vol_narrow, wide_oscillation, transition）；原 `cascade/regime_classifier.py` 已删（`a068d92`），SCHEMES 侧的 `classify_market_regime` 现内联于 `scripts/regime_covariate_analysis.py`
 - `cascade/covariate_analysis.py` — 协变量相关性分析与聚类
 - `cascade/walk_forward.py` — Walk-Forward Optimization（IS/OOS 分割, 交叉验证）
 - `cascade/deployment_monitor.py` — 部署监控（性能追踪, 异常预警）

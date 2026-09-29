@@ -1,5 +1,5 @@
 > ⚠️ **SUPERSEDED（2026-09-28）** —— 本文档已被
-> `docs/superpowers/reports/2026-09-28-stage3-completion-report.md` 取代。
+> `docs/archive/superseded-2026-09/2026-09-28-stage3-completion-report.md`（已归档） 取代。
 > 保留以留痕。
 >
 > 其「已完成」口径与本轮后续修复不一致，请以 completion-report 为准：

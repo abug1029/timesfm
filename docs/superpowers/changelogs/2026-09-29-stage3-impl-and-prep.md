@@ -11,7 +11,7 @@
 ## 计划文件
 
 - **Spec**: `docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（v15，1586 行）
-- **Plan**: `docs/superpowers/plans/2026-09-29-spec-alignment-impl-plan.md`（455 行，rev2 含 H1-H6 + Q1/Q2）
+- **Plan**: `docs/archive/superpowers-plans/2026-09-29-spec-alignment-impl-plan.md`（已归档）（455 行，rev2 含 H1-H6 + Q1/Q2）
 - **Changelog**: 本文件 + `docs/superpowers/changelogs/2026-09-29-stage3-impl-and-prep.md`（已落地）
 
 ---
@@ -173,7 +173,7 @@
 | 类型 | 路径 |
 |---|---|
 | **Spec** | `docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md` |
-| **Plan (rev2)** | `docs/superpowers/plans/2026-09-29-spec-alignment-impl-plan.md` |
+| **Plan (rev2)** | `docs/archive/superpowers-plans/2026-09-29-spec-alignment-impl-plan.md`（已归档） |
 | **Plan review** | `D:\FlyBuddy\fma-audit\2026-09-29-fma-fifth-audit-plan-review.md` |
 | **Changelog（本文件）** | `docs/superpowers/changelogs/2026-09-29-stage3-impl-and-prep.md` |
 | **Stage 3 核验记录** | `docs/superpowers/reports/2026-09-29-stage3-verification-record.md` |

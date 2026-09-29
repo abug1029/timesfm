@@ -86,7 +86,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 | Neutral A/B 门禁 | `cascade/neutral_ab_report.py` |
 | WF 超参 480/24/24 | `config/backtest_config.py` |
 | 品种协变量/星级 | `config/prediction_scheme.py`（改前人工确认） |
-| 固化判据 v2 | `docs/archive/history/validation_criteria.md`（已归档，SCHEMES 固化线遗留判据） + `scripts/phase4d_parse_results.verdict`；Praxist 裁决口径以 v23 spec `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md` 为准 |
+| 固化判据 v2 | `docs/archive/history/validation_criteria.md`（已归档，SCHEMES 固化线遗留判据） + `scripts/phase4d_parse_results.py` 的 `verdict()`；Praxist 裁决口径以 v23 spec `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md` 为准 |
 | 固化 WF 权威入口 | `scripts/monthly_backtest.py`（禁止 3/7 点 scan 顶替） |
 | 实验防重复 | `docs/archive/history/backtest_registry.md`（已归档） |
 | 幽灵 K 线 | `data.future_bar_guard.run_guard` only |
@@ -94,7 +94,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 | Praxist aligned 裁决 | `task_FM/config/aligned_verdicts.jsonl`（仅慢环可写） |
 | Praxist 预注册口径 | `config/praxist_task.yaml` |
 | Praxist 架构/运维 | `docs/praxist.md` + `docs/runbook_praxist_three_loop.md` |
-| 三环 2026-09-19 跟进（门控可观测 / 两人议程 / 死区 / 提案质量） | `docs/2026-09-19-three-loop-followup-spec.md` + `docs/2026-09-19-peer-proposal-quality-verification.md` |
+| 三环 2026-09-19 跟进（门控可观测 / 两人议程 / 死区 / 提案质量） | `docs/2026-09-19-three-loop-followup-spec.md` + `docs/archive/superseded-2026-09/2026-09-19-peer-proposal-quality-verification.md`（已归档） |
 
 **2026-08-21 状态锚点（Phase 11/12 结案）**
 - Phase 11 单协变量穷举结案：12 品种协变量替换固化，34 GREEN（详见 `docs/archive/history/backtest_registry.md`）
@@ -312,7 +312,7 @@ python -m unittest tests.test_future_bar_guard tests.test_vol_threshold_contract
 ## 信用档与新口径经济表 (2026-08-08)
 
 > **无真实 3 星。** 2026-08-03 前 SP/SR 曾保留旧 3 星标签。2026-08-08 G005-E 全量 rebaseline 后，最高星级降为 2 星。  
-> **可交易方向** = 加权 1H（`cascade/signal_contract`），日线斜率仅为 regime 副标签。详见 `docs/product_positioning.md`。  
+> **可交易方向** = 加权 1H（`cascade/signal_contract.py`），日线斜率仅为 regime 副标签。详见 `docs/product_positioning.md`。  
 > **全表**: `reports/research/20260808_g005e_results.md`（Phase 11/12 后协变量已刷新，星级不变）。
 
 ### 信用≥2 星（可辩护 / 边界）
@@ -448,7 +448,7 @@ python scripts/variety_analysis.py sh --no-predict    # 仅技术面+CCCL，跳�
 
 **核心架构**：
 - `cascade/regime_features.py` — 特征提取（vor_skew, rolling_hurst, rolling_adx, vol_cone_position）
-- `cascade/regime_classifier.py` — K-Means Regime 分类器（4 Regime: high_vol_trend, low_vol_narrow, wide_oscillation, transition）
+- `cascade/realtime_regime_classifier.py` — K-Means Regime 分类器（4 Regime: high_vol_trend, low_vol_narrow, wide_oscillation, transition）；原 `cascade/regime_classifier.py` 已删（`a068d92`），SCHEMES 侧的 `classify_market_regime` 现内联于 `scripts/regime_covariate_analysis.py`
 - `cascade/covariate_analysis.py` — 协变量相关性分析与聚类
 - `cascade/walk_forward.py` — Walk-Forward Optimization（IS/OOS 分割, 交叉验证）
 - `cascade/deployment_monitor.py` — 部署监控（性能追踪, 异常预警）

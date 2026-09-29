@@ -19,7 +19,7 @@ FM_a / Copilot 是 **主观期货交易的结构辅助**：级联预测路径、
 | **可交易方向** | `sign(weighted_1H − base)` via `signal_weight` / short_horizon | 回测仓位、报告主方向、汇总排序 |
 | **日线状态** | `daily_slope` vs `trend_threshold_pct` | 仅副标签 / regime 提示 |
 
-实现：`cascade/signal_contract.position_from_forecast`。
+实现：`cascade/signal_contract.py` 的 `position_from_forecast`。
 
 ## 生产红线
 

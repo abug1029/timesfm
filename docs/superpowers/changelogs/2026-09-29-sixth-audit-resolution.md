@@ -31,8 +31,8 @@
 | `fix_audit_issues.py` | −98 | 删 |
 | `fix_indicators.py` | −84 | 删 |
 | `check_db.py` | −28 | 删 |
-| `cascade/regime_classifier.py` | −324 | 删（被 `realtime_regime_classifier.py` 取代） |
-| `cascade/neutral_ab_render.py` | −223 | 删（合并入 `neutral_ab_report.py`） |
+| `cascade/regime_classifier.py` | −324 | **删**（被 `realtime_regime_classifier.py` 取代）——活引用已清零，仅余本行的历史记录 |
+| `cascade/neutral_ab_render.py` | −223 | **删**（合并入 `neutral_ab_report.py`）——活引用已清零，仅余本行的历史记录 |
 | `cascade/neutral_ab_report.py` | +217/−2 | 合并 `render_markdown`（函数体逐字节一致） |
 | `cascade/features.py` | +61/−54 | 合并 `calc_rolling_hurst` + `calc_rolling_hurst_raw`（11 个调用点全部核对） |
 | `cascade/ccl_monitor.py` | −24 | 移除 `CCLAlert.format_report()` |
@@ -189,4 +189,4 @@ venv 未装 pyarrow → ImportError 让 worker 硬崩 → 锁永不释放。锁�
 | ponytail changelog（已勘误） | `D:\FlyBuddy\.omc\artifacts\ponytail-audit-changelog-2026-09-29.md` |
 | spec-alignment changelog | `docs/superpowers/changelogs/2026-09-29-stage3-impl-and-prep.md` |
 | Spec v15 | `docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md` |
-| Plan rev2 | `docs/superpowers/plans/2026-09-29-spec-alignment-impl-plan.md` |
+| Plan rev2 | `docs/archive/superpowers-plans/2026-09-29-spec-alignment-impl-plan.md`（已归档） |

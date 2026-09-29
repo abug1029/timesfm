@@ -6,16 +6,17 @@
 
 **最后更新**: 2026-09-29（Stage 3 **已交付**，经第五/六/七轮独立审计；等待新裁决流。见下方「Stage 3 交付状态」小节）
 
-> **三环状态**：**运行中**，supervisor PID 22703（2026-09-28 18:54 启动），phase=fast。
-> `cycles_done` 是单调递增的活计数，此处不记录 —— 读 `data/cache/supervisor_state.json`
-> （2026-09-29 15:52 快照为 171）。
+> **三环状态**：**运行中**，supervisor **PID 670**（2026-09-29 重启，已加载当日全部代码）。
+> `cycles_done` / PID / phase 是**活计数**，此处一律不记录 —— 读 `data/cache/supervisor_state.json`。
 > 封存已于 **2026-09-28 解除**（停滞根因 = 快环提案被门禁 ~100% 拒绝 + 无基线 → 慢环饿死；
 > 修复 = baselines 重生 + 提案门禁调整 + 1-bar 前视修复）。封存快照仍在
 > `data/archive/fm_a_sealed_2026-09-24T1422/`（234MB）供对照，非当前状态。
 >
-> **⚠️ PID 22703 跑的是 2026-09-28 的内存代码。** 磁盘上已有 2026-09-29 的 4 个 commit
-> （`a068d92` / `381f31e` / `4c347df` / `b8a6d36`）未被加载。重启步骤与验收见
-> `D:\FlyBuddy\.omc\artifacts\sixth-audit-supervisor-restart-runbook.md`。  
+> **混版本窗口已关闭**（2026-09-29）。旧进程 PID 22703 干净退出
+> （`supervisor_stopped{reason: signal_received, exit_code: 0}`，uptime 88725s）。
+> 新代码生效的端到端证据：`protocol_fingerprint` v3 = `91ab913e448aead6…`，
+> 而 cj 旧基线带的是 v2 的 `bd851c9c…` → `ensure_baselines` 判定跨协议不可比并强制重生。
+> 重启记录与验收断言见 `docs/supervisor_restart_backlog.md` 第 3 项。
 **Phase 1 状态**: **L1 ops 全量完成 → ECONOMIC_PASS=False → 生产 REMAIN_OFF**  
 **人类文档**: `docs/README.md`（含 product_positioning / module_freeze / 新口径全表链接）  
 **冲突债**: `reports/research/20260808_conflict_debt_register.md`（绝大多数 DONE）  
@@ -62,7 +63,7 @@ supervisor 重启（用户保留决定）。
 ## Stage 3 协变量可信度重构（2026-09-28 时点记录，已结案）
 
 > 上游 spec：`docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（**v15**，2026-09-28 修订）
-> 计划：`docs/superpowers/plans/2026-09-28-covariate-credibility-stage3.md`（v5）
+> 计划：`docs/archive/superpowers-plans/2026-09-28-covariate-credibility-stage3.md`（已归档）（v5）
 > 审核汇总：`docs/superpowers/reports/2026-09-28-stage3-review-summary.md`
 
 **目标**：把 Stage 1/2 的降级声明解除；让协变量可信度从「推断」变成「可验证事实」。

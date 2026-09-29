@@ -15,24 +15,50 @@
 - 现状: 脚本归档后该守卫失去入口，当前无引用。
 - 做法: 如需该功能，应在 supervisor 侧补等价实现（启动周期检查 IDLE_HOLD 标记文件，存在则拒绝启快环）。当前仅为登记，无实施计划。
 
-## 3. 加载 2026-09-29 的 4 个 commit（**当前最紧要**）
+## 3. ~~加载 2026-09-29 的 4 个 commit~~ —— **已完成 2026-09-29，PID 670**
 
-- 背景: supervisor PID 22703 于 2026-09-28 18:54 启动，其内存里是当天的代码。
-  磁盘上已有 4 个未加载的 commit：`a068d92`（ponytail 清理 + 第六轮 K4/K6/K7/M4）、
-  `381f31e`（spec-alignment Phase 1-10）、`4c347df`（changelog）、
-  `b8a6d36`（第七轮：退役 smoke 测试）。
-- 风险: 未加载期间，监督环派生出的慢环子进程会执行**未加载的新代码**，而 verdict
-  仍按旧 schema 记账 —— 即"新代码语义 + 旧 schema 记账"的混版本窗口。
-- 做法: 走 `scripts/stop_supervisor.sh` → 归档 `logs/supervisor.log` →
-  `setsid nohup scripts/start_supervisor.sh`。
-- **完整步骤与 6 条验收标准**：`D:\FlyBuddy\.omc\artifacts\sixth-audit-supervisor-restart-runbook.md`
-- 验收重点（本次两个实质修复的直接验证）:
-  - `grep -c "v1 legacy: pass by ev>0" task_FM/known_verdicts.inc.md` → 应为 **1**（图例去重，K6）
-  - `grep -c "gate_pass=True" task_FM/known_verdicts.inc.md` → 应为 **43**
-    （截断只切尾部，M4；**修复前只有 20/42**，「已解出」的 22 条被静默吞掉）
-- 前置: `scripts/restart_readiness_check.py` 应 16/16 通过；确认无持有者已死的 `*.lock`
+- 背景: supervisor PID 22703 于 2026-09-28 18:54 启动，其内存里是当天的代码；
+  磁盘上 4 个 commit 未加载 → 监督环派生慢环子进程会跑新代码，而 verdict 仍按旧 schema
+  记账，即「新代码语义 + 旧 schema 记账」的混版本窗口。
+- 处置: 旧进程 22703 干净退出（`supervisor_stopped{reason: signal_received, exit_code: 0}`，
+  uptime 88725s）→ 新进程 **PID 670** 启动。
+- **新代码已加载的端到端证据**（不只是「进程起来了」）:
+
+  ```
+  磁盘现算:  protocol_v3  fingerprint = 91ab913e448aead6f4c81f55
+  启动日志:  [WARN] ensure_baselines: cj 基线协议指纹不符
+                    (bd851c9ca0730dc5… != 91ab913e448aead6…) → 重生（跨协议不可比）
+  ```
+
+  `91ab913e448aead6` 是新代码算出的 v3 指纹，cj 旧基线带的是 v2 的 `bd851c9c`。
+  指纹 bump → 跨协议不可比被识别 → 强制重生。H1/Q2 的机制在生产里跑通。
+  只有 cj 需重生，其余 7 个基线本就兼容。
+- K6 / M4 的验收断言在**周期末尾**物化后核对（`materialize_known_verdicts` 在周期末执行）:
+
+  | 断言 | 期望 | 修复前 |
+  |---|---|---|
+  | `grep -c "v1 legacy: pass by ev>0" task_FM/known_verdicts.inc.md` | 1（K6 图例去重） | 2 |
+  | `grep -c "gate_pass=True" task_FM/known_verdicts.inc.md` | 43（M4 截断只切尾部） | 23 |
+
+  M4 修复前，活仓 42 条 `gate_pass` 里只有 20 条进了 peer 提示词 —— 被静默吞掉的
+  22 条正是「已解出、不要再提」的集合，直接违反该文件自己的表头契约。
+
+### 停止监督环的正确做法（本文档此前写错，已更正）
+
+**`scripts/stop_supervisor.sh` 不存在**，日志也不在 `logs/supervisor.log`。实测流程:
+
+```bash
+kill -TERM <supervisor_pid>          # 只置标志，主循环最迟下个 tick（≤300s）退出
+# 等 data/cache/supervisor.out 出现:
+#   supervisor_stopped{reason: signal_received, exit_code: 0}
+setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.yaml   >> data/cache/supervisor.out 2>&1 < /dev/null &
+```
+
+日志真路径 = **`data/cache/supervisor.out`**。`logs/` 下只有手工归档的快照。
 
 ## 处置记录
 
 - 2026-09-17: 显式重启时实施第 1 项 —— praxist_supervisor.py:749 track 行已加固定前缀「【旧口径线索·非证据】」（test_supervisor/test_covariate_pool 47 passed）。第 2 项维持登记：本次以启动前人工检查 IDLE_HOLD（不存在，放行）履行守卫职责。
 - 2026-09-17: supervisor 已重启（PID 546，setsid 脱离进程树，日志 data/cache/supervisor_loop.out）。
+- 2026-09-29: 第 3 项完成（旧进程 22703 退出 → PID 670 加载新代码，v3 指纹端到端验证）；本节原有的
+  `scripts/stop_supervisor.sh` / `logs/supervisor.log` 两个路径经核实**均不存在**，已按实测改写。

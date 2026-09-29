@@ -14,6 +14,58 @@
 | validation_criteria.md | v2 固化判据与 v23 判据冲突（DirAcc/MAPE/DM/BH-FDR 硬门）。注意：phase4d SCHEMES 固化线（scripts/phase4d_parse_results.py、tests/test_validation_criteria.py）仍引用 v2 判据，其 v23 对齐登记为遗留项，不在本次范围 | v23 spec（裁决口径） |
 | vol-risk.md | 历史快照（2026-09-10，v2 布朗运动 CI 时代风控红线） | STATE.md、v23 spec |
 
+## docs/archive/superseded-2026-09/
+
+2026-09-29 归档。**判定标准**：一次性调查 / 已结案的阶段核验 / 已执行完的施工单，
+其结论已被后续文档取代，且**不再被任何在用文档或生产提示词引用**。
+
+**刻意留在原位的**（易被误判，实为在用）：
+
+| 文档 | 为何不归档 |
+|------|-----------|
+| `docs/2026-09-18-oi-gated-momentum-spec.md` | 被 peer 提示词直接内嵌（`task_FM/covariate_menu.inc.md` + 各 run 的 `gen*_peer*_prompt.md`），改动影响生产提案面 |
+| `docs/2026-09-19-three-loop-followup-spec.md` | 三环跟进**合同**，`runbook_praxist_three_loop.md` / `CLAUDE.md` / `AGENTS.md` 均引用 |
+| `docs/superpowers/changelogs/*` | 审计证据链。第六~八轮审计逐条核对这些 changelog 的数字与命令，归档会切断可追溯性 |
+| `docs/superpowers/specs/*` | 上游 spec v15 / v23 是现行裁决口径的源头 |
+| `docs/superpowers/reports/2026-09-29-stage3-verification-record.md` | §8.3 出口条件核验记录，Stage 3 的放行依据 |
+
+| 原路径 | 归档原因 | 被何取代 |
+|--------|----------|----------|
+| `audit_report_20260907.md`（仓根） | 一次性 DB 审计（2026-09-07），28 品种 P0–P5 建议早已实施完毕；其审计脚本 `audit_futures_v2.py` 已于 `a068d92` 删除，无法复跑 | STATE.md |
+| `loop-run-log.md`（仓根） | 2026-07-02 停用的 triage 循环日志，全部 `outcome: no-op` | `data/cache/supervisor_state.json` |
+| `loop-budget.md`（仓根） | 同上循环的预算表（无限量 Coding Plan） | `loop-constraints.md`（仍在用） |
+| `2026-09-20-qwen3-max-model-switch-eval.md` | 一次性模型切换评估（111 条 verdict 口径，已过时） | v23 spec + `aligned_verdicts.jsonl` |
+| `2026-09-17-fm-eval-error-path-audit.md` | 8 个 bug 清单已全部修复 | v23 spec |
+| `2026-09-18-oi-gated-momentum-impl-plan.md` | 五步实施计划已执行完 | 同目录 spec（仍在用） |
+| `2026-09-18-oi-gated-momentum-data-quality-report.md` | 一次性数据质量报告 | 同上 |
+| `2026-09-18-oi-gated-momentum-blocking-decision.md` | 首跑 dir_acc=0.453 的当场决策 | 同上 |
+| `2026-09-19-three-loop-followup-impl-plan.md` | 642 行施工单已执行完 | `2026-09-19-three-loop-followup-spec.md`（仍在用） |
+| `2026-09-19-verdict-analysis-report.md` | 81 verdict 时点快照（现 171），提案过门 0/11 的结论已被后续轮次覆盖 | v23 spec |
+| `2026-09-19-peer-proposal-quality-verification.md` | 单测已过；「快环过门率待下一轮」的待办从未闭合，现由 09-29 审计闭环 | — |
+| `2026-09-19-cleanup-and-fix-log.md` | 一次性清理日志 | — |
+| `2026-09-27-stage1-verification.md` | Stage 1 出口核验，已被 Stage 3 结案取代 | `superpowers/reports/2026-09-29-stage3-verification-record.md` |
+| `2026-09-28-stage2-verification.md` | 同上 | 同上 |
+| `audit_system_efficiency_20260908.md` | 2026-09-08 效率审计，行数与组件表全部过时 | — |
+| `spec_optimization_roadmap.md` | 基于 system_design **v2.4**（2026-09-10）的优化任务表 | 现行 `docs/system_design.md` |
+| `PER_SYMBOL_GOAL_UPDATE_2026-09-23.md` | 目标变更记录 | `scripts/praxist_goal.yaml`（唯一真相） |
+| `SUCCESS_CONDITION_UPDATE_2026-09-23.md` | 同上 | 同上 |
+| `results_summary.md` | 143 行时点快照（现 171），**全仓无生成脚本**，无法再生 | `task_FM/config/aligned_verdicts.jsonl` |
+| `RESULTS_FORMAT_TEMPLATE.md` | 上述快照的展示格式规范，随之失效 | — |
+| `v22_findings_audit.md`（`task_FM/`） | v22 存量污染登记，处置策略为「随新 run 自然稀释」 | — |
+| `superpowers/reports/2026-09-28-stage3-completion-report.md` | 早于 09-29 核验记录的完成报告 | `2026-09-29-stage3-verification-record.md` |
+| `superpowers/reports/2026-09-28-stage3-final-status.md` | 同上 | 同上 |
+
+## docs/archive/superpowers-plans/（2026-09-29 追加）
+
+以下 4 份已执行完的施工单于 2026-09-29 移入本目录：
+
+| 原名 | 归档原因 | 被何取代 |
+|------|----------|----------|
+| 2026-09-22-typesafe-covariate-prescreen-implementation.md | 已执行完 | `docs/superpowers/changelogs/2026-09-22-typesafe-prescreen-implementation.md` |
+| 2026-09-27-covariate-credibility-stage1.md | 已执行完 | `docs/superpowers/changelogs/2026-09-27-task*.md` |
+| 2026-09-28-covariate-credibility-stage3.md | 已执行完 | `docs/superpowers/changelogs/2026-09-28-*.md` |
+| 2026-09-29-spec-alignment-impl-plan.md | 已执行完（Phase 1-10 全部交付，`381f31e`） | `docs/superpowers/changelogs/2026-09-29-stage3-impl-and-prep.md` |
+
 ## docs/archive/superpowers-specs/
 
 | 原名 | 归档原因 | 被何取代 |

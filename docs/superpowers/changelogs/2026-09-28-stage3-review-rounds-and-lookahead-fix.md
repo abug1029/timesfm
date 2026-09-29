@@ -378,7 +378,7 @@ n=8000 下只差 **0.014%**，而 MC 标准误是 **2.2%** —— 旧实现同�
 
 ### N8 — 测试计数修正
 
-`docs/superpowers/reports/2026-09-28-stage3-completion-report.md` 原写
+`docs/archive/superseded-2026-09/2026-09-28-stage3-completion-report.md`（已归档） 原写
 "新增测试: 61 个"。复审 N8 指出 Stage 3 实际新增 `def test_` 103 个
 （61 为实施波口径，即 PR 拆分相加 14+7+9+7+10+1+13=61，口径准确但非全量）。
 

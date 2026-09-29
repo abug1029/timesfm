@@ -1,7 +1,7 @@
 # 三环 Verdict 跟进 Spec
 
-> 日期: 2026-09-19。上游: `docs/2026-09-19-verdict-analysis-report.md`。
-> 状态: **待宿主批准后实施**。实施计划: `docs/2026-09-19-three-loop-followup-impl-plan.md`。
+> 日期: 2026-09-19。上游: `docs/archive/superseded-2026-09/2026-09-19-verdict-analysis-report.md`（已归档）。
+> 状态: **待宿主批准后实施**。实施计划: `docs/archive/superseded-2026-09/2026-09-19-three-loop-followup-impl-plan.md`（已归档）。
 > 裁决口径仍以 `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md` 为唯一权威；本文不改写硬门公式。
 
 ## 1. 目的

@@ -366,7 +366,7 @@ def _calc_rsi(closes: np.ndarray, period: int = 14) -> np.ndarray:
 
 ### 5.1 可交易方向：加权 1H（级联 / 回测 / Copilot）
 
-CF-01 A：**唯一可交易方向** = `sign(weighted_1H − base)`，经 `signal_weight` / `short_horizon`。实现：`cascade/signal_contract.position_from_forecast`。
+CF-01 A：**唯一可交易方向** = `sign(weighted_1H − base)`，经 `signal_weight` / `short_horizon`。实现：`cascade/signal_contract.py` 的 `position_from_forecast`。
 
 `cascade_predict`、`monthly_backtest` 与 Copilot 卡面（`copilot_trade_signal`）走这条。日线斜率只填 `regime_direction`，**不得覆盖** `position_sign`。
 
