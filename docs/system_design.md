@@ -6,7 +6,7 @@
 > - 硬门 / 裁决口径以 [`loop-constraints.md`](../loop-constraints.md)（预注册评估契约，v23）与 [`docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`](superpowers/specs/2026-09-14-prediction-quality-redesign-design.md) 为准。
 > - 本文若与上述冲突，以上述为准。不要按本文去改 `signal_contract.py` 或 `evaluator.gate`。
 >
-> **版本**: 1.5 (2026-09-22，§11.2 新增 TypeSafe Jev 预筛调度降权/奖励；§11.4 运行状态更新)
+> **版本**: 1.6 (2026-09-29，§9 Copilot 卡面对齐 C3 实装；§10.1 SS 星级勘误；§7.4/§11.2 品种状态刷新；§11.4 新增 Stage 3 契约；§11.5 运行状态刷新)
 > **定位**: 方向性建议，不是自动开平仓。描述 TimesFM 两阶段级联如何在任意时刻给出期货品种的方向与置信度。
 
 ---
@@ -598,9 +598,9 @@ def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
 
 **2 星品种**（SCHEMES，2026-09-20）：SR, M, RB, EG, LH, CJ, JD
 
-**SS 降级说明**：2026-09-17 v23 复测 dir_acc=0.502<0.52 未过门，从 2★ 降为 1★。goal.yaml 仍含 ss，去留待决策。
+**SS 降级说明**：2026-09-17 v23 复测 dir_acc=0.502<0.52 未过门，从 2★ 降为 1★。goal.yaml（2026-09-23 起）目标品种集含 ss——目标为全部 24 个品种通过三阶段验证，不再单点去留。
 
-**品种状态**（2026-09-19）：eg=DEAD（22 ok, 0 pass）；jd/lh=HOLD（hold_generations=5）；其余 17 品种 active。
+**品种状态**（2026-09-29）：`task_FM/config/symbol_status.json` 已于 2026-09-28 清空（`symbols={}`），当前无 DEAD/HOLD 品种，全部品种可入队；此前的 eg=DEAD、jd/lh=HOLD 标记不再有效。
 
 ---
 
@@ -748,7 +748,7 @@ python scripts/cascade_predict.py ss --collect-if-stale 1
 - 止盈参考: P90=14660
 ```
 
-Copilot（`python scripts/copilot.py ss`）卡面目前仍只印日线方向，不会出现上面的「可交易方向」行。
+Copilot（`python scripts/copilot.py ss`）卡面同样走加权 1H：「可交易方向」经 `copilot_trade_signal` → `position_from_forecast` 出，日线只印「日线状态」副标签（C3，见 §5.3）。
 
 ### 9.2 命令行完整流程
 
@@ -766,7 +766,7 @@ python scripts/cascade_predict.py ss rb sr m jd
 # 4. 信用 2 星品种批量预测
 python scripts/cascade_predict.py --three-star
 
-# 5. 主观交易领航员（推荐盘中入口；卡面方向仍是日线 v2）
+# 5. 主观交易领航员（推荐盘中入口；卡面「可交易方向」= 加权 1H，C3）
 python scripts/copilot.py ss fu --no-refresh
 
 # 6. 启用 Vol 熔断（实验性）
@@ -781,7 +781,7 @@ python scripts/cascade_predict.py ss --vol-filter-neutral
 
 | 品种 | 星级 | 主协变量 | 组合 | 类型 | 衰减 | 信号策略 |
 |------|------|----------|------|------|------|----------|
-| SS | ⭐⭐ | calendar_cyclical | [calendar_cyclical] | trend | 1.30 | 全段 |
+| SS | ⭐ | calendar_cyclical | [calendar_cyclical] | trend | 1.30 | 全段 |
 | SR | ⭐⭐ | rsi_state | [rsi_state, oi, calendar_cyclical] | stable | 1.43 | 全段 |
 | M | ⭐⭐ | ha_body | [ha_body, calendar_cyclical] | stable | 1.37 | 全段 |
 | RB | ⭐⭐ | rsi_state | [rsi_state] | stable | 1.27 | 全段 |
@@ -843,7 +843,8 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
 - **方案 A**：peer 只写机制化假设（不加载 TimesFM），慢环是唯一验证器
 - **面板**：`cohort_size=2`，`panel_topology:fm_two_peer`（exploit + falsifier）
 - **硬门**（v23）：n≥350 / n_eff≥50 / dir_acc≥adaptive + DM + BH-FDR
-- **品种状态机**（`task_FM/config/symbol_status.json`）：ACTIVE → DEAD/HOLD；harvest 拒绝 DEAD/HOLD
+- **品种状态机**（`task_FM/config/symbol_status.json`）：ACTIVE → DEAD/HOLD；harvest 拒绝 DEAD/HOLD（该文件 2026-09-28 起已清空，当前无品种被过滤）
+- **Stage 3 契约**（2026-09-28/29）：horizon 填充 / 实验指纹 / 研究 family / 基线协议指纹重生，见 §11.4
 
 ### 11.2 提案质量机制（2026-09-19/20 加固）
 
@@ -853,7 +854,7 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
 | 跨 run 重复惩罚 | 扫最近 20 run，3+ 次 -20 分起 |
 | 符号失败惩罚加陡 | 8+ 失败 -50 分起，3-7 次 -8/次 |
 | DEAD 族拒绝 | 4+ ok 0 pass 族识别为 family_dead，harvest 先于 no_failure_delta |
-| DEAD/HOLD 过滤 | eg/jd/lh 零入队 |
+| DEAD/HOLD 过滤 | harvest 拒绝 DEAD/HOLD 品种入队（symbol_status.json 2026-09-28 起已清空，当前无品种被过滤） |
 | **TypeSafe Jev 预筛**（软建议） | harvest 时 fire-and-forget 调 TypeSafe 三问写 `<proposal>.prescreen.json`；`_apply_prescreen_score` 据此做 ± 调度分（invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5）。**不阻断慢环回测**；缺 `TYPESAFE_API_KEY` 或降级时静默跳过。详见 `cascade/typesafe_prescreen.py` |
 
 ### 11.3 关键文件
@@ -866,17 +867,35 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
 | `docs/2026-09-19-three-loop-followup-spec.md` | 跟进合同 |
 | `scripts/praxist_supervisor.py` | 监督环（自加载 .env.praxist） |
 | `scripts/aligned_slow_loop.py` | 慢环（唯一 verdicts 写入者） |
+| `scripts/start_supervisor.sh` | 监督环规范启动器（PATH / .env.praxist / setsid 孤儿化） |
+| `cascade/horizon_fill.py` | horizon 尾填充契约（Stage 3） |
+| `cascade/experiment_fingerprint.py` | 实验指纹（Stage 3） |
+| `cascade/research_family.py` | 研究 family 多重比较纪律（Stage 3） |
 | `task_FM/config/aligned_verdicts.jsonl` | 裁决存储（v2 schema） |
 | `data/cache/supervisor_state.json` | 机器状态（cycles_done / last_run_id） |
 | `scripts/praxist_goal.yaml` | 目标配置 |
 
-### 11.4 当前运行状态（2026-09-22）
+### 11.4 Stage 3 契约：horizon 填充 / 实验指纹 / 研究 family（2026-09-28/29 结案）
 
-- 123 verdicts / 22 gate_pass=true (21%) / 0 fdr_pass=true（历史裁决）
-- 本会话落地 TypeSafe Jev 预筛：SDK v0.7.1 适配 + 调度降权/奖励 + 质量追踪器（50 样本门禁）+ 专家审核修复；7 commits `cc856cb..411183e`
-- prefetch 状态：**0 条 verdict 带 prescreen metadata**（历史裁决均为集成前生成），需积累 ≥50 条新 verdict 触发 Phase 3 质量校准
+Stage 3（协变量可信度）2026-09-28/29 结案，在慢环/监督环侧新增三份契约模块与两项物化修复（实施与五轮审核见 `docs/superpowers/changelogs/2026-09-28-stage3-review-rounds-and-lookahead-fix.md`）：
+
+| 机制 | 模块 | 说明 |
+|------|------|------|
+| horizon 尾填充契约 | `cascade/horizon_fill.py` | `horizon_known` 四类受控词表（`known_ahead` / `persistence` / `self_referential` / `unknowable`），唯一家 `task_FM/config/covariate_pool.json`；非 `known_ahead` 的 horizon 段逐值填 context 末值并落 `horizon_fill` 标记（替代历史 zeros/decay 填充），配套修复 1-bar 前视 |
+| 实验指纹 | `cascade/experiment_fingerprint.py` | 单次实验身份 = `weight_fingerprint` + `target_snapshot_hash` + `context_config_hash`（48-bit 截断）；与 `research_target_hash`（研究问题身份，稳定）严格区分，不得混用 |
+| 研究 family | `cascade/research_family.py` | 多重比较纪律：一个品种 = 一个研究问题 = 一个 family（同一 protocol_fingerprint 下），批次 / 运行 / 代际不重置校正；family 90 天关闭、≤20 成员、单成员 180 天 T_max |
+| 基线协议指纹 | `scripts/praxist_supervisor.py::ensure_baselines` | 基线协议指纹不符（协议成分变更，现 v3）→ 整品种基线自动重生；2026-09-29 实测 9 个 nocov 基线（v2 指纹）全部捕获重生 |
+| 物化修复 K6/M4 | `scripts/praxist_supervisor.py` | `known_verdicts.inc.md` 图例单条、`v2_pass` 统一为 `gate_pass` 且 `not (fdr_pass or migrated_pass)`（K6）；品种表不截断 + `verdicts_truncated=<N>` 截断标记（M4） |
+
+smoke 套件（`test_smoke_ss_end_to_end`）已于 2026-09-29 按用户裁定退役（连续两次同栈 pyarrow ImportError，`cascade/lgbm_features.py`）；回归以 `pytest tests/` 全量为准。
+
+### 11.5 当前运行状态（2026-09-29）
+
+- 裁决注册表：**171 verdicts / 43 gate_pass / 3 fdr_pass / 3 migrated_pass**（全部 status=ok；当日快照，以 `task_FM/config/aligned_verdicts.jsonl` 为准）
+- 监督环 2026-09-29 19:24 经规范启动器重启（旧进程干净退出），`cycles_done=172` 续累加；基线 v3 指纹端到端验证通过（bump → 检测 → 重生）；stdout 落 `data/cache/supervisor.out`
+- TypeSafe Jev 预筛（2026-09-22 落地，SDK v0.7.1，7 commits `cc856cb..411183e`）：verdict 注册表现有 **22 条带 `metadata.prescreen`**（2026-09-29 快照），质量校准（≥50 样本门禁）待积累
 - 运行计数以 `data/cache/supervisor_state.json` 为准（cycles_done 随调度递增，不在此写死）
-- 目标：1★ 品种过门 ≥4 + min dir_acc > 0.52 + ≥1 族
+- 目标（`scripts/praxist_goal.yaml`，2026-09-23 起）：**所有目标品种（24 个）通过三阶段验证**——Phase 1 `n_gate_pass_variants >= 10` + `avg_dir_acc_gate_pass >= 0.51`；Phase 2 `n_tier_a_or_b >= 8`；Phase 3 `n_validated_multi_seed >= 3` + `decay_below_threshold <= 2`；预算无限制
 
 ---
 

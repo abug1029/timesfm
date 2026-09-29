@@ -85,7 +85,7 @@ Peer 第一件事：至少写 2 份假设到
 
 快环面板：`task_FM/task.yaml` 的 `cohort_size=2` 配任务侧 `panel_topology:fm_two_peer`（`peer_role_rotation = [exploit, falsifier]`）。bundled 默认要 4 个角色，两人 cohort 盖不住，议程会被拒。**不要改 `.venv` 里的 Praxist。** 改 topology 后重启监督环。
 
-选座（`survivors_per_cycle=3`）：目标 1 星且 n≥350 → 1 星欠样本（cj/lh）→ 其余；同层再按协变量族正交填。
+选座（`survivors_per_cycle=3`）：优先集 = goal `cadence.priority_symbols`（2026-09-23 起 goal.yaml 未设该键，优先集当前为空）；无优先品种时候选按协变量族正交填满，细节见 runbook 选座节。
 
 近失误自动复测（2026-09-09 引入）：裁决只差样本（n<350；2026-09-11 时点触发条件 ic≥0.05、ev>0、PF 比现任好 5%，实现见 `scripts/praxist_supervisor.py::_retest_candidates`，以运行时代码为准）时，本地库长到 ≥350 就补队，checkpoint 只算新点。首个候选 `cj_oi`（n=324）。
 
@@ -101,6 +101,8 @@ Peer 第一件事：至少写 2 份假设到
 
 日线预测按 `(symbol, cutoff, 窗口, 模型指纹)` 缓存（日线模型不吃协变量）。队列 claim / inprogress / recover，kill 后零损失。**只有慢环能写** `task_FM/config/aligned_verdicts.jsonl`。伪造 verdict = 破坏预注册纪律。
 
+Stage 3 契约（2026-09-28/29 结案）：评估带 horizon 填充标记（`cascade/horizon_fill.py`）与实验指纹（`cascade/experiment_fingerprint.py`）；多重比较按研究 family 结账（`cascade/research_family.py`）；基线协议指纹由监督环 `ensure_baselines` 比对，不符自动重生。详见 [system_design.md §11.4](./system_design.md)。
+
 ---
 
 ## 4. 当前目标与现场（以 JSON 为准）
@@ -111,31 +113,26 @@ Peer 第一件事：至少写 2 份假设到
 - 裁决：`task_FM/config/aligned_verdicts.jsonl`（按 `variant_id` 最新行）
 - 目标与预算：`scripts/praxist_goal.yaml`
 
-成功条件（goal.yaml 现行，2026-09-16 校对）：
+成功条件（goal.yaml 现行，2026-09-23 起）：**所有目标品种**（24 个：`m/ss/sr/cj/jd/lh/eg/rb/i/p/y/cf/bu/fu/ta/ma/fg/ur/px/oi/sh/sp/ao/sc`）均通过三阶段验证：
 
-- 1 星集合 `{m, ss, sr, cj, jd, lh, eg, rb}` 里至少 4 个过门
+- Phase 1 基础质量门槛（每品种）：`n_gate_pass_variants >= 10` 且 `avg_dir_acc_gate_pass >= 0.51`
+- Phase 2 高质量变体（每品种）：`n_tier_a_or_b >= 8`
+- Phase 3 稳定性验证（每品种）：`n_validated_multi_seed >= 3` 且 `decay_below_threshold <= 2`
 - 过门 = `pass_variants()`（v2 schema）：`gate_pass` 且（`fdr_pass` 或 `migrated_pass`）；裁决三态 `v2_pass` / `hard-gate-but-losing` / `DEAD`（`scripts/praxist_supervisor.py::materialize_known_verdicts`）
-- 过门变体 min dir_acc > 0.52
-- 至少 1 个协变量族
 - **预算已无限制**：`max_cycles` / `cpu_hours` / `token_budget_m` = 999999，`deadline` = 2099-12-31
 
-磁盘快照（2026-09-11；过期以 JSON 为准）：
+磁盘快照（2026-09-29；过期以 JSON 为准）：
 
-- `phase=fast`，`cycles_done=1`，`paused_429=false`
-- `last_run_id=run_2026-09-10_03-06-50_primary_task_FM`
-- `last_harvested_run_id=run_2026-09-10_00-44-51_primary_task_FM`
-- 经济意义上过门的实质只有 `ss_vor`（n=396，ic=0.06，ev=+11.06，PF=1.123）
-- `gate_pass=True` 但 ev<0：`i_oi`（−2.46）、`m_ccl`（−3.64）。materializer 三态：`v2_pass`（2026-09-11 快照时称 `econ_pass`）/ `hard-gate-but-losing` / `DEAD`。过硬门但亏钱 **不是** already solved，peer 不得当已解决再提。
-- `cj_oi` n=324 ic=0.08 ev=+19.46 `gate_pass=false`（欠样本，近失误复测候选）
+- `phase=fast`，`cycles_done=172`，`paused_429=false`
+- 裁决注册表 171 verdicts：43 `gate_pass` / 3 `fdr_pass` / 3 `migrated_pass`（全部 status=ok）
+- 监督环 2026-09-29 19:24 经规范启动器重启，`cycles_done` 续累加；基线协议指纹升 v3 后 `ensure_baselines` 自动检测并重生不符基线（9 个 nocov 基线全部重生）
+- 历史经济示例（`ss_vor` / `i_oi` / `m_ccl` / `cj_oi` 的磁盘裁决表）见 [system_design.md §4.3](./system_design.md)；「过硬门但亏钱 **不是** already solved」的纪律不变
 
-重启：
+重启（规范方式 = `scripts/start_supervisor.sh`，2026-09-21 起；PATH / `.env.praxist` / setsid 孤儿化由 launcher 处理并打印 PID）：
 
 ```bash
 cd /home/abug/timesfm
-set -a && source .env.praxist && set +a
-setsid nohup .venv/bin/python scripts/praxist_supervisor.py \
-  --goal scripts/praxist_goal.yaml \
-  >> data/cache/supervisor.out 2>&1 < /dev/null &
+scripts/start_supervisor.sh
 ```
 
 `task_FM/task.yaml` **不要**放明文 API key；密钥只进 `.env.praxist`。

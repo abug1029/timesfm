@@ -16,7 +16,7 @@
 | 监督锁 | `data/cache/supervisor.lock` |
 | 决策日志 | `.omc/supervisor_decisions.jsonl` |
 | Known verdicts | `task_FM/known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose；`prompt_base.jinja2` `{% include %}`） |
-| 品种探索状态 | `task_FM/config/symbol_status.json`（eg=DEAD，jd/lh=HOLD；人手改 JSON，代码不自动复活） |
+| 品种探索状态 | `task_FM/config/symbol_status.json`（2026-09-28 清空 `symbols={}`，当前无 DEAD/HOLD；人手改 JSON，代码不自动复活） |
 | 面板 topology | `task_FM/.praxist/plugins/panel_topologies/fm_two_peer/`（`cohort_size=2` → exploit+falsifier） |
 | Verdict 注册表 | `task_FM/config/aligned_verdicts.jsonl`（仅慢环可写；新行含 `baseline_dir_acc`/`effective_min`） |
 
@@ -58,6 +58,8 @@ kill -TERM <supervisor_pid>
 停机报告：`goal_reached` / `budget_exhausted` 写入 `docs/superpowers/reports/supervisor_<kind>_<ts>.md`（不写 `STATE.md`，STATE.md 是 FM_a 月度回测状态的事实源）。
 
 > **重启电脑/注销 WSL 前的有序停机**：先 `kill -TERM` 监督环（阻止排空后起新快环），让慢环孤儿把在跑候选自然跑完（checkpoint 逐点落盘，kill 也可续跑），确认零 praxist 进程后再关机。重启后用上面的规范启动命令即可：队列/state/checkpoint 全部可恢复，首 tick 自动 cycle+1 起新 run。
+
+> **重启后验收（K6/M4，2026-09-28 起）**：待首个 cycle 物化后检查 `task_FM/known_verdicts.inc.md`：① `grep -c "v1 legacy: pass by ev>0"` = 1（图例单条，K6）；② 品种表 `gate_pass=True` 计数行正常出现；③ `verdicts_truncated=` 标记存在（M4）。三项齐 = 新代码物化生效；任一缺失 = 疑似旧进程仍在写（查 `ps aux | grep praxist_supervisor` 与 `data/cache/supervisor.out` mtime）。
 
 ---
 
@@ -129,14 +131,14 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 - **拒绝计数（fail visibly）**：`missing_symbol_or_cov` / `symbol_not_allowed` / `cov_archived` / `cov_not_in_active_pool` / `mechanism_too_short` / `no_failure_delta`（同 symbol 或同 cov 已失败且 delta 不足 20 字）/ `symbol_dead` / `symbol_hold` / `dedup`（dead / 已过门 / in-flight / 本批重复）/ `backlog_dup`。
 - **新协变量想法** `new_cov_<name>.json`（`cov_override=null`）→ 追加 `task_FM/config/covariate_backlog.jsonl`（按 name 去重），**不入队**；宿主在 `features.py` 实现并入池后才可测。
 - **选座（top_k = `survivors_per_cycle`，当前 3）**：先按 tier 排序再两遍 QD——
-  1. tier 0：`cadence.priority_symbols`（目标 1 星品种 m/ss/sr/cj/jd/lh/eg/rb）中当前有效点 n≥350 者；
-  2. tier 1：目标品种但样本暂不足（截至 2026-09-09：cj=324 / lh=238，有效点随 1H 数据增长，达标后自动复测）；
-  3. tier 2：其余 2 星品种。
+  1. tier 0：`cadence.priority_symbols` 中当前有效点 n≥350 者（2026-09-23 起 goal.yaml 未设该键 → tier 0 现为空）；
+  2. tier 1：优先集中样本暂不足者（同样依赖 `priority_symbols`，当前亦为空）；
+  3. tier 2：其余品种。
   同 tier 内按协变量履历分；第一遍每个 family 一席，第二遍按分补满。
 - 0 份合格提案 → `harvest_empty`（仍计 1 cycle）。有入队则 `phase=slow`，cycle 等到慢环抽干再 +1。
 - 每 tick（无论 phase）还跑 `_maybe_enqueue_retests`：对「硬门仅差 n」的近失误裁决（`n<350 且 ic≥0.05 且 ev>0 且 pf/incumbent>1.05`；2026-09-11 时点判据，运行时以 scripts/praxist_supervisor.py `_retest_candidates` 为准，2026-09-17 起裁决口径见 v23 spec），当本地库有效点长到 ≥350 且比上次裁决多 ≥`retest_min_new_points` 点时，**旁路 dead 去重**补队（`source:"sample_retest"`），checkpoint resume 只算新点。dry-run 中以 `sample_retest_plan` 行展示。
 - 菜单 `covariate_menu.inc.md` 每轮由协变量池 + **品种样本天花板表**（每品种当前可对齐有效点，`BELOW GATE`/`gate-reachable`，`_valid_n_for_symbol` 复刻月度回测有效点计数，fail-open）物化生成。
-- 非 dry-run 每轮会 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`（品种表不截断；Effective clues 从 snapshot 现场算过门族/近门/弱族；禁止再提案最多 80 条）。
+- 非 dry-run 每轮会 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`（品种表不截断；Effective clues 从 snapshot 现场算过门族/近门/弱族；禁止再提案最多 80 条；`verdicts_truncated=<N>` 行标记被截断的裁决计数——2026-09-28 M4）。
 - `prompt_base.jinja2`：先读证据再写提案；`{% include 'known_verdicts.inc.md' ignore missing %}` 与 `covariate_menu.inc.md`。**不要**再写「优先波动率族」。
 - **红线：** 只有 `aligned_slow_loop.py` 可写 `aligned_verdicts.jsonl`。
 - **TypeSafe Jev 预筛（2026-09-22，可选增强）：** harvest 每个合格提案 `_prescreen_async`（fire-and-forget daemon 线程）调 TypeSafe 三问，原子写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度降权/奖励；**永远不阻断慢环回测**。缺 `TYPESAFE_API_KEY`、超时、降级时静默跳过（`skip_suggested=None`）。降权因异步滞后一轮收割生效。慢环读同一文件注入 `verdict.metadata.prescreen`。验证：`python scripts/validate_typesafe_prescreen.py`；质量门禁：`python scripts/track_prescreen_quality.py`。

@@ -74,9 +74,7 @@ python -m data.future_bar_guard --dry-run
 
 # Praxist 三环（监督环；密钥只进 .env.praxist）
 # 架构见 docs/praxist.md；细节见 docs/runbook_praxist_three_loop.md
-set -a && source .env.praxist && set +a
-setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.yaml \
-  >> data/cache/supervisor.out 2>&1 < /dev/null &
+scripts/start_supervisor.sh
 ```
 
 ## A2 轨道（2026-08-07 结案，Track B 已关闭）
