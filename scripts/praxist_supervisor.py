@@ -1637,16 +1637,15 @@ def _symbol_n_table():
     return [(s, _valid_n_for_symbol(s)) for s in syms]
 
 def _retest_candidates(snapshot):
-    """gate 仅因 n 不足而失败的近失误最新裁决 (ic>=0.05, ev>0, pf/incumbent>1.05)。
+    """gate 仅因 n 不足而失败的近失误最新裁决。
 
-    注意：这是近失误复测的遗留判据 (v1, 2026-09-09 落地)。v23 主裁决链
-    (DirAcc/MAPE + DM(NW-HAC) + BH-FDR + 自适应门，见 docs/superpowers/specs/
-    2026-09-14-prediction-quality-redesign-design.md) 不使用 ic/ev/pf；
+    v1 (schema != v2): ic>=0.05, ev>0, pf/incumbent>1.05 (遗留判据)
+    v2 (schema == fm.aligned_verdict.v2): dir_acc>=0.50 (v23 口径)
+
     本函数仅用于 gate 仅差 n (n < RETEST_GATE_N) 的复测扫描。
-
-    语义即 'inconclusive, retest when more data' (cj_oi 2026-09-08: PF1.133/ev19.46/
-    ic0.08, 仅 n=324<350)。snapshot 按 variant_id 保留最新裁决。no_data 已被排除
-    (status != ok)；gate 因 ic 不足而失败者不入选 (加样本也救不回)。
+    语义即 'inconclusive, retest when more data'。snapshot 按 variant_id 保留
+    最新裁决。no_data 已被排除 (status != ok)；gate 因质量指标不足而失败者
+    不入选 (加样本也救不回)。
     """
     out = []
     for vid, v in snapshot.items():
@@ -1655,11 +1654,20 @@ def _retest_candidates(snapshot):
         n = int(v.get("n") or 0)
         if n <= 0 or n >= RETEST_GATE_N:
             continue
-        ic = float(v.get("ic") or 0.0)
-        ev = float(v.get("ev") or 0.0)
-        ratio = float(v.get("pf") or 0.0) / INCUMBENT_PF.get(v.get("symbol"), 1.0)
-        if ic >= RETEST_GATE_IC and ev > 0 and ratio > RETEST_PF_RATIO:
-            out.append(v)
+        # Dispatch by schema version
+        is_v2 = v.get("schema") == "fm.aligned_verdict.v2"
+        if is_v2:
+            # v2: use dir_acc as quality signal
+            dir_acc = float(v.get("dir_acc") or 0.0)
+            if dir_acc >= 0.50:
+                out.append(v)
+        else:
+            # v1 legacy: use ic/ev/pf
+            ic = float(v.get("ic") or 0.0)
+            ev = float(v.get("ev") or 0.0)
+            ratio = float(v.get("pf") or 0.0) / INCUMBENT_PF.get(v.get("symbol"), 1.0)
+            if ic >= RETEST_GATE_IC and ev > 0 and ratio > RETEST_PF_RATIO:
+                out.append(v)
     return out
 
 def plan_sample_retests(goal):
@@ -1678,10 +1686,10 @@ def plan_sample_retests(goal):
             continue
         if cur_n - int(v.get("n") or 0) < margin:
             continue
+        # v2 verdicts don't have max_points; use cadence default
         row = {"variant_id": vid, "symbol": v["symbol"],
                "cov_override": v["cov_override"],
-               "max_points": int(v.get("max_points")
-                                 or cad.get("aligned_max_points", 600)),
+               "max_points": int(cad.get("aligned_max_points", 600)),
                "stage": "aligned", "checkpoint_path": "",
                "enqueued_at": _now_iso(), "src_run": "supervisor_retest",
                "source": "sample_retest"}

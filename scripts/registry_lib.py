@@ -5,6 +5,10 @@ import json, os, sys, contextlib, fcntl, time, pathlib
 RUN_MODES = frozenset({"exploration", "confirmation"})
 RUN_LABEL_EXPLORATION = "exploratory_unconfirmed"
 
+# v1 legacy schema fields. v2 (fm.aligned_verdict.v2) does NOT write these:
+# max_points, pf, ev, maxdd, ic. All production verdicts are v2 (170/170 as of 2026-09-29).
+# validate_verdict() dispatches by schema: v2 verdicts use VERDICT_FIELDS_V2.
+# These fields remain for backward compatibility with hypothetical v1 verdicts.
 VERDICT_FIELDS = {"variant_id", "symbol", "cov_override", "max_points", "n",
                   "pf", "ev", "maxdd", "dir_acc", "gate_pass", "ic",
                   "decided_at", "checkpoint_path", "slow_loop_pid", "git_rev",
