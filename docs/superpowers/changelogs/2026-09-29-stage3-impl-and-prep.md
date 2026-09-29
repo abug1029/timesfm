@@ -231,9 +231,9 @@ Next phase: PR-D1/D2 implementation (Stage 4 proper)."
 
 | # | 发现 | 处置 |
 |---|---|---|
-| A | **审计的 `1491/14/5/1` 是在 `git worktree` 里采的**（审计报告自述用 worktree 做对照实验）。worktree 里没有未跟踪的 `reports/` 陈旧锁，所以活仓会多出一条失败。K1 的前提需修正：changelog 的 `1486/13` 与审计的 `1491/14` **都不是活仓数字** | 已在 `ponytail-audit-changelog-2026-09-29.md` 写明勘误 |
+| A | ~~**审计的 `1491/14/5/1` 是在 `git worktree` 里采的**~~ **← 指控不成立，已撤回（第八轮审计 N1）**。复核 `audit56.sh`：worktree 仅用于诊断纯 HEAD 下 supervisor 测试的收集失败，并在实跑前 `git worktree remove`；全量实跑标题明写 `FULL SUITE on live tree`。算术印证：1491+14+5+1=**1511**=活仓收集数，而 worktree 只能收集 1347，那组数字在 worktree 内产不出来。**K1 本身仍成立**（changelog 的 1486/13 确实不可复现），错的只是我对原因的解释 | 已在同文件与 `sixth-audit-resolution.md` 补正式勘误 |
 | B | **陈旧锁的根因是 pyarrow 未装**：`a2_p1` run 于 2026-09-18 死在 `pandas.to_parquet`（`cascade/lgbm_features.py:340`），ImportError 导致 worker 硬崩、锁永不释放。故锁不是普通"崩溃残留" | 锁已清；`test_smoke_ss_end_to_end` 加 `pytest.importorskip("pyarrow")`（与该文件既有的 `importorskip("lightgbm")` 一致）。`lgbm_features` 是归档轨道，无生产入口 import |
-| C | 审计的 `a2_p1×3` 与实测 `×2` 不符。实测该文件 2 项失败（`test_eval_grid_matches_worker_boundary`、`test_eval_grid_step_24`），`a068d92` 树实测失败数为 13（smoke 当时已转 skip），故「13 vs 14」的差异来自 smoke 是否计入；基线 eecf05a 的预存在失败总数是 **14** | 已按实测更正 |
+| C | 审计的 `a2_p1×3` 与实测 `×2` 不符。实测该文件 2 项失败（`test_eval_grid_matches_worker_boundary`、`test_eval_grid_step_24`），**双方都数到 14 但构成不同**：审计正午的 14 = 13 + a2_p1 第 3 项 flaky（smoke 通过）；处置方的 14 = 13 + smoke（flaky 通过）。稳定核心是 **13** 项，多出的 1 项随环境/时刻变化。我据锁 mtime 推断「eecf05a 上 smoke 必失败」**不成立** —— mtime 不能证明文件持续在场，而正午实跑证明它当时不在场 | 已按第八轮审计 N2 重述 |
 | D | `third_party/timesfm-3.0-official` 子模块 dirty：4 个 example 输出图是 LFS 指针 vs 本地重生成内容（`Matplotlib 3.10.9`），非代码变更，对 FM_a 零影响 | 故意不动；还原只会把 PNG 换回 131 字节指针 |
 
 ### 提交拆分
@@ -242,5 +242,5 @@ Next phase: PR-D1/D2 implementation (Stage 4 proper)."
 
 - `a068d92` — ponytail 清理（7 删 / 5 改 / 净 −1326）+ 第六轮 K4/K6/K7/M4 + 陈旧锁与 pyarrow 修复。
   该树实测 13 failed / 96 passed / 1 skipped（6 个文件），13 项全部预存在、本提交零新增失败。
-  （基线 eecf05a 的第 14 项预存在失败即 smoke，在本提交中转为 skip。）
+  （基线当天还有一个第 14 项，但**它是环境依赖项而非稳定失败** —— 见 N2：正午多出的是 a2_p1 的 flaky 项且 smoke 通过；午后多出的是 smoke 因陈旧锁失败且 flaky 通过。两者同为 14，构成不同。）
 - 本提交 — spec-alignment Phase 1–10 主体（37 文件，+3724/−105）。全量实测 1646 passed / 8 skipped / 1 xfailed / **0 失败**。

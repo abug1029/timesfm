@@ -94,11 +94,19 @@ raises only at call time: praxist binary not found (tried PRAXIST_BIN, ...)
 
 ## 审计未列出的新发现
 
-### A. 审计的 `1491/14/5/1` 是在 `git worktree` 里采的
+### A. ~~审计的 `1491/14/5/1` 是在 `git worktree` 里采的~~ —— **指控不成立，已撤回**
 
-审计报告自述用 worktree 做对照实验。worktree 中不存在未跟踪的 `reports/` 陈旧锁，故 `test_smoke_ss_end_to_end` 在审计侧通过、活仓失败。
-
-**这修正了 K1 的前提**：changelog 的 `1486/13` 与审计的 `1491/14/5/1` **都不是活仓数字**，两者都不可作为活仓基线引用。
+> **勘误（2026-09-29，第八轮审计 N1）**：我误读了第六轮报告抬头的「本轮通过 `git worktree` 在 HEAD 做对照实验」与「worktree 收集 1347 vs 活树 1511」，据此推断全量实跑发生在 worktree 内。复核该轮 `audit56.sh` 后确认这是错的：
+>
+> - 第 2 行 `cd /home/abug/timesfm`（活仓）
+> - 第 3-9 行 worktree **仅**用于诊断「纯 HEAD 下 8 个 supervisor 测试文件为何收集失败」，第 8 行即 `git worktree remove --force`
+> - 第 11-12 行全量实跑标题明写 `FULL SUITE on live tree (ground truth, tests/ scoped)`，cwd 为活仓
+>
+> 算术亦印证：1491+14+5+1 = **1511** = 活仓收集数；worktree 因缺 praxist 二进制只能收集 **1347** 项，那组数字在 worktree 内**算术上不可能产出**。
+>
+> **K1 本身仍然成立** —— ponytail changelog 的 `1486/13 (236s)` 确实不可复现。错的只是我对差异原因的解释。
+>
+> **根因（我自己的）**：从报告的**方法描述**推断了**执行位置**，没有去读执行脚本。取证纪律是「读脚本，不读转述」—— 我这次恰好违反了它刚写给我的那条规矩。
 
 ### B. 陈旧锁的真因是 pyarrow 未装
 
@@ -143,7 +151,7 @@ venv 未装 pyarrow → ImportError 让 worker 硬崩 → 锁永不释放。锁�
 
 | 文件 | 失真 | 更正 |
 |---|---|---|
-| `.omc/artifacts/ponytail-audit-changelog-2026-09-29.md` | 测试数字 `1486/13 (236s)` 不可复现 | 换为独立复跑值 `1491/14/5/1 (381.95s)` 并说明 worktree 差异 |
+| `.omc/artifacts/ponytail-audit-changelog-2026-09-29.md` | 测试数字 `1486/13 (236s)` 不可复现 | 换为独立复跑值 `1491/14/5/1 (381.95s)`。该勘误**不含** worktree 说法（第八轮 N1(c) 已核实）|
 | 同上 | 「7 文件 1343 行」算术错 | 7 文件实为 **1566** 行；1343 是前 6 个死码文件的和 |
 | 同上 | `classify_market_regime` 标为「内联」 | 改为「重写并简化」+ 新旧差异说明 |
 | `docs/superpowers/changelogs/2026-09-29-stage3-impl-and-prep.md` | `1641/0`、`143 历史裁决` | 换为实测 `1646/8/1/0`；registry 实为 **171** 条且全为 pre-A1（0 条具备新字段） |
