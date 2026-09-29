@@ -1,0 +1,123 @@
+{
+  "schema": "fm.covariate_family_verdict.v1",
+  "generated_at": "2026-09-29T05:47:08.183049Z",
+  "n_evaluated": {
+    "crack_spread_level": 1,
+    "vor": 2,
+    "vwap_deviation": 3,
+    "ccl": 7,
+    "calendar_cyclical": 8,
+    "oi": 1,
+    "rsi_state": 1
+  },
+  "matrix": {
+    "crack_spread_level": {
+      "rb": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_rb_crack_spread_level_aligned_p6"
+      }
+    },
+    "vor": {
+      "ss": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_ss_vor_aligned_p6"
+      },
+      "jd": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_jd_vor_aligned_p6"
+      }
+    },
+    "vwap_deviation": {
+      "eg": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_eg_vwap_deviation_aligned_p6"
+      },
+      "sr": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_sr_vwap_deviation_aligned_p6"
+      },
+      "m": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_m_vwap_deviation_aligned_p6"
+      }
+    },
+    "ccl": {
+      "m": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_m_ccl_aligned_p6"
+      },
+      "rb": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_rb_ccl_structural_aligned_p6"
+      },
+      "jd": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_jd_ccl_structural_aligned_p6"
+      }
+    },
+    "calendar_cyclical": {
+      "jd": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_jd_calendar_cyclical_structural_aligned_p6"
+      },
+      "cj": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_cj_calendar_cyclical_aligned_p6"
+      },
+      "rb": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_rb_calendar_cyclical_structural_aligned_p6"
+      }
+    },
+    "oi": {
+      "ss": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_ss_oi_aligned_p6"
+      }
+    },
+    "rsi_state": {
+      "m": {
+        "inert_constant": false,
+        "all_zero": false,
+        "ablation_content_delta": null,
+        "evidence": "verdict_m_rsi_state"
+      }
+    }
+  },
+  "incomputable_symbols": {
+    "fu": "no_verdict",
+    "lh": "no_verdict"
+  },
+  "diagnostic_thresholds": {
+    "n_evaluated_min": 8,
+    "sector_coverage_min": 2,
+    "inert_ratio_max": 0.6,
+    "note": "仅诊断提示, 不自动归档"
+  }
+}

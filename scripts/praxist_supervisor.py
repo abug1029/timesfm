@@ -134,6 +134,43 @@ if not INCUMBENT_PF:
 
 
 
+
+# ── PR-C2: 研究 family 接线（spec 4.3 W3.6）────────────────────
+# 纯逻辑在 cascade/research_family.py（唯一家）；此处只做 supervisor 侧接线，
+# 避免 family 状态机散落进监督环。
+from cascade.research_family import (  # noqa: E402
+    all_terminal as _fam_all_terminal,
+    default_family_key as _fam_default_key,
+    family_report_scope as _fam_report_scope,
+    make_member as _fam_make_member,
+    register_member as _fam_register_member,
+    seal_family as _fam_seal_family,
+)
+
+FAMILY_REGISTRY = os.path.join(FM_ROOT, "task_FM", "config", "family_registry.jsonl")
+
+
+def family_key_for(symbol, **kwargs):
+    """该品种的默认研究 family 键（一个品种 = 一个 family）。"""
+    return _fam_default_key(symbol, **kwargs)
+
+
+def register_family_member(family_key, symbol, variant_id, registered_at,
+                           members, run_mode="confirmation"):
+    """把一个确认成员登记进 family。返回 (成员列表, 结果标签)。
+
+    探索期结果会被拒绝进入 —— 探索自由、确认严格是本设计的分界线。
+    """
+    member = _fam_make_member(
+        family_key, symbol, variant_id, registered_at, run_mode=run_mode
+    )
+    return _fam_register_member(members, member, registered_at)
+
+
+def seal_research_family(members, now):
+    """封账：全部成员终态后一次性跑 family 级 BH-FDR。"""
+    return _fam_seal_family(members, now)
+
 def _now_iso():
     return datetime.now().isoformat()
 
@@ -805,6 +842,8 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
         lines.append("- {0}: {1}, gate_pass={2}, ev={3}, n={4}, status={5}".format(
             v.get("variant_id"), state, v.get("gate_pass"), v.get("ev"),
             v.get("n"), status))
+    if len(items) > len(_shown):
+        lines.append("verdicts_truncated=%d" % (len(items) - len(_shown)))
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
     with open(dest_path, "w", encoding="utf-8") as f:
         f.write('\n'.join(lines) + '\n')
@@ -842,8 +881,6 @@ def _effective_clue_lines(items):
     """Live passing / near-miss / weak-family clues. Never a frozen menu."""
     fam_ok = {}
     fam_pass = {}
-    if len(items) > len(_shown):
-        lines.append("verdicts_truncated=%d" % (len(items) - len(_shown)))
     near = []
     for v in items:
         if not isinstance(v, dict) or v.get("status", "ok") != "ok":

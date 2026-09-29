@@ -35,6 +35,13 @@ VERDICT_FIELDS_V2 = {
     "ablation_mode",
     # PR-C4: W6.6 阈值参照 / W6.7 历史修订防护 / W6.8 预训练登记
     "threshold_basis", "context_hash", "data_revised", "pretrain_risk",
+    # PR-C1: 统计公式字段
+    "detection_threshold_vs_random", "detection_threshold_vs_baseline", "se_hac",
+    "delta_ci_lo", "delta_ci_hi", "n_required_for_target",
+    # PR-C2: 研究 family 字段（spec 4.3 W3.6）
+    "family_key", "family_status", "p_value_family_adjusted", "family_sealed_at",
+    # PR-C6: horizon 填充契约（spec W5.2/W5.3）
+    "horizon_known", "horizon_fill", "horizon_exogenous",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
@@ -54,6 +61,13 @@ VERDICT_FIELDS_V2_NULLABLE = {
     # 历史裁决没有它们，故必须同时登记进 _NULLABLE（否则 validate 会
     # 把整本 registry 判为非法）。
     "ablation_mode", "threshold_basis", "context_hash", "data_revised", "pretrain_risk",
+    # PR-C1: 新增可选统计字段，历史裁决没有
+    "detection_threshold_vs_random", "detection_threshold_vs_baseline", "se_hac",
+    "delta_ci_lo", "delta_ci_hi", "n_required_for_target",
+    # PR-C2: family 字段，历史裁决一律没有
+    "family_key", "family_status", "p_value_family_adjusted", "family_sealed_at",
+    # PR-C6: horizon 契约字段，历史裁决一律没有
+    "horizon_known", "horizon_fill", "horizon_exogenous",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",

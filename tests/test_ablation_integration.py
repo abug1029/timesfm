@@ -338,10 +338,14 @@ def ablation_env(monkeypatch):
     n = 120
     dt = pd.date_range("2026-09-01", periods=n, freq="h")
     close = 3000 + np.cumsum(np.random.randn(n) * 5)
+    # ccl_value 是**变化量**，量级远小于持仓量。calc_ccl_pct 会把 ccl/oi
+    # 裁剪到 [-0.30, 0.30]；若两者同量级则整条通道饱和成常数 0.3，
+    # content 消融退化为恒等变换，测不到任何内容效应。
     df = pd.DataFrame({
         "dt": dt,
         "close_price": close,
-        "ccl_value": np.linspace(50000, 55000, n) + np.random.randn(n) * 200,
+        "ccl_value": np.cumsum(np.random.randn(n) * 400),
+        "open_interest": 50000 + np.cumsum(np.random.randn(n) * 300),
     })
 
     model = _RecordingModel()

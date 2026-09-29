@@ -212,9 +212,9 @@ def compute_seed_fingerprint(seed):
 
 
 def compute_variant_id(symbol, cov, cov_config, protocol_config, weights_dir, seed=None):
-    """计算基于指纹的 variant_id
+    """计算基于指纹的 variant_id。
 
-    向后兼容：如果指纹计算失败，回退到旧格式（symbol_cov）+ WARN 日志。
+    H3 (spec W6.4 fail-loud)：指纹计算失败**不再**静默回退到旧格式，必须抛出。
 
     Args:
         symbol: 品种代码 (str)
@@ -227,33 +227,27 @@ def compute_variant_id(symbol, cov, cov_config, protocol_config, weights_dir, se
     Returns:
         str: variant_id
     """
-    try:
-        cov_fp = compute_cov_config_fingerprint(cov_config)
-        proto_fp = compute_protocol_config_fingerprint(protocol_config)
-        weight_fp = compute_weight_fingerprint(weights_dir)
+    # H3 (spec W6.4 fail-loud)：指纹计算失败必须原样抛出。
+    # 旧版本曾静默回退到 "{symbol}_{cov}" 格式（违反 fail-loud），现已移除。
+    cov_fp = compute_cov_config_fingerprint(cov_config)
+    proto_fp = compute_protocol_config_fingerprint(protocol_config)
+    weight_fp = compute_weight_fingerprint(weights_dir)
 
-        # 截取指纹前 8 位
-        cov_short = cov_fp["keys_sha256"][:8]
-        proto_short = proto_fp["protocol_sha256"][:8]
-        weight_short = weight_fp["weights_sha256"][:8]
+    # 截取指纹前 8 位
+    cov_short = cov_fp["keys_sha256"][:8]
+    proto_short = proto_fp["protocol_sha256"][:8]
+    weight_short = weight_fp["weights_sha256"][:8]
 
-        vid = f"{symbol}_{cov}_cov_{cov_short}_proto_{proto_short}_wt_{weight_short}"
+    vid = f"{symbol}_{cov}_cov_{cov_short}_proto_{proto_short}_wt_{weight_short}"
 
-        if seed is not None:
-            seed_fp = compute_seed_fingerprint(seed)
-            seed_short = seed_fp["seed_sha256"][:8]
-            vid = f"{vid}_seed_{seed_short}"
+    if seed is not None:
+        seed_fp = compute_seed_fingerprint(seed)
+        seed_short = seed_fp["seed_sha256"][:8]
+        vid = f"{vid}_seed_{seed_short}"
 
-        return vid, {
-            "cov_fingerprint": cov_fp,
-            "protocol_fingerprint": proto_fp,
-            "weight_fingerprint": weight_fp,
-            "seed_fingerprint": seed_fp if seed is not None else None
-        }
-
-    except (ValueError, FileNotFoundError, TypeError) as e:
-        # 回退到旧格式
-        import sys
-        print(f"[WARN] Failed to compute fingerprint-based variant_id: {e}. "
-              f"Falling back to legacy format.", file=sys.stderr)
-        return f"{symbol}_{cov}", None
+    return vid, {
+        "cov_fingerprint": cov_fp,
+        "protocol_fingerprint": proto_fp,
+        "weight_fingerprint": weight_fp,
+        "seed_fingerprint": seed_fp if seed is not None else None
+    }

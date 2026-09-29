@@ -479,3 +479,136 @@ def compute_planning_vif(
 
     return float(vif)
 
+
+
+# ──────────────────────────────────────────────────────────────
+# PR-C1: 统计公式（spec §8.3）
+# ──────────────────────────────────────────────────────────────
+
+def detection_threshold_vs_random(n_eff: float, z_alpha: float = 1.645) -> float:
+    """随机基线的检测门槛（spec §8.3, 行 695）。
+
+    公式: 0.5 + z_alpha * 0.5 / sqrt(n_eff)
+
+    含义: 在 H0: dir_acc = 0.5（随机）下，单侧 z 检验的拒绝域下界。
+    只有 dir_acc 超过此门槛，才能在 alpha 水平上声称"优于随机"。
+
+    Args:
+        n_eff: 有效样本量（经 HAC 校正后）
+        z_alpha: 单侧检验的 z 临界值（默认 1.645 = 5% 显著性）
+
+    Returns:
+        门槛值（dir_acc 标度，0.5~1.0）
+
+    Docstring 四要素（spec 强制）:
+        - 带宽约定: 无（此公式不依赖 HAC，n_eff 已是校正后）
+        - 均值中心化: H0 均值 = 0.5
+        - 样本方差分母: 二项分布 Var = 0.25/n_eff（理论值）
+        - 有限样本修正: 无（大样本渐近）
+
+    Golden example (spec 1369):
+        >>> detection_threshold_vs_random(n_eff=73)
+        0.596  # +/-1%
+    """
+    n_eff = float(n_eff)
+    if not np.isfinite(n_eff) or n_eff <= 0:
+        raise ValueError(f"n_eff must be a positive finite number, got {n_eff!r}")
+    return 0.5 + z_alpha * 0.5 / np.sqrt(n_eff)
+
+
+def detection_threshold_vs_baseline(
+    d_bar: np.ndarray, z_alpha: float = 1.645,
+) -> tuple[float, float]:
+    """基线增量的检测门槛（spec §8.3, 行 696）。
+
+    公式: threshold = z_alpha * SE_HAC(d_bar)
+          where d_t = v_ok_t - b_ok_t（逐点差）
+
+    含义: 在 H0: mean(d) = 0（与基线无差异）下，单侧 z 检验的最小可检测增量。
+
+    Args:
+        d_bar: 逐点差序列 d_t = v_ok_t - b_ok_t（一维 array）
+        z_alpha: 单侧检验的 z 临界值
+
+    Returns:
+        (threshold, se_hac): 门槛值 + HAC 标准误
+
+    Docstring 四要素:
+        - 带宽约定: Newey-West 自动带宽（与 compute_hac_se 一致）
+        - 均值中心化: H0: mean(d) = 0
+        - 样本方差分母: HAC 估计（含自相关校正）
+        - 有限样本修正: 无
+
+    Golden example (spec 1369):
+        当 rho=0.5（AR(1) 自相关），n=588 时:
+        threshold ~= 0.096  # +/-1%
+
+    约束（spec 1368）:
+        此函数 **不等于** baseline_dir_acc + 1.645*0.5/sqrt(n_eff)
+        （后者是 vs_random 的变体，不是 vs_baseline）
+    """
+    # compute_hac_se 返回长程**方差** sigma_LR^2（同 diebold_mariano_p 的用法）。
+    # spec 8.3 的 SE_HAC 是其平方根，漏开会低估门槛一个数量级。
+    arr = np.asarray(d_bar, dtype=float).ravel()
+    if arr.size < 2:
+        raise ValueError(f"d_bar needs at least 2 points, got {arr.size}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("d_bar contains non-finite values")
+
+    var_lr = compute_hac_se(arr)
+    se_hac = float(np.sqrt(var_lr)) if var_lr > 0 else 0.0
+    threshold = z_alpha * se_hac
+    return threshold, se_hac
+
+
+def n_required(
+    var_d: float,
+    vif: float = 1.0,
+    z_alpha: float = 1.645,
+    z_beta: float = 0.842,
+    delta: float = 0.10,
+) -> int:
+    """功效规划所需样本量（spec §8.3, 行 711）。
+
+    公式: n = Var(d) * VIF * (z_alpha + z_beta)^2 / Delta^2
+
+    含义: 在给定效应量 Delta、显著性 alpha、功效 1-beta 下，所需的最小样本量。
+
+    Args:
+        var_d: d_t 的方差（情景近似用 Var~=0.25，或先导估计）
+        vif: 方差膨胀因子（默认 1.0 = 无自相关；实测 VIF 由 compute_planning_vif 给出）
+        z_alpha: 单侧检验的 z 临界值（默认 1.645 = 5%）
+        z_beta: 功效的 z 值（默认 0.842 = 80% 功效）
+        delta: 目标效应量（默认 0.10 = Q1 裁定值）
+
+    Returns:
+        所需样本量（向上取整）
+
+    Docstring 四要素:
+        - 带宽约定: 无（VIF 已包含自相关信息）
+        - 均值中心化: 不适用
+        - 样本方差分母: Var(d) 可以是情景近似（0.25）或先导估计
+        - 有限样本修正: 无
+
+    约束（spec §8.3）:
+        Var(d) * VIF（情景近似）与 Var_LR(d)（先导 HAC 估计）二选一，**禁止**同时使用。
+        须写断言测试确保不存在混用路径。
+
+    Golden examples (spec 1370):
+        >>> n_required(var_d=0.25, vif=8.028, delta=0.02)
+        31000  # +/-5%
+        >>> n_required(var_d=0.25, vif=8.028, delta=0.10)
+        1240   # +/-5%
+    """
+    delta = float(delta)
+    var_d = float(var_d)
+    vif = float(vif)
+    if not np.isfinite(delta) or delta <= 0:
+        raise ValueError(f"delta must be a positive finite number, got {delta!r}")
+    if not np.isfinite(var_d) or var_d < 0:
+        raise ValueError(f"var_d must be a non-negative finite number, got {var_d!r}")
+    if not np.isfinite(vif) or vif <= 0:
+        raise ValueError(f"vif must be a positive finite number, got {vif!r}")
+
+    n = var_d * vif * (z_alpha + z_beta) ** 2 / delta ** 2
+    return int(np.ceil(n))

@@ -48,6 +48,9 @@ class HourlyResult:
     all_zero: list = None           # 全零通道名列表
     # PR-B5 消融模式 (full/baseline/content/structural)
     ablation_mode: str = "full"
+    # spec W5.3(4): 本次评估是否真的拿到了未来信息（任一 known_ahead 协变量）
+    # 仅用于诊断，成功判定不因该字段加分
+    horizon_exogenous: bool = False
 
     def __post_init__(self):
         if self.inert_constant is None:

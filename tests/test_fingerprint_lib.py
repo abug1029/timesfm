@@ -310,22 +310,22 @@ class TestComputeVariantId:
             assert "seed_" in vid
             assert fingerprints["seed_fingerprint"] is not None
 
-    def test_fallback_on_error(self):
-        """错误时回退"""
+    def test_raises_on_error_fail_loud(self):
+        """spec W6.4 fail-loud：错误时必须抛出，不得静默回退。
+
+        H3 移除了 silent fallback。此测试验证 fail-loud 契约。
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             weights_dir = Path(tmpdir)
             # 不创建模型文件，会触发 FileNotFoundError
 
-            cov_config = {"type": "test"}
-            protocol_config = {"min_n": 350}
-
-            vid, fingerprints = compute_variant_id(
-                "ss", "test", cov_config, protocol_config, str(weights_dir)
-            )
-
-            # 应该回退到旧格式
-            assert vid == "ss_test"
-            assert fingerprints is None
+            import pytest
+            with pytest.raises(FileNotFoundError):
+                compute_variant_id(
+                    "ss", "test",
+                    {"type": "test"}, {"min_n": 350},
+                    str(weights_dir)
+                )
 
     def test_different_configs_different_vid(self):
         """不同配置不同 variant_id"""

@@ -23,6 +23,7 @@ FM_ROOT = os.path.abspath(os.path.join(
 sys.path.insert(0, os.path.join(FM_ROOT, "cascade"))
 try:
     from statistical_tests import (
+        detection_threshold_vs_random, detection_threshold_vs_baseline, n_required,
         pair_dir_ok_series, diebold_mariano_p,
         pair_dir_ok_series_with_diagnostics,
     )
@@ -275,20 +276,33 @@ def load_baseline_points(symbol, root=None, cov=None):
 
 
 
-PROTOCOL_FINGERPRINT_VERSION = "protocol_v2"  # v2: 加入 cutoff_convention (D5 修复)
+# v3: 补 spec 七组件表缺失项（CONTEXT_BARS / CONTEXT_DAYS / 复权+换月规则版本）
+#     与 Phase 3 合并重生（H1）；H6 约束：复权/换月规则版本只记录，不得改变值
+PROTOCOL_FINGERPRINT_VERSION = "protocol_v3"
 COV_MATRIX_HASH_VERSION = "cov_matrix_hash_v1"
 COV_FILL_VERSION = "v2"      # 唯一来源（D4 语义变更）
+# H6：以下两值只记录、不改变。改变则所有现存 research_family 分裂。
+ADJUSTMENT_RULE_VERSION = "v1"    # 复权规则版本
+ROLL_GUARD_VERSION = "v1"         # 换月守卫版本
 
 
 def compute_protocol_fingerprint(metric_version="v1",
                                  cov_fill_version=COV_FILL_VERSION,
                                  eval_window_bars=None, step=None, horizon=None,
-                                 cutoff_convention="bar_close"):
+                                 cutoff_convention="bar_close",
+                                 context_bars=None, context_days=None,
+                                 adjustment_rule_version=ADJUSTMENT_RULE_VERSION,
+                                 roll_guard_version=ROLL_GUARD_VERSION):
     """协议指纹：决定两次评估是否可比（W1.5）。
 
     v2 变更: 加入 cutoff_convention 参数（D5 修复后默认为 bar_close）。
+    v3 变更（PR-A5 / spec 七组件表补齐）：
+      - context_bars / context_days（变则不可比）
+      - adjustment_rule_version / roll_guard_version（H6：只记录不改变）
     """
     from config import backtest_config
+    ctx_bars = context_bars if context_bars is not None else backtest_config.CONTEXT_BARS
+    ctx_days = context_days if context_days is not None else backtest_config.CONTEXT_DAYS
     parts = [
         PROTOCOL_FINGERPRINT_VERSION,
         f"metric={metric_version}",
@@ -296,7 +310,11 @@ def compute_protocol_fingerprint(metric_version="v1",
         f"window={eval_window_bars if eval_window_bars is not None else backtest_config.EVAL_WINDOW_BARS}",
         f"step={step if step is not None else backtest_config.STEP}",
         f"horizon={horizon if horizon is not None else backtest_config.HORIZON}",
-        f"cutoff={cutoff_convention}",  # D5: bar_open 或 bar_close
+        f"cutoff={cutoff_convention}",
+        f"context_bars={ctx_bars}",
+        f"context_days={ctx_days}",
+        f"adj_rule={adjustment_rule_version}",
+        f"roll_guard={roll_guard_version}",
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 

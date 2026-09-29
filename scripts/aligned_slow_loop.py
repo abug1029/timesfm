@@ -171,6 +171,21 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
                               cov_keys=(_ci[1] if _ci else None))
             v["variant_id"] = row["variant_id"]
             v.setdefault("decided_at", _now())
+            # spec W5.3(4)：verdict 落 horizon_exogenous。
+            # 用 row["cov_override"]（pool 键）而非 cov_keys（输出标签，ccl/oi 有别名）。
+            _cov_type = row.get("cov_override")
+            try:
+                from cascade.horizon_fill import get_horizon_known
+                _hk = get_horizon_known(_cov_type) if _cov_type else None
+            except Exception:
+                _hk = None
+            v["horizon_known"] = _hk
+            v["horizon_exogenous"] = (_hk == "known_ahead")
+            v["horizon_fill"] = (
+                "real_future" if _hk == "known_ahead"
+                else ("self_referential" if _hk == "self_referential"
+                      else ("persistence" if _hk else None))
+            )
     v["checkpoint_path"] = cp
     v["slow_loop_pid"] = os.getpid()
     v["git_rev"] = _git_rev()

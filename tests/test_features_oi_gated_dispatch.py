@@ -126,12 +126,15 @@ def test_single_length_and_finiteness():
     assert np.isfinite(res["daily_slope"]).all()
 
 
-def test_horizon_segment_is_zero():
-    """horizon 段补零, 与 oi / ccl 同惯例。"""
+def test_horizon_segment_is_persistence():
+    """horizon 段填 context 末值（spec W5.2：替代历史补零惯例）。
+
+    W5.3②：非 known_ahead 的 horizon 段必须逐值等于 context 末值。
+    """
     dates, close, oi = _daily()
     store = FakeStore(_df_1h(), _oi_frame(dates, oi))
     arr = _call_single(store, dates, close)[KEY]
-    np.testing.assert_array_equal(arr[LIMIT:], np.zeros(HORIZON))
+    np.testing.assert_allclose(arr[LIMIT:], arr[LIMIT - 1], rtol=0, atol=1e-12)
 
 
 # ══════════════════════════════════════════════════════════

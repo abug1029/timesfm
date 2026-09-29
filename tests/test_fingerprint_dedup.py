@@ -235,22 +235,23 @@ class TestVariantIdFormat:
             # 应该包含种子部分
             assert "_seed_" in vid
 
-    def test_format_fallback(self):
-        """回退格式"""
+    def test_format_raises_when_weights_missing(self):
+        """spec W6.4 fail-loud：权重目录无效时必须抛出，不得静默回退。
+
+        旧版本曾回退到 "{symbol}_{cov}" 格式，已被 H3 移除。
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             weights_dir = Path(tmpdir)
-            # 不创建模型文件，触发回退
+            # 不创建模型文件，触发 FileNotFoundError
 
-            vid, fingerprints = compute_variant_id(
-                "ss", "rsi_state",
-                {"type": "rsi"},
-                {"min_n": 350},
-                str(weights_dir)
-            )
-
-            # 应该回退到简单格式
-            assert vid == "ss_rsi_state"
-            assert fingerprints is None
+            import pytest
+            with pytest.raises(FileNotFoundError):
+                compute_variant_id(
+                    "ss", "rsi_state",
+                    {"type": "rsi"},
+                    {"min_n": 350},
+                    str(weights_dir)
+                )
 
 
 if __name__ == "__main__":

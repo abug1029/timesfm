@@ -946,6 +946,57 @@ def _calc_stddev(df_1h: pd.DataFrame, lookback: int = 20) -> np.ndarray:
 
 
 
+# ── spec §4.5 W5: horizon 尾填充契约 ────────────────────────────
+# 分类唯一家在 cascade/horizon_fill.py（读 covariate_pool.json），
+# 此处只做归一化与加载时断言；禁止按协变量名硬编码分类。
+
+def _enforce_horizon_contract(
+    covariate_type: str,
+    covariate_full: np.ndarray,
+    context_len: int,
+    horizon: int,
+):
+    """按 horizon_known 归一化 horizon 段，并按 spec W5.3② 校验。
+
+    Returns:
+        (归一化后的数组, horizon_fill 标签)
+
+    Raises:
+        cascade.horizon_fill.HorizonContractError: 长度不符或不变量被破坏。
+    """
+    from cascade.horizon_fill import (
+        get_horizon_known,
+        resolve_pool_key,
+        verify_horizon_invariant,
+    )
+
+    arr = np.asarray(covariate_full, dtype=float).ravel()
+    if arr.size != context_len + horizon:
+        raise ValueError(
+            f"{covariate_type}: len={arr.size} != context {context_len} + horizon {horizon}"
+        )
+
+    # combo 路径传入的是输出标签（calendar_doy_sin / oi_pct_change / ccl_pct），
+    # 需先解析回 pool 键；分类本身仍只读 covariate_pool.json。
+    covariate_type = resolve_pool_key(covariate_type)
+    hk = get_horizon_known(covariate_type)
+    if hk != "known_ahead":
+        hz = arr[context_len:]
+        last = float(arr[context_len - 1])
+        if not np.allclose(hz, last, rtol=0, atol=1e-12):
+            # spec W5.2 要求填末值；历史实现在部分分支用 zeros / decay。
+            # 归一化到末值并告警，让"这条分支原本依赖衰减"这件事留在日志里。
+            logger.warning(
+                "%s（%s）horizon 段非 persistence，已按 spec W5.2 归一化为 context 末值 "
+                "%.6g（原 std=%.6g）",
+                covariate_type, hk, last, float(np.std(hz)),
+            )
+            arr = arr.copy()
+            arr[context_len:] = last
+
+    return arr, verify_horizon_invariant(covariate_type, arr, context_len, horizon)
+
+
 def _decay_fill(last_val, horizon, half_life=12.0):
     """均值回复型协变量的指数衰减 horizon 填充.
 
@@ -1223,7 +1274,7 @@ def build_covariate_matrix(
         )
 
         # 2. 计算 rolling Hurst (原始值, 用于门控)
-        hurst_raw = calc_rolling_hurst_raw(hourly_closes, window=120, step=6)
+        hurst_raw = calc_rolling_hurst(hourly_closes, window=120, step=6, scale=False)
         # 映射到 1H 时间轴 (hurst_raw 是降采样后的, 需要 forward-fill)
         if len(hurst_raw) < len(hourly_closes):
             step = max(1, len(hourly_closes) // len(hurst_raw))
@@ -1249,7 +1300,7 @@ def build_covariate_matrix(
         hourly_closes = df_1h["close_price"].values.astype(float)
 
         # 计算 rolling Hurst (原始 H 值)
-        hurst_raw = calc_rolling_hurst_raw(hourly_closes, window=120, step=6)
+        hurst_raw = calc_rolling_hurst(hourly_closes, window=120, step=6, scale=False)
         last_h = float(hurst_raw[-1]) if len(hurst_raw) > 0 else 0.5
         hurst_full = np.concatenate([hurst_raw, np.full(horizon, last_h)])
 
@@ -1480,6 +1531,10 @@ def build_covariate_matrix(
         )
 
     assert len(covariate_full) == total_len
+
+    covariate_full, _horizon_fill = _enforce_horizon_contract(
+        covariate_type, covariate_full, context_len, horizon
+    )
 
     return {
         "daily_slope": slope,
@@ -1759,7 +1814,7 @@ def build_combo_covariate_matrix(
                 n_context=context_len,
                 daily_dates=daily_dates,
             )
-            hurst_raw = calc_rolling_hurst_raw(hourly_closes, window=120, step=6)
+            hurst_raw = calc_rolling_hurst(hourly_closes, window=120, step=6, scale=False)
             if len(hurst_raw) < len(hourly_closes):
                 step = max(1, len(hourly_closes) // len(hurst_raw))
                 hurst_1h = np.repeat(hurst_raw, step)[:len(hourly_closes)]
@@ -1771,7 +1826,7 @@ def build_combo_covariate_matrix(
 
         elif cov_type == "regime_gated":
             # 体制自适应融合: 根据 Hurst 动态加权 PCA/RSI/OI
-            hurst_raw = calc_rolling_hurst_raw(hourly_closes, window=120, step=6)
+            hurst_raw = calc_rolling_hurst(hourly_closes, window=120, step=6, scale=False)
             last_h = float(hurst_raw[-1]) if len(hurst_raw) > 0 else 0.5
             hurst_full = np.concatenate([hurst_raw, np.full(horizon, last_h)])
             
@@ -1819,6 +1874,13 @@ def build_combo_covariate_matrix(
     # 长度校验
     for k, v in result.items():
         assert len(v) == total_len, f"combo {k}: len={len(v)} != {total_len}"
+
+    # spec W5：逐个第二协变量按 horizon_known 归一化并校验
+    # （daily_slope 由模型预测派生，不走本契约）
+    for _k in [k for k in result if k != "daily_slope"]:
+        result[_k], _fill = _enforce_horizon_contract(
+            _k, result[_k], context_len, horizon
+        )
 
     return result
 

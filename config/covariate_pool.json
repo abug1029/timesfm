@@ -119,6 +119,10 @@
     {
       "name": "ao_accel",
       "family": "momentum"
+    },
+    {
+      "name": "oi_gated_momentum",
+      "family": "momentum"
     }
   ]
 }

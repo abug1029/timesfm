@@ -64,11 +64,12 @@ class TestVWAPFillStrategy(unittest.TestCase):
                          "Horizon should have 24 values")
 
         last_context = vwap_cov[context_len - 1]
-        # 衰减填充: horizon 值从 last_context 开始按 0.5^(i/12) 衰减
-        expected_decay = np.array([0.5 ** (i / 12.0) for i in range(24)])
-        expected_horizon = last_context * expected_decay
-        self.assertTrue(np.allclose(horizon_vals, expected_horizon, rtol=1e-10),
-                        "Decay fill: should follow 12-bar half-life exponential decay")
+        # spec W5.2：非 known_ahead 一律填末值，fill_strategy="decay" 不再改变结果。
+        # W5.3②：horizon 段逐值等于 context 末值。
+        self.assertTrue(
+            np.allclose(horizon_vals, last_context, rtol=0, atol=1e-12),
+            "spec W5.2: horizon 段应为 context 末值常量（decay 已被取代）",
+        )
 
     def test_vwap_default_is_default_parameter(self):
         """fill_strategy 参数默认为 'default' (向后兼容)"""

@@ -11,9 +11,12 @@ from task_FM.evaluations.fm_eval.evaluator import (
 )
 
 
-def test_protocol_fingerprint_version_is_v2():
-    """PR-A1: 协议指纹版本应为 v2（加入 cutoff_convention）"""
-    assert PROTOCOL_FINGERPRINT_VERSION == "protocol_v2"
+def test_protocol_fingerprint_version_is_v3():
+    """PR-A1 → PR-A5：协议指纹版本应为 v3（H3 补齐 CONTEXT_BARS/DAYS + 复权/换月规则）。
+
+    v2 加入 cutoff_convention (D5)；v3 补齐 spec 七组件表（H3 / PR-A5）。
+    """
+    assert PROTOCOL_FINGERPRINT_VERSION == "protocol_v3"
 
 
 def test_protocol_fingerprint_includes_cutoff_convention():

@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from data.config import get_timesfm_model_path
+from data.config import get_timesfm_model_path, TIMESFM_HUB_ID, TIMESFM_LOCAL_DIRNAME
 
-HUB_ID = "google/timesfm-2.5-200m-pytorch"
-LOCAL_NAME = "timesfm-2.5-200m-pytorch"
+HUB_ID = TIMESFM_HUB_ID        # 单一真相：data.config
+LOCAL_NAME = TIMESFM_LOCAL_DIRNAME
 ENV_KEYS = ("FM_TIMESFM_MODEL_PATH", "TIMESFM_MODEL_PATH", "TIMESFM_WEIGHTS_DIR")
 
 

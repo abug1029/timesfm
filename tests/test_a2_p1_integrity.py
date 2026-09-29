@@ -31,7 +31,7 @@ from config.backtest_config import CONTEXT_BARS, HORIZON, STEP
 
 def test_eval_grid_matches_worker_boundary():
     """验证 eval grid 与 Worker 原始 range 表达式完全一致。"""
-    assert generate_eval_grid(1000) == list(range(480, 1000 - 24 + 1, 24))
+    assert generate_eval_grid(1000) == list(range(CONTEXT_BARS, 1000 - HORIZON + 1, STEP))
 
 
 def test_eval_grid_uses_shared_constants():
@@ -47,16 +47,17 @@ def test_eval_grid_empty_for_insufficient_bars():
 
 def test_eval_grid_single_point():
     """验证刚好够一个 eval point 的情况。"""
-    # total_bars = 504: range(480, 504-24+1=481, 24) = [480]
-    assert generate_eval_grid(504) == [480]
+    # total_bars = CONTEXT_BARS + HORIZON: 只有一个 eval point 在 CONTEXT_BARS
+    total = CONTEXT_BARS + HORIZON
+    assert generate_eval_grid(total) == [CONTEXT_BARS]
 
 
-def test_eval_grid_step_24():
-    """验证步长为 24 的非重叠窗口。"""
+def test_eval_grid_uses_config_step():
+    """验证步长与 config 一致（不再硬编码 24）。"""
     grid = generate_eval_grid(1200)
-    assert grid[0] == 480
-    assert grid[1] == 504
-    assert grid[-1] <= 1200 - 24
+    assert grid[0] == CONTEXT_BARS
+    assert grid[1] == CONTEXT_BARS + STEP
+    assert grid[-1] <= 1200 - HORIZON
 
 
 # ═══════════════════════════════════════════════════════════
@@ -492,7 +493,7 @@ def test_generate_report_uses_correct_tick_sizes(tmp_path):
     # 创建合法的 SS 结果
     results_dir = tmp_path / "results"
     results_dir.mkdir()
-    bars = list(range(480, 480 + 24 * 12, 24))  # 12 个 eval bars
+    bars = list(range(CONTEXT_BARS, CONTEXT_BARS + STEP * 12, STEP))  # 12 个 eval bars
     records = [_make_valid_record(b, "a2-p1", "ss") for b in bars]
     _write_jsonl(results_dir / "ss.jsonl", records)
 
@@ -553,7 +554,7 @@ def test_generate_report_missing_tick_size_fails(tmp_path):
     # 创建一个不在 TICK_SIZES 中的 symbol "xx"
     results_dir = tmp_path / "results"
     results_dir.mkdir()
-    bars = list(range(480, 480 + 24 * 12, 24))
+    bars = list(range(CONTEXT_BARS, CONTEXT_BARS + STEP * 12, STEP))
     records = [_make_valid_record(b, "a2-p1", "xx") for b in bars]
     _write_jsonl(results_dir / "xx.jsonl", records)
 
@@ -598,7 +599,7 @@ def test_generate_report_atomic_write(tmp_path):
 
     results_dir = tmp_path / "results"
     results_dir.mkdir()
-    bars = list(range(480, 480 + 24 * 12, 24))
+    bars = list(range(CONTEXT_BARS, CONTEXT_BARS + STEP * 12, STEP))
     records = [_make_valid_record(b, "a2-p1", "ss") for b in bars]
     _write_jsonl(results_dir / "ss.jsonl", records)
 
@@ -1042,7 +1043,7 @@ def test_canonicalize_deduplicates_by_bar_idx(tmp_path):
     main_dir.mkdir()
 
     # 模拟 FU 的重复写入：396 个唯一 bar，每个出现 2 次
-    bars = list(range(480, 480 + 24 * 396, 24))
+    bars = list(range(CONTEXT_BARS, CONTEXT_BARS + STEP * 396, STEP))
     records = []
     for b in bars:
         records.append({"bar_idx": b, "symbol": "FU", "version": "abc"})
