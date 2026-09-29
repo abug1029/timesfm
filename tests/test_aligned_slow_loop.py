@@ -3,6 +3,13 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 import aligned_slow_loop as asl
 import registry_lib as rl
+import mem_guard
+
+def _patch_mem_guard(monkeypatch):
+    """Prevent main() from acquiring real flock slots or checking system memory."""
+    monkeypatch.setattr(mem_guard, 'apply_mem_guard', lambda **kw: None)
+    monkeypatch.setattr(mem_guard, 'check_and_shed', lambda **kw: None)
+    monkeypatch.setattr(mem_guard, 'self_rss_ok', lambda **kw: True)
 
 def _row():
     return {"variant_id": "m_rsi_state", "symbol": "m", "cov_override": "rsi_state",
@@ -71,6 +78,7 @@ def test_run_aligned_candidate(tmp_path, monkeypatch):
     assert snap["m_rsi_state"]["gate_pass"] is True
 
 def test_once_mode_claim_ack(tmp_path, monkeypatch):
+    _patch_mem_guard(monkeypatch)
     reg = tmp_path / "verdicts.jsonl"
     pending = tmp_path / "pending.jsonl"
     inflight = tmp_path / "inprogress.jsonl"
@@ -92,6 +100,7 @@ def test_once_mode_claim_ack(tmp_path, monkeypatch):
 
 def test_recover_then_claim_after_crash(tmp_path, monkeypatch):
     """inprogress 残留 + checkpoint 存在时, 启动 recover 再跑, 不得丢候选。"""
+    _patch_mem_guard(monkeypatch)
     pending = tmp_path / "pending.jsonl"
     inflight = tmp_path / "inprogress.jsonl"
     inflight.write_text(json.dumps(_row()) + "\n", encoding="utf-8")
@@ -126,6 +135,7 @@ def test_live_summarize_keys_aliased(tmp_path, monkeypatch):
     assert verdict["schema"].endswith("v2")
 
 def test_eval_exception_writes_error_tombstone(tmp_path, monkeypatch):
+    _patch_mem_guard(monkeypatch)
     pending = tmp_path / "pending.jsonl"
     inflight = tmp_path / "inprogress.jsonl"
     reg = tmp_path / "verdicts.jsonl"
