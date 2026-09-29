@@ -92,14 +92,36 @@ def _iter_jsonl(path):
         except (json.JSONDecodeError, TypeError, ValueError):
             continue
 
-def load_snapshot(path):
+def load_snapshot(path, *, only_protocol=None):
+    """Load verdicts keyed by variant_id.
+
+    only_protocol: when given, keep only rows whose protocol_fingerprint equals
+    it. Rows with a *different* fingerprint -- including rows with none at all
+    -- are cross-protocol incomparable (comparable() would even call two
+    fingerprint-less rows "comparable"), so they are excluded from the active
+    view. The jsonl on disk is never rewritten; excluded rows stay readable via
+    only_protocol=None. Omit the arg for archival / migration tooling that
+    needs the full history.
+    """
     snap = {}
     for v in _iter_jsonl(path) or []:
         try:
             snap[v["variant_id"]] = v
         except (KeyError, TypeError):
             continue
+    if only_protocol is not None:
+        snap = {vid: v for vid, v in snap.items()
+                if v.get("protocol_fingerprint") == only_protocol}
     return snap
+
+
+def protocol_histogram(snapshot):
+    """{fingerprint16_or_'none': count} over a snapshot -- for the exclusion line."""
+    hist = {}
+    for v in snapshot.values():
+        fp = str(v.get("protocol_fingerprint") or "")[:16] or "none"
+        hist[fp] = hist.get(fp, 0) + 1
+    return hist
 
 def dead_variants(snapshot):
     return {vid for vid, v in snapshot.items()

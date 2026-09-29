@@ -136,7 +136,8 @@ def _v(vid, **kw):
             "schema": "fm.aligned_verdict.v1", "status": "ok"}
     base.update(kw); return base
 
-def test_build_snapshot_metrics(tmp_path):
+def test_build_snapshot_metrics(tmp_path, monkeypatch):
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: None)
     reg = tmp_path / "v.jsonl"
     with open(reg, "w", encoding="utf-8") as f:
         f.write(json.dumps(_v("a", gate_pass=True, pf=1.2, ev=0.02, symbol="m")) + "\n")
@@ -1114,7 +1115,8 @@ def test_wait_for_batch_zero_timeout_single_scan(tmp_path, monkeypatch):
     assert recs[0]["status"] == "timeout" and recs[0]["variant_id"] == "m_oi"
 
 
-def test_build_snapshot_scalars_v2(tmp_path):
+def test_build_snapshot_scalars_v2(tmp_path, monkeypatch):
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: None)
     reg = tmp_path / "v.jsonl"
     rec = {"variant_id": "m_rsi_state", "symbol": "m", "cov_family": "momentum",
            "schema": "fm.aligned_verdict.v2", "status": "ok",

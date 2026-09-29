@@ -518,7 +518,10 @@ def quota_gate(goal, now=None):
     return False, max(1, int((next_reset - now).total_seconds()))
 
 def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
-    snap = rl.load_snapshot(registry_path)
+    # 跨协议不可比的裁决不得进入目标统计：无指纹 / 旧指纹的行一律排除。
+    # jsonl 不改写，完整历史仍可用 rl.load_snapshot(path) 不带参数读到。
+    snap = rl.load_snapshot(registry_path,
+                            only_protocol=_current_protocol_fingerprint())
     passing = rl.pass_variants(snap)
     symbols_hit = {v["symbol"] for v in passing}
     families_hit = {
@@ -2578,6 +2581,17 @@ def _maybe_finish_slow(goal, log):
         fresh.pop("current_batch_variant_ids", None)  # legacy key
         save_state(fresh)
     snap = rl.load_snapshot(REGISTRY)
+    # 物化给 peer 看的证据同样只认当前协议；被排除的行显式报数，不静默。
+    _cur_fp = _current_protocol_fingerprint()
+    _full = snap
+    if _cur_fp is not None:
+        snap = {vid: v for vid, v in snap.items()
+                if v.get("protocol_fingerprint") == _cur_fp}
+        _hist = rl.protocol_histogram(_full)
+        if len(snap) != len(_full):
+            print("[INFO] 物化证据按 protocol 过滤: active=%d/%d fp=%s… 排除=%s"
+                  % (len(snap), len(_full), _cur_fp[:16],
+                     " ".join("%s:%d" % (k, v) for k, v in sorted(_hist.items()))))
     materialize_known_verdicts(
         snap, VERDICTS_INC,
         status_map=load_symbol_status(),
