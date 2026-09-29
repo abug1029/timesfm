@@ -1,6 +1,6 @@
 {
  "schema": "fm.covariate_pool.v2",
- "updated": "2026-09-28",
+ "updated": "2026-09-29",
  "note": "协变量策略池单一事实源。status: active(peer可提议) / experimental(宿主测试中) / archived(全局退役禁止提议)。family 使用 cascade/cov_family.py 6 族受控词表 (momentum/volatility/inventory/calendar/term_structure/macro_sentiment)，供 QD 多样性门控。archived 需有跨品种 aligned 失败证据，证据不足一律 active。",
  "families": [
   "momentum",
@@ -194,7 +194,7 @@
    "family": "momentum",
    "status": "active",
    "mechanism": "Hurst门控斜率：仅趋势体制(H>0.5)跟随斜率，震荡体制屏蔽假突破。",
-   "horizon_known": "self_referential"
+   "horizon_known": "persistence"
   },
   "sar_dist": {
    "family": "momentum",
@@ -217,5 +217,5 @@
    "horizon_known": "self_referential"
   }
  },
- "horizon_known_note": "PR-C6 新增（spec §4.5 W5）：协变量按未来可知性分类。known_ahead: cutoff 时点确实已知未来值；persistence: 未来不可知但可用末值延续近似；self_referential: 未来值来自模型自身输出；unknowable: 既不可知也无法近似。仅 known_ahead 算外生信息，其余三类 horizon 尾填末值。"
+ "horizon_known_note": "PR-C6 新增（spec §4.5 W5）：协变量按未来可知性分为四类。known_ahead: cutoff 时点确实已知未来值（须附 known_ahead_evidence）；persistence: 未来不可知但可用末值延续近似（末值常数或确定性衰减）；self_referential: 未来值来自模型自身输出；unknowable: 既不可知也无法近似。仅 known_ahead 算外生信息，其余三类 horizon 尾填末值。"
 }
