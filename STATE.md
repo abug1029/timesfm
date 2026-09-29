@@ -4,11 +4,18 @@
 > `reports/` 全部为 derived_view（可从 `predictions.json` / 回测 JSONL / db 产物重建），
 > 冲突时以 **STATE.md + 磁盘回测产物**为准。此规则用于终结"滞后文档事故"（如 SH 状态那次）。
 
-**最后更新**: 2026-09-28（Stage 3 协变量可信度重构进行中；T5 PR-C1~C6 + PR-B4 + T6 已完成，等待新裁决流）
+**最后更新**: 2026-09-29（Stage 3 **已交付**，经第五/六/七轮独立审计；等待新裁决流。见下方「Stage 3 交付状态」小节）
 
-> **WARNING: 三环封存声明 (2026-09-24 14:22)**：三环系统已 SIGTERM 优雅停止并全量封存于
-> data/archive/fm_a_sealed_2026-09-24T1422/（234MB，含 MANIFEST.md / SHA256SUMS / 143 run 目录 / 裁决 / checkpoint / 配置）。
-> 停滞根因链 + 恢复指引见该目录 MANIFEST.md §3 / §5。手动重启前必读。  
+> **三环状态**：**运行中**，supervisor PID 22703（2026-09-28 18:54 启动），phase=fast。
+> `cycles_done` 是单调递增的活计数，此处不记录 —— 读 `data/cache/supervisor_state.json`
+> （2026-09-29 15:52 快照为 171）。
+> 封存已于 **2026-09-28 解除**（停滞根因 = 快环提案被门禁 ~100% 拒绝 + 无基线 → 慢环饿死；
+> 修复 = baselines 重生 + 提案门禁调整 + 1-bar 前视修复）。封存快照仍在
+> `data/archive/fm_a_sealed_2026-09-24T1422/`（234MB）供对照，非当前状态。
+>
+> **⚠️ PID 22703 跑的是 2026-09-28 的内存代码。** 磁盘上已有 2026-09-29 的 4 个 commit
+> （`a068d92` / `381f31e` / `4c347df` / `b8a6d36`）未被加载。重启步骤与验收见
+> `D:\FlyBuddy\.omc\artifacts\sixth-audit-supervisor-restart-runbook.md`。  
 **Phase 1 状态**: **L1 ops 全量完成 → ECONOMIC_PASS=False → 生产 REMAIN_OFF**  
 **人类文档**: `docs/README.md`（含 product_positioning / module_freeze / 新口径全表链接）  
 **冲突债**: `reports/research/20260808_conflict_debt_register.md`（绝大多数 DONE）  
@@ -27,7 +34,32 @@
 
 
 
-## Stage 3 协变量可信度重构（2026-09-28，进行中）
+## Stage 3 交付状态（2026-09-29 结案）
+
+> **原「进行中」记录保留在下方各小节**，但整体状态已变：spec v15 的 §8.3 八项出口
+> 条件全部核验通过，Phase 1-10 于 2026-09-29 实施完毕（commit `381f31e`），
+> 并经第六、七轮独立审计。**下方「当前阻塞点 / 待执行」描述的是 2026-09-28 的时点。**
+
+### 交付摘要（2026-09-29）
+
+| 项 | 状态 | 位置 |
+|---|---|---|
+| PR-C1 功效/门槛公式（`detection_threshold_*` / `n_required`） | ✅ 交付 | `cascade/statistical_tests.py` |
+| PR-C2 研究 family + 封账 + BH-FDR + `T_max` | ✅ 交付 | `cascade/research_family.py` |
+| PR-C6 horizon 契约（W5.2 归一化） | ✅ 交付 | `cascade/horizon_fill.py` |
+| PR-A5 `protocol_fingerprint` v3（七组件） | ✅ 交付 | `task_FM/evaluations/fm_eval/evaluator.py` |
+| PR-B1 `experiment_fingerprint` | ⚠️ 模块就绪，**supervisor 真接线延期** | `cascade/experiment_fingerprint.py` |
+| §8.3 出口条件核验记录 | ✅ | `docs/superpowers/reports/2026-09-29-stage3-verification-record.md` |
+
+**测试**：`1646 passed / 7 skipped / 1 xfailed / 0 failed`。基线 eecf05a 的 14 项预存在
+失败中 13 项由 Phase 9 修复，第 14 项（a2_p1 smoke）于 `b8a6d36` 退役。
+
+**未做**：PR-D1 / PR-D2（Stage 4 正式）、supervisor variant_id 接线、
+supervisor 重启（用户保留决定）。
+
+---
+
+## Stage 3 协变量可信度重构（2026-09-28 时点记录，已结案）
 
 > 上游 spec：`docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（**v15**，2026-09-28 修订）
 > 计划：`docs/superpowers/plans/2026-09-28-covariate-credibility-stage3.md`（v5）

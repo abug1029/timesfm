@@ -15,6 +15,23 @@
 - 现状: 脚本归档后该守卫失去入口，当前无引用。
 - 做法: 如需该功能，应在 supervisor 侧补等价实现（启动周期检查 IDLE_HOLD 标记文件，存在则拒绝启快环）。当前仅为登记，无实施计划。
 
+## 3. 加载 2026-09-29 的 4 个 commit（**当前最紧要**）
+
+- 背景: supervisor PID 22703 于 2026-09-28 18:54 启动，其内存里是当天的代码。
+  磁盘上已有 4 个未加载的 commit：`a068d92`（ponytail 清理 + 第六轮 K4/K6/K7/M4）、
+  `381f31e`（spec-alignment Phase 1-10）、`4c347df`（changelog）、
+  `b8a6d36`（第七轮：退役 smoke 测试）。
+- 风险: 未加载期间，监督环派生出的慢环子进程会执行**未加载的新代码**，而 verdict
+  仍按旧 schema 记账 —— 即"新代码语义 + 旧 schema 记账"的混版本窗口。
+- 做法: 走 `scripts/stop_supervisor.sh` → 归档 `logs/supervisor.log` →
+  `setsid nohup scripts/start_supervisor.sh`。
+- **完整步骤与 6 条验收标准**：`D:\FlyBuddy\.omc\artifacts\sixth-audit-supervisor-restart-runbook.md`
+- 验收重点（本次两个实质修复的直接验证）:
+  - `grep -c "v1 legacy: pass by ev>0" task_FM/known_verdicts.inc.md` → 应为 **1**（图例去重，K6）
+  - `grep -c "gate_pass=True" task_FM/known_verdicts.inc.md` → 应为 **43**
+    （截断只切尾部，M4；**修复前只有 20/42**，「已解出」的 22 条被静默吞掉）
+- 前置: `scripts/restart_readiness_check.py` 应 16/16 通过；确认无持有者已死的 `*.lock`
+
 ## 处置记录
 
 - 2026-09-17: 显式重启时实施第 1 项 —— praxist_supervisor.py:749 track 行已加固定前缀「【旧口径线索·非证据】」（test_supervisor/test_covariate_pool 47 passed）。第 2 项维持登记：本次以启动前人工检查 IDLE_HOLD（不存在，放行）履行守卫职责。

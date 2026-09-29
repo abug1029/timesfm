@@ -48,6 +48,29 @@ Peer 提出协变量提案时，监督环用 **TypeSafe System One (Jev)** 做�
 
 设计权威：`docs/superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md`；状态细节见记忆 `fm-typesafe-prescreen`。
 
+## Stage 3 协变量可信度（2026-09-29 结案，commit `381f31e`）
+
+spec v15 的 §8.3 八项出口条件已全部核验。**新增三个模块是理解当前代码的入口**：
+
+| 模块 | 职责 | 关键约定 |
+|---|---|---|
+| `cascade/horizon_fill.py` | horizon 契约**唯一家**：读 pool 的 `horizon_known`、填充、校验 | 4 值词表 `known_ahead` / `persistence` / `self_referential` / `unknowable`；`persistence` = 填 context 末值（**替代历史的 zeros/decay**）；缺条目/词表外一律抛，不静默兜底 |
+| `cascade/research_family.py` | 研究 family 状态机 | 90 天 `close_at`、20 成员上限、`T_max` 180 天兜底；**abandoned/timeout 也计入 K**（防"结果不好就丢掉"式 p-hacking）；封账时**一次性**跑 BH-FDR |
+| `cascade/experiment_fingerprint.py` | 实验指纹 + `variant_id` | 48-bit 截断，生日碰撞已论证（n=1000 → p≈1.8e-9）；**不得与 `research_target_hash` 混用**（前者运行可变，后者稳定） |
+
+装配点（改协变量流程时必须看这两处）：
+- `cascade/features.py::_enforce_horizon_contract()` 挂在 `build_covariate_matrix` 与 `build_combo_covariate_matrix` 两个装配点
+- `scripts/praxist_supervisor.py` 的 family 接线是**薄接线**，逻辑全在 `cascade/research_family.py`，别把状态机搬进监督环
+
+指纹与 fail-loud：
+- `PROTOCOL_FINGERPRINT_VERSION = "protocol_v3"`，七个 spec 组件（CONTEXT_BARS/DAYS、EVAL_WINDOW_BARS、STEP、HORIZON、cutoff、cov_fill、adj_rule+roll_guard）→ 映射表见 `docs/fingerprint_component_mapping.md`
+- `scripts/fingerprint_lib.py` 的**静默回退已退役**（W6.4）：找不到 praxist 二进制会抛异常，不再假装成功
+- 新增统计公式（`detection_threshold_vs_random/_vs_baseline`、`n_required`）带输入守卫，`n_eff=0` / `delta<=0` 直接抛
+
+**尚未接线**：`experiment_fingerprint` 的 `variant_id` 还没被 supervisor 调用。171 条现存裁决全是 pre-A1 遗留（`schema=v2` 但缺全部新字段），接线前它们不可用。属 Stage 4。
+
+权威文档：spec `docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（v15）· 核验记录 `docs/superpowers/reports/2026-09-29-stage3-verification-record.md` · family 边界 `docs/family_boundary_rules.md`
+
 ## 目录结构
 
 > **运行环境（2026-09-09 起）**：WSL2 Ubuntu-22.04，仓库根 `/home/abug/timesfm`（GitHub `abug1029/timesfm`），venv `.venv`（Python 3.11）。下文 Windows `D:\FlyBuddy\...` 路径为历史遗留，已不适用；宿主事实见 `docs/host_environment_assessment.md` 顶部迁移表，PRAXIST 运维见 `docs/runbook_praxist_three_loop.md`。
