@@ -993,8 +993,8 @@ def _load_evaluator():
 
 # ── v2 预注册宇宙 (evaluator 预注册品种) ──────────────────────────
 _ev_mod_for_goal = _load_evaluator()
-# 8 个信用品种 (1★ 过门目标); 不跟随 evaluator.ALLOWED_SYMBOLS 膨胀
-GOAL_SYMBOLS_SET = frozenset({"m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"})
+# 9 个信用品种 (1★ 过门目标); 不跟随 evaluator.ALLOWED_SYMBOLS 膨胀
+GOAL_SYMBOLS_SET = frozenset({"m", "ss", "sr", "cj", "jd", "lh", "eg", "rb", "fu"})
 del _ev_mod_for_goal
 
 
