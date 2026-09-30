@@ -71,9 +71,10 @@ done
 
 ### Phase 4: 清除 supervisor 状态
 ```bash
-python3 scripts/clear_supervisor_pause.py
 rm -f data/cache/supervisor.lock data/cache/aligned_slow_loop.lock
 ```
+
+> 2026-09-30：`clear_supervisor_pause.py` 已归档（user_paused 标志无读者；`restart_three_loop_clean.sh` 已同步摘除该步）。
 
 ### Phase 5: 启动新 supervisor
 ```bash
@@ -94,5 +95,5 @@ bash scripts/start_supervisor.sh
 ## 相关文件
 
 - `scripts/restart_three_loop_clean.sh` — 一键清洁重启脚本
-- `scripts/clear_supervisor_pause.py` — 清除暂停标志辅助脚本
+- ~~`scripts/clear_supervisor_pause.py`~~ — 已归档（2026-09-30 → `scripts/archive/2026-09-30-dead-code/`）
 - `scripts/start_supervisor.sh` — canonical supervisor launcher

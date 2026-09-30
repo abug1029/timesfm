@@ -18,10 +18,10 @@
 | `test_prediction_scheme_phase9.py` | 20 品种 scheme 快照 |
 | `test_kb_schemes_consistency.py` | KB ↔ SCHEMES 一致性 |
 | `test_ha_body_toxic_blacklist.py` | AO/JD 禁 ha_body |
-| `test_a2_p1_*.py` / `test_a2_p2_integrity.py` | A2 管道 |
+| `test_a2_p1_*.py` / `test_a2_p2_integrity.py` | **已归档**（2026-09-30 → `tests/archive/2026-09-30-a2-retired/`） |
 | `test_calendar_cyclical.py` | 日历协变量 |
 | `test_basis_oi_filter.py` | 基差 OI 过滤 |
-| `test_lgbm_features.py` | LGBM 特征防穿越 |
+| `test_lgbm_features.py` | **已归档**（2026-09-30 → `tests/archive/2026-09-30-a2-retired/`） |
 | `test_vol_scaled_mae.py` | 波动缩放 MAE |
 | `test_scan_significance.py` | scan 显著性门槛 |
 | `test_covariate_audit.py` | 协变量质量审计 (19 tests, 5 维度: 平稳性/范围/NaN/前视偏差/信息量, Phase Q1 D6) |
@@ -48,7 +48,6 @@ python -m unittest \
   tests.test_validation_criteria \
   tests.test_vol_scaled_mae \
   tests.test_neutral_ab_report \
-  tests.test_a2_p1_runtime \
   tests.test_future_bar_guard -v
 
 # Praxist 三环（改 supervisor / harvest / 任务契约后）

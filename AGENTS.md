@@ -380,7 +380,7 @@ python scripts/cascade_predict.py ss
 - `scripts/build_knowledge_base.py` — 从 L1 ECONOMIC_VERDICT + SCHEMES 生成 knowledge_base.json
 - `scripts/predict.py` — 基础预测 (无级联，仅 TimesFM 直接预测，含 ensure_fresh_data 新鲜度检查)
 - `scripts/cascade_predict.py` — 级联预测主入口 (自动识别固化方案，ensure_fresh_data 预检查，支持 `--collect` / `--collect-if-stale` / `--no-auto-collect`；实验性 Absolute Risk Overlay: `--vol-filter-neutral --vol-thr 0.55`，**默认 OFF**)
-- `scripts/backtest_vol_gating_fullchain.py` / `rebuild_universe_neutral_report.py` — Path2 Neutral A/B 全链路；评分唯一源 `cascade/neutral_ab_report.py`（见 `STATE.md`）
+- `scripts/backtest_vol_gating_fullchain.py` — Path2 Neutral A/B 全链路；评分唯一源 `cascade/neutral_ab_report.py`（见 `STATE.md`；原 `rebuild_universe_neutral_report.py` 已归档 2026-09-30）
 - `scripts/three_star_predict.py` — 信用≥2星一键预测（历史名；`list_by_stars(2)`）
 - 协变量优化：使用 `scripts/monthly_backtest.py` 完整 walk-forward（禁止用 3/7 点 scan 指导固化）
 

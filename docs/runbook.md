@@ -92,6 +92,8 @@ python scripts/live_cov_health.py --json-out reports/live_cov_health/latest.json
 ## A2-P1 完整性工具（2026-08-07 硬化）
 
 > 全部为纯磁盘操作，**不加载 TimesFM 模型，不启动真实回测**。
+>
+> **2026-09-30 归档**：本节工具已 git mv 至 `scripts/archive/2026-09-30-a2-retired/`（CF-13 + 裁定 e）；命令仅作历史参考。
 
 | 工具 | 命令 | 说明 |
 |------|------|------|
@@ -117,6 +119,8 @@ python scripts/live_cov_health.py --json-out reports/live_cov_health/latest.json
 ## A2-P2 残差叠加工具（2026-08-07 完成）
 
 > A2-P2 测试 LGBM 残差叠加架构，已于 2026-08-07 执行完毕，裁决为 0/5 GO。
+>
+> **2026-09-30 归档**：工具已 git mv 至 `scripts/archive/2026-09-30-a2-retired/`；命令仅作历史参考。
 
 | 工具 | 命令 | 说明 |
 |------|------|------|

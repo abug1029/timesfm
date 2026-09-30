@@ -290,6 +290,7 @@ setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.ya
 3. **`enqueue_fast_loop_proposals.py` 无调用点**:
    -> 硬编码 `max_points: 6` 的孤儿脚本，未接入生产路径
    -> 26 条 n=6 裁决是该脚本（09-28 一次性运行）+ T2 消融实验的产物
+   -> （2026-09-30 更新：脚本已归档至 scripts/archive/2026-09-30-dead-code/）
 
 4. **`_p6` 命名歧义**:
    -> 快环提案和消融实验共享 `_aligned_p6` 后缀，但 max_points 不同（600 vs 6）

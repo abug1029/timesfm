@@ -298,7 +298,6 @@ def main():
     print(f"  train_end={model_data['train_end']}")
     print(f"  feature_version={model_data['feature_version']}")
     print(f"  output={args.output}")
-    print("  下一步: python scripts/validate_regime_clusters.py")
 
 
 if __name__ == "__main__":

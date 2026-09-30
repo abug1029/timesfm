@@ -80,8 +80,8 @@ scripts/start_supervisor.sh
 ## A2 轨道（2026-08-07 结案，Track B 已关闭）
 
 **结论**：A2-P1.1 定向修复 **0/5 GO**；A2-P2 残差叠加 **0/5 GO**（stacked PF 全部 < 1.0，
-且低于 scheme PF）→ **Track B 关闭**。LGBM 路径（`cascade/lgbm_features.py`）属归档轨道，
-无生产入口 import；venv 未装 pyarrow/fastparquet，该路径在本机不可执行。
+且低于 scheme PF）→ **Track B 关闭**。LGBM 路径（`cascade/lgbm_features.py`）**已于 2026-09-30 git mv 归档**
+（`cascade/archive/2026-09-30-a2-retired/`，CF-13 + 裁定 e）；venv 未装 pyarrow/fastparquet。
 
 > 上述两个数字为 **v2 历史口径**（2026-08 PF/星级回测），**非 v23 证据**。现行裁决口径唯一权威 =
 > v23 spec + `task_FM/config/aligned_verdicts.jsonl`。
@@ -89,7 +89,7 @@ scripts/start_supervisor.sh
 > 原「磁盘事实来源」（`reports/a2_p1_manifest.json`、`reports/research/20260807_a2_p2_verdict.md`）
 > **已不在仓内**，故本节不再重述逐品种明细表。
 
-### 仍可用的对账工具
+### 对账工具（**2026-09-30 已归档**，仅历史参考）
 
 ```bash
 python scripts/a2_p1_restore_manifest.py --dry-run      # 扫描主/备份目录，打印 20 品种状态
@@ -97,7 +97,7 @@ python scripts/a2_p1_restore_manifest.py --canonicalize # 对重复写入的 JSO
 python scripts/a2_p1_restore_manifest.py --restore      # 从备份恢复缺失文件
 ```
 
-详见 [runbook.md](./runbook.md) "A2-P1 完整性工具" 章节。
+详见 [runbook.md](./runbook.md) "A2-P1 完整性工具" 章节（同已归档标注）。工具实际位置：`scripts/archive/2026-09-30-a2-retired/`。
 
 ## 当前生产姿态
 

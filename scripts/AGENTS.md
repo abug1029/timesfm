@@ -17,8 +17,8 @@ CLI 入口与实验编排：预测、月度回测、Vol/Neutral 全链路、A2 L
 | 协变量固化回测 | `monthly_backtest.py` | **唯一**固化 WF 权威 |
 | v2 判据解析 | `phase4d_parse_results.py` | 读 JSONL stdout 行 |
 | Neutral 全链路 | `backtest_vol_gating_fullchain.py` | 评分 → `neutral_ab_report` |
-| A2 LGBM 基线 | `a2_p1_orchestrator.py` + workers | 排他锁 + 幂等 JSONL |
-| A2 残差叠加 | `a2_p2_orchestrator.py` | Track B 已 NO-GO 关闭 |
+| A2 LGBM 基线 | ~~`a2_p1_orchestrator.py` + workers~~ | **已归档**（2026-09-30 → `archive/2026-09-30-a2-retired/`） |
+| A2 残差叠加 | ~~`a2_p2_orchestrator.py`~~ | Track B NO-GO 关闭；**已归档**（2026-09-30） |
 | 数据日更 | `daily_update.py` | 末尾唯一 `run_guard` |
 | 调度采集 | `data_management.py` | 不二次 purge |
 | Praxist 监督环 | `praxist_supervisor.py` | 0 token 调度快/慢环；架构 `docs/praxist.md` |
@@ -33,8 +33,8 @@ CLI 入口与实验编排：预测、月度回测、Vol/Neutral 全链路、A2 L
 | `batch_f[1-4]_single_cov.sh` | Phase 11 单协变量穷举 (7cov×20var=131 tests); 使用 _batch_lib.sh 进程管理 |
 | `batch_backtest.py` | 旧扫描器；**无 scheme / 无 PF**；报告路径曾写到 `D:/FlyBuddy/fm/`（错误树） |
 | `backtest_1h.py` | 早期 1H WF；勿用于固化 |
-| `a2_p1_runtime.py` | eval grid / lock / 幂等 append |
-| `a2_p1_worker.py` / `a2_p1_lgbm_baseline.py` | LGBM WF（train ≤ t0-24） |
+| `a2_p1_runtime.py` | **已归档**（2026-09-30 → `archive/2026-09-30-a2-retired/`） |
+| `a2_p1_worker.py` / `a2_p1_lgbm_baseline.py` | **已归档**（2026-09-30 → `archive/2026-09-30-a2-retired/`） |
 | `backtest_vol_gating_fullchain.py` | Neutral OFF vs ON |
 | `two_star_candidate_runner.py` / `toxic_variety_runner.py` | 星级/有毒品种实验 |
 | `covariate_scan_new.py` | scan（**不得单独指导固化**） |
@@ -81,7 +81,7 @@ CLI 入口与实验编排：预测、月度回测、Vol/Neutral 全链路、A2 L
 ### Testing Requirements
 
 ```bash
-python -m unittest tests.test_a2_p1_runtime tests.test_a2_p1_integrity tests.test_a2_p2_integrity tests.test_validation_criteria -v
+python -m pytest tests/ -q   # pytest.ini 已落地（2026-09-30）；A2 测试已归档
 ```
 
 ## Dependencies
