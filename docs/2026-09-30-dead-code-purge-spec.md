@@ -13,12 +13,13 @@
 | (e) | 宿主裁定 2026-09-30 | **A2 整簇退役**：10 脚本 + `cascade/lgbm_features.py` + 全部配套测试 `git mv` 归档；`module_freeze.md` CF-13 行加一行注记；dead 结论入记忆文档；不做重量级归档 README |
 | (b) | **撤销**（审核方自勘误） | v1 采推荐「oi_gated_momentum 连测试归档」的前提**错误**：模块是活代码（`cascade/features.py:1118` 相对导入 + `:1518` dispatch + `scripts/extract_xreg.py:85-89` 生产注册 + `task_FM/config/covariate_pool.json:212` 在池）→ 模块、3 个测试（含审核漏计的 `test_oi_gated_momentum.py`）、spec 文档**全部保留**。审核报告 P1-3 作废（其 §八勘误） |
 | (c) | 默认推荐执行 | `install_praxist_llm_env_hook.py` 保留 ACTIVE_CLI（`praxist_llm_env.md:69/:82` 文档化人工命令）→ 移出 v1 的 37 名单 |
+| (f) | 执行边界勘误 2026-09-30（1.1a） | **pull_history_1h 撤回归档**：`data_management.py`（在用采集调度入口，AGENTS.md:248-250 / runbook.md:23-25 文档化）collect_1h() 与 backfill_gaps() 经 `run_script("pull_history_1h.py")` **裸文件名子进程边**调用——五道筛第 3 筛漏检形态，第 6 次同型错误；D3 立即账目 6/736 → **5/590**，立即归档总量 50 文件/12,374 行 → **49 文件/12,228 行**；runbook.md:33 行数表行保留 |
 
 ## 1. 目的与范围
 
 上游审计结论「82% 是死代码，可删 29,024 行」经 v1 勘误为 8,048 行（16.5%）；v2 复核后精确账：
 
-**立即归档 50 文件 / 12,374 行 + 顺延（2.9）3 文件 / 153 行 = 12,527 行**（A2 整簇退役使总量较 v1 上修）。
+**立即归档 49 文件 / 12,228 行 + 顺延（2.9）3 文件 / 153 行 = 12,381 行**（A2 整簇退役使总量较 v1 上修；(f) 勘误后 pull_history_1h 撤回）。
 
 完成标准（全部满足才算落地）：
 
@@ -43,7 +44,7 @@
 |---|---|---|---|
 | E-1 | 87 个孤儿脚本 / 22,592 行 | 36 个 / 7,229 行（v1 的 37 减 install hook） | 51 个文件被误判 |
 | E-2 | 18 个孤儿 cascade 模块 / 6,588 行 | 1 个 / 371 行（仅 lgbm_features，经裁定 e） | 17 个模块被误判 |
-| E-3 | 「可安全归档 103 文件 / 29,024 行」 | 53 文件 / 12,527 行（含顺延） | 净减 57% |
+| E-3 | 「可安全归档 103 文件 / 29,024 行」 | 53 文件 / 12,527 行（含顺延；后经 (f) 勘误 → 52 文件 / 12,381 行） | 净减 57% |
 | E-4 | `cascade/features.py` 建议删 2,000 行 | **不删**，是活跃依赖 | 撤回该建议 |
 | E-5 | 建议删 `praxist_supervisor.py` 的 TODO 占位符 | 那是**已知未完成目标**（Phase 3 数学上不可达的根因），删掉会让缺口变静默错值 | 不在本次范围 |
 
@@ -75,9 +76,11 @@ v1 口径「脚本名在 scripts/cascade/tests/docs 中均不出现」被自家�
 
 diagnose_regime_supervised 667、train_regime_supervised 612、validate_vol_gating_hypothesis 585、validate_regime_clusters 376、fm_collect_analyze 352、si_quality_benchmark 316、strategy_changelog 260、analyze_backtest_performance 250、phase10_jd_i_p_verdict 243、backtest_tracker 237、validate_regime_classifier 226、verify_all_baselines 221、three_star_verify_runner 210、test_tqsdk_1h_depth 186、t2_ablation_report 181（结论在 `reports/2026-09-28-t2-ablation-table.md`）、a3_lasso_diagnostic 174、regime_detector 170、three_star_verify_critic 120、t1b_hand_calc_verification 99（结论在 `reports/2026-09-28-t1b-hand-calc-report.md`）、rebuild_universe_neutral_report 97、shadow_replay_30 88、audit_indicator_alignment 21。
 
-#### D3 纯残留（6 文件 / 736 行）
+#### D3 纯残留（5 文件 / 590 行；(f) 勘误后）
 
-scheme_migrator 187（迁移已完成）、prediction_calendar 165（一次性生成）、pull_history_1h 146（被生产数据路径取代；`runbook.md:33` 行数表同步删除）、apply_horizon_known_relabel 110（PR-C6 重标已完成）、query_accuracy 75（临时查询）、install_praxist_qwen_model_patterns 53（安装已完成）。
+scheme_migrator 187（迁移已完成）、prediction_calendar 165（一次性生成）、apply_horizon_known_relabel 110（PR-C6 重标已完成）、query_accuracy 75（临时查询）、install_praxist_qwen_model_patterns 53（安装已完成）。
+
+> **(f) 勘误（1.1a）**：pull_history_1h（146 行）原判「被生产数据路径取代」错误——`data_management.py` collect_1h()/backfill_gaps() 经裸文件名子进程边调用（`run_script("pull_history_1h.py")`，:77/:150-152/:208）→ 撤回归档；`runbook.md:33` 行数表行保留。判死 guard 教训：subprocess 边 grep 必须匹配**裸 `(name).py`** 形态，不能只匹配 `scripts/(name).py`。
 
 #### 名单外特记
 
@@ -139,9 +142,9 @@ docs/archive/dead-code-2026-09-30/README.md  <- 轻量归档说明
 |---|---|---|---|
 | D1 证据保留 | 8（立即 6） | 802（立即 690） | 每文件一行「为何保留」 |
 | D2 一次性调查 | 22 | 5,691 | 每文件一行「结论落在哪」 |
-| D3 纯残留 | 6 | 736 | 只列名 |
+| D3 纯残留 | 5（(f) 勘误后） | 590 | 只列名 |
 | D-A2 整簇退役 | 16 | 5,257 | 一段 CF-13 + 裁定 (e) 注记（不做重量级 README） |
-| **合计** | **52（立即 50）** | **12,486（立即 12,374）** | |
+| **合计** | **51（立即 49）** | **12,340（立即 12,228）** | |
 
 ### 4.3 fu 基线（v2：被裁定 (d) 取代）
 
@@ -155,7 +158,7 @@ v1 要求「先重生 fu (v3) 再归档 regen 脚本」。裁定 (d) 后 fu 随 
 
 - `scripts/restart_three_loop_clean.sh`：**摘除第 [4/6] 步**（clear_supervisor_pause 调用）并重编号（1.4，代码改动）
 - `docs/three_loop_restart_protocol.md`：同步移除该步骤
-- `docs/runbook.md:33`：pull_history_1h 行删除
+- `docs/runbook.md:33`：pull_history_1h 行**保留**（(f) 勘误：脚本为活码）
 - `docs/three_loop_workflow.md:290`：enqueue 提及标注归档路径
 - `docs/module_freeze.md`：CF-13 行加归档注记
 - `cascade/AGENTS.md`：A2 标注更新（`test_a2_p1_baseline.py:84` 所引）
@@ -189,12 +192,13 @@ v1 要求「先重生 fu (v3) 再归档 regen 脚本」。裁定 (d) 后 fu 随 
 | covariate_diagnostics | **保留**（`hourly_model.py:315` 实调已验证） |
 | experiment_fingerprint | **保留**（重启闸门依赖 + W6.4 接线目标） |
 | D1 的 8 个脚本 | 全保留 D1 档（裁定 e 只涉及 A2 簇） |
+| pull_history_1h | **撤回归档（活码）**——data_management.py run_script 裸文件名子进程边；(f) 勘误（1.1a） |
 
 ## 8. PR 切分（对齐实施计划阶段 1）
 
 | 顺序 | 内容 | 规模 | 依赖 |
 |---|---|---|---|
-| 1.1 | D3 归档 | 6 文件 / 736 行 | — |
+| 1.1 | D3 归档 | 5 文件 / 590 行（(f) 勘误：pull_history_1h 撤回） | — |
 | 1.2 | D2 归档 | 22 文件 / 5,691 行 | — |
 | 1.3 | D1 归档 | 6 文件 / 690 行 | — |
 | 1.4 | clear_supervisor_pause + `.sh` 删步 | 1 文件 + 1 处编辑 | — |
