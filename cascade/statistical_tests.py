@@ -519,10 +519,10 @@ def detection_threshold_vs_random(n_eff: float, z_alpha: float = 1.645) -> float
 def detection_threshold_vs_baseline(
     d_bar: np.ndarray, z_alpha: float = 1.645,
 ) -> tuple[float, float]:
-    """基线增量的检测门槛（spec §8.3, 行 696）。
+    """基线增量的检测门槛（spec §8.3, 行 696；2.10 补 /n，发现 I）。
 
-    公式: threshold = z_alpha * SE_HAC(d_bar)
-          where d_t = v_ok_t - b_ok_t（逐点差）
+    公式: threshold = z_alpha * SE_HAC(d_bar_mean) = z_alpha * sqrt(sigma_LR^2 / n)
+          where d_t = v_ok_t - b_ok_t（逐点差），n = len(d)
 
     含义: 在 H0: mean(d) = 0（与基线无差异）下，单侧 z 检验的最小可检测增量。
 
@@ -530,17 +530,20 @@ def detection_threshold_vs_baseline(
         d_bar: 逐点差序列 d_t = v_ok_t - b_ok_t（一维 array）
         z_alpha: 单侧检验的 z 临界值
 
+    含义补充: SE 是**均值**的标准误（逐点长程方差再除以 n），与 DM 检验内部
+    「再除以 T 得均值方差」同一约定（发现 I：此前漏除 n，门槛高估 ~sqrt(n) 倍）。
+
     Returns:
-        (threshold, se_hac): 门槛值 + HAC 标准误
+        (threshold, se_hac): 门槛值 + 均值 HAC 标准误
 
     Docstring 四要素:
         - 带宽约定: Newey-West 自动带宽（与 compute_hac_se 一致）
         - 均值中心化: H0: mean(d) = 0
-        - 样本方差分母: HAC 估计（含自相关校正）
+        - 样本方差分母: HAC 长程方差 / n（均值标度）
         - 有限样本修正: 无
 
     Golden example (spec 1369):
-        当 rho=0.5（AR(1) 自相关），n=588 时:
+        rho=0.5 AR(1)（sigma_LR^2 ~= 0.25 * 8.028 = 2.007）、n=588 时:
         threshold ~= 0.096  # +/-1%
 
     约束（spec 1368）:
@@ -548,7 +551,8 @@ def detection_threshold_vs_baseline(
         （后者是 vs_random 的变体，不是 vs_baseline）
     """
     # compute_hac_se 返回长程**方差** sigma_LR^2（同 diebold_mariano_p 的用法）。
-    # spec 8.3 的 SE_HAC 是其平方根，漏开会低估门槛一个数量级。
+    # SE(d_bar_mean) = sqrt(sigma_LR^2 / n)：均值标度（2.10 发现 I——此前漏除 n，
+    # 黄金测试的稀疏构造 gamma_0=2/588 恰好把 /n 烘进方差，掩盖了缺失）。
     arr = np.asarray(d_bar, dtype=float).ravel()
     if arr.size < 2:
         raise ValueError(f"d_bar needs at least 2 points, got {arr.size}")
@@ -556,7 +560,7 @@ def detection_threshold_vs_baseline(
         raise ValueError("d_bar contains non-finite values")
 
     var_lr = compute_hac_se(arr)
-    se_hac = float(np.sqrt(var_lr)) if var_lr > 0 else 0.0
+    se_hac = float(np.sqrt(var_lr / arr.size)) if var_lr > 0 else 0.0
     threshold = z_alpha * se_hac
     return threshold, se_hac
 

@@ -114,7 +114,14 @@ def test_stage3_exit_gate_all_eight_pass():
     """
     # 4 黄金值
     assert detection_threshold_vs_random(73) == pytest.approx(0.596, rel=0.01)
-    d = np.zeros(588); d[100] = 1.0; d[400] = -1.0
+    # 2.10: spec 真实构造（rho=0.5 AR(1)，sigma_LR^2 ~= 0.25*8.028），替换稀疏构造
+    rng = np.random.default_rng(42)
+    n, burn = 588, 2000
+    e = rng.standard_normal(burn + n) * np.sqrt(0.669 * 0.75)
+    d = np.zeros(burn + n)
+    for t in range(1, burn + n):
+        d[t] = 0.5 * d[t - 1] + e[t]
+    d = d[burn:]
     thr, _ = detection_threshold_vs_baseline(d)
     assert thr == pytest.approx(0.096, rel=0.01)
     assert n_required(var_d=0.25, vif=8.028, delta=0.02) == pytest.approx(31000, rel=0.05)

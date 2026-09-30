@@ -32,15 +32,26 @@ def test_golden_vs_random_73():
 def test_golden_vs_baseline_rho05_n588():
     """spec 1369: rho=0.5、n=588 时 detection_threshold_vs_baseline ~= 0.096。
 
-    构造：d_t = v_ok_t - b_ok_t 的稀疏序列，588 点中 2 点非零且相隔 > q
-    （q=11），使 HAC 长程方差 ~= 样本方差 = 2/588。
-    门槛 = 1.645 * sqrt(2/588) ~= 0.096。
+    构造（2.10 改 spec 真实构造，替换曾掩盖漏除 /n 的稀疏构造）：
+    AR(1) x_t = 0.5*x_{t-1} + e_t，平稳方差 gamma_0 = 2.007/3 = 0.669，
+    长程方差 sigma_LR^2 = gamma_0*(1+rho)/(1-rho) = 2.007 = 0.25*8.028
+    （spec 情景口径）。SE(d_bar_mean) = sqrt(2.007/588)，
+    门槛 = 1.645 * sqrt(2.007/588) ~= 0.0961。
+
+    采样波动说明：n_eff ~= 588/3 = 196，sigma_LR^2 估计波动 ~±10%；
+    seed=42 样本 sigma_LR^2 = 2.035（总体 +1.4%）→ threshold = 0.0968，
+    落在黄金值 ±1% 内。更换 seed 需重算并按样本值调容差。
     """
-    d = np.zeros(588)
-    d[100] = 1.0
-    d[400] = -1.0
+    rng = np.random.default_rng(42)
+    n, burn = 588, 2000
+    e = rng.standard_normal(burn + n) * np.sqrt(0.669 * 0.75)
+    x = np.zeros(burn + n)
+    for t in range(1, burn + n):
+        x[t] = 0.5 * x[t - 1] + e[t]
+    d = x[burn:]
+
     threshold, se_hac = detection_threshold_vs_baseline(d)
-    assert se_hac == pytest.approx(np.sqrt(2 / 588), rel=0.02)
+    assert se_hac == pytest.approx(np.sqrt(2.007 / 588), rel=0.02)
     assert threshold == pytest.approx(0.096, rel=0.01)
 
 
@@ -158,10 +169,10 @@ def test_dm_reuses_the_same_hac_estimator():
     assert "compute_hac_se" in src, "DM 必须复用 compute_hac_se（唯一家）"
 
 
-def test_vs_baseline_se_is_square_root_of_long_run_variance():
-    """SE_HAC 是长程方差的平方根（与 DM 的 sqrt(V) 同一约定）。"""
+def test_vs_baseline_se_is_sqrt_long_run_variance_over_n():
+    """SE_HAC(d_bar_mean) = sqrt(长程方差 / n)（与 DM 的 sqrt(V/T) 同一约定；2.10 补 /n）。"""
     d = np.zeros(588)
     d[100] = 1.0
     d[400] = -1.0
     _, se_hac = detection_threshold_vs_baseline(d)
-    assert se_hac == pytest.approx(np.sqrt(compute_hac_se(d)), rel=1e-9)
+    assert se_hac == pytest.approx(np.sqrt(compute_hac_se(d) / d.size), rel=1e-9)
