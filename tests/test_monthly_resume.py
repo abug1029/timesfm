@@ -95,7 +95,7 @@ class TestMonthlyResumeMerge(unittest.TestCase):
             with open(ckpt, "r", encoding="utf-8") as f:
                 for line in f:
                     rec = json.loads(line)
-                    key = (rec["symbol"], int(rec["idx"]))
+                    key = (rec["symbol"], str(rec["cutoff"]))  # v4 2.2: 主键 idx → cutoff
                     completed.add(key)
                     if "delta_pred" in rec and "delta_real" in rec:
                         resumed_points[key] = {kk: rec[kk] for kk in _CHECKPOINT_POINT_KEYS if kk in rec}
@@ -103,7 +103,7 @@ class TestMonthlyResumeMerge(unittest.TestCase):
             # Merge as run_symbol_backtest would
             merged = []
             for i in range(n):
-                key = ("ss", i)
+                key = ("ss", full_points[i]["cutoff"])
                 if key in completed and key in resumed_points:
                     pt = dict(resumed_points[key])
                     pt.pop("symbol", None)
@@ -131,7 +131,12 @@ class TestMonthlyResumeMerge(unittest.TestCase):
                 )
 
     def test_legacy_checkpoint_without_delta_not_merged(self):
-        """Old mae/dir_ok-only lines must not invent economic metrics."""
+        """Old mae/dir_ok-only lines must not invent economic metrics.
+
+        v4 2.2: 主键 (symbol, cutoff) —— 无 cutoff 的极旧行连 completed 都不进
+        （生产 loader 的 except KeyError 整行跳过），对应点全量重算:
+        宁可重算, 不错位复用。
+        """
         with tempfile.TemporaryDirectory() as td:
             ckpt = Path(td) / "legacy.jsonl"
             with open(ckpt, "w", encoding="utf-8") as f:
@@ -141,11 +146,14 @@ class TestMonthlyResumeMerge(unittest.TestCase):
             with open(ckpt, "r", encoding="utf-8") as f:
                 for line in f:
                     rec = json.loads(line)
-                    key = (rec["symbol"], int(rec["idx"]))
-                    completed.add(key)
-                    if "delta_pred" in rec and "delta_real" in rec and "error" not in rec:
-                        resumed_points[key] = rec
-            self.assertEqual(len(completed), 1)
+                    try:
+                        key = (rec["symbol"], str(rec["cutoff"]))  # v4 2.2: 主键 idx → cutoff
+                        completed.add(key)
+                        if "delta_pred" in rec and "delta_real" in rec and "error" not in rec:
+                            resumed_points[key] = rec
+                    except (KeyError, TypeError, ValueError):
+                        continue  # 无 cutoff 极旧行: 与生产 loader 同语义, 整行跳过
+            self.assertEqual(len(completed), 0)
             self.assertEqual(len(resumed_points), 0)
 
 

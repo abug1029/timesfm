@@ -62,13 +62,13 @@ def test_stage3_horizon_and_statistical_contracts_coexist():
     assert horizon_exogenous(["calendar_cyclical"]) is True
 
 
-def test_stage3_protocol_fingerprint_v3_includes_all_spec_components():
-    """spec 七组件表（H3 补齐）全部进入 fingerprint。
+def test_stage3_protocol_fingerprint_v4_includes_all_spec_components():
+    """spec 组件表（H3 补齐 + v4 窗口锚）全部进入 fingerprint。
 
     改动任一组件，fingerprint 必须变化。
     """
     base = compute_protocol_fingerprint()
-    assert PROTOCOL_FINGERPRINT_VERSION == "protocol_v3"
+    assert PROTOCOL_FINGERPRINT_VERSION == "protocol_v4"
 
     # 逐一验证每个组件参与
     assert base != compute_protocol_fingerprint(metric_version="v2")
@@ -78,6 +78,8 @@ def test_stage3_protocol_fingerprint_v3_includes_all_spec_components():
     assert base != compute_protocol_fingerprint(cutoff_convention="bar_open")
     assert base != compute_protocol_fingerprint(context_bars=999)
     assert base != compute_protocol_fingerprint(context_days=99)
+    # v4: 窗口锚语义入指纹（发现 B）
+    assert base != compute_protocol_fingerprint(window_anchor="legacy_sliding_v3")
     assert base != compute_protocol_fingerprint(adjustment_rule_version="v2")
     assert base != compute_protocol_fingerprint(roll_guard_version="v2")
 

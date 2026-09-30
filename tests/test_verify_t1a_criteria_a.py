@@ -58,6 +58,12 @@ def _complete_verdict(**overrides) -> dict:
         "dir_acc_ex_roll": 0.53,
         "n_roll_excluded": 3,
         "n_roll_ratio": 0.0051,
+        # v4 收口 2.6: 四分母进入 A1_REQUIRED_FIELDS（fixture 须带真值,
+        # 否则 setdefault 会补 None, 非空校验失败）
+        "n_dir_total": 588,
+        "n_dir_active": 585,
+        "n_zero_move": 3,
+        "n_zero_ratio": 0.0051,
         "gate_pass": True,
         "run_mode": "exploration",
         "run_label": "exploratory_unconfirmed",

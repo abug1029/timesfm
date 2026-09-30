@@ -261,7 +261,8 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                         signal_override=None,
                         fill_strategy="default",
                         daily_cache_dir=None,
-                        ablation_mode="full"):
+                        ablation_mode="full",
+                        eval_end_ts=None, protocol_fingerprint=None):
     """单品种回测，返回汇总指标和逐点详情
 
     Args:
@@ -273,9 +274,16 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                   dir_ok 始终用 raw delta_real；PF/EV 用 clipped（clip_gap 设计如此）。
         cache_interval: 每 N 评估点 clear GPU cache (默认 10, 与原硬编码一致)
         max_points: 每品种最多跑 N 个评估点 (None=不限), 用于 OOM 排查
-        completed: set of (symbol, idx) 已完成点 (--resume 时跳过); None=无 resume
+        completed: set of (symbol, cutoff) 已完成点 (--resume 时跳过); None=无 resume
+                   v4 2.2: 主键 idx → cutoff (bar 收盘时刻字符串)。idx 是帧内位置,
+                   数据增长即漂移, 会把不同 run 的点错位复用 (recompute_dir_acc 实测)
         checkpoint_fp: 已打开的 JSONL 追加文件句柄 (mode="a"); None=不写 checkpoint
-        resumed_points: dict (symbol, idx) -> full point dict; resume 时合并进 points
+        resumed_points: dict (symbol, cutoff) -> full point dict; resume 时合并进 points
+        eval_end_ts: v4 2.1 绝对锚 ("YYYY-MM-DD HH:MM:SS")。None=以当前数据末端为锚
+                     (向后兼容); 给定时把 all_1h 截断到 dt < 锚 —— 评估窗口成为锚的
+                     纯函数, 数据增长不再平移窗口 (发现 B)
+        protocol_fingerprint: v4 2.2 协议指纹, 逐行落 checkpoint; 慢环 resume 只复用
+                     指纹匹配的行 (CLI 不传则落 null, 慢环侧视为不可信、全量重算)
         fill_strategy: Horizon 填充策略, "default" (常数) 或 "decay" (12-bar 半衰期衰减)
         daily_cache_dir: 日线预测 pickle 缓存目录 (None=不缓存)
     """
@@ -286,10 +294,25 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
     if all_1h.empty or len(all_1h) < CONTEXT_BARS + HORIZON:
         return None
 
+    # v4 2.1 绝对锚定: 评估窗口是锚的纯函数。锚 = 最后一根可用 bar 的收盘时刻,
+    # 逐行落 checkpoint (eval_end_ts), resume 从行内还原 —— 数据增长后重跑不再平移
+    # 窗口 (发现 B: 运行时 total 后缀窗口 + append 模式 = 同文件混入多段 run)。
+    # 截断条件 dt < 锚 ⇔ close = dt+1h ≤ 锚 (dt 为 TEXT 列, 逐字字符串比较)。
+    if eval_end_ts is not None:
+        _dt_str = all_1h["dt"].astype(str)
+        all_1h = all_1h[_dt_str < str(eval_end_ts)].reset_index(drop=True)
+        if all_1h.empty or len(all_1h) < CONTEXT_BARS + HORIZON:
+            return None
+
     # 日线充足性过滤见下方 min_daily_required + bisect（不再使用未接线的 min_eval_date 日历近似）
 
     total = len(all_1h)
     contract = all_1h["contract_code"].iloc[-1]
+    # v4 2.1: 锚 = (截断后) 末根 bar 的收盘时刻。未传锚时取当前数据末端
+    # (向后兼容的滑动行为), 但锚仍逐行落盘 —— 之后任何 resume 都能钉住本次窗口。
+    _anchor = (str(eval_end_ts) if eval_end_ts is not None
+               else (pd.Timestamp(all_1h["dt"].iloc[-1])
+                     + pd.Timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"))
     # 评估窗口截断: 聚焦最近 EVAL_WINDOW_BARS 根 bar (~200 交易日)，抑制 concept drift
     eval_start = max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)
     eval_indices = list(range(eval_start, total - HORIZON + 1, STEP))
@@ -329,21 +352,26 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
 
     points = []
     for i, idx in enumerate(eval_indices):
-        # resume: 合并已完成点（完整 payload）后再跳过重算
-        if completed is not None and (sym_lower, idx) in completed:
-            if resumed_points is not None and (sym_lower, idx) in resumed_points:
-                pt = dict(resumed_points[(sym_lower, idx)])
-                pt.pop("symbol", None)
-                pt.pop("idx", None)
-                points.append(pt)
-            continue
         # bar-exact cutoff (full timestamp) — 禁止仅截日期造成同日 1H lookahead
         # D5 修正: cutoff 应为 bar 收盘时间（dt + 1h），而非开盘时间
         # 原因: base 使用的是该 bar 的收盘价，只有在收盘时才知道
+        # v4 2.2: cutoff 同时是 checkpoint 复用主键 (symbol, cutoff) ——
+        # idx 是帧内位置, 数据增长即漂移; cutoff 是 bar 身份, 恒稳定
         bar_ts = pd.Timestamp(all_1h["dt"].iloc[idx])
         close_ts = bar_ts + pd.Timedelta(hours=1)  # bar 收盘时间
         dt = close_ts.strftime("%Y-%m-%d")  # 报告/cutoff 展示用日历日
         cutoff = close_ts.strftime("%Y-%m-%d %H:%M:%S")
+        # resume: 合并已完成点（完整 payload）后再跳过重算
+        if completed is not None and (sym_lower, cutoff) in completed:
+            if resumed_points is not None and (sym_lower, cutoff) in resumed_points:
+                pt = dict(resumed_points[(sym_lower, cutoff)])
+                pt.pop("symbol", None)
+                pt.pop("idx", None)
+                # v4: 身份键不进 point 载荷 (与新鲜计算点保持同构)
+                pt.pop("eval_end_ts", None)
+                pt.pop("protocol_fingerprint", None)
+                points.append(pt)
+            continue
         base = float(all_1h["close_price"].iloc[idx])
         # spec W6.7 历史修订防护：context 窗口的**内容哈希**。在写入点算、
         # 只落摘要，既不膨胀 checkpoint，也不把 context 原文带进 verdict。
@@ -521,6 +549,10 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 rec = {"symbol": sym_lower, "idx": int(idx)}
                 for k in _CHECKPOINT_POINT_KEYS:
                     rec[k] = point[k]
+                # v4 2.1/2.2: 每行携带锚与协议指纹 —— resume 以 (symbol, cutoff) 为主键,
+                # 慢环侧只复用指纹匹配的行; 旧协议行 fail-visible 丢弃后全量重算
+                rec["eval_end_ts"] = _anchor
+                rec["protocol_fingerprint"] = protocol_fingerprint
                 # path MAE% for diagnostics (fixed: mean |pred-real|/base, not real[-1] broadcast)
                 rec["mae_pct"] = round(float(np.mean(np.abs(pred - real)) / base * 100), 4) if base else 0.0
                 checkpoint_fp.write(_json.dumps(rec, ensure_ascii=False, default=str) + "\n")
@@ -535,6 +567,9 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                     "symbol": sym_lower, "idx": int(idx), "error": str(e), "cutoff": cutoff,
                     # PR-B5: 错误行也带模式标签，否则 resume 侧会把缺失键归一为 full
                     "ablation_mode": ablation_mode,
+                    # v4 2.1/2.2: 错误行同样携带锚与指纹 (resume 侧凭指纹决定是否复用)
+                    "eval_end_ts": _anchor,
+                    "protocol_fingerprint": protocol_fingerprint,
                 }, ensure_ascii=False) + "\n")
                 checkpoint_fp.flush()
             if i < 3 or i % 50 == 0:
@@ -546,6 +581,7 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
         "symbol": symbol.upper(),
         "name": SYMBOL_NAMES.get(symbol, symbol),
         "contract": contract,
+        "eval_end_ts": _anchor,
         "total_bars": total,
         "eval_count": len(eval_indices),
         "points": points,
@@ -1058,6 +1094,7 @@ def main():
     completed = set()
     resumed_points = {}
     checkpoint_fp = None
+    resume_anchor = None  # v4 2.1: 从 checkpoint 行内还原锚; 旧行无锚 → 滑动窗口(旧行为)
     if resume_path:
         from pathlib import Path
         import json as _json
@@ -1077,7 +1114,11 @@ def main():
                         # 点级错误，该 checkpoint 就会被判为"含其他模式"而永久无法 resume。
                         if "error" not in rec:
                             observed_modes.add(str(rec.get("ablation_mode", "full")))
-                        key = (rec["symbol"], int(rec["idx"]))
+                        if rec.get("eval_end_ts"):
+                            resume_anchor = str(rec["eval_end_ts"])
+                        # v4 2.2: 主键 idx → cutoff (bar 收盘时刻)。缺 cutoff 的极旧行
+                        # 由下方 except KeyError 跳过 —— 宁可重算, 不错位复用
+                        key = (rec["symbol"], str(rec["cutoff"]))
                         completed.add(key)
                         # 仅合并含经济字段的完整记录（旧版只有 mae/dir_ok 的行无法重建）
                         if "delta_pred" in rec and "delta_real" in rec and "error" not in rec:
@@ -1102,6 +1143,8 @@ def main():
                 f"  [resume] 已加载 {len(completed)} 完成点 "
                 f"({n_full} 含完整字段可合并) from {resume_path}"
             )
+            if resume_anchor:
+                print(f"  [resume] 锚 eval_end_ts={resume_anchor}（窗口钉住, 数据增长不平移）")
             if len(completed) and n_full < len(completed):
                 print(
                     "  [resume][WARN] 部分 checkpoint 行为旧格式/残缺，"
@@ -1130,6 +1173,7 @@ def main():
                                         cache_interval=cache_interval, max_points=max_points,
                                         completed=completed, checkpoint_fp=checkpoint_fp,
                                         resumed_points=resumed_points,
+                                        eval_end_ts=resume_anchor,
                                         signal_override=signal_override,
                                         fill_strategy=fill_strategy,
                                         ablation_mode=ablation_mode)

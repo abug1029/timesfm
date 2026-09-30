@@ -278,7 +278,11 @@ def load_baseline_points(symbol, root=None, cov=None):
 
 # v3: 补 spec 七组件表缺失项（CONTEXT_BARS / CONTEXT_DAYS / 复权+换月规则版本）
 #     与 Phase 3 合并重生（H1）；H6 约束：复权/换月规则版本只记录，不得改变值
-PROTOCOL_FINGERPRINT_VERSION = "protocol_v3"
+# v4（2026-09-30 收口 2.3 / 发现 B）：评估窗口锚语义入指纹 —— v3 及之前窗口随
+#     运行时数据末端滑动，resume 会把不同窗口的点拼进同一 verdict；v4 起窗口 =
+#     锚的纯函数，锚逐行持久化于 checkpoint（eval_end_ts）。锚语义变则不可比。
+PROTOCOL_FINGERPRINT_VERSION = "protocol_v4"
+WINDOW_ANCHOR_VERSION = "eval_end_persisted_v1"
 COV_MATRIX_HASH_VERSION = "cov_matrix_hash_v1"
 COV_FILL_VERSION = "v2"      # 唯一来源（D4 语义变更）
 # H6：以下两值只记录、不改变。改变则所有现存 research_family 分裂。
@@ -292,13 +296,17 @@ def compute_protocol_fingerprint(metric_version="v1",
                                  cutoff_convention="bar_close",
                                  context_bars=None, context_days=None,
                                  adjustment_rule_version=ADJUSTMENT_RULE_VERSION,
-                                 roll_guard_version=ROLL_GUARD_VERSION):
+                                 roll_guard_version=ROLL_GUARD_VERSION,
+                                 window_anchor=WINDOW_ANCHOR_VERSION):
     """协议指纹：决定两次评估是否可比（W1.5）。
 
     v2 变更: 加入 cutoff_convention 参数（D5 修复后默认为 bar_close）。
     v3 变更（PR-A5 / spec 七组件表补齐）：
       - context_bars / context_days（变则不可比）
       - adjustment_rule_version / roll_guard_version（H6：只记录不改变）
+    v4 变更（2026-09-30 收口 2.3 / 发现 B）：
+      - window_anchor：评估窗口锚语义。v3 及之前窗口随运行时数据末端滑动；
+        v4 起窗口 = 锚的纯函数，锚逐行持久化于 checkpoint（eval_end_ts）。
     """
     from config import backtest_config
     ctx_bars = context_bars if context_bars is not None else backtest_config.CONTEXT_BARS
@@ -315,6 +323,7 @@ def compute_protocol_fingerprint(metric_version="v1",
         f"context_days={ctx_days}",
         f"adj_rule={adjustment_rule_version}",
         f"roll_guard={roll_guard_version}",
+        f"anchor={window_anchor}",
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
@@ -564,6 +573,13 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         # 与 W6.6 的「**阈值参照**是否缺失」是两件事；混用一个键会让无基线的
         # 非 gated run 落 gate_basis="fallback_0.52"，被误读成 gated pool 加载失败。
         # 故独立成键：baseline=有基线，fallback_0.52=无基线（不参与跨品种比较与成功判定）。
+        # v4 收口 2.6（发现 E）: 四分母顶层化 —— VERDICT_FIELDS 与 A1 校验都按
+        # **顶层**取键；此前只落 metrics 子 dict，18/18 v3 行 a1_missing_fields
+        # 恒报缺失（实测 metrics.n_dir_total 非空而顶层 None）。
+        "n_dir_total": m.get("n_dir_total"),
+        "n_dir_active": m.get("n_dir_active"),
+        "n_zero_move": m.get("n_zero_move"),
+        "n_zero_ratio": m.get("n_zero_ratio"),
         "threshold_basis": "baseline" if baseline_dir_acc is not None else "fallback_0.52",
         # PR-C4 W6.7: 历史修订防护（context_hash）
         "context_hash": _compute_context_hash(points or s.get("points")),

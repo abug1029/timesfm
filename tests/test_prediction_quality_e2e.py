@@ -68,7 +68,11 @@ def _summarize(dir_acc=0.56, point_dir_ok_list=None):
          "endpoint_mape": 0.4, "endpoint_bias_pct": 0.1,
          "path_corr": 0.7, "weighted_dir_acc": 0.57,
          "mae": 1.0, "mape": 0.4, "decay": 1.1,
-         "covariates_used": True}
+         "covariates_used": True,
+         # v4 2.6: 四分母入 A1_REQUIRED_FIELDS —— 真实链路由 summarize() 经
+         # prediction-quality 计算，fixture 如实携带
+         "n_dir_total": 400, "n_dir_active": 400,
+         "n_zero_move": 0, "n_zero_ratio": 0.0}
     if point_dir_ok_list is not None:
         s["point_dir_ok_list"] = point_dir_ok_list
     return s
@@ -114,6 +118,8 @@ def _v2_row(vid, bid, *, symbol="m", cov="rsi_state", cov_family="momentum",
         "run_mode": run_mode, "run_label": None,
         "dir_acc_full": 0.55, "dir_acc_ex_roll": 0.55,
         "n_roll_excluded": 0, "n_roll_ratio": 0.0,
+        "n_dir_total": 400, "n_dir_active": 400,  # v4 2.6: 四分母入 A1
+        "n_zero_move": 0, "n_zero_ratio": 0.0,
         "dm_status": "ok", "dm_common_count": 50,
         "n_avail_variant": 50, "n_avail_baseline": 50,
         "missingness_admissible": False, "d_series_n_eff": 50,

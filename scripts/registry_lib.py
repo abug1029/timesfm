@@ -553,6 +553,8 @@ A1_REQUIRED_FIELDS = (
     "dm_common_count", "n_avail_variant", "n_avail_baseline",
     "missingness_admissible", "d_series_n_eff", "pair_set_hash",
     "covariates_used", "baseline_dir_acc", "run_mode", "run_label",
+    # v4 收口 2.6（发现 E）: PR-B4 主口径分母构成 —— 缺失则 dir_acc 无从判断
+    "n_dir_total", "n_dir_active", "n_zero_move", "n_zero_ratio",
 )
 A1_NULLABLE = frozenset({"run_label", "cov_fingerprint", "pair_set_hash",
                          "d_series_n_eff", "baseline_dir_acc"})

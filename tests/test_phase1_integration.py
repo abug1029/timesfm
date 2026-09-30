@@ -35,7 +35,12 @@ class TestA1GuardIsWired(unittest.TestCase):
         from task_FM.evaluations.fm_eval.evaluator import build_summary
         from scripts.registry_lib import a1_missing_fields
         s = {"n": 400, "n_eff": 60, "dir_acc": 0.55, "point_dir_ok_list": [],
-             "covariates_used": True}
+             "covariates_used": True,
+             # v4 2.6: 四分母入 A1_REQUIRED_FIELDS —— 真实链路由 summarize() 经
+             # prediction-quality 计算（delta_real 零动计数不可从 point_dir_ok_list
+             # 导出），build_summary 只做中继；fixture 如实携带
+             "n_dir_total": 400, "n_dir_active": 400,
+             "n_zero_move": 0, "n_zero_ratio": 0.0}
         cand = {"symbol": "rb", "cov_override": "ccl", "stage": "aligned",
                 "max_points": 6}
         v = build_summary(s, cand)

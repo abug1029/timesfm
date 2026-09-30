@@ -60,19 +60,19 @@ def check_phase1_3():
 check("Phase 1-3 契约", check_phase1_3)
 
 
-# ── 4) Phase 5 指纹 v3 ────────────────────────────────────────
+# ── 4) Phase 5 指纹 v4 ────────────────────────────────────────
 print("\n[4/6] Phase 5 指纹")
 def check_phase5():
     from task_FM.evaluations.fm_eval.evaluator import (
         PROTOCOL_FINGERPRINT_VERSION, compute_protocol_fingerprint,
         ADJUSTMENT_RULE_VERSION, ROLL_GUARD_VERSION,
     )
-    assert PROTOCOL_FINGERPRINT_VERSION == "protocol_v3", f"指纹版本应为 v3，实际 {PROTOCOL_FINGERPRINT_VERSION}"
+    assert PROTOCOL_FINGERPRINT_VERSION == "protocol_v4", f"指纹版本应为 v4，实际 {PROTOCOL_FINGERPRINT_VERSION}"
     fp = compute_protocol_fingerprint()
     assert len(fp) == 64, "指纹应为 64 位 hex"
     assert ADJUSTMENT_RULE_VERSION == "v1"
     assert ROLL_GUARD_VERSION == "v1"
-check("指纹 v3 + 七组件", check_phase5)
+check("指纹 v4 + 组件（含窗口锚）", check_phase5)
 
 
 # ── 5) Phase 7 experiment_fingerprint ────────────────────────

@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(FM_ROOT, "task_FM", "evaluations", "fm_eval"))
 import monthly_backtest as mb
 import registry_lib as rl
 from evaluator import (build_summary, effective_sample_size, load_baseline_points,
-                       attach_gated_metrics)
+                       attach_gated_metrics, compute_protocol_fingerprint)
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
 
@@ -51,6 +51,40 @@ def _record_elapsed(variant_id, elapsed_s):
     with open(_METRICS_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps({"variant_id": variant_id, "elapsed_s": elapsed_s,
                             "ts": _now()}, ensure_ascii=False) + "\n")
+
+def _load_checkpoint_state(cp, fp_now):
+    """读 checkpoint → (completed, resumed, anchor, legacy_lines)。
+
+    v4 2.2（发现 B 病理修复）:
+    - 主键 (symbol, cutoff) —— idx 是帧内位置, 数据增长即漂移; cutoff 是 bar 身份。
+    - 只复用协议指纹匹配的行: 旧协议/无指纹行 fail-visible 丢弃（计数上报），
+      对应点全量重算。混用会把不同窗口语义的点拼进同一 verdict
+      （recompute_dir_acc 实测: 同文件多段 run、idx 非单调、甚至跨协变量
+      checkpoint 逐字节相同 —— checkpoint 已不再能标识它的 run）。
+    - 锚 eval_end_ts 从行内还原（同 run 全行同锚; 异常多锚取末行,
+      复用靠 cutoff 键天然防错配, 不在新窗口内的点不在 completed 中即重算）。
+    """
+    completed, resumed = set(), {}
+    anchor = None
+    legacy = 0
+    if os.path.exists(cp):
+        for line in open(cp, encoding="utf-8"):
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+                if rec.get("protocol_fingerprint") != fp_now:
+                    legacy += 1
+                    continue
+                if rec.get("eval_end_ts"):
+                    anchor = str(rec["eval_end_ts"])
+                key = (str(rec.get("symbol", "")).lower(), str(rec["cutoff"]))
+                completed.add(key)
+                if "delta_pred" in rec and "delta_real" in rec and "error" not in rec:
+                    resumed[key] = rec
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                continue
+    return completed, resumed, anchor, legacy
 
 def _no_data_verdict(row, batch_id=None):
     bid = batch_id or row.get("batch_id")
@@ -117,19 +151,11 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
     vid = row["variant_id"]
     os.makedirs(checkpoint_dir, exist_ok=True)
     cp = os.path.join(checkpoint_dir, vid + ".jsonl")
-    completed, resumed = set(), {}
-    if os.path.exists(cp):
-        for line in open(cp, encoding="utf-8"):
-            if not line.strip():
-                continue
-            try:
-                rec = json.loads(line)
-                key = (str(rec.get("symbol", "")).lower(), int(rec["idx"]))
-                completed.add(key)
-                if "delta_pred" in rec and "delta_real" in rec and "error" not in rec:
-                    resumed[key] = rec
-            except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-                continue
+    fp_now = compute_protocol_fingerprint()  # v4 2.2: 本轮协议身份（窗口锚语义入指纹）
+    completed, resumed, anchor, legacy_lines = _load_checkpoint_state(cp, fp_now)
+    if legacy_lines:
+        print(f"[checkpoint] {vid}: 丢弃 {legacy_lines} 行旧协议/无指纹记录（将全量重算）",
+              flush=True)
     daily_model, hourly_model = _get_models()
     t0 = time.time()
     with open(cp, "a", encoding="utf-8") as checkpoint_fp:
@@ -139,6 +165,8 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             daily_cache_dir=daily_cache_dir,
             completed=completed, checkpoint_fp=checkpoint_fp,
             resumed_points=resumed,
+            # v4 2.1/2.2: 锚 + 协议指纹逐行落 checkpoint —— 评估窗口是锚的纯函数
+            eval_end_ts=anchor, protocol_fingerprint=fp_now,
             # T2/PR-B5: 消融模式从队列行透传（缺省 "full" 保持既有行为）。
             # 注意 checkpoint 按 variant_id 分文件，故消融批次必须用不同
             # variant_id（建议 `{sym}_{cov}_{mode}_{stage}_p{n}`），否则

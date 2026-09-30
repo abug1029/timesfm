@@ -1125,6 +1125,8 @@ def test_build_snapshot_scalars_v2(tmp_path, monkeypatch):
            "pf": 1.2, "ev": 0.05, "dir_acc": 0.56,
            "dir_acc_full": 0.56, "dir_acc_ex_roll": 0.56,
            "n_roll_excluded": 0, "n_roll_ratio": 0.0,
+           "n_dir_total": 400, "n_dir_active": 400,  # v4 2.6: 四分母入 A1
+           "n_zero_move": 0, "n_zero_ratio": 0.0,
            "dm_status": "ok", "dm_common_count": 50,
            "n_avail_variant": 50, "n_avail_baseline": 50,
            "missingness_admissible": False, "d_series_n_eff": 50,

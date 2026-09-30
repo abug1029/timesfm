@@ -15,8 +15,8 @@ from cascade.research_family import research_target_hash
 # ── H3：spec 七组件表补齐 ────────────────────────────────────
 
 
-def test_protocol_fingerprint_version_is_v3():
-    assert ev.PROTOCOL_FINGERPRINT_VERSION == "protocol_v3"
+def test_protocol_fingerprint_version_is_v4():
+    assert ev.PROTOCOL_FINGERPRINT_VERSION == "protocol_v4"
 
 
 def test_new_constants_exist():
