@@ -90,4 +90,8 @@
 - 2026-09-30 0.4(a) ✅ 本 commit：Q7 备忘录入库（`reports/2026-09-30-q7-target-effect-power-memo.md`）——途径 B 实测（16 条 v3 全长配对行 dm_common=588，与注册表逐行对账 ±0.002）：Var(d) 中位 0.45（rho≈0.1 非 0.5）、隐含 VIF 中位 2.85、Var_LR 中位 ~1.19（spec 情景 2.007 净保守 ~1.7×）；Δ_min@588(80%)=0.104–0.114；三选项量化+倾向 (a′)（Δ\*=0.08/80%，非约束）；连带发现 I（threshold 缺 /n，零生产调用）→ 新增 2.10；Q7 提交宿主裁定（不阻塞阶段 1/2）
 - 2026-09-30 0.4(b) ✅ 本 commit：Q7 宿主裁定落纸——**(a′)** Δ\*=0.08、功效 80%（α=0.05 单侧、N(品种)=986–1,199 实测口径、分级表述按 (c) 改写、live 密度修订日历+每季实测 Var_LR 复核）；memo 头部裁定行 + 本计划阶段 3 标题/3.1 同步；阶段 3 解锁
 - 2026-09-30 1.1 ✅ **1062b29**（D3 6/736）+ **1.1a 勘误**（本 commit）：复验发现 pull_history_1h 实为活码——data_management.py（在用采集调度入口）collect_1h()/backfill_gaps() 经 `run_script("pull_history_1h.py")` 裸文件名子进程边调用（五道筛第 3 筛漏检形态，第 6 次同型错误）→ 撤回归档；D3 立即账目 5/590，立即归档总量 49 文件/12,228 行；spec v2 §0(f)/E-3/§2.1/§4.2/§4.5/§7/§8 同步勘误；runbook.md:33 行保留
+- 2026-09-30 1.2 ✅ **a32898e**（D2 22/5,691）+ 1.3 ✅ **0413230**（D1 6/690，regen 双件顺延 2.9）+ 1.4 ✅ **9b996a1**（restart_three_loop_clean.sh 摘除 [4/6] 步重编号 [x/5]；guard 扩裸 (name).py 后 train_regime_model.py:301 print 提示 adjudicated 非 blocker，1.7 修正）
+- 2026-09-30 1.5 ✅ **6e7251d**（A2 16/5,257 全 100% rename + module_freeze CF-13 注记）；归档后全量对照：1544 passed/0 failed/6 skipped/1 xfailed = 1551 = 1654−103（A2 预点数）逐项吻合；tests/archive 归档测试收集 4 errors → pytest.ini norecursedirs 依据 +1
+- 2026-09-30 1.6 ✅ 本 commit：检测测试落地（tests/test_no_dead_code.py 3 tests：挂账断言/名单时效性/archive 排除+stem 碰撞）+ pytest.ini（testpaths+norecursedirs）。AST 图：108 节点（scripts 80/cascade 28）、236 边源、96 被引用；首跑 12 零引用 = 6 文档化 LIVE + 6 REVIEW_CANDIDATES 挂账（ablation_context/add_horizon_known/resmoke_vol_thr_offline/scan_vol_thr_smoke/validate_context_length/verify_baseline_consistency——零引用零文档零配置调用，不在已批准归档清单，2.9 后宿主复核）
+
 - （后续追加）
