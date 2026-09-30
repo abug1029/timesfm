@@ -118,7 +118,11 @@ def _v2_row(vid, bid, *, symbol="m", cov="rsi_state", cov_family="momentum",
         "n_avail_variant": 50, "n_avail_baseline": 50,
         "missingness_admissible": False, "d_series_n_eff": 50,
         "pair_set_hash": "ph", "covariates_used": True,
-        "baseline_dir_acc": 0.5, "protocol_fingerprint": "pf",
+        "baseline_dir_acc": 0.5,
+        # 真实当前协议指纹：build_snapshot 以 only_protocol 过滤（5eab80d），
+        # 假指纹行会被整行排除 -> min_pass_variant_dir_acc=None。
+        # 运行时实时计算，协议升级（v3->v4）后无需回改本夹具。
+        "protocol_fingerprint": fm.compute_protocol_fingerprint(),
         "cov_fingerprint": None,
     }
 

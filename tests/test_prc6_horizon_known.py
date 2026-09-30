@@ -97,8 +97,11 @@ def test_schema_version_bumped():
 
     # PR-C6 应 bump 到 v2
     assert pool.get("schema") == "fm.covariate_pool.v2"
+    # updated 是 PR-C6 落地日的一次性 stamp（不随每日运行刷新），
+    # 断言 == date.today() 会自落地次日起每日假失败；改为「非未来日期」。
     from datetime import date
-    assert pool.get("updated") == date.today().isoformat()
+    updated = pool.get("updated")
+    assert isinstance(updated, str) and updated <= date.today().isoformat()
 
 
 def test_horizon_known_covers_every_covariate():
