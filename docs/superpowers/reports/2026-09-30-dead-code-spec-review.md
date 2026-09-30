@@ -4,7 +4,7 @@
 - 审核对象：`docs/2026-09-30-dead-code-purge-spec.md`（未跟踪稿）；上游依据 `D:\FlyBuddy\fma-audit\2026-09-30-fma-overengineering-audit.md`（勿动区，只读）
 - 方法：定罪式复核（audit119/120）——每条「死」断言按四道筛验证：函数级 import / importlib 字符串 / subprocess-.sh 调用边 / tests 导入
 - 总裁定：**打回修订**（P0×6、P1×6；修订后可执行）
-- 后续：修订要求由 0.3 吸收进 spec 修订稿；宿主裁定 (d)(e) 已于 2026-09-30 落定，见实施计划「裁定记录」
+- 后续：修订要求由 0.3 吸收进 spec 修订稿；宿主裁定 (d)(e) 已于 2026-09-30 落定，见实施计划「裁定记录」；**本报告自身的勘误见 §八**
 
 ## 一、核实为真的部分
 
@@ -68,3 +68,12 @@ K2 → N1 → P1 → 本例：spec §1.1 批评上游审计「没有程序调用
 ## 七、审核自勘误
 
 初稿把变体身份函数记作 `derive_variant_id`——实际导出名 `build_variant_id`；「生产接线 0」结论不变。
+
+## 八、勘误（2026-09-30，执行前边界终验）
+
+本报告发出后、spec v2 修订落地前，执行方对归档边界做执行前终验，发现本报告自身犯下与第六节同型的错误。以下以本节为准：
+
+1. **P1-3 撤回——oi_gated_momentum.py 是活代码。** 第三节第 3 条以「仅被 2 个测试 import」为由建议连测试归档，与 v1 spec 同漏检生产引用：`cascade/features.py:1118` 函数级**相对导入**（`from .oi_gated_momentum import compute_oi_gated_momentum`，位于 `_build_oi_gated_momentum_from_daily` 内）、`features.py:1518` dispatch 分支、`scripts/extract_xreg.py:85-89` 生产注册（自称 spec §4 调用方）、`task_FM/config/covariate_pool.json:212` 在池。模块（88 行）、3 个测试（`test_oi_gated_momentum.py` 349 行——本报告亦漏计、`test_features_oi_gated_dispatch.py`、`test_extract_xreg_oi_gated.py`）、`docs/2026-09-18-oi-gated-momentum-spec.md` 全部保留；裁定 (b) 撤销（spec v2 §0）。
+2. **总量修正（第五节估算作废）。** cascade 死码候选 5 → 1（仅 lgbm_features，经裁定 e）；以 spec v2 全名单落纸为准：**立即归档 50 文件 / 12,374 行 + 顺延 2.9 三件套 3 文件 / 153 行 = 12,527 行**；cascade 保留 29 模块（第四节「保留 25」随之作废）。
+3. **test_lgbm_features.py 补录。** `tests/test_lgbm_features.py`（144 行）不匹配 `test_a2*` 命名模式，被本报告与 v1 spec 双双漏计 → A2 批测试 4 → 5 件（1,854 行），A2 批总量 **16 文件 / 5,257 行**。教训沉淀进 spec v2 §1.1 第 4 筛：测试枚举不得依赖命名模式。
+4. **第五次同型错误（K2 → N1 → P1 → spec §1.1 → 本例）。** 本报告以四道筛自居，却在 oi_gated_momentum 上漏检相对导入形态——首次轮到审核方自身，幸为执行前捕获，未造成损害。四道筛升级为**五道筛**（+相对导入形态 `from .X import`；+泛用名撞车 import 语句级验证，源自 `EXPECTED_FEATURE_COLUMNS` 同名不同源的边界确认）。spec v2 §1.1 已固化。

@@ -10,24 +10,24 @@
 |---|---|---|
 | (d) | **协议 v4 现在捆绑** | 2.1–2.8 一批次、一次重启、一波重生；不分两次指纹升级 |
 | (e) | **A2 整簇退役** | 10 个 a2 脚本 + `cascade/lgbm_features.py` + 配套测试一并 git mv 归档；`module_freeze.md` CF-13 行加一行归档注记；dead 结论入记忆文档；不做重量级归档 README |
-| (b) | oi_gated_momentum 连 2 测试归档 | 默认推荐执行（宿主未异议） |
+| (b) | **撤销**（0.3 执行前自勘误） | oi_gated_momentum 实为活码（`features.py:1118` 相对导入 + `:1518` dispatch + `extract_xreg.py:85-89` 生产注册 + `covariate_pool.json:212` 在池）→ 模块、3 测试、spec 文档全部保留；审核报告 P1-3 作废（其 §八勘误） |
 | (c) | install_praxist_llm_env_hook 保留 ACTIVE_CLI | 默认推荐执行（宿主未异议） |
 
 ## 一、阶段 0：清障与裁定包
 
 - **0.1 修 2 个测试失败** → 基准恢复 1646/0/7/1 ✅（**119e28c**）
-- **0.2 三文档入库**（本 commit）：评估报告 + 审核报告 + 本计划
-- **0.3 死代码 spec 修订入库**：吸收 P0×6 / P1×6 + 两裁定落纸 + D1/D2/D3 全名单 + 真实行数
+- **0.2 三文档入库**（**48ade27**）：评估报告 + 审核报告 + 本计划
+- **0.3 死代码 spec 修订入库**：吸收 P0×6 / P1×6 + 裁定落纸 + D1/D2/D3 全名单 + 真实行数 + (b) 撤销自勘误
 - **0.4(a) Q7 决策备忘录**：PR-C1 n_required 产出 Δ∈{0.03,0.05,0.08} × 功效∈{0.8,0.9} × 各品种实测 n_eff 可行域表 → 交付宿主裁定
 
 ## 二、阶段 1：死代码归档（分层 commit，每层 scoped 测试）
 
 - 1.1 D3 批次（名单以 0.3 修订稿落纸为准）
 - 1.2 D2 批次（同上）
-- 1.3 D1 批次（测试专用脚本，8 文件 802 行）
+- 1.3 D1 批次（证据保留档，8 文件 802 行；regen 双件顺延 2.9 → 立即 6 文件 690 行）
 - 1.4 clear_supervisor_pause.py 归档 + `restart_three_loop_clean.sh` 摘除第 [4/6] 步（P0-4）
-- 1.5 A2 整簇退役（裁定 e）：10 脚本 + `cascade/lgbm_features.py` + `tests/test_a2_*.py` + `module_freeze.md` CF-13 注记
-- 1.6 oi_gated_momentum + 2 测试归档（裁定 b）；检测测试重设计落地：AST 导入分析 + allowlist + archive 排除 + **pytest.ini**（testpaths=tests）
+- 1.5 A2 整簇退役（裁定 e）：10 脚本 + `cascade/lgbm_features.py` + 5 个测试（`test_a2_*` 4 件 + `test_lgbm_features.py`——命名模式漏网补录）+ `module_freeze.md` CF-13 注记；合计 16 文件 / 5,257 行
+- 1.6 检测测试重设计落地：AST 导入图分析（含相对导入形态）+ allowlist + archive 排除 + **pytest.ini**（testpaths=tests；P1-5）
 - 1.7 文档同步：runbook.md / three_loop_restart_protocol.md / three_loop_workflow.md / praxist_llm_env.md / WSL 根 AGENTS.md / `D:\FlyBuddy\AGENTS.md` FM_a 行 / agent 记忆
 - （暂缓至 2.9）regenerate_all_baselines / regen_rb / monitor_rb_regen.sh 三件套
 
@@ -67,7 +67,7 @@
 | P0-5（lgbm_features） | 1.5（裁定 e） |
 | P0-6（测试基线） | 0.1 ✅ |
 | P1-1/2（口径） | 0.3 修订 |
-| P1-3（oi_gated） | 1.6 |
+| P1-3（oi_gated） | **撤回**——实为活码，保留（0.3 执行前自勘误；审核报告 §八） |
 | P1-4（monitor_rb_regen） | 2.9 |
 | P1-5（检测测试 / pytest.ini） | 1.6 |
 | P1-6（D1/D2/D3 落纸） | 0.3 修订 |
@@ -83,5 +83,6 @@
 ## 七、执行日志
 
 - 2026-09-30 0.1 ✅ **119e28c**（1646 passed / 0 failed / 7 skipped / 1 xfailed，323s；裸 pytest 收集 third_party 7 errors 中断的实证留档 → 1.6）
-- 2026-09-30 0.2 ✅ 本 commit
+- 2026-09-30 0.2 ✅ **48ade27**
+- 2026-09-30 0.3 ✅ 本 commit：spec v2 入库 + 审核报告 §八勘误（P1-3 撤回）+ 本计划 (b)/1.3/1.5/1.6/映射同步。执行前边界终验：oi_gated_momentum 为活码（相对导入盲区，第五次同型错误，裁定 b 撤销）；test_lgbm_features.py 补录；最终账：立即归档 50 文件 / 12,374 行 + 顺延 2.9 三件套 3 文件 / 153 行
 - （后续追加）
