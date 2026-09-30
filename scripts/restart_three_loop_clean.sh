@@ -8,7 +8,7 @@ echo "时间: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo ""
 
 # 1. 停止旧 supervisor
-echo "[1/6] 停止旧的 supervisor 进程..."
+echo "[1/5] 停止旧的 supervisor 进程..."
 if pgrep -f praxist_supervisor.py >/dev/null 2>&1; then
   echo "  发现运行中的 supervisor"
   pkill -TERM -f praxist_supervisor.py || true
@@ -24,7 +24,7 @@ else
 fi
 
 # 2. 归档 run-level 状态
-echo "[2/6] 归档 run-level 状态..."
+echo "[2/5] 归档 run-level 状态..."
 RUN_DIR=$(ls -td task_FM/experiments/run_*_primary_task_FM 2>/dev/null | head -1 || echo "")
 if [ -n "$RUN_DIR" ] && [ -d "$RUN_DIR" ]; then
   TS=$(date +%Y%m%d_%H%M%S)
@@ -38,7 +38,7 @@ else
 fi
 
 # 3. 归档 peer-level 状态
-echo "[3/6] 归档 peer-level 状态..."
+echo "[3/5] 归档 peer-level 状态..."
 if [ -n "$RUN_DIR" ] && [ -d "$RUN_DIR" ]; then
   TS=$(date +%Y%m%d_%H%M%S)
   COUNT=0
@@ -52,20 +52,16 @@ else
   echo "  ✓ 无需归档"
 fi
 
-# 4. 清除 supervisor 暂停标志
-echo "[4/6] 清除 supervisor 暂停标志..."
-python3 scripts/clear_supervisor_pause.py
-
-# 5. 删除 lock 文件
-echo "[5/6] 删除 lock 文件..."
+# 4. 删除 lock 文件
+echo "[4/5] 删除 lock 文件..."
 COUNT=0
 [ -f data/cache/supervisor.lock ] && rm -f data/cache/supervisor.lock && COUNT=$((COUNT+1))
 [ -f data/cache/aligned_slow_loop.lock ] && rm -f data/cache/aligned_slow_loop.lock && COUNT=$((COUNT+1))
 echo "  ✓ 已删除 $COUNT 个 lock"
 
-# 6. 创建重启标记
+# 5. 创建重启标记
 if [ -n "$RUN_DIR" ] && [ -d "$RUN_DIR" ]; then
-  echo "[6/6] 创建重启标记..."
+  echo "[5/5] 创建重启标记..."
   cat > "$RUN_DIR/RESTART_MARKER.md" <<EOF
 # Restart Marker
 
