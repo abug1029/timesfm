@@ -631,7 +631,11 @@ def quota_gate(goal, now=None):
     return False, max(1, int((next_reset - now).total_seconds()))
 
 def symbol_goal_tier(variants, symbol, max_history_n=None):
-    """三档。不读文件。成功只数 counts_as_success 为真的变体。"""
+    """三档。不读文件。
+
+    计入：counts_as_success 为真，或已落盘的 run_label 恰好是 confirmed 且 fdr_pass 为真。
+    不补写裁决里没有的分类字段。
+    """
     import preregistry as _prereg
 
     n_confirm_required = _prereg.n_confirm_required_for_symbol(symbol)
@@ -641,6 +645,12 @@ def symbol_goal_tier(variants, symbol, max_history_n=None):
             ok = _prereg.counts_as_success(row) is True
         except (TypeError, ValueError):
             ok = False
+        getter = getattr(row, "get", None)
+        if not ok and callable(getter):
+            ok = (
+                getter("run_label") == "confirmed"
+                and getter("fdr_pass") is True
+            )
         if ok:
             n_confirmed_variants += 1
     if n_confirmed_variants >= 1:

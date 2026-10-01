@@ -84,6 +84,24 @@ def test_missing_fdr_pass_is_not_a_success():
     assert counted["tier"] == "可预测"
 
 
+def test_stored_confirmed_label_counts_without_classifier_inputs():
+    row = {"symbol": "ss", "run_label": "confirmed", "fdr_pass": True}
+    assert "meets_min_info" not in row
+    out = sup.symbol_goal_tier([row], "ss")
+    assert out["n_confirmed_variants"] == 1
+    assert out["tier"] == "可预测"
+
+    false_row = dict(row)
+    false_row["fdr_pass"] = False
+    assert sup.symbol_goal_tier([false_row], "ss")["n_confirmed_variants"] == 0
+
+    missing = dict(row)
+    del missing["fdr_pass"]
+    missed = sup.symbol_goal_tier([missing], "ss")
+    assert missed["n_confirmed_variants"] == 0
+    assert missed["tier"] == "需更多样本"
+
+
 def test_ss_threshold_comes_from_n_confirm_required_for_symbol(monkeypatch):
     assert pr.n_confirm_required_for_symbol("ss") == 1116
     seen = []
