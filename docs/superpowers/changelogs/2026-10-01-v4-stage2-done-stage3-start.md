@@ -122,6 +122,25 @@ v4 裁决从零累积；首条 v4 行 `p_inventory_bf6661363084`（pf=f02b2a43�
 | 测试基准 | 1557/0/6/1 |
 | 待宿主 | REVIEW_CANDIDATES 6 件裁定；fu mape 观察项 |
 
+### 23:00 校准快照（supervisor 续跑 11h50m 后）
+
+写入时快照（§五）为 15:00 时点；23:00 复核时 v4 裁决已实质累积，一并固定：
+
+| 项 | 值 |
+|---|---|
+| supervisor | PID 418 存活 11h50m，心跳 `2026-10-01T23:00:56`（run_id 7d5d85f0c5dd） |
+| registry | **203 行 = 188 跨协议旧行 + 15 条 v4 行**（`active=15/192`，排除 v3 91ab913e） |
+| v4 行分布 | 品种 sr 6 / jd 3 / m 3 / sh 2 / p 1；family momentum 5 / inventory 4 / term_structure 3 / volatility 3 |
+| gate_pass | 3/15 True；top：`sh_momentum_3bd3de5a6fd8` dir_acc=0.564、`sh_momentum_f8bc3e69c749` 0.55、`p_inventory_bf6661363084` 0.531 |
+| run_mode | 15/15 = `exploration`（确认机制尚未实施，符合预期） |
+| 活跃视图 passing | 0（无 fdr_pass → 严格链不认，符合 W3.4） |
+| 队列 | `aligned_pending.jsonl` 0 行（首波两行已消费完） |
+
+**观察项（非 blocker）**：
+1. **star 字段全为 None**（15/15 v4 行）——v3 行的 2★ 评级来源与 v4 行的差异待查（疑与 `meets_min_info`/多字段门槛相关）；不影响 gate_pass 判定。
+2. **agri 板块降级告警**：`Sector partial degradation: agri has 5/10 symbols failed (50%). Approaching circuit-breaker` ——circuit-breaker 仅在板块全集失败时拦（提案饿死红线防护），5/10 未触发拦截，提案流未断；列入下轮巡检。
+3. 对方 agent commit `f0f33d4`（v3→v4 文档同步，仅动 dead-code-spec-review + three_loop_workflow）与我方 `b2cf4dd` 无重叠。
+
 ## 六、下一步（阶段 3 实施，尚未落码）
 
 - **A** `scripts/preregistry.py` 纯逻辑 + `tests/test_preregistry.py`（tests 37/38/40/44/68 + (a′) golden）
