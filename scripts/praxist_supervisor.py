@@ -239,7 +239,8 @@ def _stamp_member(members, row, label):
 
 
 def _seal_if_all_terminal(members, label, now, audit):
-    # underpowered / refuted_by_contamination 不在研究 family 的终态集合里，不会封账。
+    # underpowered / refuted_by_contamination 也是终态，可以封账。
+    # family_bh_fdr 对这两种状态固定按 p=1，不看成员上已写的 p_value。
     if _fam_all_terminal(members):
         sealed, _adjusted = seal_research_family(members, now)
         return {

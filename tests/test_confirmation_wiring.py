@@ -245,6 +245,66 @@ def test_confirmation_uses_prereg_checkpoint_window_and_label(tmp_path, monkeypa
     assert verdict["fdr_pass"] is not True
 
 
+def _build_summary_shaped(**extra):
+    def _summary(s, cand, **kwargs):
+        verdict = {
+            "schema": "fm.aligned_verdict.v2",
+            "status": "ok",
+            "stage": "aligned",
+            "symbol": cand["symbol"],
+            "cov_override": cand["cov_override"],
+            "batch_id": kwargs.get("batch_id"),
+            "n": 30,
+            "n_eff": 30,
+            "dir_acc": 0.55,
+            "gate_pass": True,
+            "p_value": 0.01,
+            "d_bar_le_zero": False,
+            "fdr_pass": None,
+            "run_mode": kwargs.get("run_mode", "exploration"),
+            "run_label": None,
+            "dm_status": "ok",
+            "pairing_valid": True,
+            "missingness_admissible": True,
+            "covariates_used": True,
+            "n_confirm_actual": 30,
+            "n_confirm_required": 30,
+        }
+        verdict.update(extra)
+        return verdict
+
+    return _summary
+
+
+def _run_shaped_confirmation(tmp_path, monkeypatch, **extra):
+    _install_slow_fakes(monkeypatch, tmp_path, _build_summary_shaped(**extra))
+    return asl.run_aligned_candidate(
+        _row(
+            run_mode="confirmation",
+            prereg_id="abcdef0123456789",
+            confirm_from_ts="2026-10-01 00:00:00",
+            n_confirm_required=30,
+        ),
+        daily_cache_dir=str(tmp_path / "dc"),
+        checkpoint_dir=str(tmp_path / "cp"),
+        registry_path=str(tmp_path / "verdicts.jsonl"),
+    )
+
+
+def test_build_summary_shape_without_meets_min_info_stays_underpowered(tmp_path, monkeypatch):
+    verdict = _run_shaped_confirmation(tmp_path, monkeypatch)
+    assert "meets_min_info" not in verdict
+    assert verdict["run_label"] == "underpowered"
+    assert verdict["fdr_pass"] is not True
+
+
+def test_build_summary_shape_with_meets_min_info_is_confirmed(tmp_path, monkeypatch):
+    verdict = _run_shaped_confirmation(tmp_path, monkeypatch, meets_min_info=True)
+    assert verdict["meets_min_info"] is True
+    assert verdict["run_label"] == "confirmed"
+    assert verdict["fdr_pass"] is not True
+
+
 def test_confirmation_short_sample_does_not_write_label(tmp_path, monkeypatch):
     captured = _install_slow_fakes(
         monkeypatch, tmp_path, _summary_factory(3, classify=True),
@@ -326,21 +386,24 @@ def test_finalize_short_sample_returns_peek_audit_and_not_confirmed():
     assert members[0]["status"] == "registered"
 
 
-def test_finalize_early_seal_is_underpowered_and_does_not_seal():
+def test_finalize_early_seal_underpowered_seals_with_adjusted_p_one():
     members = [_member("jd_vor_abc")]
     now = datetime(2026, 10, 2, tzinfo=timezone.utc)
     row = _passing_row(
         n_confirm_actual=10,
         n_confirm_required=1199,
         request_early_seal=True,
+        p_value=0.01,
     )
     out = sv.finalize_confirmation(row, members, now)
     assert out["run_label"] == "underpowered"
     assert out["audit"] is None
-    assert out["sealed"] is False
+    assert out["sealed"] is True
     assert out["members"][0]["status"] == "underpowered"
+    assert out["members"][0]["p_value_family_adjusted"] == 1.0
+    assert out["members"][0]["family_sealed_at"]
     assert out.get("fdr_pass") is not True
-    assert "family_sealed_at" not in out["members"][0]
+    assert out["members"][0].get("fdr_pass") is not True
 
 
 def test_finalize_seals_only_when_every_member_is_terminal():

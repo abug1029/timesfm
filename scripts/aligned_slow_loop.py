@@ -155,7 +155,30 @@ def _confirmation_run_label(verdict, row):
     n_required = label_row.get("n_confirm_required")
     if n_actual is None or n_required is None or n_actual < n_required:
         return None
+    _fill_missing_dm_fields(label_row)
     return _prereg.classify_confirmation(label_row)
+
+
+def _fill_missing_dm_fields(label_row):
+    """缺这些键时从 DM 字段补上。已有的键不覆盖。不补 meets_min_info。"""
+    if "common_insufficient" not in label_row:
+        label_row["common_insufficient"] = label_row.get("dm_status") in {
+            "insufficient_common", "no_common_cutoff",
+        }
+    if "protocol_compatible" not in label_row:
+        dm_status = label_row.get("dm_status")
+        present = "dm_status" in label_row and dm_status is not None
+        label_row["protocol_compatible"] = (
+            present and dm_status not in {"protocol_mismatch", "no_baseline"}
+        )
+    if "dm_significant" not in label_row:
+        p_value = label_row.get("p_value")
+        label_row["dm_significant"] = (
+            isinstance(p_value, (int, float))
+            and not isinstance(p_value, bool)
+            and p_value < 0.05
+            and label_row.get("d_bar_le_zero") is not True
+        )
 
 
 def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path, batch_id=None):

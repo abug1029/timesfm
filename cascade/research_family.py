@@ -21,10 +21,17 @@ FAMILY_MAX_MEMBERS = 20                   # family_max_members
 T_MAX = timedelta(days=180)               # 单成员 registered_at 起算 180 天
 SEAL_DEADLINE_GRACE = T_MAX               # 封账上界 = close_at + T_max
 
-TERMINAL_STATES = frozenset({"confirmed", "refuted", "abandoned", "timeout"})
+TERMINAL_STATES = frozenset({
+    "confirmed", "refuted", "abandoned", "timeout",
+    "underpowered", "refuted_by_contamination",
+})
 
-# 计入 K 的终态：abandoned / timeout 也计入，否则「结果不好就丢掉」= 缩小 K = p-hacking
-COUNTED_TERMINAL = frozenset({"confirmed", "refuted", "abandoned", "timeout"})
+# 计入 K 的终态：abandoned / timeout 也计入，否则「结果不好就丢掉」= 缩小 K = p-hacking。
+# underpowered / refuted_by_contamination 同样计入 K，但 p 固定为 1（见 family_bh_fdr）。
+COUNTED_TERMINAL = frozenset({
+    "confirmed", "refuted", "abandoned", "timeout",
+    "underpowered", "refuted_by_contamination",
+})
 
 SCHEMA_PREFIX = "research_target_v1"
 SEPARATOR = "|"
@@ -249,6 +256,8 @@ def family_bh_fdr(members: Sequence[dict], fdr_q: float = 0.10) -> dict[str, flo
 
     K 计入全部终态成员，含 abandoned / timeout（否则「结果不好就悄悄丢掉」
     等于缩小 K，等于 p-hacking）。未在 K 内取得 p 值的成员按 p=1 参与排序。
+    underpowered / refuted_by_contamination 即使写了 p_value 也按 p=1。
+    abandoned / timeout 仍用各自的 p_value，缺失才按 1。
 
     Returns:
         {variant_id: 校正后 p 值}
@@ -260,6 +269,9 @@ def family_bh_fdr(members: Sequence[dict], fdr_q: float = 0.10) -> dict[str, flo
         return out
 
     def p_of(m: dict) -> float:
+        # 这两种终态固定 p=1，不采用成员上已写的 p_value。
+        if m.get("status") in {"underpowered", "refuted_by_contamination"}:
+            return 1.0
         p = m.get("p_value")
         return 1.0 if p is None else float(p)
 
