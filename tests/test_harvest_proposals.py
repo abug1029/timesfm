@@ -43,6 +43,15 @@ def _prop(symbol="m", cov="vor", **over):
     return p
 
 
+FP_TEST = "ab" * 32
+
+
+def _vid(sym, cov, family="volatility"):
+    """镜像生产 fam 推导 (pool 优先, 提案 family 兜底) 的 W6.4 vid。"""
+    fam = (S.load_covariate_pool().get(cov, {}) or {}).get("family") or family
+    return "%s_%s_%s" % (sym, fam, FP_TEST[:12])
+
+
 @pytest.fixture
 def tmproot(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
@@ -50,6 +59,8 @@ def tmproot(tmp_path, monkeypatch):
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
     monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
+    # W6.4: 固定实验指纹, 测试 vid 确定性 (真实 fp 由生产路径覆盖)
+    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
     return str(tmp_path)
 
 
@@ -66,7 +77,7 @@ def test_good_proposal_enqueued(tmproot):
     rows, stats = _harvest(tmproot)
     assert stats["selected"] == 1
     r = rows[0]
-    assert r["variant_id"] == "m_vor"
+    assert r["variant_id"] == _vid("m", "vor")
     assert r["source"] == "peer_proposal"
     assert r["max_points"] == 600
     assert r["stage"] == "aligned"
@@ -109,7 +120,7 @@ def test_new_covariate_goes_to_backlog(tmproot):
 
 def test_dead_dedup(tmproot):
     _make_run(tmproot, _prop())
-    rows, stats = _harvest(tmproot, dead={"m_vor"})
+    rows, stats = _harvest(tmproot, dead={_vid("m", "vor")})
     assert stats["selected"] == 0
     assert "dedup" in stats["reject_reasons"]
 
@@ -125,7 +136,7 @@ def test_family_diversity_pass_one(tmproot):
     # 从 backlog 看不到 family (已 pop); 用 variant 推断: 两个选中应来自不同族
     assert len({r["variant_id"] for r in rows}) == 2
     # Pass1 每族一个 → 选中集合必含 positioning 的 ss_oi
-    assert "ss_oi" in {r["variant_id"] for r in rows}
+    assert _vid("ss", "oi", family="positioning") in {r["variant_id"] for r in rows}
 
 
 def test_priority_symbols_tiered_seat_fill(tmproot, monkeypatch):
@@ -146,7 +157,9 @@ def test_priority_symbols_tiered_seat_fill(tmproot, monkeypatch):
     vids = {r["variant_id"] for r in rows}
     assert stats["selected"] == 3
     # tier0 两个必选, 第三席给 tier1(cj, 欠样本的 1 星) 而非任何 2 星
-    assert {"jd_nvi", "m_oi", "cj_vor"} == vids
+    assert {_vid("jd", "nvi", "positioning"),
+            _vid("m", "oi", "volume"),
+            _vid("cj", "vor", "volatility")} == vids
 
 def test_priority_symbols_disabled_keeps_score_order(tmproot, monkeypatch):
     """不传 priority_symbols 时行为不变 (按分数/族/vid)。"""
@@ -247,7 +260,7 @@ def test_active_symbol_still_enqueued(tmproot, monkeypatch):
     _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
     rows, stats = _harvest(tmproot)
     assert stats["selected"] == 1
-    assert rows[0]["variant_id"] == "m_vor"
+    assert rows[0]["variant_id"] == _vid("m", "vor")
 
 
 def test_production_goal_survivors_per_cycle_is_3():
@@ -292,7 +305,7 @@ def test_failure_delta_enqueued_when_present(tmproot):
     _make_run(tmproot, _prop(symbol="m", cov="oi", failure_delta=DELTA))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 1
-    assert rows[0]["variant_id"] == "m_oi"
+    assert rows[0]["variant_id"] == _vid("m", "oi")
 
 
 def test_dead_family_harvest_rejected(tmproot):
@@ -491,3 +504,29 @@ def test_reject_reasons_and_counters_stay_consistent(tmproot):
     assert stats["quality_below_threshold"] == stats["reject_reasons"].get(
         "quality_below_threshold", 0)
 
+
+
+def test_experiment_fp_unavailable_rejects(tmproot, monkeypatch):
+    """W6.4: 指纹要素不可解析 → 拒收 (experiment_fp_unavailable), 不回退旧式身份。"""
+    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: None)
+    _make_run(tmproot, _prop())
+    rows, stats = _harvest(tmproot)
+    assert rows == [] and stats["selected"] == 0
+    assert stats["reject_reasons"].get("experiment_fp_unavailable") == 1
+
+
+def test_family_unresolved_rejects(tmproot, monkeypatch):
+    """pool 无该 cov 且提案未带 covariate_family → family_unresolved。"""
+    monkeypatch.setattr(S, "load_covariate_pool", lambda: {})
+    _make_run(tmproot, _prop(cov="vor", family=""))
+    rows, stats = _harvest(tmproot)
+    assert rows == [] and stats["selected"] == 0
+    assert stats["reject_reasons"].get("family_unresolved") == 1
+
+
+def test_variant_id_format_is_experiment_identity(tmproot):
+    """vid = {symbol}_{cov_family}_{fp[:12]}: 请求名不进身份键 (W6.4)。"""
+    _make_run(tmproot, _prop())
+    rows, _stats = _harvest(tmproot)
+    assert rows and rows[0]["variant_id"] == _vid("m", "vor")
+    assert rows[0]["variant_id"] != "m_vor"

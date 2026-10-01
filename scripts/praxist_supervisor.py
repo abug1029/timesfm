@@ -10,7 +10,8 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, FM_ROOT)
 import registry_lib as rl
 from goal_dsl import evaluate_goal
-from cascade.cov_family import ALLOWED_FAMILIES
+from cascade.cov_family import ALLOWED_FAMILIES, resolve_cov_family
+from cascade import experiment_fingerprint as ef
 try:
     from cascade.statistical_tests import bh_fdr_promote
 except ImportError:
@@ -533,7 +534,7 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     n_one_star_symbols_hit = len(symbols_hit & GOAL_SYMBOLS_SET)
     n_unique_pass_variants = len({v["variant_id"] for v in passing})
     n_families_hit = len(families_hit)
-    # v23: v2 过门变体的 min dir_acc (pass_variants = gate_pass 且 (fdr_pass 或 migrated_pass);
+    # v23: v2 过门变体的 min dir_acc (pass_variants = gate_pass 且 fdr_pass;
     # v1 legacy: gate_pass 且 ev>0);
     # 无过门变体 (或无数值 dir_acc) 时为 None, goal 条件用 is not None 防护判 unmet 而非 eval error。
     pass_dir_accs = [float(v["dir_acc"]) for v in passing
@@ -660,7 +661,11 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
                 cov = d["cov_override"]
             except KeyError:
                 continue
-            vid = f"{symbol}_{cov}"
+            fam = resolve_cov_family({"cov_override": cov})
+            fp = _experiment_fp_for(symbol, cov)
+            if fam == "unknown" or fp is None:
+                continue  # W6.4: 身份不可得 → 跳过, 不回退旧式 symbol_cov
+            vid = ef.build_variant_id(symbol, fam, fp)
             if vid in dead or vid in existing or vid in passing_ids or vid in seen:
                 continue
             seen.add(vid)
@@ -725,7 +730,7 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
     lines = ["## Known aligned verdicts (supervisor snapshot)",
              "v2 pass (gate_pass=True AND fdr_pass=True AND p_value NOT NULL AND run_mode='confirmation'): already solved, do NOT re-propose.",
              "v1 legacy: pass by ev>0 (legacy econ caliber, schema=v1 entries only).",
-             "hard-gate-but-losing (gate_pass=True but not (fdr_pass or migrated_pass)): 过硬门但未过统计检验; not a success; do not re-propose as solved.",
+             "hard-gate-but-losing (gate_pass=True but not fdr_pass): 过硬门但未过统计检验; not a success; do not re-propose as solved.",
              "DEAD (gate_pass=False, status=ok): never revive without a mechanism correction.",
              ""]
     items = list(snapshot.values()) if isinstance(snapshot, dict) else []
@@ -1216,6 +1221,8 @@ def _proposal_priority_score(prop, cov, symbol, snapshot, status_map=None, repea
         if n_fam_ok >= 4 and n_fam_pass == 0:
             score -= 8.0
     # Cross-run repeat offender penalty
+    # 注: 此 vid 是与快环 shared_findings.variant_name (旧式 symbol_cov) 的 join 键,
+    # 不是 W6.4 实验身份 —— 勿改 build_variant_id, 否则 repeat penalty 静默失效。
     vid = "%s_%s" % (symbol, cov)
     repeat_counts = repeat_counts or {}
     n_runs = repeat_counts.get(vid, 0)
@@ -1516,7 +1523,6 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 _reject("cov_not_in_active_pool"); continue
             if len(mechanism) < 40:
                 _reject("mechanism_too_short"); continue
-            vid = "%s_%s" % (symbol, cov)
             sym_st = str((status_map.get(symbol) or {}).get("status") or "ACTIVE").upper()
             if sym_st == "DEAD":
                 _reject("symbol_dead"); continue
@@ -1525,8 +1531,16 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             # DEAD family check: 4+ ok verdicts, 0 pass → family is dead
             dead_fams = _dead_families(snapshot or {})
             fam = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or ""
-            if fam and fam in dead_fams:
+            if not fam:
+                _reject("family_unresolved"); continue
+            if fam in dead_fams:
                 _reject("family_dead"); continue
+            # W6.4 (spec §4.5): vid = 实验身份 {symbol}_{cov_family}_{experiment_fp[:12]},
+            # 非请求名拼接; 身份要素不可解析 → 拒收, 禁止回退旧式 symbol_cov。
+            fp = _experiment_fp_for(symbol, cov)
+            if fp is None:
+                _reject("experiment_fp_unavailable"); continue
+            vid = ef.build_variant_id(symbol, fam, fp)
             if _has_prior_failure(snapshot or {}, symbol, cov):
                 delta = str(p.get("failure_delta") or "").strip()
                 if len(delta) < 20:
@@ -1682,6 +1696,48 @@ def _valid_n_for_symbol(symbol):
         return n_ok
     except Exception:
         return None
+
+_FP_WEIGHTS_CACHE: dict = {}
+_FP_TARGET_CACHE: dict = {}
+
+
+def _experiment_fp_for(symbol, cov):
+    """W6.4 实验身份要素: 权重目录 + 品种 1H close 序列 + 慢环窗口常数 + 请求协变量。
+
+    compute_experiment_fingerprint 唯一家在 cascade/experiment_fingerprint.py,
+    本函数是其 supervisor 侧装配者; build_variant_id 的 fp 入参即返回值。
+    任何一环不可解析 → None (fail-visible), 调用方必须拒绝候选,
+    禁止回退旧式 symbol_cov 身份 (spec §4.5 W6.4)。
+    weights 解析一次缓存; target 逐品种缓存 (ALLOWED_SYMBOLS 有界)。
+    """
+    try:
+        import data.config as dc
+        from config.backtest_config import CONTEXT_BARS, HORIZON, STEP
+        wdir = _FP_WEIGHTS_CACHE.get("weights_dir")
+        if wdir is None:
+            wdir = dc.get_timesfm_model_path()
+            if not wdir or not Path(wdir).is_dir():
+                return None
+            _FP_WEIGHTS_CACHE["weights_dir"] = wdir
+        target = _FP_TARGET_CACHE.get(symbol)
+        if target is None:
+            from data.data_store import DataStore
+            store = DataStore(symbol)
+            try:
+                h1 = store.get_main_contract_1h(limit=99999)
+            finally:
+                store.close()
+            if h1 is None or h1.empty:
+                return None
+            target = [float(x) for x in h1["close_price"].tolist()]
+            if not target:
+                return None
+            _FP_TARGET_CACHE[symbol] = target
+        return ef.compute_experiment_fingerprint(
+            wdir, target, CONTEXT_BARS, HORIZON, STEP, [cov])
+    except Exception:
+        return None
+
 
 def _symbol_n_table():
     """[(symbol, valid_n)] for evaluator-allowed symbols; [] if evaluator unavailable."""

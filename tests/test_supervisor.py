@@ -88,10 +88,23 @@ def _eval_summary(symbol, cov, ev, n=6, pf=1.3, max_points=None, dir_acc=0.55):
         },
     }
 
-def test_harvest_survivors(tmp_path):
+FP_TEST = "ab" * 32
+
+
+def _vid(sym, cov, family=None):
+    """镜像生产 fam 推导的 W6.4 vid (survivors 走 resolve_cov_family 实池)。"""
+    from cascade.cov_family import resolve_cov_family
+    fam = resolve_cov_family({"cov_override": cov})
+    if fam == "unknown" and family:
+        fam = family
+    return "%s_%s_%s" % (sym, fam, FP_TEST[:12])
+
+
+def test_harvest_survivors(tmp_path, monkeypatch):
     run = tmp_path / "task_FM" / "experiments" / "run_2026-09-02_10-00-00_x"
     # 保留的 harvest_survivors (回滚用) 读旧诊断产物 evaluation_summary.json;
     # 新提案产物 proposals/*.json 由 harvest_proposals 收割, 见 test_harvest_proposals.py。
+    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: FP_TEST)
     d1 = run / "results" / "gen_0" / "p0" / "m_rsi_state_diagnostic_p6" / "diagnostic"
     d1.mkdir(parents=True)
     (d1 / "evaluation_summary.json").write_text(json.dumps(
@@ -113,7 +126,7 @@ def test_harvest_survivors(tmp_path):
     rows = sup.harvest_survivors(str(tmp_path), snapshot={}, dead=set(),
                                  existing=set(), top_k=5, aligned_max_points=400)
     vids = [r["variant_id"] for r in rows]
-    assert vids == ["m_ccl", "m_rsi_state"]  # dir_acc 降序; oi/ha_body 被过滤 (dir_acc<0.50)
+    assert vids == [_vid("m", "ccl"), _vid("m", "rsi_state")]  # dir_acc 降序; oi/ha_body 被过滤 (dir_acc<0.50)
     assert all(r["max_points"] == 400 for r in rows)
     # 同 cov 的 p3 不得再占 top_k
     run2 = tmp_path / "task_FM" / "experiments" / "run_2026-09-02_12-00-00_y"
@@ -125,8 +138,8 @@ def test_harvest_survivors(tmp_path):
     rows2 = sup.harvest_survivors(str(tmp_path), snapshot={}, dead=set(),
                                   existing=set(), top_k=5, aligned_max_points=400)
     vids2 = [r["variant_id"] for r in rows2]
-    assert vids2.count("m_rsi_state") == 1
-    assert vids2[0] == "m_rsi_state"  # 更新 run 的更高 ev 优先, 身份仍合并
+    assert vids2.count(_vid("m", "rsi_state")) == 1
+    assert vids2[0] == _vid("m", "rsi_state")  # 更新 run 的更高 ev 优先, 身份仍合并 (同 sym+cov → 同 fp → 同 vid)
 
 def _v(vid, **kw):
     base = {"variant_id": vid, "symbol": "m", "cov_override": "rsi_state",
@@ -323,6 +336,7 @@ def test_429_stop_via_main_once_then_resume(tmp_path, monkeypatch):
 
 def test_harvest_survivors_enter_slow_no_start_no_cycle(tmp_path, monkeypatch):
     """有幸存者: harvest 入队, phase=slow, 本 tick 不开下一轮快环, cycles 不加。"""
+    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: FP_TEST)
     calls = []
     pops = []
     def fake_praxist(args, **k):
@@ -368,7 +382,7 @@ def test_harvest_survivors_enter_slow_no_start_no_cycle(tmp_path, monkeypatch):
     vids = [json.loads(line)["variant_id"]
             for line in (tmp_path / "pending.jsonl").read_text(encoding="utf-8").splitlines()
             if line.strip()]
-    assert "m_rsi_state" in vids
+    assert _vid("m", "rsi_state", family="oscillator") in vids
 
 
 def test_harvest_empty_counts_cycle_and_allows_start(tmp_path, monkeypatch):
@@ -1521,3 +1535,17 @@ def test_dead_families_identified():
     assert "ccl" in dead, "ccl should be DEAD (4 ok, 0 pass)"
     assert "oi" not in dead, "oi should NOT be DEAD (has pass)"
 
+
+
+
+def test_harvest_survivors_fp_unavailable_skips(tmp_path, monkeypatch):
+    """W6.4: 幸存者收割指纹不可解析 → 静默跳过 (不入队, 不回退旧式身份)。"""
+    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: None)
+    run = tmp_path / "task_FM" / "experiments" / "run_2026-09-02_10-00-00_x"
+    d1 = run / "results" / "gen_0" / "p0" / "m_ccl_diagnostic_p6" / "diagnostic"
+    d1.mkdir(parents=True)
+    (d1 / "evaluation_summary.json").write_text(json.dumps(
+        _eval_summary("m", "ccl", ev=0.10, n=6, pf=1.5)))
+    rows = sup.harvest_survivors(str(tmp_path), snapshot={}, dead=set(),
+                                 existing=set(), top_k=5, aligned_max_points=400)
+    assert rows == []
