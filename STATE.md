@@ -60,7 +60,16 @@
 **未做**：PR-D1 / PR-D2（Stage 4 正式）、supervisor variant_id 接线、
 supervisor 重启（用户保留决定）。
 **→ 2026-10-01 更新**：后两项已完成——variant_id 生产接线（commit `c0e3aa4`，计划 2.4）、
-supervisor v4 重启（PID 418，计划 2.9）；PR-D1/PR-D2 = v4 计划阶段 3，待启动。
+supervisor v4 重启（PID 418，计划 2.9）。
+**→ 2026-10-01（阶段 3 启动）**：PR-D1/D2 = v4 计划阶段 3，设计定型（Q7 裁定 (a′)：
+Δ\*=0.08、功效 80%、单侧 α=0.05、N(品种)=实测 986–1,199 点），实施分层 A–E 推进中。
+关键勘查结论：① `run_symbol_backtest` 缺 `eval_start_ts`（需新增；`eval_indices[:max_points]`
+取前 n 与确认集语义天然一致）；② 确认行须用 `{vid}__prereg_{id[:8]}.jsonl` 隔离 checkpoint，
+否则 resume 会把探索点混进确认 DM；③ `n_confirm_required` 用生产 `n_required(vif=1.0, delta=0.08)`
+逐品种复算与 Q7 表逐项吻合；④ 确认 verdict 写时落个体标签（confirmed/refuted/underpowered），
+成功判定仍走含 `fdr_pass` 的严格链（只由 family 封账盖章）；⑤ goal 阈值硬编码在 `build_snapshot`，
+yaml `phase_definitions` 只是文档；⑥ 预算为真强制，999999 无界须改有界。
+详见 `docs/superpowers/changelogs/2026-10-01-v4-stage2-done-stage3-start.md`。
 
 ---
 
