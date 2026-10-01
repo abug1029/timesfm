@@ -1,4 +1,4 @@
-# FM_a 三环工作流 -- 按代码实写（2026-09-29）
+# FM_a 三环工作流 -- 按代码实写（2026-09-29；2026-10-01 更新 §6 协议状态）
 
 > 本文档是**代码的转述**，不是规范也不是计划。每个断言都锚定到 `文件:行号`。
 > 方案 A 合同：peer 只写提案 JSON，**不加载 TimesFM、不跑任何评估**（已落实）。
@@ -201,8 +201,9 @@ data = mb.run_symbol_backtest(
 
 | 协议指纹 | 条数 | 状态 |
 |---------|:----:|------|
-| `91ab913e...`（v3） | **2** | **当前有效** |
-| `bd851c9c...`（v2） | 27 | 排除（10 条一次性脚本 + 16 条消融实验，均 2026-09-28） |
+| `f02b2a43...`（v4） | **6** | **当前有效** |
+| `91ab913e...`（v3） | 18 | 排除（协议升级，全排除） |
+| `bd851c9c...`（v2） | 27 | 排除 |
 | 无指纹 | 143 | 排除（pre-v2 遗留） |
 
 ### pass_variants 过滤链
@@ -221,8 +222,9 @@ def pass_variants(snapshot):
             if gate_pass and ev > 0: out.append(v)
 ```
 
-**当前 pass_variants 返回 0 条**：
-- v3 的 2 条中，1 条 `fdr_pass=False`，1 条 `run_mode="exploration"`
+**当前 pass_variants（v4 活跃视图）返回 0 条**：
+- v4 的 6 条从零累积，尚不足统计样本
+- v3 的 18 条全被协议指纹过滤排除（active=v4）
 - 0 条 `run_mode="confirmation"`（PR-D1 未实施，pre-registration 不存在）
 
 ---
@@ -320,7 +322,7 @@ main() [2193]
   |     +-- subprocess.Popen(praxist run ...) [start_new_session=True]
   |
   +-- materialize_known_verdicts() [2581]
-  |     +-- load_snapshot(REGISTRY, only_protocol=v3_fp) -> 过滤后 2 条
+  |     +-- load_snapshot(REGISTRY, only_protocol=_current_protocol_fingerprint()) -> 按当前活跃协议过滤
   |
   +-- materialize_covariate_menu() [2585]
 

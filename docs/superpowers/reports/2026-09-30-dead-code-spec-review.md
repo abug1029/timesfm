@@ -14,7 +14,7 @@ spec 对上游审计的 E-1～E-5 勘误逐项属实：
 2. `docs/module_freeze.md:14` 生产入口表确认相关模块的生产地位。
 3. 37 脚本名单行数全部准确。
 4. 名单之外零引用脚本 = 0（37 名单按代码引用口径完备）。
-5. **fu 基线仍 v2** `bd851c9ca0730dc5`（588 行）——此项纠正了 Stage 3 评估报告 W1.4 的 9/9 记录。
+5. ~~**fu 基线仍 v2** `bd851c9ca0730dc5`（588 行）~~ → **2026-10-01 v4 重生波已补 fu 基线**（v4 指纹 `f02b2a43`，n=588，dir_acc=0.448）——此项纠正了 Stage 3 评估报告 W1.4 的 9/9 记录。
 
 ## 二、P0（照原稿执行必出事故）
 
@@ -43,7 +43,7 @@ spec 用 a2 workers 作 features.py 的活证人，却判 workers 的另一依�
 
 1. **可达性四盲区**：函数级 import / importlib 字符串 / subprocess-.sh 调用边 / tests 导入——「名字不在别处出现」≠「不可达」。
 2. **判死口径被自家名单违反**（4/37）：enqueue_fast_loop_proposals（three_loop_workflow.md:290）、pull_history_1h（runbook.md:33 行数表）、install_praxist_llm_env_hook（praxist_llm_env.md:69/82，文档化人工命令）、clear_supervisor_pause（three_loop_restart_protocol.md）。口径应改为「**未被在用文档记载为可运行命令**」。
-3. **oi_gated_momentum.py** 被 2 个测试 import（test_features_oi_gated_dispatch.py:21/26、test_extract_xreg_oi_gated.py:85/105）——须连测试一起归档才自洽（裁定 (b) 采推荐：归档）。
+3. **oi_gated_momentum.py** 被 2 个测试 import（test_features_oi_gated_dispatch.py:21/26、test_extract_xreg_oi_gated.py:85/105）——须连测试一起归档才自洽 ~~（裁定 (b) 采推荐：归档）~~ → **已撤销**（§八勘误确认 oi_gated_momentum 为活代码，全部保留）。
 4. **monitor_rb_regen.sh:29-32** 引用 regen_rb.py——regen_rb 归档会让监控脚本永久 exit 1；三件套（regenerate_all_baselines / regen_rb / monitor_rb_regen.sh）顺延至重生波后（2.9）归档。
 5. **检测测试需重设计**：AST 导入分析 + allowlist + archive 目录排除 + pytest.ini。实证：2026-09-30 0.1 验收时裸 `pytest` 递归收集 `third_party/timesfm-3.0-official` 7 个测试文件、收集阶段 7 errors 中断（72.77s 白跑）。
 6. **D1/D2/D3 名单缺陷**：D1 名单 8 文件实为 **802 行** ≠ spec ~2,600；D2/D3 成员全文未落纸，无法执行。
