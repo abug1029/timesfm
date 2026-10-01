@@ -253,6 +253,45 @@ def _append_progress(path, line: str) -> None:
         print(f"  [WARN] progress log write failed: {e}")
 
 
+def _bar_dt(dts, idx):
+    if hasattr(dts, "iloc"):
+        return dts.iloc[idx]
+    return dts[idx]
+
+
+def _close_ts(dt) -> str:
+    # 与评估循环同一公式：开盘 dt + 1h，字典序比较，不解析 eval_start_ts。
+    return (pd.Timestamp(dt) + pd.Timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def select_eval_indices(dts, *, eval_start_ts=None, max_points=None):
+    """按收盘时间选出评估下标。不碰模型。
+
+    eval_start_ts 为空时与旧公式逐点相同：左边界仍是
+    max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)。
+    有值时左边界改为「收盘时间 >= eval_start_ts 且 idx >= CONTEXT_BARS」的第一根，
+    不再用尾部窗口。右边界仍是 total - HORIZON。然后才 [:max_points]。
+    """
+    total = len(dts)
+    right = total - HORIZON
+    if eval_start_ts is None:
+        left = max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)
+    else:
+        bound = (eval_start_ts if isinstance(eval_start_ts, str)
+                 else pd.Timestamp(eval_start_ts).strftime("%Y-%m-%d %H:%M:%S"))
+        left = None
+        for idx in range(CONTEXT_BARS, right + 1):
+            if _close_ts(_bar_dt(dts, idx)) >= bound:
+                left = idx
+                break
+        if left is None:
+            return []
+    indices = list(range(left, right + 1, STEP))
+    if max_points is not None:
+        indices = indices[:max_points]
+    return indices
+
+
 def run_symbol_backtest(symbol, daily_model, hourly_model,
                         cov_override=None, cov_combo=None, clip_gap=None,
                         cache_interval=10, max_points=None,
@@ -262,7 +301,8 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                         fill_strategy="default",
                         daily_cache_dir=None,
                         ablation_mode="full",
-                        eval_end_ts=None, protocol_fingerprint=None):
+                        eval_end_ts=None, protocol_fingerprint=None,
+                        eval_start_ts=None):
     """单品种回测，返回汇总指标和逐点详情
 
     Args:
@@ -282,6 +322,9 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
         eval_end_ts: v4 2.1 绝对锚 ("YYYY-MM-DD HH:MM:SS")。None=以当前数据末端为锚
                      (向后兼容); 给定时把 all_1h 截断到 dt < 锚 —— 评估窗口成为锚的
                      纯函数, 数据增长不再平移窗口 (发现 B)
+        eval_start_ts: 确认集左边界 ("YYYY-MM-DD HH:MM:SS")。None=尾部 EVAL_WINDOW_BARS
+                     (与旧公式逐点相同)。有值时先吃掉 eval_end_ts 截断，再取收盘时间
+                     >= 该边界且 idx >= CONTEXT_BARS 的第一根；[:max_points] 取这段前向序列的前 n 个
         protocol_fingerprint: v4 2.2 协议指纹, 逐行落 checkpoint; 慢环 resume 只复用
                      指纹匹配的行 (CLI 不传则落 null, 慢环侧视为不可信、全量重算)
         fill_strategy: Horizon 填充策略, "default" (常数) 或 "decay" (12-bar 半衰期衰减)
@@ -313,13 +356,11 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
     _anchor = (str(eval_end_ts) if eval_end_ts is not None
                else (pd.Timestamp(all_1h["dt"].iloc[-1])
                      + pd.Timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"))
-    # 评估窗口截断: 聚焦最近 EVAL_WINDOW_BARS 根 bar (~200 交易日)，抑制 concept drift
-    eval_start = max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)
-    eval_indices = list(range(eval_start, total - HORIZON + 1, STEP))
-
-    # 减量排查: 截断评估点上限 (不破坏后续过滤逻辑)
-    if max_points is not None:
-        eval_indices = eval_indices[:max_points]
+    # 评估窗口: 未给 eval_start_ts 时仍是尾部 EVAL_WINDOW_BARS。
+    # 给定时左边界改为确认起点之后的第一根，再取前 max_points 个（不是尾部窗口的前 n 个）。
+    # eval_end_ts 截断已在上面吃掉，这里看到的 total 是截断后的长度。
+    eval_indices = select_eval_indices(
+        all_1h["dt"], eval_start_ts=eval_start_ts, max_points=max_points)
     sym_lower = symbol.lower()
 
     # 过滤: 只保留日线数据足够的评估点

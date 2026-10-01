@@ -11,6 +11,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, FM_ROOT)
 sys.path.insert(0, os.path.join(FM_ROOT, "task_FM", "evaluations", "fm_eval"))
 import monthly_backtest as mb
+import preregistry as _prereg
 import registry_lib as rl
 from evaluator import (build_summary, effective_sample_size, load_baseline_points,
                        attach_gated_metrics, compute_protocol_fingerprint)
@@ -131,6 +132,32 @@ def _no_data_verdict(row, batch_id=None):
         },
     }
 
+def _confirmation_run_label(verdict, row):
+    """样本已满才调用 classify_confirmation。未满不写确认标签。
+
+    no-peek 不包回测自己的 resume 读盘；提前封账只由调用方显式要求，不在慢环。
+    fdr_pass 不在这里写成 True。
+    """
+    label_row = dict(verdict)
+    label_row["run_mode"] = "confirmation"
+    for key in (
+        "contaminated", "early_sealed", "common_insufficient", "meets_min_info",
+        "dm_significant", "protocol_compatible",
+        "n_confirm_actual", "n_confirm_required",
+    ):
+        if key in row:
+            label_row[key] = row[key]
+    if label_row.get("n_confirm_required") is None:
+        label_row["n_confirm_required"] = row.get("n_confirm_required")
+    if label_row.get("n_confirm_actual") is None:
+        label_row["n_confirm_actual"] = verdict.get("n")
+    n_actual = label_row.get("n_confirm_actual")
+    n_required = label_row.get("n_confirm_required")
+    if n_actual is None or n_required is None or n_actual < n_required:
+        return None
+    return _prereg.classify_confirmation(label_row)
+
+
 def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path, batch_id=None):
     bid = batch_id or row.get("batch_id")
     try:
@@ -150,18 +177,26 @@ def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path, b
 def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
     vid = row["variant_id"]
     os.makedirs(checkpoint_dir, exist_ok=True)
-    cp = os.path.join(checkpoint_dir, vid + ".jsonl")
+    # 有 prereg_id 时与探索 checkpoint 分文件，避免 resume 把探索点混进确认 DM。
+    cp = os.path.join(
+        checkpoint_dir, _prereg.checkpoint_filename(vid, row.get("prereg_id")))
     fp_now = compute_protocol_fingerprint()  # v4 2.2: 本轮协议身份（窗口锚语义入指纹）
     completed, resumed, anchor, legacy_lines = _load_checkpoint_state(cp, fp_now)
     if legacy_lines:
         print(f"[checkpoint] {vid}: 丢弃 {legacy_lines} 行旧协议/无指纹记录（将全量重算）",
               flush=True)
     daily_model, hourly_model = _get_models()
+    run_mode = row.get("run_mode") or "exploration"
+    max_points = row["max_points"]
+    if run_mode == "confirmation":
+        if not row.get("confirm_from_ts") or row.get("n_confirm_required") is None:
+            raise ValueError(
+                "confirmation row requires confirm_from_ts and n_confirm_required")
+        max_points = row["n_confirm_required"]
     t0 = time.time()
     with open(cp, "a", encoding="utf-8") as checkpoint_fp:
-        data = mb.run_symbol_backtest(
-            row["symbol"].upper(), daily_model, hourly_model,
-            cov_override=row["cov_override"], max_points=row["max_points"],
+        bt_kwargs = dict(
+            cov_override=row["cov_override"], max_points=max_points,
             daily_cache_dir=daily_cache_dir,
             completed=completed, checkpoint_fp=checkpoint_fp,
             resumed_points=resumed,
@@ -172,6 +207,11 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             # variant_id（建议 `{sym}_{cov}_{mode}_{stage}_p{n}`），否则
             # resume 会把不同模式的点混进同一 checkpoint。
             ablation_mode=row.get("ablation_mode") or "full")
+        # 探索行不传 eval_start_ts。确认行用队列上的 confirm_from_ts。
+        if run_mode == "confirmation":
+            bt_kwargs["eval_start_ts"] = row["confirm_from_ts"]
+        data = mb.run_symbol_backtest(
+            row["symbol"].upper(), daily_model, hourly_model, **bt_kwargs)
     elapsed_s = round(time.time() - t0, 3)
     if data is None:
         v = _no_data_verdict(row, batch_id=bid)
@@ -196,7 +236,8 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
                               baseline_dir_acc=baseline_dir_acc,
                               points=data["points"],
                               cov_matrix=(_ci[0] if _ci else None),
-                              cov_keys=(_ci[1] if _ci else None))
+                              cov_keys=(_ci[1] if _ci else None),
+                              run_mode=run_mode)
             v["variant_id"] = row["variant_id"]
             v.setdefault("decided_at", _now())
             # spec W5.3(4)：verdict 落 horizon_exogenous。
@@ -214,6 +255,13 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
                 else ("self_referential" if _hk == "self_referential"
                       else ("persistence" if _hk else None))
             )
+            # build_summary 对非探索行把 run_label 留空；个体标签在这里填。
+            # fdr_pass 仍只来自 family 封账，这一步不写成 True。
+            if run_mode == "confirmation":
+                v["run_label"] = _confirmation_run_label(v, row)
+                _metrics = v.get("metrics")
+                if isinstance(_metrics, dict) and "run_label" in _metrics:
+                    _metrics["run_label"] = v["run_label"]
     v["checkpoint_path"] = cp
     v["slow_loop_pid"] = os.getpid()
     v["git_rev"] = _git_rev()

@@ -509,3 +509,10 @@ def judgment_note(run_label: str) -> str:
     if run_label != "refuted":
         raise ValueError(f"no judgment note for run_label={run_label!r}")
     return _REFUTED_NOTE
+
+
+def checkpoint_filename(variant_id, prereg_id):
+    """确认与探索分文件。有 prereg_id 时带其前 8 位，否则沿用 {variant_id}.jsonl。"""
+    if prereg_id:
+        return f"{variant_id}__prereg_{prereg_id[:8]}.jsonl"
+    return f"{variant_id}.jsonl"

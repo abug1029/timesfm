@@ -172,6 +172,117 @@ def seal_research_family(members, now):
     """封账：全部成员终态后一次性跑 family 级 BH-FDR。"""
     return _fam_seal_family(members, now)
 
+
+def _prereg_field(row, key, default=None):
+    getter = getattr(row, "get", None)
+    if callable(getter):
+        return getter(key, default)
+    return getattr(row, key, default)
+
+
+def _find_prereg(registry, prereg_id):
+    for row in registry:
+        if _prereg_field(row, "prereg_id") == prereg_id:
+            return row
+    return None
+
+
+def dispatch_confirmation(proposal, registry, members):
+    """确认分派。不启动监督环。
+
+    调用 queue_decision。拒绝则不登记 family；接受则 register_family_member。
+    """
+    import preregistry as _prereg
+
+    decision = _prereg.queue_decision(proposal, registry, run_mode="confirmation")
+    if not decision.accepted:
+        return {
+            "accepted": False,
+            "reason": decision.reason,
+            "run_label": decision.run_label,
+            "prereg_id": decision.prereg_id,
+            "members": members,
+            "registration": None,
+        }
+    matched = _find_prereg(registry, decision.prereg_id)
+    symbol = proposal.get("symbol") or _prereg_field(matched, "symbol")
+    variant_id = proposal.get("variant_id")
+    if not variant_id:
+        raise ValueError("confirmation proposal requires variant_id")
+    registered_at = _prereg_field(matched, "registered_at")
+    family_key = proposal.get("family_key") or family_key_for(symbol)
+    new_members, tag = register_family_member(
+        family_key, symbol, variant_id, registered_at, members,
+        run_mode="confirmation",
+    )
+    return {
+        "accepted": True,
+        "reason": None,
+        "run_label": decision.run_label,
+        "prereg_id": decision.prereg_id,
+        "members": new_members,
+        "registration": tag,
+    }
+
+
+def _stamp_member(members, row, label):
+    variant_id = row.get("variant_id")
+    stamped = []
+    for member in members:
+        member = dict(member)
+        if variant_id is not None and member.get("variant_id") == variant_id:
+            member["status"] = label
+            if "p_value" in row:
+                member["p_value"] = row.get("p_value")
+        stamped.append(member)
+    return stamped
+
+
+def _seal_if_all_terminal(members, label, now, audit):
+    # underpowered / refuted_by_contamination 不在研究 family 的终态集合里，不会封账。
+    if _fam_all_terminal(members):
+        sealed, _adjusted = seal_research_family(members, now)
+        return {
+            "run_label": label,
+            "audit": audit,
+            "members": sealed,
+            "sealed": True,
+        }
+    return {
+        "run_label": label,
+        "audit": audit,
+        "members": members,
+        "sealed": False,
+    }
+
+
+def finalize_confirmation(row, members, now):
+    """终结一条确认。不启动监督环，不把 fdr_pass 写成 True。
+
+    样本未满且行上没有 request_early_seal 时，只返回 peek 审计，不改标签。
+    显式提前封账走 early_seal。样本已满走 classify_confirmation，
+    全体终态才 seal_research_family。
+    """
+    import preregistry as _prereg
+
+    n_actual = row["n_confirm_actual"]
+    n_required = row["n_confirm_required"]
+    if n_actual < n_required and row.get("request_early_seal") is not True:
+        decision = _prereg.peek_gate(n_actual, n_required)
+        return {
+            "run_label": row.get("run_label"),
+            "audit": decision.audit,
+            "members": members,
+            "sealed": False,
+        }
+    if n_actual < n_required:
+        seal = _prereg.early_seal(n_actual, n_required)
+        updated = _stamp_member(members, row, seal.terminal_state)
+        return _seal_if_all_terminal(updated, seal.terminal_state, now, None)
+    label = _prereg.classify_confirmation(row)
+    updated = _stamp_member(members, row, label)
+    return _seal_if_all_terminal(updated, label, now, None)
+
 def _now_iso():
     return datetime.now().isoformat()
 
