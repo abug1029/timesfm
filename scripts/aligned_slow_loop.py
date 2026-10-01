@@ -132,6 +132,18 @@ def _no_data_verdict(row, batch_id=None):
         },
     }
 
+def _eval_end_ts_for_run(run_mode, anchor, n_completed, n_required):
+    """确认样本未满时不把 checkpoint 锚当作 eval_end_ts。
+
+    否则第一次落盘的右边界会截掉之后新到的 bar，n_confirm_required 永远到不了。
+    未满时右边界留在当前数据末端。探索始终传锚，尾部窗口不漂移。
+    确认样本已经满了再传锚。
+    """
+    if run_mode == "confirmation" and n_required is not None and n_completed < n_required:
+        return None
+    return anchor
+
+
 def _confirmation_run_label(verdict, row):
     """样本已满才调用 classify_confirmation。未满不写确认标签。
 
@@ -216,6 +228,9 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             raise ValueError(
                 "confirmation row requires confirm_from_ts and n_confirm_required")
         max_points = row["n_confirm_required"]
+    # 已完成的 cutoff 仍从确认 checkpoint 续跑。未满时不把锚传下去。
+    eval_end_ts = _eval_end_ts_for_run(
+        run_mode, anchor, len(completed), row.get("n_confirm_required"))
     t0 = time.time()
     with open(cp, "a", encoding="utf-8") as checkpoint_fp:
         bt_kwargs = dict(
@@ -223,8 +238,9 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             daily_cache_dir=daily_cache_dir,
             completed=completed, checkpoint_fp=checkpoint_fp,
             resumed_points=resumed,
-            # v4 2.1/2.2: 锚 + 协议指纹逐行落 checkpoint —— 评估窗口是锚的纯函数
-            eval_end_ts=anchor, protocol_fingerprint=fp_now,
+            # v4 2.1/2.2: 锚 + 协议指纹逐行落 checkpoint。
+            # 探索窗口是锚的纯函数。确认未满时 eval_end_ts 为 None，右边界跟当前数据末端。
+            eval_end_ts=eval_end_ts, protocol_fingerprint=fp_now,
             # T2/PR-B5: 消融模式从队列行透传（缺省 "full" 保持既有行为）。
             # 注意 checkpoint 按 variant_id 分文件，故消融批次必须用不同
             # variant_id（建议 `{sym}_{cov}_{mode}_{stage}_p{n}`），否则

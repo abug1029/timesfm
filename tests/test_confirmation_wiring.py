@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -303,6 +304,74 @@ def test_build_summary_shape_with_meets_min_info_is_confirmed(tmp_path, monkeypa
     assert verdict["meets_min_info"] is True
     assert verdict["run_label"] == "confirmed"
     assert verdict["fdr_pass"] is not True
+
+
+def _checkpoint_line(symbol, cutoff, anchor):
+    return json.dumps({
+        "symbol": symbol,
+        "cutoff": cutoff,
+        "eval_end_ts": anchor,
+        "protocol_fingerprint": asl.compute_protocol_fingerprint(),
+        "delta_pred": 1.0,
+        "delta_real": 1.0,
+    }, ensure_ascii=False)
+
+
+def test_confirmation_admits_bars_after_anchor_until_sample_fills(tmp_path, monkeypatch):
+    n_short = CONTEXT_BARS + HORIZON + 8
+    short = _dts(n_short)
+    grown = _dts(n_short + 40)
+    anchor = _close(short[-1])
+    confirm_from = _close(short[CONTEXT_BARS + 4])
+    # 锚等于短序列末根收盘。按 dt < 锚 截断后，新 bar 全部消失。
+    pinned = [dt for dt in grown if dt < anchor]
+    assert pinned == short
+    pinned_idx = mb.select_eval_indices(pinned, eval_start_ts=confirm_from)
+    assert pinned_idx
+    assert all(i < n_short for i in pinned_idx)
+
+    # 确认样本未满：不传锚，右边界留在加长后的数据末端。
+    assert asl._eval_end_ts_for_run("confirmation", anchor, 1, 30) is None
+    eligible = mb.select_eval_indices(grown, eval_start_ts=confirm_from, max_points=30)
+    assert any(i >= n_short for i in eligible)
+    # 样本已满才重新钉住锚。
+    assert asl._eval_end_ts_for_run("confirmation", anchor, 30, 30) == anchor
+
+    fp_dir = tmp_path / "cp"
+    fp_dir.mkdir()
+    (fp_dir / "m_rsi_state.jsonl").write_text(
+        _checkpoint_line("m", confirm_from, anchor) + "\n", encoding="utf-8")
+    captured = _install_slow_fakes(monkeypatch, tmp_path, _summary_factory(4))
+    asl.run_aligned_candidate(
+        _row(),
+        daily_cache_dir=str(tmp_path / "dc"),
+        checkpoint_dir=str(fp_dir),
+        registry_path=str(tmp_path / "verdicts.jsonl"),
+    )
+    assert captured["bt_kwargs"]["eval_end_ts"] == anchor
+
+    conf_dir = tmp_path / "cp2"
+    conf_dir.mkdir()
+    (conf_dir / "m_rsi_state__prereg_abcdef01.jsonl").write_text(
+        _checkpoint_line("m", confirm_from, anchor) + "\n", encoding="utf-8")
+    captured_conf = _install_slow_fakes(
+        monkeypatch, tmp_path, _summary_factory(1, classify=True),
+    )
+    asl.run_aligned_candidate(
+        _row(
+            run_mode="confirmation",
+            prereg_id="abcdef0123456789",
+            confirm_from_ts=confirm_from,
+            n_confirm_required=30,
+        ),
+        daily_cache_dir=str(tmp_path / "dc2"),
+        checkpoint_dir=str(conf_dir),
+        registry_path=str(tmp_path / "verdicts2.jsonl"),
+    )
+    assert captured_conf["bt_kwargs"]["eval_end_ts"] is None
+    assert captured_conf["bt_kwargs"]["eval_start_ts"] == confirm_from
+    assert captured_conf["bt_kwargs"]["max_points"] == 30
+    assert len(captured_conf["bt_kwargs"]["completed"]) == 1
 
 
 def test_confirmation_short_sample_does_not_write_label(tmp_path, monkeypatch):
