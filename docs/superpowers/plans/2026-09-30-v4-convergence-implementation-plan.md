@@ -62,15 +62,15 @@
   - [x] checkpoint 隔离必要性：resume 会把探索点混进确认 DM（消融批次同型先例）
   - [x] n_confirm_required 逐品种复算与 Q7 表逐项吻合（jd 1,199 / m 1,021 / rb 1,182 / sr 986 / ss 1,115）
   - [x] goal 阈值真判据在 `build_snapshot`（yaml `phase_definitions` 仅文档）；预算为真强制
-- [ ] **A** `scripts/preregistry.py` 纯逻辑 + `tests/test_preregistry.py`
+- [x] **A** `scripts/preregistry.py` 纯逻辑 + `tests/test_preregistry.py`
   （spec §5.3 tests 37/38/40/44/68 + (a′) golden 数字 + 判负规则）
-- [ ] **B** 接线层：`run_symbol_backtest(eval_start_ts=)` + 慢环透传
+- [x] **B** 接线层：`run_symbol_backtest(eval_start_ts=)` + 慢环透传
   （run_mode/prereg_id/`{vid}__prereg_{id[:8]}.jsonl` 命名空间 + 个体 run_label）
   + supervisor 确认分派（no-peek 门 + 节流审计）+ 终结解析 + family 接线 + 测试
-- [ ] **C** PR-D2：`build_snapshot` 分级重写（`n_confirmed_variants` / 三档派生：
+- [x] **C** PR-D2：`build_snapshot` 分级重写（`n_confirmed_variants` / 三档派生：
   可预测 / 需更多样本 / 当前不可验证；0.51 + `n_gate_pass>=10` + tier>=8 退役）
   + `praxist_goal.yaml` 有界预算 + symbol_status 退休 + 测试
-- [ ] **D** 首批预注册落 `task_FM/config/preregistry.jsonl`（jd_vor +078 / sr_vwap_deviation +063，
+- [x] **D** 首批预注册落 `task_FM/config/preregistry.jsonl`（jd_vor +078 / sr_vwap_deviation +063，
   跨品种 = 跨 family）+ Phase 3 TODO spec（multi_seed/decay 占位符）+ 计划日志
 - [ ] **E** 三环一次重启加载新代码（确认集需 ~1.2–2.0y 累积，重启安全）+ 验收 + 文档/记忆同步
 
@@ -128,5 +128,7 @@
 - 2026-10-01 2.9 ✅ 本 commit（重启后追加）：三环重启协议一次执行（readiness 6/6；supervisor PID 418，v4 协议指纹 f02b2a43… 上线）→ ensure_baselines 重生波 9/9 全带 v4 指纹落章（cj/eg/fu/jd/lh/m/rb/sr/ss；fu 为入集后首个有效基线 n=588 dir_acc=0.448；中途 WSL VM 回收击杀 PID 393，幂等重启 PID 418 续跑，波可恢复设计实证）→ 活跃视图 v4 干净（188 行=143 legacy+27 v2+18 v3 全排除，passing=0/dead=0，v4 裁决从零累积）→ 首 tick 收割入队 vid 全新格式（sh_momentum_f8bc3e69c749 / sr_volatility_3ede6200c5bd，2.4 生产首验）+ phase=slow + 慢环消费中 → regen 三件套归档 + TEMPORARY_ALLOWLIST 释放（本 commit）。REVIEW_CANDIDATES 6 件复核条件达成，待宿主裁定
 
 - 2026-10-01 3.0 ✅ 本 commit（阶段 3 启动，设计定型）：PR-D1/D2 勘查完成，六条设计决策落纸（changelog `2026-10-01-v4-stage2-done-stage3-start.md` §4.2）——① `run_symbol_backtest` 缺 `eval_start_ts`，需新增，切片 `[:max_points]` 取前 n 与确认集语义一致；② 确认行须 `{vid}__prereg_{id[:8]}.jsonl` 隔离 checkpoint（resume 混探索点会污染 DM，消融批次同型先例）；③ `n_confirm_required` 用生产 `n_required(var_d=Var_LR, vif=1.0, delta=0.08)` 逐品种复算与 Q7 表逐项吻合（无实测品种取保守默认 Var_LR=1.240）；④ 确认 verdict 写时落个体标签 ∈ {confirmed, refuted, underpowered}，成功判定仍走含 `fdr_pass` 的严格链（只由 family 封账盖章）；⑤ goal 阈值硬编码在 `build_snapshot`，yaml `phase_definitions` 仅文档（PR-D2 重写对象 = build_snapshot per-symbol 判定 + all_symbols_pass_phase* 布尔族）；⑥ 预算为真强制（:2693 max_cycles / _deadline_passed），999999 无界须改有界。首批确认假设取 Q7 §3.4 观察带 top-2（jd_vor +0.078 z=1.63 / sr_vwap_deviation +0.063 z=1.51，跨品种=跨 family）。实施分层 A–E（本计划 §四清单）。同时补 2.8/2.10 执行日志（e37e5c6 / 0015b00 内含）
+
+- 2026-10-02 D ✅ 本 commit：D 完成；两行预注册（jd vor，样本量 1199；sr vwap_deviation，样本量 986）；确认起点 `2026-10-03 00:00:00`；Phase 3 文档 `docs/superpowers/specs/2026-10-02-phase3-multiseed-decay-todo.md`；监督环仍不调用确认分派；E 尚未执行。生产函数对 ss 的样本量是 1116，备忘录印的 1115 不改函数。
 
 - （后续追加）
