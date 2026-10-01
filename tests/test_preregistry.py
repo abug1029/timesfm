@@ -30,8 +30,6 @@ _SYMBOL_VAR_LR = {
     "sr": 1.020,
     "ss": 1.154,
 }
-# ss：简报/Q7 表印作 1115，但 n_required(1.154) 在默认 z 下 ceil 为 1116。
-# 锁的是函数返回值，不把表上的整数再写进公式。
 _SYMBOL_N = {
     "jd": 1199,
     "m": 1021,
@@ -57,6 +55,8 @@ def _fields(**overrides):
         "var_lr": 1.240,
         "kill_condition": {"field": "dir_acc", "threshold": 0.5},
         "promote_condition": {"field": "d_mean", "threshold": 0.08},
+        "mechanism": "近月偏紧",
+        "predicted_direction": "up",
     }
     base.update(overrides)
     return base
@@ -100,6 +100,7 @@ def test_a_prime_symbol_n_matches_n_required():
         got = pr.n_confirm_required_for_symbol(symbol)
         via = n_required(var_d=var_lr, vif=1.0, delta=0.08)
         assert got == via
+        # Q7 memo prints 1115, and n_required ceil of var_lr=1.154 is 1116, so the function wins.
         assert got == _SYMBOL_N[symbol]
         assert pr.n_confirm_required(var_lr) == via
 
@@ -240,6 +241,47 @@ def test_38_var_lr_change_recomputes_n_and_rejects_mismatch():
 def test_38_same_frozen_fields_may_reuse_id():
     old = pr.register(_fields(), [])
     pr.validate_reuse(old, dataclasses.asdict(old))
+
+
+def test_register_rejects_delta_star_other_than_008():
+    with pytest.raises(ValueError):
+        pr.register(_fields(delta_star=0.10), [])
+    with pytest.raises(ValueError):
+        pr.register(_fields(power=0.9), [])
+    with pytest.raises(ValueError):
+        pr.register(_fields(alpha=0.01), [])
+    # 0.80 == 0.8，字面量比较必须放行。
+    rec = pr.register(_fields(power=0.8), [])
+    assert rec.power == 0.8
+    assert rec.delta_star == 0.08
+    assert rec.alpha == 0.05
+
+
+def test_mechanism_round_trips_through_register():
+    rec = pr.register(
+        _fields(mechanism="库存下降抬升近月", predicted_direction="up", n_planned=12),
+        [],
+    )
+    assert rec.mechanism == "库存下降抬升近月"
+    assert rec.predicted_direction == "up"
+    assert rec.n_planned == 12
+    copied = pr.new_preregistration(rec, {"horizon": 12}, **_later_kwargs())
+    assert copied.mechanism == rec.mechanism
+    assert copied.predicted_direction == rec.predicted_direction
+    assert copied.n_planned == rec.n_planned
+    assert copied.horizon == 12
+    with pytest.raises(ValueError):
+        pr.new_preregistration(rec, {"mechanism": "另一条机制"}, **_later_kwargs())
+    with pytest.raises(ValueError):
+        pr.register(_fields(mechanism=""), [])
+    with pytest.raises(ValueError):
+        pr.register(_fields(predicted_direction=""), [])
+    with pytest.raises(ValueError):
+        pr.register(_fields(n_planned=-1), [])
+    with pytest.raises(ValueError):
+        pr.register(_fields(n_planned=True), [])
+    assert pr.register(_fields(), []).n_planned is None
+    assert pr.register(_fields(n_planned=0), []).n_planned == 0
 
 
 def test_register_rejects_mismatched_n_and_free_text_conditions():
@@ -423,6 +465,16 @@ def test_meets_min_info_false_stays_underpowered():
     row = _passing_row(meets_min_info=False, fdr_pass=True, dm_significant=True)
     assert pr.classify_confirmation(row) == "underpowered"
     assert pr.counts_as_success(row) is False
+
+
+def test_meets_min_info_missing_is_underpowered():
+    row = _passing_row(fdr_pass=True)
+    del row["meets_min_info"]
+    assert "meets_min_info" not in row
+    assert pr.classify_confirmation(row) == "underpowered"
+    assert pr.counts_as_success(row) is False
+    other = _passing_row(meets_min_info="yes")
+    assert pr.classify_confirmation(other) == "underpowered"
 
 
 def test_confirmed_without_fdr_pass_is_not_success():

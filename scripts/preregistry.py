@@ -61,8 +61,10 @@ _REQUIRED_INPUT = (
     "var_lr",
     "kill_condition",
     "promote_condition",
+    "mechanism",
+    "predicted_direction",
 )
-_OPTIONAL_INPUT = ("jev", "n_confirm_required")
+_OPTIONAL_INPUT = ("jev", "n_confirm_required", "n_planned")
 
 TERMINAL_STATES = frozenset({
     "confirmed",
@@ -106,6 +108,9 @@ class Prereg:
     var_lr: object
     kill_condition: dict
     promote_condition: dict
+    mechanism: str
+    predicted_direction: str
+    n_planned: int | None = None
     jev: dict | None = None
     terminal_state: str | None = None
 
@@ -190,6 +195,24 @@ def _mint_id(reserved: set[str]) -> str:
     return prereg_id
 
 
+def _require_locked_effect(delta_star: object, power: object, alpha: object) -> None:
+    # (a′) 只接受这三个字面量。0.80 == 0.8，用 == 即可。
+    if delta_star != 0.08:
+        raise ValueError(f"delta_star must be 0.08, got {delta_star!r}")
+    if power != 0.80:
+        raise ValueError(f"power must be 0.80, got {power!r}")
+    if alpha != 0.05:
+        raise ValueError(f"alpha must be 0.05, got {alpha!r}")
+
+
+def _optional_n_planned(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"n_planned must be a non-negative int, got {value!r}")
+    return value
+
+
 def _locked_n(var_lr: object, supplied: object) -> int:
     computed = n_confirm_required(var_lr)
     if supplied is not None and supplied != computed:
@@ -214,7 +237,11 @@ def register(fields: Mapping, existing: Sequence) -> Prereg:
     metric_version = _require_text(fields["metric_version"], "metric_version")
     registered_at = _require_text(fields["registered_at"], "registered_at")
     confirm_from_ts = _require_text(fields["confirm_from_ts"], "confirm_from_ts")
+    mechanism = _require_text(fields["mechanism"], "mechanism")
+    predicted_direction = _require_text(fields["predicted_direction"], "predicted_direction")
+    _require_locked_effect(fields["delta_star"], fields["power"], fields["alpha"])
     n_value = _locked_n(fields["var_lr"], fields.get("n_confirm_required"))
+    n_planned = _optional_n_planned(fields.get("n_planned"))
     jev = fields.get("jev")
     if jev is not None and not isinstance(jev, dict):
         raise ValueError("jev must be a dict when present")
@@ -237,6 +264,9 @@ def register(fields: Mapping, existing: Sequence) -> Prereg:
         var_lr=fields["var_lr"],
         kill_condition=_condition(fields["kill_condition"], "kill_condition"),
         promote_condition=_condition(fields["promote_condition"], "promote_condition"),
+        mechanism=mechanism,
+        predicted_direction=predicted_direction,
+        n_planned=n_planned,
         jev=None if jev is None else _snapshot(jev),
         terminal_state=None,
     )
@@ -294,6 +324,9 @@ def new_preregistration(
         var_lr=values["var_lr"],
         kill_condition=_snapshot(old.kill_condition),
         promote_condition=_snapshot(old.promote_condition),
+        mechanism=old.mechanism,
+        predicted_direction=old.predicted_direction,
+        n_planned=old.n_planned,
         jev=_snapshot(old.jev),
         terminal_state=None,
     )
@@ -448,7 +481,7 @@ def classify_confirmation(row: Mapping) -> str:
     if (
         row.get("early_sealed") is True
         or row.get("common_insufficient") is True
-        or row.get("meets_min_info") is False
+        or row.get("meets_min_info") is not True
     ):
         return "underpowered"
     if "n_confirm_actual" not in row or "n_confirm_required" not in row:
