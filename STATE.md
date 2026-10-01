@@ -4,19 +4,21 @@
 > `reports/` 全部为 derived_view（可从 `predictions.json` / 回测 JSONL / db 产物重建），
 > 冲突时以 **STATE.md + 磁盘回测产物**为准。此规则用于终结"滞后文档事故"（如 SH 状态那次）。
 
-**最后更新**: 2026-09-29（Stage 3 **已交付**，经第五/六/七轮独立审计；等待新裁决流。见下方「Stage 3 交付状态」小节）
+**最后更新**: 2026-10-01（v4 收口阶段 2 完成并重启：窗口锚 / checkpoint 身份 / 协议 v4 / vid 生产接线全部落地，v4 重生波 9/9 闭环。见下方「三环状态」与「Stage 3 交付状态」小节）
 
-> **三环状态**：**运行中**，supervisor **PID 670**（2026-09-29 重启，已加载当日全部代码）。
+> **三环状态**：**运行中**，supervisor **PID 418**（2026-10-01 v4 重启，已加载 v4 收口全部代码）。
 > `cycles_done` / PID / phase 是**活计数**，此处一律不记录 —— 读 `data/cache/supervisor_state.json`。
 > 封存已于 **2026-09-28 解除**（停滞根因 = 快环提案被门禁 ~100% 拒绝 + 无基线 → 慢环饿死；
 > 修复 = baselines 重生 + 提案门禁调整 + 1-bar 前视修复）。封存快照仍在
 > `data/archive/fm_a_sealed_2026-09-24T1422/`（234MB）供对照，非当前状态。
 >
-> **混版本窗口已关闭**（2026-09-29）。旧进程 PID 22703 干净退出
-> （`supervisor_stopped{reason: signal_received, exit_code: 0}`，uptime 88725s）。
-> 新代码生效的端到端证据：`protocol_fingerprint` v3 = `91ab913e448aead6…`，
-> 而 cj 旧基线带的是 v2 的 `bd851c9c…` → `ensure_baselines` 判定跨协议不可比并强制重生。
-> 重启记录与验收断言见 `docs/supervisor_restart_backlog.md` 第 3 项。
+> **v4 重启已执行**（2026-10-01，计划 2.9）。旧 PID 670 由宿主停机（日志已轮转
+> `logs/supervisor_pre_restart_20260929.log`）。新代码生效的端到端证据：
+> `protocol_fingerprint` **v4 = `f02b2a433fd572ea…`**，ensure_baselines 重生波 9/9
+> （cj/eg/fu/jd/lh/m/rb/sr/ss 全带 v4 指纹；fu 为入集后首个有效基线），
+> 活跃视图干净（188 旧行 = 143 legacy + 27 v2 + 18 v3 全排除，passing=0/dead=0），
+> 首 tick 收割入队 vid 已是新格式（`{symbol}_{family}_{fp12}`，2.4 生产首验）。
+> 执行记录见 `docs/superpowers/plans/2026-09-30-v4-convergence-implementation-plan.md` 执行日志。
 **Phase 1 状态**: **L1 ops 全量完成 → ECONOMIC_PASS=False → 生产 REMAIN_OFF**  
 **人类文档**: `docs/README.md`（含 product_positioning / module_freeze / 新口径全表链接）  
 **冲突债**: `reports/research/20260808_conflict_debt_register.md`（绝大多数 DONE）  
@@ -49,7 +51,7 @@
 | PR-C2 研究 family + 封账 + BH-FDR + `T_max` | ✅ 交付 | `cascade/research_family.py` |
 | PR-C6 horizon 契约（W5.2 归一化） | ✅ 交付 | `cascade/horizon_fill.py` |
 | PR-A5 `protocol_fingerprint` v3（七组件） | ✅ 交付 | `task_FM/evaluations/fm_eval/evaluator.py` |
-| PR-B1 `experiment_fingerprint` | ⚠️ 模块就绪，**supervisor 真接线延期** | `cascade/experiment_fingerprint.py` |
+| PR-B1 `experiment_fingerprint` | ⚠️→✅ 模块就绪，真接线已完成（2026-10-01 `c0e3aa4`） | `cascade/experiment_fingerprint.py` |
 | §8.3 出口条件核验记录 | ✅ | `docs/superpowers/reports/2026-09-29-stage3-verification-record.md` |
 
 **测试**：`1646 passed / 7 skipped / 1 xfailed / 0 failed`。基线 eecf05a 的 14 项预存在
@@ -57,6 +59,8 @@
 
 **未做**：PR-D1 / PR-D2（Stage 4 正式）、supervisor variant_id 接线、
 supervisor 重启（用户保留决定）。
+**→ 2026-10-01 更新**：后两项已完成——variant_id 生产接线（commit `c0e3aa4`，计划 2.4）、
+supervisor v4 重启（PID 418，计划 2.9）；PR-D1/PR-D2 = v4 计划阶段 3，待启动。
 
 ---
 
