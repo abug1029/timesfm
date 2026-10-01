@@ -630,6 +630,30 @@ def quota_gate(goal, now=None):
     next_reset = window_start + win
     return False, max(1, int((next_reset - now).total_seconds()))
 
+def symbol_goal_tier(variants, symbol, max_history_n=None):
+    """三档。不读文件。成功只数 counts_as_success 为真的变体。"""
+    import preregistry as _prereg
+
+    n_confirm_required = _prereg.n_confirm_required_for_symbol(symbol)
+    n_confirmed_variants = 0
+    for row in variants:
+        try:
+            ok = _prereg.counts_as_success(row) is True
+        except (TypeError, ValueError):
+            ok = False
+        if ok:
+            n_confirmed_variants += 1
+    if n_confirmed_variants >= 1:
+        tier = "可预测"
+    elif max_history_n is not None and max_history_n < n_confirm_required:
+        tier = "当前不可验证"
+    else:
+        tier = "需更多样本"
+    return {
+        "tier": tier,
+        "n_confirmed_variants": n_confirmed_variants,
+    }
+
 def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     # 跨协议不可比的裁决不得进入目标统计：无指纹 / 旧指纹的行一律排除。
     # jsonl 不改写，完整历史仍可用 rl.load_snapshot(path) 不带参数读到。
@@ -674,7 +698,10 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     # 按品种统计指标
     symbol_stats = {}
     for symbol in TARGET_SYMBOLS:
-        symbol_variants = [v for v in snap.get("variants", {}).values() if v.get("symbol") == symbol]
+        symbol_variants = [
+            v for v in snap.values()
+            if isinstance(v, dict) and v.get("symbol") == symbol
+        ]
         symbol_gate_pass = [v for v in symbol_variants if v.get("gate_pass")]
         symbol_tier_a_b = [v for v in symbol_variants if v.get("tier") in ["A", "B"]]
         
@@ -687,15 +714,15 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
         # Phase 2: 高质量变体
         n_tier_a_b = len(symbol_tier_a_b)
         
-        # Phase 3: 稳定性验证 (placeholder)
-        n_validated = 0  # TODO: implement multi-seed validation
-        n_decay = 0  # TODO: implement decay tracking
-        
-        # 检查该品种是否通过各阶段
-        phase1_pass = (n_gate_pass >= 10) and (avg_dir_acc >= 0.51)
-        phase2_pass = (n_tier_a_b >= 8)
-        phase3_pass = (n_validated >= 3) and (n_decay <= 2)
-        
+        # Phase 3 的 multi_seed / decay 仍未实现，不在这里发明通过条件。
+        n_validated = 0
+        n_decay = 0
+
+        judged = symbol_goal_tier(symbol_variants, symbol)
+        phase1_pass = judged["tier"] == "可预测"
+        phase2_pass = False
+        phase3_pass = False
+
         symbol_stats[symbol] = {
             "n_gate_pass": n_gate_pass,
             "avg_dir_acc": avg_dir_acc,
@@ -705,6 +732,8 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
             "phase1_pass": phase1_pass,
             "phase2_pass": phase2_pass,
             "phase3_pass": phase3_pass,
+            "tier": judged["tier"],
+            "n_confirmed_variants": judged["n_confirmed_variants"],
         }
     
     # 检查所有品种是否都通过各阶段

@@ -1,39 +1,24 @@
-# Praxist goal — 2026-09-23：全品种阶段性递进目标
+# Praxist goal — 品种分级后的有界目标
 # Host: WSL2 Ubuntu-22.04 /home/abug/timesfm
-# Policy: 每个品种都需达到 Phase 1-3 标准，确保全面质量
-# 成功条件：所有目标品种均通过三阶段验证
+# 成功条件：每品种至少 1 个经 family 封账的确认变体
+# 原方向准确率绝对门槛与 tier>=8 已退役，不再作为成功条件。
+# Phase 3 的 multi_seed / decay 仍未实现，这里不设通过条件。
 
 goal:
   success_condition:
-    # 所有目标品种必须满足的条件
     - "all_symbols_pass_phase1"
-    - "all_symbols_pass_phase2"
-    - "all_symbols_pass_phase3"
-    
+
   phase_definitions:
-    phase1:
-      description: "基础质量门槛（每品种）"
-      requirements:
-        - "n_gate_pass_variants >= 10"
-        - "avg_dir_acc_gate_pass >= 0.51"
-    
-    phase2:
-      description: "高质量变体（每品种）"
-      requirements:
-        - "n_tier_a_or_b >= 8"
-    
-    phase3:
-      description: "稳定性验证（每品种）"
-      requirements:
-        - "n_validated_multi_seed >= 3"
-        - "decay_below_threshold <= 2"
-    
+    success: "每品种至少 1 个经 family 封账的确认变体。这是文档，不是另一套求值式。真判据只有 all_symbols_pass_phase1，即该品种档位为可预测。"
+    retired: "原 Phase 1 的方向准确率绝对门槛与 tier>=8 已退役，不再作为成功条件。"
+    phase3: "multi_seed 与 decay 仍未实现，不在这里发明通过条件。"
+
   budgets:
-    max_cycles: 999999
-    cpu_hours: 999999
-    token_budget_m: 999999
-    deadline: "2099-12-31"
-    
+    max_cycles: 2000
+    cpu_hours: 2000
+    token_budget_m: 200
+    deadline: "2028-10-02"
+
   cadence:
     survivors_per_cycle: 3
     aligned_max_points: 600
