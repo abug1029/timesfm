@@ -29,7 +29,7 @@
 - 1.5 A2 整簇退役（裁定 e）：10 脚本 + `cascade/lgbm_features.py` + 5 个测试（`test_a2_*` 4 件 + `test_lgbm_features.py`——命名模式漏网补录）+ `module_freeze.md` CF-13 注记；合计 16 文件 / 5,257 行
 - 1.6 检测测试重设计落地：AST 导入图分析（含相对导入形态）+ allowlist + archive 排除 + **pytest.ini**（testpaths=tests；P1-5）
 - 1.7 文档同步：runbook.md / three_loop_restart_protocol.md / three_loop_workflow.md / praxist_llm_env.md / WSL 根 AGENTS.md / `D:\FlyBuddy\AGENTS.md` FM_a 行 / agent 记忆
-- （暂缓至 2.9）regenerate_all_baselines / regen_rb / monitor_rb_regen.sh 三件套
+- ~~（暂缓至 2.9）regenerate_all_baselines / regen_rb / monitor_rb_regen.sh 三件套~~ 2026-10-01 已归档（scripts/archive/2026-09-30-dead-code/）
 
 ## 三、阶段 2：v4 代码批次（结果语义变更集中于此）
 
@@ -41,7 +41,7 @@
 - 2.6 顶层四分母写入 + 纳入 A1_REQUIRED_FIELDS（修复 E writer 侧；存量靠 v4 退场）
 - 2.7 supervisor 注释修正（修复 G）
 - 2.8 配对测试：同数据末端 ±1 bar 两次运行，评估 cutoff 集合必须相同；v4 指纹快照测试
-- 2.9 一次重启（three_loop_restart_protocol）→ v4 重生波（fu 随波补 v4）→ 验证活跃视图 v4 → regen 三件套归档 + allowlist 释放
+- 2.9 ✅（2026-10-01，见执行日志）一次重启（three_loop_restart_protocol）→ v4 重生波（fu 随波补 v4）→ 验证活跃视图 v4 → regen 三件套归档 + allowlist 释放
 - 2.10 `detection_threshold_vs_baseline` 补 /n（**发现 I**，0.4(a) 实测导出）：门槛改 SE(d̄)=√(σ_LR²/n)；黄金测试改 spec 真实构造（rho=0.5 AR(1)，断言 0.096 不变）；evaluator.py 死 import 随 2.6 接线一并处置。零生产调用 → 无结果语义变更，不搭 v4 指纹波，可随批次先行
 
 ## 四、阶段 3：Stage 4 启动包（Q7 已裁定：(a′) Δ\*=0.08 / 80% / α=0.05 单侧）
@@ -70,7 +70,7 @@
 | P0-6（测试基线） | 0.1 ✅ |
 | P1-1/2（口径） | 0.3 修订 |
 | P1-3（oi_gated） | **撤回**——实为活码，保留（0.3 执行前自勘误；审核报告 §八） |
-| P1-4（monitor_rb_regen） | 2.9 |
+| P1-4（monitor_rb_regen） | 2.9 ✅（2026-10-01 归档） |
 | P1-5（检测测试 / pytest.ini） | 1.6 |
 | P1-6（D1/D2/D3 落纸） | 0.3 修订 |
 
@@ -97,5 +97,9 @@
 - 2026-09-30 2.1/2.2/2.3/2.5/2.6 ✅ 本 commit（v4 窗口锚 + checkpoint 身份 + 四分母顶层化）：monthly_backtest 加 eval_end_ts/protocol_fingerprint 参数（锚=末根 bar 收盘，截断 dt<锚，逐行落盘；CLI resume 从行内还原锚）；checkpoint 主键 (symbol, idx)→(symbol, cutoff)（idx 随数据漂移——recompute_dir_acc 实测同文件多段 run/idx 非单调/跨协变量逐字节同文件的病理根因）；慢环 _load_checkpoint_state 指纹门（旧协议行 fail-visible 丢弃、计数上报、全量重算）；协议指纹 v3→v4（+window_anchor 组件，WINDOW_ANCHOR_VERSION=eval_end_persisted_v1）；build_summary 四分母顶层化 + A1_REQUIRED_FIELDS 纳入（发现 E writer 侧：18/18 v3 行 metrics.n_dir_total 非空而顶层 None）。2.5 context_hash 经指纹门自然修复（混合覆盖→None 是 W6.7 fail-visible 设计；v4 重生波后全点带摘要→聚合非 None，无代码新增）。2.4/2.7 推迟：vid 生产接线点在 supervisor（vid 诞生地 :1573/:1734）与 2.7 同文件（宿主未提交 fu 编辑无法干净 stage），随 2.9 重启协调一并落地。测试：3 处 v3 版本 pin 升 v4；test_monthly_resume 模拟 loader 换 cutoff 键；test_verify_t1a_criteria_a fixture 补四分母真值；新增 tests/test_v4_window_anchor.py（配对不变量：同锚+数据+1 bar→cutoff 集合逐点相同；指纹门/锚还原单测；未传锚时末端自锚）
 
 - 2026-09-30 2.4/2.7 ✅ 本 commit（宿主 fu 提交 bc6a9fb 后接力）：supervisor 新增 _experiment_fp_for（weights=get_timesfm_model_path 与 evaluator 同源、target=DataStore 1H close_price 逐品种缓存、CONTEXT_BARS/HORIZON/STEP+[cov] → compute_experiment_fingerprint 唯一家；任一环不可解析 → None fail-visible）；harvest_proposals :1519 生产路 fam 前移 + family_unresolved/experiment_fp_unavailable 拒收计数（归因顺序不变）+ vid=build_variant_id；harvest_survivors :663 回滚保留 utility 同接线（resolve_cov_family 定 family，unknown/None 跳过）；:1219 repeat penalty join 键保持旧式 symbol_cov + 澄清注释（与快环 shared_findings.variant_name 的 join 键，改实验身份会静默杀死惩罚）。过渡语义：load_snapshot 协议过滤（方案 A）已决定重生波语义，vid 迁移随波自然过渡、dedup 波后自愈；旧 vid checkpoint 文件成孤儿（磁盘垃圾非正确性）。2.7：:536 pass_variants 注释与 :728 报告头去 migrated_pass；:836 报表 display-only 保持（审计裁定可接受，出范围）。测试 +4（experiment_fp_unavailable 拒收 / family_unresolved 拒收 / vid 格式=实验身份 / survivors fp 不可得静默跳过），scoped 101 passed，全量 1557/0/6/1（=1553 基准 + 4 新测试）
+
+- 2026-09-30 2.8/2.10 ✅ **e37e5c6**（2.10）/ 0015b00 内含（2.8）：2.10 门槛补 /n——detection_threshold_vs_baseline SE 改均值标度 √(σ_LR²/n)，黄金测试改 spec 真实构造（rho=0.5 AR(1)，断言 0.096 不变），test_statistical_verification 同步；零生产调用无结果语义变更。2.8 配对不变量随 0015b00 落地（tests/test_v4_window_anchor.py：同锚+数据+1 bar→cutoff 集合逐点相同；指纹门/锚还原单测；未传锚时末端自锚）
+
+- 2026-10-01 2.9 ✅ 本 commit（重启后追加）：三环重启协议一次执行（readiness 6/6；supervisor PID 418，v4 协议指纹 f02b2a43… 上线）→ ensure_baselines 重生波 9/9 全带 v4 指纹落章（cj/eg/fu/jd/lh/m/rb/sr/ss；fu 为入集后首个有效基线 n=588 dir_acc=0.448；中途 WSL VM 回收击杀 PID 393，幂等重启 PID 418 续跑，波可恢复设计实证）→ 活跃视图 v4 干净（188 行=143 legacy+27 v2+18 v3 全排除，passing=0/dead=0，v4 裁决从零累积）→ 首 tick 收割入队 vid 全新格式（sh_momentum_f8bc3e69c749 / sr_volatility_3ede6200c5bd，2.4 生产首验）+ phase=slow + 慢环消费中 → regen 三件套归档 + TEMPORARY_ALLOWLIST 释放（本 commit）。REVIEW_CANDIDATES 6 件复核条件达成，待宿主裁定
 
 - （后续追加）
