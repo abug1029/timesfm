@@ -306,6 +306,8 @@ def new_preregistration(
             values["var_lr"],
             changes["n_confirm_required"] if "n_confirm_required" in changes else None,
         )
+    # (a′) 效应量在新预注册上也不许改。其他冻结字段仍可换新 id。
+    _require_locked_effect(values["delta_star"], values["power"], values["alpha"])
 
     return Prereg(
         prereg_id=_mint_id({old.prereg_id}),

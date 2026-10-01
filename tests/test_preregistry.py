@@ -201,9 +201,6 @@ def test_38_frozen_change_mints_new_id_and_old_id_is_rejected():
         "predict_params": {"signal_weight": 0.5},
         "horizon": 12,
         "metric_version": "dir_v2",
-        "delta_star": 0.10,
-        "power": 0.9,
-        "alpha": 0.01,
         "var_lr": 1.020,
     }
     for field, value in mutations.items():
@@ -241,6 +238,22 @@ def test_38_var_lr_change_recomputes_n_and_rejects_mismatch():
 def test_38_same_frozen_fields_may_reuse_id():
     old = pr.register(_fields(), [])
     pr.validate_reuse(old, dataclasses.asdict(old))
+
+
+def test_new_preregistration_rejects_other_delta_star():
+    old = pr.register(_fields(), [])
+    with pytest.raises(ValueError):
+        pr.new_preregistration(old, {"delta_star": 0.10}, **_later_kwargs())
+    with pytest.raises(ValueError):
+        pr.new_preregistration(old, {"power": 0.9}, **_later_kwargs())
+    with pytest.raises(ValueError):
+        pr.new_preregistration(old, {"alpha": 0.01}, **_later_kwargs())
+    new = pr.new_preregistration(old, {"horizon": 12}, **_later_kwargs())
+    assert new.prereg_id != old.prereg_id
+    assert new.horizon == 12
+    assert new.delta_star == 0.08
+    assert new.power == 0.80
+    assert new.alpha == 0.05
 
 
 def test_register_rejects_delta_star_other_than_008():
