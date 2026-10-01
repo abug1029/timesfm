@@ -1068,31 +1068,24 @@ def test_menu_renders_symbol_sample_ceiling(monkeypatch, tmp_path):
     assert "lh: n=? unknown" in txt
 
 def test_production_goal_yaml_phased_symbols():
-    """生产 goal 已改为按品种分阶段 (Phase 1/2/3), 不再用 1 星命中数聚合口径."""
+    """0.51 / tier>=8 phases are retired, and success is one sealed confirmation per symbol."""
     goal_fp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            "scripts", "praxist_goal.yaml")
     goal = sup.load_goal(goal_fp)
     conds = goal["success_condition"]
-    assert conds == ["all_symbols_pass_phase1", "all_symbols_pass_phase2",
-                     "all_symbols_pass_phase3"]
-    # 当前生产状态: 尚无品种通过 Phase 1 → 未达成
+    assert conds == ["all_symbols_pass_phase1"]
+    # phase1 未过 → 目标未达成
     snap = {"all_symbols_pass_phase1": False, "all_symbols_pass_phase2": False,
             "all_symbols_pass_phase3": False, "n_symbols_pass_phase1": 1,
             "n_symbols_pass_phase2": 0, "n_symbols_pass_phase3": 0}
     ok, why = sup.evaluate_goal(conds, snap)
     assert ok is False and any("all_symbols_pass_phase1" in w for w in why)
-    # 全品种通过三阶段 → 达成
-    snap2 = {"all_symbols_pass_phase1": True, "all_symbols_pass_phase2": True,
-             "all_symbols_pass_phase3": True, "n_symbols_pass_phase1": 24,
-             "n_symbols_pass_phase2": 24, "n_symbols_pass_phase3": 24}
+    # phase1 已过即达成，即使 phase2 与 phase3 仍为假
+    snap2 = {"all_symbols_pass_phase1": True, "all_symbols_pass_phase2": False,
+             "all_symbols_pass_phase3": False, "n_symbols_pass_phase1": 24,
+             "n_symbols_pass_phase2": 0, "n_symbols_pass_phase3": 0}
     ok2, _ = sup.evaluate_goal(conds, snap2)
     assert ok2 is True
-    # Phase 1 全过但 Phase 2 未过 → 仍未达成
-    snap3 = {"all_symbols_pass_phase1": True, "all_symbols_pass_phase2": False,
-             "all_symbols_pass_phase3": False, "n_symbols_pass_phase1": 24,
-             "n_symbols_pass_phase2": 3, "n_symbols_pass_phase3": 0}
-    ok3, _ = sup.evaluate_goal(conds, snap3)
-    assert ok3 is False
 
 def test_wait_for_batch_timeout_writes_tombstone(tmp_path, monkeypatch):
     monkeypatch.setattr(sup.time, "sleep", lambda *_: None)
