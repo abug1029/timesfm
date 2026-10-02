@@ -16,7 +16,8 @@ goal:
   budgets:
     max_cycles: 2000
     cpu_hours: 2000
-    token_budget_m: 200
+    # 宿主 2026-10-02：取消 token 上限。null 不参与停机判定。
+    token_budget_m: null
     deadline: "2028-10-02"
 
   cadence:

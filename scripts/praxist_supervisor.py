@@ -1930,12 +1930,17 @@ def _retest_candidates(snapshot):
                 out.append(v)
     return out
 
+def _active_protocol_snapshot(path):
+    """收割和复测只看当前协议。无指纹与旧指纹留在 jsonl，不参与拒绝或复测。"""
+    return rl.load_snapshot(path, only_protocol=_current_protocol_fingerprint())
+
+
 def plan_sample_retests(goal):
     """只读：返回当前可排队的 (row, last_n, current_n) 复测计划 (不写队列)。"""
     cad = goal.get("cadence") or {}
     margin = int(cad.get("retest_min_new_points", 1))
     inflight = rl.in_flight_ids(QUEUE, INPROGRESS)
-    snap = rl.load_snapshot(REGISTRY)
+    snap = _active_protocol_snapshot(REGISTRY)
     plan = []
     for v in _retest_candidates(snap):
         vid = v["variant_id"]
@@ -2017,6 +2022,26 @@ def _token_spend_m(st, tok_m):
     if "tokens_baseline_m" not in st:
         return float(tok_m)
     return max(0.0, float(tok_m) - float(st["tokens_baseline_m"]))
+
+
+def _token_budget_hit(tok_spend, tok_unknown, budgets):
+    """Return (hit, cap). null cancels the cap; a missing key keeps the default 80.
+
+    An unknown token read never counts as a hit. A non-numeric cap raises.
+    """
+    if tok_unknown:
+        return False, None
+    if not isinstance(budgets, dict) or "token_budget_m" not in budgets:
+        cap = 80
+    else:
+        cap = budgets.get("token_budget_m")
+    if cap is None:
+        return False, None
+    try:
+        cap_n = float(cap)
+    except (TypeError, ValueError):
+        raise ValueError("token_budget_m must be a number or null")
+    return float(tok_spend) >= cap_n, cap_n
 
 
 def _read_token_m():
@@ -2454,11 +2479,11 @@ def main(argv=None):
 
 def _harvest_rows(goal):
     cad = goal.get("cadence") or {}
-    snap_now = rl.load_snapshot(REGISTRY)
+    snap_now = _active_protocol_snapshot(REGISTRY)
     dead = rl.dead_variants(snap_now)
-    # 修复：existing 包含历史 verdicts（避免重复入队）
+    # 修复：existing 包含当前协议的历史裁决（避免重复入队）
     in_flight = rl.in_flight_ids(QUEUE, INPROGRESS)
-    historical = set(snap_now.keys())  # 所有历史 verdicts
+    historical = set(snap_now.keys())
     existing = in_flight | historical
     pool = load_covariate_pool()
     rows, pstats = harvest_proposals(
@@ -2850,8 +2875,7 @@ def _main_locked(args):
         snap = build_snapshot(REGISTRY, cycles, cpu_h, tok_spend)
         ok, why = evaluate_goal(goal["success_condition"], snap)
         b = goal["budgets"]
-        tok_budget = b.get("token_budget_m", 80)
-        tok_hit = (not tok_unknown) and tok_spend >= tok_budget
+        tok_hit, tok_budget = _token_budget_hit(tok_spend, tok_unknown, b)
         budget_hit = (cycles >= max_cycles or cpu_h >= b.get("cpu_hours", 60)
                       or tok_hit or _deadline_passed(b))
 
@@ -2955,13 +2979,14 @@ def _main_locked(args):
                         return 0
                     # Goal not reached — recompute budget_hit with fresh numbers
                     fresh_b = goal["budgets"]
-                    fresh_tok_hit = (not fresh_tok_unknown) and fresh_tok_spend >= fresh_b.get("token_budget_m", 80)
+                    fresh_tok_hit, fresh_tok_budget = _token_budget_hit(
+                        fresh_tok_spend, fresh_tok_unknown, fresh_b)
                     budget_hit = (fresh_cycles >= (args.max_cycles or goal["budgets"]["max_cycles"])
                                   or fresh_cpu_h >= fresh_b.get("cpu_hours", 60)
                                   or fresh_tok_hit or _deadline_passed(fresh_b))
                     # Update outer-scope vars so the budget_exhausted report (if still hit) is accurate
                     cycles, cpu_h, tok_spend, snap = fresh_cycles, fresh_cpu_h, fresh_tok_spend, fresh_snap
-                    tok_unknown, tok_hit = fresh_tok_unknown, fresh_tok_hit
+                    tok_unknown, tok_hit, tok_budget = fresh_tok_unknown, fresh_tok_hit, fresh_tok_budget
             if budget_hit:
                 rec = _log_decision(log, "budget_exhausted",
                                     f"cycles={cycles}/{max_cycles} cpu_h={cpu_h} "

@@ -143,6 +143,20 @@ def test_tier_function_does_not_read_symbol_status():
     assert "phase3_pass = False" in snap
 
 
+def test_null_token_budget_is_not_a_hit():
+    hit, cap = sup._token_budget_hit(511.842, False, {"token_budget_m": None})
+    assert hit is False
+    assert cap is None
+    hit_num, cap_num = sup._token_budget_hit(511.842, False, {"token_budget_m": 200})
+    assert hit_num is True
+    assert cap_num == 200
+    hit_unknown, _ = sup._token_budget_hit(0.0, True, {"token_budget_m": 0})
+    assert hit_unknown is False
+    hit_default, cap_default = sup._token_budget_hit(90, False, {})
+    assert hit_default is True
+    assert cap_default == 80
+
+
 def test_goal_yaml_drops_old_bar_and_unbounded_budget():
     raw = GOAL_YAML.read_text(encoding="utf-8")
     assert "0.51" not in raw
@@ -156,7 +170,7 @@ def test_goal_yaml_drops_old_bar_and_unbounded_budget():
     assert goal["success_condition"] == ["all_symbols_pass_phase1"]
     assert goal["budgets"]["max_cycles"] == 2000
     assert goal["budgets"]["cpu_hours"] == 2000
-    assert goal["budgets"]["token_budget_m"] == 200
+    assert goal["budgets"]["token_budget_m"] is None
     assert goal["budgets"]["deadline"] == "2028-10-02"
     assert goal["cadence"]["survivors_per_cycle"] == 3
     assert len(goal["cadence"]["target_symbols"]) == 24

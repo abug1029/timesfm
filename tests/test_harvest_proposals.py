@@ -530,3 +530,62 @@ def test_variant_id_format_is_experiment_identity(tmproot):
     rows, _stats = _harvest(tmproot)
     assert rows and rows[0]["variant_id"] == _vid("m", "vor")
     assert rows[0]["variant_id"] != "m_vor"
+
+
+def _write_registry(path, rows):
+    with open(path, "w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _mixed_protocol_rows():
+    def row(vid, symbol, cov, fp):
+        item = {
+            "variant_id": vid, "symbol": symbol, "cov_override": cov,
+            "schema": "fm.aligned_verdict.v2", "status": "ok",
+            "gate_pass": False, "n": 100, "dir_acc": 0.55,
+        }
+        if fp is not None:
+            item["protocol_fingerprint"] = fp
+        return item
+    return [
+        row("legacy_m", "m", "vor", "legacy"),
+        row("nofp_sr", "sr", "rsi6", None),
+        row("current_jd", "jd", "oi", "current"),
+    ]
+
+
+def test_harvest_snapshot_ignores_other_protocols(tmp_path, monkeypatch):
+    """旧指纹和无指纹的失败不得进入收割快照，当前协议的失败仍要进入。"""
+    reg = tmp_path / "aligned_verdicts.jsonl"
+    _write_registry(reg, _mixed_protocol_rows())
+    monkeypatch.setattr(S, "REGISTRY", str(reg))
+    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current")
+    captured = {}
+
+    def fake_harvest(root, snapshot, dead, existing, pool, **kwargs):
+        captured["snapshot"] = snapshot
+        captured["existing"] = existing
+        return [], {"seen": 0}
+
+    monkeypatch.setattr(S, "harvest_proposals", fake_harvest)
+    S._harvest_rows({"cadence": {}})
+    assert set(captured["snapshot"]) == {"current_jd"}
+    assert "legacy_m" not in captured["existing"]
+    assert "nofp_sr" not in captured["existing"]
+    assert S._has_prior_failure(captured["snapshot"], "m", "vor") is False
+    assert S._has_prior_failure(captured["snapshot"], "jd", "oi") is True
+
+
+def test_retest_plan_ignores_other_protocols(tmp_path, monkeypatch):
+    """复测计划同样只排当前协议里 n 不足的未过门裁决。"""
+    reg = tmp_path / "aligned_verdicts.jsonl"
+    _write_registry(reg, _mixed_protocol_rows())
+    monkeypatch.setattr(S, "REGISTRY", str(reg))
+    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current")
+    monkeypatch.setattr(S, "_valid_n_for_symbol", lambda symbol: 400)
+    monkeypatch.setattr(S.rl, "in_flight_ids", lambda *a, **k: set())
+    plan = S.plan_sample_retests({
+        "cadence": {"retest_min_new_points": 1, "aligned_max_points": 600},
+    })
+    assert [item[0]["variant_id"] for item in plan] == ["current_jd"]
