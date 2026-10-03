@@ -1131,6 +1131,13 @@ def collect_proposed_variant_ids(root=None):
     return out
 
 
+def _protocol_section_line(fp):
+    """节级指纹。没有主协议组时写 none，避免编造一代协议。"""
+    if isinstance(fp, str) and fp:
+        return "protocol %s" % fp[:12]
+    return "protocol (none)"
+
+
 def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
                                status_map=None, queue_ids=None, root=None):
     if status_map is None:
@@ -1178,6 +1185,7 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
 
     # ## Symbol status (full GOAL_SYMBOLS_SET, never truncated)
     lines.append("## Symbol status")
+    lines.append(_protocol_section_line(_primary_fp))
     lines.append(
         "按协议指纹分组排名；另有 %d 个协议组的 verdict 未进主排名。"
         % _other_proto_count)
@@ -1214,10 +1222,15 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
                 line += " — 暂停 %s 代" % hg
         lines.append(line)
     lines.append("")
-    lines.extend(_effective_clue_lines(items))
+    clue_lines = _effective_clue_lines(items)
+    if clue_lines and clue_lines[0].startswith("## Effective clues"):
+        clue_lines.insert(1, _protocol_section_line(_primary_fp))
+    lines.extend(clue_lines)
+    lines.extend(_dead_family_lines(items, _primary_fp))
 
     # ## Do not re-propose; source priority: verdict > queue > proposed
     lines.append("## Do not re-propose (variant_id)")
+    lines.append(_protocol_section_line(_primary_fp))
     tagged = {}
     for vid in (proposed_ids or set()):
         tagged[str(vid)] = "proposed"
@@ -1260,8 +1273,12 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
             state = "DEAD"
         else:
             state = status
+        own_fp = v.get("protocol_fingerprint")
+        vid = v.get("variant_id")
+        if isinstance(own_fp, str) and own_fp:
+            vid = "[%s] %s" % (own_fp[:12], vid)
         lines.append("- {0}: {1}, gate_pass={2}, ev={3}, n={4}, status={5}".format(
-            v.get("variant_id"), state, v.get("gate_pass"), v.get("ev"),
+            vid, state, v.get("gate_pass"), v.get("ev"),
             v.get("n"), status))
     if len(items) > len(_shown):
         lines.append("verdicts_truncated=%d" % (len(items) - len(_shown)))
@@ -1338,13 +1355,13 @@ def _effective_clue_lines(items):
     else:
         lines.append("- (none)")
     lines.append("### Weak families (>=4 ok, 0 pass)")
+    lines.append("ok 含描述性裁决。family_dead 只看 Dead families。")
     weak = [fam for fam, n in fam_ok.items()
             if n >= 4 and fam_pass.get(fam, 0) == 0]
     weak.sort()
     if weak:
         for fam in weak:
-            lines.append("- %s: %d ok, 0 pass — 不要为凑探索而提，除非有 failure_delta"
-                         % (fam, fam_ok[fam]))
+            lines.append("- %s: %d ok, 0 pass" % (fam, fam_ok[fam]))
     else:
         lines.append("- (none)")
     lines.append("")
@@ -1456,17 +1473,11 @@ def _cross_run_repeat_counts(root=None, max_runs=20):
 _CONFIRMATORY_DM = frozenset({"ok", "set_mismatch_ok"})
 
 
-def _dead_families(snapshot, min_ok=4):
-    """一族至少 min_ok 条可确认 DM 的 ok 裁决且 0 条过门，才算死亡。
-
-    dm_status 缺省、set_mismatch_descriptive、no_common_cutoff、
-    insufficient_common 都不计数。min_ok 仍是 4。
-    run_mode 不读：探索行上的可确认失败同样计数。
-    pass 计数是 gate_pass，不调用 pass_variants。
-    """
+def _family_confirmatory_counts(rows):
+    """与 _dead_families 同一套行。返回 (fam_ok, fam_pass)。"""
     fam_ok = {}
     fam_pass = {}
-    for v in (snapshot or {}).values():
+    for v in rows or []:
         if not isinstance(v, dict) or v.get("status", "ok") != "ok":
             continue
         if v.get("dm_status") not in _CONFIRMATORY_DM:
@@ -1477,8 +1488,44 @@ def _dead_families(snapshot, min_ok=4):
         fam_ok[fam] = fam_ok.get(fam, 0) + 1
         if v.get("gate_pass"):
             fam_pass[fam] = fam_pass.get(fam, 0) + 1
+    return fam_ok, fam_pass
+
+
+def _dead_families(snapshot, min_ok=4):
+    """一族至少 min_ok 条可确认 DM 的 ok 裁决且 0 条过门，才算死亡。
+
+    dm_status 缺省、set_mismatch_descriptive、no_common_cutoff、
+    insufficient_common 都不计数。min_ok 仍是 4。
+    run_mode 不读：探索行上的可确认失败同样计数。
+    pass 计数是 gate_pass，不调用 pass_variants。
+    """
+    rows = (snapshot or {}).values() if isinstance(snapshot, dict) else []
+    fam_ok, fam_pass = _family_confirmatory_counts(rows)
     return {fam for fam, n in fam_ok.items()
             if n >= min_ok and fam_pass.get(fam, 0) == 0}
+
+
+def _dead_family_lines(items, primary_fp, min_ok=4):
+    """把 _dead_families 的结果写给 peer。不另数全部 ok 行。"""
+    fam_ok, fam_pass = _family_confirmatory_counts(items)
+    dead = sorted(
+        fam for fam, n in fam_ok.items()
+        if n >= min_ok and fam_pass.get(fam, 0) == 0)
+    lines = [
+        "## Dead families",
+        _protocol_section_line(primary_fp),
+        "判据与 family_dead 相同：只计 dm_status 为 ok 或 set_mismatch_ok 的 ok 行；"
+        "条数达到 min_ok 且 gate_pass 为 0 才列入。描述性 DM 不计数。"
+        "列入的族会被无条件拒绝。",
+    ]
+    if not dead:
+        lines.append("- (none)")
+    else:
+        for fam in dead:
+            lines.append("- %s: n_ok=%d, n_gate_pass=%d, min_ok=%d" % (
+                fam, fam_ok[fam], fam_pass.get(fam, 0), min_ok))
+    lines.append("")
+    return lines
 
 
 

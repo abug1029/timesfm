@@ -1337,6 +1337,112 @@ def test_materialize_known_verdicts_effective_clues(tmp_path):
     assert "Near-miss" in text
     assert "sh_oi" in text
     assert "Prioritize volatility" not in text
+    assert "除非有 failure_delta" not in text
+
+
+def test_materialize_dead_families_and_fingerprint(tmp_path):
+    """死亡族名单与 _dead_families 同口径；指纹用各行自己的前 12 位。"""
+    dest = tmp_path / "known_verdicts.inc.md"
+    fp = "f02b2a433fd572eab341c7e4"
+    other = "bbbbbbbbbbbbbbbb9999"
+    snap = {}
+    for i, dm in enumerate(["ok", "ok", "ok", "set_mismatch_ok"]):
+        vid = "t%d" % i
+        snap[vid] = _v(
+            vid, symbol="m", cov_family="term_structure", gate_pass=False,
+            dm_status=dm, protocol_fingerprint=fp, run_mode="exploration",
+            dir_acc=0.40)
+    for i in range(5):
+        vid = "d%d" % i
+        snap[vid] = _v(
+            vid, symbol="sr", cov_family="calendar", gate_pass=False,
+            dm_status="set_mismatch_descriptive", protocol_fingerprint=fp,
+            run_mode="exploration", dir_acc=0.42)
+    snap["pass1"] = _v(
+        "pass1", symbol="jd", cov_family="positioning", gate_pass=True,
+        dm_status="ok", protocol_fingerprint=fp, run_mode="confirmation",
+        dir_acc=0.60)
+    snap["other"] = _v(
+        "other_vid", symbol="lh", cov_family="volatility", gate_pass=False,
+        dm_status="ok", protocol_fingerprint=other, run_mode="exploration",
+        dir_acc=0.41)
+    snap["nofp"] = _v(
+        "nofp_vid", symbol="fu", cov_family="momentum", gate_pass=False,
+        dir_acc=0.40)
+    sup.materialize_known_verdicts(
+        snap, str(dest), proposed_ids=set(), status_map={}, queue_ids=set())
+    text = dest.read_text(encoding="utf-8")
+    assert "除非有 failure_delta" not in text
+    assert "复活" not in text
+    term_row = next(ln for ln in text.splitlines() if "t0:" in ln)
+    assert term_row.startswith("- [f02b2a433fd5] ")
+    other_row = next(ln for ln in text.splitlines() if "other_vid:" in ln)
+    assert other_row.startswith("- [bbbbbbbbbbbb] ")
+    nofp_row = next(ln for ln in text.splitlines() if "nofp_vid:" in ln)
+    assert nofp_row.startswith("- nofp_vid:")
+    for header in ("## Symbol status", "## Effective clues", "## Do not re-propose"):
+        chunk = text.split(header, 1)[1].split("\n## ", 1)[0]
+        assert "protocol f02b2a433fd5" in chunk
+    dead_sec = text.split("## Dead families", 1)[1].split("\n## ", 1)[0]
+    assert "protocol f02b2a433fd5" in dead_sec
+    assert "term_structure: n_ok=4, n_gate_pass=0, min_ok=4" in dead_sec
+    assert "calendar" not in dead_sec
+    assert "positioning" not in dead_sec
+    assert "volatility" not in dead_sec
+    assert sup._dead_families(snap) == {"term_structure"}
+    assert "calendar" in text.split("## Dead families", 1)[0]
+
+
+def test_materialize_dead_family_pass_saves_and_missing_protocol(tmp_path):
+    """过门的可确认行使一族不死；没有主协议时写 protocol (none)。"""
+    dest = tmp_path / "known_verdicts.inc.md"
+    fp = "f02b2a433fd572eab341c7e4"
+    snap = {}
+    for i, dm in enumerate(["ok", "ok", "ok", "set_mismatch_ok"]):
+        vid = "t%d" % i
+        snap[vid] = _v(
+            vid, symbol="m", cov_family="term_structure", gate_pass=False,
+            dm_status=dm, protocol_fingerprint=fp, run_mode="exploration",
+            dir_acc=0.40)
+    snap["desc_pass"] = _v(
+        "desc_pass", symbol="m", cov_family="term_structure", gate_pass=True,
+        dm_status="set_mismatch_descriptive", protocol_fingerprint=fp,
+        run_mode="exploration", dir_acc=0.70)
+    for i in range(3):
+        vid = "s%d" % i
+        snap[vid] = _v(
+            vid, symbol="eg", cov_family="spread", gate_pass=False,
+            dm_status="ok", protocol_fingerprint=fp, run_mode="exploration",
+            dir_acc=0.40)
+    snap["s_pass"] = _v(
+        "s_pass", symbol="eg", cov_family="spread", gate_pass=True,
+        dm_status="set_mismatch_ok", protocol_fingerprint=fp,
+        run_mode="exploration", dir_acc=0.61)
+    sup.materialize_known_verdicts(
+        snap, str(dest), proposed_ids=set(), status_map={}, queue_ids=set())
+    text = dest.read_text(encoding="utf-8")
+    dead_sec = text.split("## Dead families", 1)[1].split("\n## ", 1)[0]
+    assert "term_structure: n_ok=4, n_gate_pass=0, min_ok=4" in dead_sec
+    assert "spread" not in dead_sec
+    assert sup._dead_families(snap) == {"term_structure"}
+
+    bare = tmp_path / "bare.inc.md"
+    bare_snap = {}
+    for i in range(4):
+        vid = "b%d" % i
+        bare_snap[vid] = _v(
+            vid, symbol="rb", cov_family="basis", gate_pass=False,
+            dm_status="ok", dir_acc=0.40)
+    sup.materialize_known_verdicts(
+        bare_snap, str(bare), proposed_ids=set(), status_map={}, queue_ids=set())
+    bare_text = bare.read_text(encoding="utf-8")
+    for header in ("## Symbol status", "## Effective clues",
+                   "## Do not re-propose", "## Dead families"):
+        chunk = bare_text.split(header, 1)[1].split("\n## ", 1)[0]
+        assert "protocol (none)" in chunk, header
+    bare_dead = bare_text.split("## Dead families", 1)[1].split("\n## ", 1)[0]
+    assert "basis: n_ok=4, n_gate_pass=0, min_ok=4" in bare_dead
+    assert "[b0]" not in bare_text
 
 
 # ──────────────────────────────────────────────────────────────
