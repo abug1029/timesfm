@@ -26,15 +26,33 @@
 `_dead_families(snapshot, min_ok=4)`（`scripts/praxist_supervisor.py:1194`）判死条件为
 「该 family 累计 **≥4 条 ok 裁决** 且 **0 个 pass**」。
 
-其中 `pass` 来自 `pass_variants()`，其严格链（spec §4.3 W3.4）要求
+~~其中 `pass` 来自 `pass_variants()`，其严格链（spec §4.3 W3.4）要求
 `run_mode == "confirmation"` **且** `fdr_pass` **且** `p_value is not None`。
+在确认机制产出任何结果之前（本项目当前状态），`pass` 恒为 0。
+于是判据退化为「只要某 family 累积 4 条 ok 裁决即判死」，与 family 实际前景无关。~~
 
-**在确认机制产出任何结果之前（本项目当前状态），`pass` 恒为 0**。
-于是判据退化为「只要某 family 累积 4 条 ok 裁决即判死」，与 family 实际前景无关。
+> 【勘误 2026-10-03，对方计划复核指出 + 本次逐行复核确认】**上述 pass 来源判断错误。**
+> `scripts/praxist_supervisor.py:1194-1211` 的 pass 计数读的是 **`v.get("gate_pass")`**，
+> **不调用** `registry_lib.pass_variants()`（后者在 `registry_lib.py:516`，是成功计数口径）。
+>
+> 正确机制：family 死亡条件为「**≥ `min_ok`(4) 条 ok 裁决 且 该 family 内 0 条 `gate_pass=True`**」，
+> 与 `run_mode` / `fdr_pass` **无关**。因此：
+> - **并非「pass 恒为 0」**——当前协议快照有 13 条 `gate_pass=True` 行；
+> - **并非「累积 4 条 ok 即判死」**——任一 family 只要有 ≥1 条过门行就永不被判死；
+> - 实际判死原因：**`term_structure` 的 5 条 ok 行全部 `gate_pass=False`**，
+>   且这 5 行的 DM 全部为 `set_mismatch_descriptive`（**不可确认的失败**）。
+>
+> 即缺陷不在「pass 口径耦合确认机制」，而在**把不可确认的描述性失败计入死亡阈值**。
+> 各 family 实测（ok / gate_pass / 可确认 DM）：momentum 15/7/0 · inventory 13/3/0 ·
+> volatility 8/2/0 · term_structure 5/0/0 · calendar 3/1/0 —— 全库**可确认 DM 行数为 0**。
+>
+> **修复方向不变但更精确**：计入行必须是可确认 DM（`dm_status ∈ {ok, set_mismatch_ok}`）。
+> 该修复当前会让死亡集合**归零**（无任何可确认 DM 行），符合过渡期预期。
+> 详见对方计划 Task 4。
 
 ### 1.2 实测证据
 
-- 已判死 family：**`term_structure`**（5 条 ok 裁决）
+- 已判死 family：**`term_structure`**（5 条 ok 裁决，且该 5 条 `gate_pass` 全为 False、DM 全为 `set_mismatch_descriptive`）——全库唯一死亡族；`family_dead` 拒收数 602→642 是**同一批提案被反复重扫的累计拒绝量**，不代表新死一族
 - 各 family 的 ok 裁决数：`momentum 15` / `inventory 13` / `volatility 8` / `term_structure 5` / `calendar 3`
 - `family_dead` 拒收逐轮增长（阶段② 7 轮）：
 
