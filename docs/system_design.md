@@ -905,6 +905,9 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
 | `cascade/horizon_fill.py` | horizon 尾填充契约（Stage 3） |
 | `cascade/experiment_fingerprint.py` | 实验指纹（Stage 3） |
 | `cascade/research_family.py` | 研究 family 多重比较纪律（Stage 3） |
+| `scripts/preregistry.py` | 预注册纯逻辑家（2026-10-03）：确认锁定（改参数 → 新 `prereg_id`）、目标效应锁定、`confirm_from_ts` 注册时固定 |
+| `task_FM/config/preregistry.jsonl` | 预注册唯一家（append-only）；首批 2 条（jd 1,199 · sr 986） |
+| `task_FM/config/family_registry.jsonl` | family 成员登记（90 天关闭 / ≤20 成员 / 单成员 180 天 T_max） |
 | `task_FM/config/aligned_verdicts.jsonl` | 裁决存储（v2 schema） |
 | `data/cache/supervisor_state.json` | 机器状态（cycles_done / last_run_id） |
 | `scripts/praxist_goal.yaml` | 目标配置 |
