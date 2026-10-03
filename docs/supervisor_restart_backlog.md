@@ -74,12 +74,38 @@ setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.ya
 launcher 内部已做 `setsid nohup` 孤儿化；验证会话独立性看 `ps -o pid,ppid,sid,tty`——
 `SID` 应与调用方不同、`PPID` 应为 `/init`、`TTY` 为 `?`。
 
-**⚠ 已知缺陷（2026-10-02 实测）**：第一次 `SIGTERM` 可能被忽略——睡眠是一次性
-`time.sleep(POLL_S=300)`，标志要到下一轮循环顶才被看见；若信号落在循环顶检查之后，
-本轮仍会收割并启动快环。实测第一次 SIGTERM 后 180s 内继续收割+发起新 run，第二次才生效。
-根因与修法（睡眠改 1s切片 + 开新工作前查标志）见
-`docs/superpowers/plans/2026-10-03-three-loop-open-closure.md` Task 7。
-**在修复落地前，停机需发两次 SIGTERM 并以事件判据为准**。
+**⚠ 已知缺陷：SIGTERM 停机不可靠（2026-10-02 首现，2026-10-03 修订为结构性根因）**
+
+症状：发送 `SIGTERM` 后 supervisor 长时间不退出，且期间继续收割、继续发起快环。
+
+- 2026-10-02 实测：第一次 SIGTERM 后 180s 内继续收割 + 发起新 run，第二次才生效（约 35s）。
+- 2026-10-03 实测（更严重）：**两次 SIGTERM 均被忽略**，累计等待 180s + 120s 后仍在运行
+  （14:16:05 还发起新 run），最终需 `SIGKILL` 强制停止；停机事件由 atexit 兜底补发，
+  `stop_report.json` 未刷新（仍为 10-02 PID 418）。
+
+**根因（结构性，非「信号丢了一次」）**：`_signal_handler`（`praxist_supervisor.py:361`）按设计只置
+`_SHUTDOWN_REQUESTED = True`（无 I/O，做法正确）；但该标志**只在主循环顶被读**
+（`:2858`，紧跟 `_write_heartbeat()`）。主循环内存在多处**无超时阻塞调用**
+（如 `_maybe_finish_slow` 等慢环子进程退出、`rl.queue_*` / `_harvest_rows` 的文件锁与全量扫描），
+信号一旦落在这些调用中间，标志在阻塞解除前读不到。叠加 `POLL_S = 300`（`:117`），
+最坏情况要再等一整轮 poll。
+
+**因此「发两次 SIGTERM」不是可靠口径**——2026-10-03 第二次同样无效，白等 120s。
+
+**修复前操作口径**：
+
+```bash
+kill -TERM "$SUP"; sleep 60
+kill -0 "$SUP" 2>/dev/null && kill -KILL "$SUP"      # 直接强杀，不再等第二轮 SIGTERM
+```
+
+注意：SIGKILL 路径下 `stop_report.json` **不会刷新**，判据只能看
+`data/cache/supervisor_events.jsonl` 的 `supervisor_stopped`（可能由 atexit 兜底补发）。
+
+**修法方向**：`docs/superpowers/plans/2026-10-03-three-loop-open-closure.md` Task 7
+（睡眠改 1s 切片 + 开新工作前查标志）能缓解，但**覆盖不到「卡在 `_maybe_finish_slow`
+之类阻塞调用」的情形**——需补：阻塞调用加超时返回，或停机标志改走独立线程 / 自管道唤醒，
+使循环顶检查不被长阻塞推迟。
 
 ## 处置记录
 
@@ -102,3 +128,5 @@ launcher 内部已做 `setsid nohup` 孤儿化；验证会话独立性看 `ps -o
   v4 指纹 `f02b2a43…` 上线；`ensure_baselines` 重生波 9/9 全带 v4 落章（fu 为入集后首个基线）。
   中途 WSL VM 回收击杀 PID 393（eg 重生 201/589 处，无 traceback）→ 重跑 launcher幂等续跑，
   **重生波可恢复性获生产实证**（波恢复后 cj 持久化跳过）。
+- 2026-10-03: **计划性停机**（配合文档治理）。SIGTERM 两次均被忽略（180s+120s 内持续产出）→ `SIGKILL` 强制停止；停机事件由 atexit 兜底补发（`exit_code 0` / uptime 64,790s），`stop_report.json` 未刷新（仍为 10-02 PID 418）。孤儿 run 178344 单独 SIGTERM ~5s 干净退出。停机前计数：registry 238（v4 50 · gate_pass 16 · tier S7/A7/B25/C11）· cycles 205 · phase fast。上方操作口径即据本次实测修订。
+
