@@ -1644,6 +1644,17 @@ def _proposal_quality_gate(prop, snapshot, proposal_path=None):
     return sum(bd.values()), bd
 
 
+def _symbol_has_current_nocov_baseline(symbol, root):
+    """当前协议的无协变量基线在，才占慢环座位。指纹算不出来时放行。不生成基线。"""
+    fp = _current_protocol_fingerprint()
+    if fp is None:
+        return True
+    from cascade.baseline_paths import baseline_filename
+    path = os.path.join(root, "task_FM", "config", baseline_filename(symbol, None))
+    status, got = _baseline_protocol_fingerprint(path)
+    return status == "ok" and got == fp
+
+
 def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                       aligned_max_points=600, priority_symbols=None):
     """收割 peer 机制化假设 (results/**/proposals/*.json) → aligned 队列行。
@@ -1706,6 +1717,8 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 _reject("cov_archived"); continue
             if valid_covs is not None and cov not in valid_covs:
                 _reject("cov_not_in_active_pool"); continue
+            if not _symbol_has_current_nocov_baseline(symbol, root):
+                _reject("no_current_baseline"); continue
             if len(mechanism) < 40:
                 _reject("mechanism_too_short"); continue
             sym_st = str((status_map.get(symbol) or {}).get("status") or "ACTIVE").upper()
