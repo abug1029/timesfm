@@ -128,3 +128,51 @@ def test_production_family_registry_has_no_fixture_members():
     bad = [m for m in members
            if any(k in str(m.get("variant_id", "")) for k in fixture_markers)]
     assert not bad, f"生产 family_registry 含 fixture 成员：{[m['variant_id'] for m in bad]}"
+
+
+# ── D2 副作用：墓碑不得永久占用去重名额 ──────────────────────────
+def test_no_data_tombstone_does_not_block_reenqueue(tmp_path, monkeypatch):
+    """空评估墓碑不得永久占用「已跑过」名额——数据到位后必须还能再派发。
+
+    D2 让墓碑带上了 prereg_id（轮内去重 + 审计留痕），但若墓碑也计入
+    already_ran_ids，该预注册将永远不再派发——确认通道被永久锁死。
+    锁定语义：只有真实评估（status != "no_data"）算「已跑过」；
+    数据未到位时不派发由 D1 闸门负责（本测试显式放行）。
+    对照：test_snapshot_prereg_id_blocks_second_enqueue 里的真实裁决
+    （无 status 字段）仍永久阻断，语义边界不受本修正影响。
+    """
+    prereg_path = tmp_path / "preregistry.jsonl"
+    family_path = tmp_path / "family_registry.jsonl"
+    queue_path = tmp_path / "pending.jsonl"
+    jd = {
+        "prereg_id": "6f944c74e2c94ca5a5b70e64676e518b",
+        "symbol": "jd",
+        "registered_at": "2026-10-02T00:00:00+00:00",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 1199,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
+    }
+    prereg_path.write_text(json.dumps(jd) + "\n", encoding="utf-8")
+    vid = "jd_momentum_" + ("ab" * 32)[:12]
+    snap = {
+        # 空评估墓碑：带 prereg_id（D2），但不是真实评估——不得占用去重名额
+        vid: {"variant_id": vid, "prereg_id": jd["prereg_id"],
+              "run_mode": "confirmation", "status": "no_data", "n": 0},
+        # 另一预注册的真实裁决：必须占用去重名额（对照组）
+        "jd_momentum_realreal01": {"variant_id": "jd_momentum_realreal01",
+                                   "prereg_id": "p-other", "status": "ok"},
+    }
+    monkeypatch.setattr(sup, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sup, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sup, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)
+    monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
+    n = sup._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
+    assert n == 1, "快照里只有 no_data 墓碑时，数据到位后仍应派发确认行"
+    queued = [json.loads(l) for l in queue_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert queued and queued[0]["run_mode"] == "confirmation"
+    assert queued[0]["variant_id"] == vid

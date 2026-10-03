@@ -474,9 +474,14 @@ def _maybe_enqueue_confirmations(log, now_ts):
     registry = load_preregistry(PREREGISTRY_PATH)
     blocked = rl.in_flight_ids(QUEUE, INPROGRESS)
     snap = _active_protocol_snapshot(REGISTRY)
+    # 2026-10-03：只有真实评估才算「已跑过」。no_data 墓碑（D2 起带 prereg_id）
+    # 若也计入，数据到位后该预注册将永远不再派发 —— 墓碑必须排除。
+    # 闸门（D1）保证数据未越过 confirm_from_ts 时不派发；闸门通过 ⇒ 评估
+    # 窗口必有数据 ⇒ 真实裁决落账 ⇒ 去重永久生效，无残余重复入队路径。
     already = {
         v.get("prereg_id") for v in (snap or {}).values()
         if isinstance(v, dict) and v.get("prereg_id")
+        and v.get("status") != "no_data"
     }
     pool = load_covariate_pool()
 
