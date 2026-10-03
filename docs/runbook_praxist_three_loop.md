@@ -128,7 +128,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 ## Harvest 与 Known verdicts（方案 A：机制化假设作者，2026-09-08 起）
 
 - Peer **不跑评估**，只写机制优先的结构化提案：`task_FM/experiments/run_*/results/gen_*/<peer>/proposals/<symbol>_<cov>.json`（schema `fm.hypothesis_proposal.v1`，`mechanism` ≥40 字）。监督环在**活 run 已结束**时由 `harvest_proposals` 收割：`paused_429` / `wait_quota` / failover **不挡** harvest（提案是本地文件）。每 cycle 重扫全部 `run_*/results/**/proposals/*.json`，dead/passing/in-flight 去重。旧 `harvest_survivors`（读 `evaluation_summary.json`）仅留作回滚，不是现行源。
-- **拒绝计数（fail visibly）**：`missing_symbol_or_cov` / `symbol_not_allowed` / `cov_archived` / `cov_not_in_active_pool` / `mechanism_too_short` / `no_failure_delta`（同 symbol 或同 cov 已失败且 delta 不足 20 字）/ `symbol_dead` / `symbol_hold` / `dedup`（dead / 已过门 / in-flight / 本批重复）/ `backlog_dup`。
+- **拒绝计数（fail visibly）**：`missing_symbol_or_cov` / `symbol_not_allowed` / `cov_archived` / `cov_not_in_active_pool` / `no_current_baseline`（该品种没有当前协议的 `baseline_points_{symbol}_nocov.jsonl`）/ `mechanism_too_short` / `no_failure_delta`（同 symbol 或同 cov 已失败且 delta 不足 20 字）/ `symbol_dead` / `symbol_hold` / `dedup`（dead / 已过门 / in-flight / 本批重复）/ `backlog_dup`。
 - **新协变量想法** `new_cov_<name>.json`（`cov_override=null`）→ 追加 `task_FM/config/covariate_backlog.jsonl`（按 name 去重），**不入队**；宿主在 `features.py` 实现并入池后才可测。
 - **选座（top_k = `survivors_per_cycle`，当前 3）**：先按 tier 排序再两遍 QD——
   1. tier 0：`cadence.priority_symbols` 中当前有效点 n≥350 者（2026-09-23 起 goal.yaml 未设该键 → tier 0 现为空）；
@@ -146,7 +146,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 
 ### 当前 goal（以 `scripts/praxist_goal.yaml` 为准）
 
-成功条件（`praxist_goal.yaml`，2026-09-23 起）：**所有目标品种**均通过三阶段验证——Phase 1 基础质量门槛（`n_gate_pass_variants >= 10` + `avg_dir_acc_gate_pass >= 0.51`）、Phase 2 高质量变体（`n_tier_a_or_b >= 8`）、Phase 3 稳定性验证（`n_validated_multi_seed >= 3` + `decay_below_threshold <= 2`）。目标品种集 24 个：m/ss/sr/cj/jd/lh/eg/rb/i/p/y/cf/bu/fu/ta/ma/fg/ur/px/oi/sh/sp/ao/sc。**预算已无限制**（`max_cycles`/`cpu_hours`/`token_budget_m`=999999，`deadline`=2099-12-31）。cadence：survivors=3、aligned_max_points=600、quota 窗 5h、run 预算 1.5h。`dir_acc` 主口径为剔零变动（spec W6.5①，PR-B4）；经济数值仅作报表参考，不参与裁决。
+成功条件（以 `scripts/praxist_goal.yaml` 为准）：只有 `all_symbols_pass_phase1`。一个品种达到「可预测」当且仅当至少有一条 family 封账的确认：`run_label` 为 confirmed 且 `fdr_pass` 为 True。原三阶段门槛和无界预算已经退役，本文件不再记录那些公式。目标品种 24 个：m/ss/sr/cj/jd/lh/eg/rb/i/p/y/cf/bu/fu/ta/ma/fg/ur/px/oi/sh/sp/ao/sc。预算：`max_cycles`=2000，`cpu_hours`=2000，`token_budget_m`=null（不参与停机），`deadline`=2028-10-02。cadence：survivors=3、aligned_max_points=600、quota 窗 5h、run 预算 1.5h。`dir_acc` 主口径为剔零变动（spec W6.5①，PR-B4）；经济数值仅作报表参考，不参与裁决。已锁定的预注册样本量不在监督环里改写。jd 的确认样本仍是 1199，sr 的确认样本仍是 986，都写在 `task_FM/config/preregistry.jsonl`。Q7 备忘录要求重启后按 live 密度修订日历，并且每季按实测 Var_LR 复核 Δ_min；那是宿主动作，监督环不为此改预注册文件，也不改 Δ*=0.08。
 
 ---
 

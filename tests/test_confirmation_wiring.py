@@ -496,3 +496,231 @@ def test_finalize_seals_only_when_every_member_is_terminal():
     assert sealed["members"][1]["status"] == "refuted"
     assert sealed["members"][0].get("fdr_pass") is not True
     assert sealed["members"][1].get("fdr_pass") is not True
+
+
+def test_due_confirmation_row_uses_the_locked_preregistration():
+    jd = {
+        "prereg_id": "6f944c74e2c94ca5a5b70e64676e518b",
+        "symbol": "jd",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 1199,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
+    }
+    sr = {
+        "prereg_id": "ef908a2214e141abaa2d480ca82b53bb",
+        "symbol": "sr",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 986,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vwap_deviation"]},
+    }
+    early = dict(jd)
+    early["prereg_id"] = "too-early"
+    early["confirm_from_ts"] = "2026-10-04 00:00:00"
+    assert sv._requested_covariate(jd) == "vor"
+    assert sv._requested_covariate({"cov_fingerprint": {"keys": ["daily_slope"]}}) is None
+    due = sv.due_confirmations(
+        [jd, sr, early],
+        "2026-10-03 12:00:00",
+        blocked_ids=set(),
+        already_ran_ids=set(),
+        fingerprint_for=lambda symbol, cov: "ab" * 32,
+        family_for=lambda cov: "momentum",
+    )
+    assert [row["symbol"] for row in due] == ["jd", "sr"]
+    assert due[0]["run_mode"] == "confirmation"
+    assert due[0]["variant_id"] == "jd_momentum_" + ("ab" * 32)[:12]
+    assert due[0]["cov_override"] == "vor"
+    assert due[0]["prereg_id"] == jd["prereg_id"]
+    assert due[0]["confirm_from_ts"] == "2026-10-03 00:00:00"
+    assert due[0]["n_confirm_required"] == 1199
+    assert due[0]["max_points"] == 1199
+    assert due[0]["source"] == "confirmation"
+    assert "request_early_seal" not in due[0]
+    blocked = sv.due_confirmations(
+        [jd], "2026-10-03 12:00:00",
+        blocked_ids={due[0]["variant_id"]},
+        already_ran_ids=set(),
+        fingerprint_for=lambda symbol, cov: "ab" * 32,
+        family_for=lambda cov: "momentum",
+    )
+    assert blocked == []
+    ran = sv.due_confirmations(
+        [jd], "2026-10-03 12:00:00",
+        blocked_ids=set(),
+        already_ran_ids={jd["prereg_id"]},
+        fingerprint_for=lambda symbol, cov: "ab" * 32,
+        family_for=lambda cov: "momentum",
+    )
+    assert ran == []
+
+
+def test_enqueue_due_confirmation_then_peek_does_not_seal(tmp_path, monkeypatch):
+    prereg_path = tmp_path / "preregistry.jsonl"
+    family_path = tmp_path / "family_registry.jsonl"
+    queue_path = tmp_path / "pending.jsonl"
+    jd = {
+        "prereg_id": "6f944c74e2c94ca5a5b70e64676e518b",
+        "symbol": "jd",
+        "registered_at": "2026-10-02T00:00:00+00:00",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 1199,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
+    }
+    prereg_path.write_text(json.dumps(jd) + "\n", encoding="utf-8")
+    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    monkeypatch.setattr(sv, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {})
+    n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
+    assert n == 1
+    queued = [json.loads(line) for line in queue_path.read_text(encoding="utf-8").splitlines()]
+    assert queued[0]["run_mode"] == "confirmation"
+    assert queued[0]["max_points"] == 1199
+    members = sv.load_family_members(str(family_path))
+    assert len(members) == 1
+    assert members[0]["status"] == "registered"
+    # 同一 vid 已在队里，第二轮不再入队，也不抢占。
+    assert sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00") == 0
+    verdict = {
+        "variant_id": queued[0]["variant_id"],
+        "run_mode": "confirmation",
+        "prereg_id": jd["prereg_id"],
+        "n": 10,
+        "n_confirm_required": 1199,
+        "p_value": 0.01,
+        "gate_pass": True,
+        "dm_status": "set_mismatch_descriptive",
+        "missingness_admissible": False,
+    }
+    out = sv._finalize_confirmation_verdict(verdict, members, datetime(2026, 10, 3, tzinfo=timezone.utc))
+    assert out["audit"]["event"] == "no_peek_rejected"
+    assert out["sealed"] is False
+    assert out.get("fdr_pass") is not True
+    assert out["run_label"] != "confirmed"
+
+
+def test_enqueue_due_jd_and_sr_registers_each_family(tmp_path, monkeypatch):
+    prereg_path = tmp_path / "preregistry.jsonl"
+    family_path = tmp_path / "family_registry.jsonl"
+    queue_path = tmp_path / "pending.jsonl"
+    jd = {
+        "prereg_id": "6f944c74e2c94ca5a5b70e64676e518b",
+        "symbol": "jd",
+        "registered_at": "2026-10-02T00:00:00+00:00",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 1199,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
+    }
+    sr = {
+        "prereg_id": "ef908a2214e141abaa2d480ca82b53bb",
+        "symbol": "sr",
+        "registered_at": "2026-10-02T00:00:00+00:00",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 986,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vwap_deviation"]},
+    }
+    prereg_path.write_text(json.dumps(jd) + "\n" + json.dumps(sr) + "\n", encoding="utf-8")
+    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    monkeypatch.setattr(sv, "load_covariate_pool", lambda: {
+        "vor": {"family": "momentum"},
+        "vwap_deviation": {"family": "momentum"},
+    })
+    monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {})
+    n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
+    assert n == 2
+    queued = [json.loads(line) for line in queue_path.read_text(encoding="utf-8").splitlines()]
+    assert [row["symbol"] for row in queued] == ["jd", "sr"]
+    assert [row["run_mode"] for row in queued] == ["confirmation", "confirmation"]
+    assert queued[0]["max_points"] == 1199
+    assert queued[1]["max_points"] == 986
+    members = sv.load_family_members(str(family_path))
+    by_symbol = {member["symbol"]: member for member in members}
+    assert sorted(by_symbol) == ["jd", "sr"]
+    assert by_symbol["jd"]["status"] == "registered"
+    assert by_symbol["sr"]["status"] == "registered"
+    assert by_symbol["jd"]["family_key"] == sv.family_key_for("jd")
+    assert by_symbol["sr"]["family_key"] == sv.family_key_for("sr")
+    assert sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00") == 0
+
+
+def test_stamp_confirmation_verdict_writes_prereg_fields():
+    row = {
+        "run_mode": "confirmation",
+        "prereg_id": "6f944c74e2c94ca5a5b70e64676e518b",
+        "n_confirm_required": 1199,
+    }
+    verdict = {"run_mode": "confirmation", "n": 10, "run_label": None}
+    asl._stamp_confirmation_verdict(verdict, row)
+    assert verdict["prereg_id"] == row["prereg_id"]
+    assert verdict["n_confirm_required"] == 1199
+    assert verdict["n_confirm_actual"] == 10
+    kept = {"run_mode": "confirmation", "n": 10, "n_confirm_actual": 4}
+    asl._stamp_confirmation_verdict(kept, row)
+    assert kept["n_confirm_actual"] == 4
+    assert kept["prereg_id"] == row["prereg_id"]
+    assert kept["n_confirm_required"] == 1199
+    no_data = {"status": "no_data", "n": 0, "run_mode": None, "run_label": None, "fdr_pass": False}
+    asl._stamp_confirmation_verdict(no_data, row)
+    assert no_data["prereg_id"] == row["prereg_id"]
+    assert no_data["n_confirm_required"] == 1199
+    assert no_data["run_label"] is None
+    assert no_data["fdr_pass"] is False
+
+
+def test_snapshot_prereg_id_blocks_second_enqueue(tmp_path, monkeypatch):
+    prereg_path = tmp_path / "preregistry.jsonl"
+    family_path = tmp_path / "family_registry.jsonl"
+    queue_path = tmp_path / "pending.jsonl"
+    prereg_id = "6f944c74e2c94ca5a5b70e64676e518b"
+    jd = {
+        "prereg_id": prereg_id,
+        "symbol": "jd",
+        "registered_at": "2026-10-02T00:00:00+00:00",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 1199,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
+    }
+    prereg_path.write_text(json.dumps(jd) + "\n", encoding="utf-8")
+    vid = "jd_momentum_" + ("ab" * 32)[:12]
+    member = {
+        "family_key": sv.family_key_for("jd"),
+        "symbol": "jd",
+        "variant_id": vid,
+        "registered_at": "2026-10-02T00:00:00+00:00",
+        "status": "registered",
+    }
+    family_path.write_text(json.dumps(member) + "\n", encoding="utf-8")
+    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    monkeypatch.setattr(sv, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {
+        vid: {"variant_id": vid, "prereg_id": prereg_id, "run_mode": "confirmation"},
+    })
+    n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
+    assert n == 0
+    assert not queue_path.exists() or queue_path.read_text(encoding="utf-8").strip() == ""
+    raw = [
+        json.loads(line)
+        for line in family_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(raw) == 1
+    assert raw[0]["symbol"] == "jd"
+    assert raw[0]["variant_id"] == vid
+    assert raw[0]["status"] == "registered"

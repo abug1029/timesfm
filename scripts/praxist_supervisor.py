@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """三环监督环: goal 判定 + 两环调度, 纯 Python 0 token"""
 import argparse, atexit, fcntl, glob, json, logging, os, re, signal, subprocess, sys, threading, time, traceback, uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import yaml
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -16,6 +16,33 @@ try:
     from cascade.statistical_tests import bh_fdr_promote
 except ImportError:
     bh_fdr_promote = None
+
+_PERSISTABLE_DM = frozenset({"ok", "set_mismatch_ok"})
+
+
+def fdr_pass_persistable(verdict):
+    """W3.4：只有确认运行、缺失可接受、且 DM 状态可确认时，fdr_pass=True 才能落盘。"""
+    if not isinstance(verdict, dict):
+        return False
+    return (
+        verdict.get("run_mode") == "confirmation"
+        and verdict.get("missingness_admissible") is True
+        and verdict.get("dm_status") in _PERSISTABLE_DM
+    )
+
+
+def promote_batch_for_persistence(verdicts):
+    """先做原 BH/Bonferroni，再拒绝不可确认行的 True。不写文件。"""
+    updates = bh_fdr_promote(verdicts)
+    by_vid = {}
+    for verdict in verdicts or []:
+        vid = verdict.get("variant_id")
+        if vid is not None:
+            by_vid[vid] = verdict
+    for vid, update in updates.items():
+        if update.get("fdr_pass") is True and not fdr_pass_persistable(by_vid.get(vid)):
+            update["fdr_pass"] = False
+    return updates
 
 # 惰性解析: 导入期不得要求 praxist 存在，否则新克隆 / CI / worktree 无法收集测试。
 _PRAXIST = None
@@ -149,6 +176,7 @@ from cascade.research_family import (  # noqa: E402
 )
 
 FAMILY_REGISTRY = os.path.join(FM_ROOT, "task_FM", "config", "family_registry.jsonl")
+PREREGISTRY_PATH = os.path.join(FM_ROOT, "task_FM", "config", "preregistry.jsonl")
 
 
 def family_key_for(symbol, **kwargs):
@@ -287,6 +315,205 @@ def finalize_confirmation(row, members, now):
 def _now_iso():
     return datetime.now().isoformat()
 
+
+_BASE_COVARIATE = "daily_slope"
+
+
+def _requested_covariate(prereg_row):
+    keys = ((prereg_row or {}).get("cov_fingerprint") or {}).get("keys") or []
+    extra = [key for key in keys if key != _BASE_COVARIATE]
+    if len(extra) != 1:
+        return None
+    return extra[0]
+
+
+def confirmation_queue_row(prereg_row, variant_id):
+    cov = _requested_covariate(prereg_row)
+    n_req = int(prereg_row["n_confirm_required"])
+    return {
+        "variant_id": variant_id,
+        "symbol": str(prereg_row["symbol"]).lower(),
+        "cov_override": cov,
+        "max_points": n_req,
+        "stage": "aligned",
+        "checkpoint_path": "",
+        "enqueued_at": _now_iso(),
+        "src_run": "confirmation_dispatch",
+        "source": "confirmation",
+        "run_mode": "confirmation",
+        "prereg_id": prereg_row["prereg_id"],
+        "confirm_from_ts": prereg_row["confirm_from_ts"],
+        "n_confirm_required": n_req,
+    }
+
+
+def due_confirmations(registry, now_ts, blocked_ids, already_ran_ids,
+                      fingerprint_for, family_for):
+    """到期且未占用、未跑过的预注册。不入队，不读时钟，不读权重。"""
+    import cascade.experiment_fingerprint as ef
+
+    out = []
+    for row in registry or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("terminal_state") not in (None, ""):
+            continue
+        confirm_from = row.get("confirm_from_ts")
+        if not isinstance(confirm_from, str) or confirm_from > now_ts:
+            continue
+        if row.get("prereg_id") in already_ran_ids:
+            continue
+        cov = _requested_covariate(row)
+        if cov is None:
+            continue
+        fp = fingerprint_for(str(row.get("symbol") or "").lower(), cov)
+        fam = family_for(cov)
+        if not fp or not fam:
+            continue
+        vid = ef.build_variant_id(str(row["symbol"]).lower(), fam, fp)
+        if vid in blocked_ids:
+            continue
+        out.append(confirmation_queue_row(row, vid))
+    return out
+
+
+def load_preregistry(path):
+    rows = []
+    if not os.path.exists(path):
+        return rows
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            if line.strip():
+                rows.append(json.loads(line))
+    return rows
+
+
+def load_family_members(path):
+    by_vid = {}
+    order = []
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            member = json.loads(line)
+            vid = member.get("variant_id")
+            if vid not in by_vid:
+                order.append(vid)
+            by_vid[vid] = member
+    return [by_vid[vid] for vid in order]
+
+
+def save_family_members(path, members):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        for member in members:
+            fh.write(json.dumps(member, ensure_ascii=False) + "\n")
+    os.replace(tmp, path)
+
+
+def _merge_family_members(members, family_key, returned):
+    """同一 family_key 整段替换。其它 family 的相对顺序保留。"""
+    returned = list(returned or [])
+    out = []
+    placed = False
+    for member in members:
+        if member.get("family_key") != family_key:
+            out.append(member)
+            continue
+        if not placed:
+            out.extend(returned)
+            placed = True
+    if not placed:
+        out.extend(returned)
+    return out
+
+
+def _maybe_enqueue_confirmations(log, now_ts):
+    registry = load_preregistry(PREREGISTRY_PATH)
+    blocked = rl.in_flight_ids(QUEUE, INPROGRESS)
+    snap = _active_protocol_snapshot(REGISTRY)
+    already = {
+        v.get("prereg_id") for v in (snap or {}).values()
+        if isinstance(v, dict) and v.get("prereg_id")
+    }
+    pool = load_covariate_pool()
+
+    def family_for(cov):
+        return (pool.get(cov) or {}).get("family")
+
+    rows = due_confirmations(
+        registry, now_ts, blocked, already, _experiment_fp_for, family_for)
+    produced = {row["prereg_id"] for row in rows}
+    for src in registry:
+        if not isinstance(src, dict) or src.get("terminal_state") not in (None, ""):
+            continue
+        confirm_from = src.get("confirm_from_ts")
+        if not isinstance(confirm_from, str) or confirm_from > now_ts:
+            continue
+        if src.get("prereg_id") in already or src.get("prereg_id") in produced:
+            continue
+        _log_decision(log, "confirmation_not_enqueued",
+                      src.get("prereg_id") or "",
+                      [str(src.get("symbol") or "")])
+    if not rows:
+        return 0
+    added = 0
+    members = load_family_members(FAMILY_REGISTRY)
+    for row in rows:
+        try:
+            family_key = family_key_for(row["symbol"])
+            proposal = {
+                "prereg_id": row["prereg_id"],
+                "symbol": row["symbol"],
+                "variant_id": row["variant_id"],
+                "family_key": family_key,
+            }
+            family_members = [
+                member for member in members
+                if member.get("family_key") == family_key
+            ]
+            # 已登记只跳过再次 register。没进快照、也不在队里时仍可入队一次。
+            registered = any(
+                member.get("variant_id") == row.get("variant_id")
+                for member in family_members
+            )
+            if not registered:
+                decision = dispatch_confirmation(proposal, registry, family_members)
+                if not decision["accepted"] or str(decision.get("registration") or "").startswith("rejected"):
+                    _log_decision(log, "confirmation_rejected",
+                                  decision.get("reason") or decision.get("registration") or "",
+                                  [row["variant_id"]])
+                    continue
+                members = _merge_family_members(members, family_key, decision.get("members") or [])
+                save_family_members(FAMILY_REGISTRY, members)
+            n = rl.queue_enqueue(QUEUE, [row], dead=set(), existing=set())
+            added += n
+            if n:
+                _log_decision(log, "confirmation_enqueued", row["prereg_id"], [row["variant_id"]])
+        except Exception as e:
+            _log_decision(log, "confirmation_enqueue_error", str(e),
+                          [str(row.get("variant_id") or "")])
+    return added
+
+
+def _finalize_confirmation_verdict(verdict, members, now):
+    """样本未满只 peek。不把 fdr_pass 写成 True，不设 request_early_seal。"""
+    if not isinstance(verdict, dict) or verdict.get("run_mode") != "confirmation":
+        return None
+    row = dict(verdict)
+    if row.get("n_confirm_actual") is None:
+        row["n_confirm_actual"] = row.get("n") if row.get("n") is not None else 0
+    if row.get("n_confirm_required") is None:
+        return None
+    row["request_early_seal"] = False
+    return finalize_confirmation(row, members, now)
+
+
 def _mark_stop_emitted():
     global _STOP_EMITTED
     _STOP_EMITTED = True
@@ -364,6 +591,28 @@ def _signal_handler(signum, frame):
     _SHUTDOWN_REQUESTED = True
 
 
+def _shutdown_exit():
+    """标志为真时走与循环顶相同的干净退出。不收割，不启动新 run，不杀已经在跑的子进程。"""
+    if not _SHUTDOWN_REQUESTED:
+        return None
+    _emit_event("critical", "supervisor_stopped", {
+        "reason": "signal_received",
+        "exit_code": 0,
+        "uptime_s": round(time.time() - _START_TIME, 1),
+    })
+    return 0
+
+
+def _sleep_interruptible(seconds):
+    """最多睡 seconds 秒。每 1 秒看一次标志。处理函数本身仍然只置标志。"""
+    remaining = max(1, int(seconds))
+    while remaining > 0:
+        if _SHUTDOWN_REQUESTED:
+            return
+        time.sleep(1)
+        remaining -= 1
+
+
 def _atexit_handler():
     """Emit stop event on any exit path not already handled."""
     global _STOP_EMITTED
@@ -430,6 +679,19 @@ def save_state(st):
 def load_goal(path):
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)["goal"]
+
+def _goal_target_symbols(goal):
+    cad = (goal or {}).get("cadence") or {}
+    raw = cad.get("target_symbols") or []
+    out = []
+    seen = set()
+    for item in raw:
+        sym = str(item).lower().strip()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        out.append(sym)
+    return out
 
 def _env_first(*names):
     """First non-empty env value among names (never log/echo secrets)."""
@@ -1191,16 +1453,23 @@ def _cross_run_repeat_counts(root=None, max_runs=20):
     return counts
 
 
-def _dead_families(snapshot, min_ok=4):
-    """Return set of family names with >= min_ok ok verdicts and 0 pass.
+_CONFIRMATORY_DM = frozenset({"ok", "set_mismatch_ok"})
 
-    These families are considered DEAD: no amount of re-proposing will help
-    without a fundamental mechanism change.
+
+def _dead_families(snapshot, min_ok=4):
+    """一族至少 min_ok 条可确认 DM 的 ok 裁决且 0 条过门，才算死亡。
+
+    dm_status 缺省、set_mismatch_descriptive、no_common_cutoff、
+    insufficient_common 都不计数。min_ok 仍是 4。
+    run_mode 不读：探索行上的可确认失败同样计数。
+    pass 计数是 gate_pass，不调用 pass_variants。
     """
     fam_ok = {}
     fam_pass = {}
     for v in (snapshot or {}).values():
         if not isinstance(v, dict) or v.get("status", "ok") != "ok":
+            continue
+        if v.get("dm_status") not in _CONFIRMATORY_DM:
             continue
         fam = str(v.get("cov_family") or "").strip()
         if not fam:
@@ -1610,6 +1879,17 @@ def _proposal_quality_gate(prop, snapshot, proposal_path=None):
     return sum(bd.values()), bd
 
 
+def _symbol_has_current_nocov_baseline(symbol, root):
+    """当前协议的无协变量基线在，才占慢环座位。指纹算不出来时放行。不生成基线。"""
+    fp = _current_protocol_fingerprint()
+    if fp is None:
+        return True
+    from cascade.baseline_paths import baseline_filename
+    path = os.path.join(root, "task_FM", "config", baseline_filename(symbol, None))
+    status, got = _baseline_protocol_fingerprint(path)
+    return status == "ok" and got == fp
+
+
 def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                       aligned_max_points=600, priority_symbols=None):
     """收割 peer 机制化假设 (results/**/proposals/*.json) → aligned 队列行。
@@ -1672,6 +1952,8 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 _reject("cov_archived"); continue
             if valid_covs is not None and cov not in valid_covs:
                 _reject("cov_not_in_active_pool"); continue
+            if not _symbol_has_current_nocov_baseline(symbol, root):
+                _reject("no_current_baseline"); continue
             if len(mechanism) < 40:
                 _reject("mechanism_too_short"); continue
             sym_st = str((status_map.get(symbol) or {}).get("status") or "ACTIVE").upper()
@@ -2791,17 +3073,54 @@ def _maybe_finish_slow(goal, log):
             _log_decision(log, "wait_for_batch_error", str(e))
     # Batch completion: apply FDR promotion to batch verdicts
     if batch_id:
+        batch_verdicts = []
         try:
             all_verdicts = rl.read_verdicts(REGISTRY)
             batch_verdicts = [v for v in all_verdicts if v.get("batch_id") == batch_id]
             if batch_verdicts and bh_fdr_promote is not None:
-                updates = bh_fdr_promote(batch_verdicts)
+                updates = promote_batch_for_persistence(batch_verdicts)
                 if updates:
                     rl.update_batch_verdicts(REGISTRY, batch_id, updates)
                     _log_decision(log, "batch_fdr_promote",
                                  f"batch={batch_id} promoted={len(updates)}")
         except Exception as e:
             _log_decision(log, "batch_fdr_error", str(e))
+        try:
+            members = load_family_members(FAMILY_REGISTRY)
+            now = datetime.now(timezone.utc)
+            touched = False
+            for verdict in batch_verdicts:
+                if not isinstance(verdict, dict) or verdict.get("run_mode") != "confirmation":
+                    continue
+                try:
+                    symbol = verdict.get("symbol")
+                    if isinstance(symbol, str) and symbol:
+                        family_key = family_key_for(symbol)
+                    else:
+                        family_key = None
+                        vid = verdict.get("variant_id")
+                        for member in members:
+                            if member.get("variant_id") == vid:
+                                family_key = member.get("family_key")
+                                break
+                    family_members = [
+                        member for member in members
+                        if family_key is not None and member.get("family_key") == family_key
+                    ]
+                    result = _finalize_confirmation_verdict(verdict, family_members, now)
+                    if not isinstance(result, dict) or not isinstance(result.get("members"), list):
+                        continue
+                    if family_key is None:
+                        continue
+                    members = _merge_family_members(members, family_key, result["members"])
+                    touched = True
+                except Exception as e:
+                    _log_decision(log, "confirmation_finalize_error", str(e),
+                                  [str(verdict.get("variant_id") or "")])
+            if touched:
+                save_family_members(FAMILY_REGISTRY, members)
+        except Exception as e:
+            _log_decision(log, "confirmation_finalize_error", str(e))
         try:
             cleanup_batch_workers(batch_id)
         except Exception as e:
@@ -2850,18 +3169,15 @@ def _main_locked(args):
     one_shot = args.dry_run or args.once
     # Pre-flight: ensure baseline metrics/points exist for all goal symbols
     try:
-        ensure_baselines(GOAL_SYMBOLS_SET, args.root)
+        goal_for_baselines = load_goal(args.goal)
+        ensure_baselines(_goal_target_symbols(goal_for_baselines), args.root)
     except Exception as e:
         print(f"[ERROR] ensure_baselines pre-flight failed: {e}", file=sys.stderr)
     while True:
         _write_heartbeat()
-        if _SHUTDOWN_REQUESTED:
-            _emit_event("critical", "supervisor_stopped", {
-                "reason": "signal_received",
-                "exit_code": 0,
-                "uptime_s": round(time.time() - _START_TIME, 1),
-            })
-            return 0
+        code = _shutdown_exit()
+        if code is not None:
+            return code
         # Reload goal every poll so hot token_budget_m / max_cycles edits apply
         # without restart (2026-09-08: stale 50 in-memory while disk was 80 → false
         # budget_exhausted at tok_m=52.516).
@@ -2937,6 +3253,9 @@ def _main_locked(args):
             else:
                 # Drain finished-run harvest + local slow queue BEFORE exiting on budget.
                 st_pre = load_state()
+                code = _shutdown_exit()
+                if code is not None:
+                    return code
                 _maybe_harvest(st_pre, goal, log)
             st_pre = load_state()
             if st_pre.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
@@ -3006,6 +3325,9 @@ def _main_locked(args):
         st = ensure_phase(load_state())
         st = _merge_save({"phase": st["phase"]})
         # Harvest finished runs even during paused_429 / wait_quota.
+        code = _shutdown_exit()
+        if code is not None:
+            return code
         if not _run_active():
             _maybe_harvest(st, goal, log)
         # n-不足型近失误自动复测 (本地慢环, 不受 LLM 暂停/failover 影响)。
@@ -3013,6 +3335,10 @@ def _main_locked(args):
             _maybe_enqueue_retests(goal, log)
         except Exception as e:
             _log_decision(log, "retest_scan_error", str(e))
+        try:
+            _maybe_enqueue_confirmations(log, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        except Exception as e:
+            _log_decision(log, "confirmation_enqueue_error", str(e))
         st = load_state()
         # Local aligned drain is never blocked by LLM pause/failover.
         if st.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
@@ -3051,7 +3377,7 @@ def _main_locked(args):
         for a in planned:
             if a.get("sleep_s"):
                 sleep_s = min(sleep_s, int(a["sleep_s"]))
-        time.sleep(max(1, sleep_s))
+        _sleep_interruptible(max(1, sleep_s))
 
 if __name__ == "__main__":
     sys.exit(main() or 0)

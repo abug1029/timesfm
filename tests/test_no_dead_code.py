@@ -18,7 +18,7 @@ REVIEW_CANDIDATES = scope 全集。scope = scripts/ 与 cascade/ 顶层 .py
 
 名单语义：
 - LIVE_ENTRIES：文档化人工命令 / 生产入口（保留依据逐条注明）。
-- TEMPORARY_ALLOWLIST：已释放为空（regen 三件套 2026-10-01 随 2.9 归档）；名单语义保留备用。
+- TEMPORARY_ALLOWLIST：regen 三件套 2026-10-01 随 2.9 归档；当前条目为 write_first_preregistry。
 - REVIEW_CANDIDATES：**检测测试首跑发现（2026-09-30）**——零引用、零文档、
   零配置调用，但不在已批准的归档清单内，未经宿主裁定不归档；2.9 后复核。
 任何名单条目对应的文件被归档后，test_stale_list_entries 会强制移除该条目。
@@ -53,9 +53,15 @@ LIVE_ENTRIES: dict[str, str] = {
     "restart_readiness_check": "重启就绪验证（changelog 2026-09-29-stage3:167；spec v2 :97）",
 }
 
-# 2.9 已完成（2026-10-01）：regen 三件套随 v4 重生波闭环 git mv 归档，名单释放为空
-# （monitor_rb_regen.sh 为 .sh 非节点，随批归档）。
-TEMPORARY_ALLOWLIST: dict[str, str] = {}
+# 2.9 已完成（2026-10-01）：regen 三件套随 v4 重生波闭环 git mv 归档
+# （monitor_rb_regen.sh 为 .sh 非节点，随批归档）。当前条目为 write_first_preregistry。
+TEMPORARY_ALLOWLIST: dict[str, str] = {
+    "write_first_preregistry": (
+        "一次性人工命令（scripts/write_first_preregistry.py）："
+        "2026-10-02 已执行，task_FM/config/preregistry.jsonl 已有两条；"
+        "文件存在时拒绝重写；零运行时引用。不归档，不并入 REVIEW_CANDIDATES。"
+    ),
+}
 
 # 检测测试首跑发现（2026-09-30）：零引用 / 零文档 / 零配置调用；
 # 不在已批准归档清单内 → 先显式挂账，2.9 后宿主复核处置

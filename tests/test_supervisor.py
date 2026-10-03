@@ -986,13 +986,16 @@ def test_failover_env_auth_token_matches_api_key(monkeypatch):
 # ── n-不足型近失误自动复测 (cj_oi: PF1.133/ev19.46/ic0.08 全过, 仅 n=324<350) ──
 
 def _aligned_verdict(vid, symbol, cov, n, pf, ev, ic, gate, status="ok",
-                     max_points=600):
-    return {"variant_id": vid, "symbol": symbol, "cov_override": cov,
-            "max_points": max_points, "n": n, "pf": pf, "ev": ev, "maxdd": -0.2,
-            "dir_acc": 0.5 + ic / 2.0, "gate_pass": gate, "ic": ic,
-            "decided_at": "2026-09-08T00:00:00", "checkpoint_path": "",
-            "slow_loop_pid": 1, "git_rev": "x", "schema": "fm.aligned_verdict.v1",
-            "status": status}
+                     max_points=600, protocol_fingerprint=None):
+    row = {"variant_id": vid, "symbol": symbol, "cov_override": cov,
+           "max_points": max_points, "n": n, "pf": pf, "ev": ev, "maxdd": -0.2,
+           "dir_acc": 0.5 + ic / 2.0, "gate_pass": gate, "ic": ic,
+           "decided_at": "2026-09-08T00:00:00", "checkpoint_path": "",
+           "slow_loop_pid": 1, "git_rev": "x", "schema": "fm.aligned_verdict.v1",
+           "status": status}
+    if protocol_fingerprint is not None:
+        row["protocol_fingerprint"] = protocol_fingerprint
+    return row
 
 def test_retest_candidates_only_n_near_miss():
     snap = {
@@ -1012,9 +1015,11 @@ def test_retest_candidates_only_n_near_miss():
 
 def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "current")
     with open(sup.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(_aligned_verdict(
-            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False,
+            protocol_fingerprint="current")) + "\n")
     log = str(tmp_path / "decisions.jsonl")
     goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 1}}
     live_n = {"cj": 324}
@@ -1038,9 +1043,11 @@ def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
 
 def test_maybe_enqueue_retests_respects_margin(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "current")
     with open(sup.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(_aligned_verdict(
-            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False,
+            protocol_fingerprint="current")) + "\n")
     goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 30}}
     monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: 350)
     # 350-324=26 < margin 30 → 不排队
@@ -1049,9 +1056,11 @@ def test_maybe_enqueue_retests_respects_margin(monkeypatch, tmp_path):
 
 def test_maybe_enqueue_retests_fail_open_on_db_error(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "current")
     with open(sup.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(_aligned_verdict(
-            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False,
+            protocol_fingerprint="current")) + "\n")
     goal = {"cadence": {"retest_min_new_points": 1}}
     monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: None)
     # DB 查询失败 → 0 排队, 不抛
@@ -1514,19 +1523,53 @@ def test_dead_families_identified():
     """Families with 4+ ok and 0 pass should be DEAD."""
     snap = {
         "m_ccl": {"variant_id": "m_ccl", "symbol": "m", "cov_override": "ccl",
-                  "cov_family": "ccl", "status": "ok", "gate_pass": False},
+                  "cov_family": "ccl", "status": "ok", "gate_pass": False,
+                  "dm_status": "ok", "run_mode": "exploration"},
         "ss_ccl": {"variant_id": "ss_ccl", "symbol": "ss", "cov_override": "ccl",
-                   "cov_family": "ccl", "status": "ok", "gate_pass": False},
+                   "cov_family": "ccl", "status": "ok", "gate_pass": False,
+                   "dm_status": "ok", "run_mode": "exploration"},
         "rb_ccl": {"variant_id": "rb_ccl", "symbol": "rb", "cov_override": "ccl",
-                   "cov_family": "ccl", "status": "ok", "gate_pass": False},
+                   "cov_family": "ccl", "status": "ok", "gate_pass": False,
+                   "dm_status": "ok", "run_mode": "exploration"},
         "jd_ccl": {"variant_id": "jd_ccl", "symbol": "jd", "cov_override": "ccl",
-                   "cov_family": "ccl", "status": "ok", "gate_pass": False},
+                   "cov_family": "ccl", "status": "ok", "gate_pass": False,
+                   "dm_status": "ok", "run_mode": "exploration"},
         "m_oi": {"variant_id": "m_oi", "symbol": "m", "cov_override": "oi",
-                 "cov_family": "oi", "status": "ok", "gate_pass": True},
+                 "cov_family": "oi", "status": "ok", "gate_pass": True,
+                 "dm_status": "ok"},
     }
     dead = sup._dead_families(snap)
     assert "ccl" in dead, "ccl should be DEAD (4 ok, 0 pass)"
     assert "oi" not in dead, "oi should NOT be DEAD (has pass)"
+
+
+def test_descriptive_failures_do_not_kill_a_family():
+    rows = {}
+    for i, status in enumerate(
+        ["set_mismatch_descriptive", "set_mismatch_descriptive",
+         "no_common_cutoff", "no_common_cutoff", "insufficient_common"]
+    ):
+        rows["r%s" % i] = {
+            "variant_id": "r%s" % i, "symbol": "m", "cov_family": "term_structure",
+            "status": "ok", "gate_pass": False, "dm_status": status,
+            "run_mode": "exploration",
+        }
+    assert "term_structure" not in sup._dead_families(rows)
+    confirmatory = {
+        "r%s" % i: {
+            "variant_id": "r%s" % i, "symbol": "m", "cov_family": "term_structure",
+            "status": "ok", "gate_pass": False, "dm_status": "ok",
+            "run_mode": "exploration",
+        }
+        for i in range(3)
+    }
+    assert "term_structure" not in sup._dead_families(confirmatory)
+    confirmatory["r3"] = {
+        "variant_id": "r3", "symbol": "ss", "cov_family": "term_structure",
+        "status": "ok", "gate_pass": False, "dm_status": "set_mismatch_ok",
+        "run_mode": "exploration",
+    }
+    assert "term_structure" in sup._dead_families(confirmatory)
 
 
 
@@ -1542,3 +1585,139 @@ def test_harvest_survivors_fp_unavailable_skips(tmp_path, monkeypatch):
     rows = sup.harvest_survivors(str(tmp_path), snapshot={}, dead=set(),
                                  existing=set(), top_k=5, aligned_max_points=400)
     assert rows == []
+
+
+def _promotable(run_mode, dm_status, missingness, p_value=0.01, gate_pass=True):
+    return {
+        "variant_id": "jd_momentum_abc123abc123",
+        "symbol": "jd",
+        "gate_pass": gate_pass,
+        "p_value": p_value,
+        "run_mode": run_mode,
+        "dm_status": dm_status,
+        "missingness_admissible": missingness,
+    }
+
+
+def test_exploration_or_descriptive_dm_cannot_persist_fdr_pass():
+    exploration = _promotable("exploration", "set_mismatch_descriptive", False)
+    no_cutoff = _promotable("confirmation", "no_common_cutoff", False)
+    status_only = _promotable("confirmation", "ok", False)
+    ready = _promotable("confirmation", "ok", True)
+    mismatch_ok = _promotable("confirmation", "set_mismatch_ok", True)
+    mismatch_ok["variant_id"] = "sr_momentum_def456def456"
+    updates = sup.promote_batch_for_persistence(
+        [exploration, no_cutoff, status_only, ready, mismatch_ok])
+    assert updates["jd_momentum_abc123abc123"]["fdr_pass"] is True
+    assert updates["sr_momentum_def456def456"]["fdr_pass"] is True
+    # 同 variant_id 后写覆盖前写。不可确认的三条都用了同一个 vid，最后一条 ready 才为 True。
+    # 下面把不可确认行单独送入，确认它们自己不会被写成 True。
+    assert sup.promote_batch_for_persistence([exploration])["jd_momentum_abc123abc123"]["fdr_pass"] is False
+    assert sup.promote_batch_for_persistence([no_cutoff])["jd_momentum_abc123abc123"]["fdr_pass"] is False
+    assert sup.promote_batch_for_persistence([status_only])["jd_momentum_abc123abc123"]["fdr_pass"] is False
+    assert sup.fdr_pass_persistable(exploration) is False
+    assert sup.fdr_pass_persistable(ready) is True
+
+
+def test_goal_target_symbols_follow_yaml_order():
+    goal = {"cadence": {"target_symbols": ["SS", "m", "cf", "m"]}}
+    assert sup._goal_target_symbols(goal) == ["ss", "m", "cf"]
+    assert sup._goal_target_symbols({}) == []
+    live = sup.load_goal(os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "scripts", "praxist_goal.yaml"))
+    got = sup._goal_target_symbols(live)
+    assert got[:4] == ["m", "ss", "sr", "cj"]
+    assert {"cf", "i", "p", "sh", "ma"} <= set(got)
+    assert len(got) == 24
+
+
+def test_ensure_baselines_asks_generate_only_for_a_missing_file(monkeypatch, tmp_path):
+    import sys
+    import types
+    calls = []
+    fake = types.ModuleType("generate_baseline_points")
+
+    def baseline_filename(sym, cov):
+        assert cov is None
+        return "baseline_points_%s_nocov.jsonl" % sym
+
+    def generate(sym, cov, root):
+        calls.append((sym, cov))
+
+    fake.baseline_filename = baseline_filename
+    fake.generate = generate
+    monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp-current")
+    config = tmp_path / "task_FM" / "config"
+    config.mkdir(parents=True)
+    (config / "baseline_metrics.json").write_text(
+        json.dumps({"m": {"n": 588}, "cf": {"n": 588}}), encoding="utf-8")
+    ready = config / "baseline_points_m_nocov.jsonl"
+    line = json.dumps({"protocol_fingerprint": "fp-current", "dir_ok": True}) + "\n"
+    ready.write_text(line * 100, encoding="utf-8")
+    sup.ensure_baselines(["m", "cf"], str(tmp_path))
+    assert calls == [("cf", None)]
+
+
+def test_sleep_returns_on_the_slice_that_sees_the_flag(monkeypatch):
+    calls = []
+
+    def _sleep(seconds):
+        calls.append(seconds)
+        sup._SHUTDOWN_REQUESTED = True
+
+    monkeypatch.setattr(sup.time, "sleep", _sleep)
+    sup._SHUTDOWN_REQUESTED = False
+    try:
+        sup._sleep_interruptible(180)
+    finally:
+        sup._SHUTDOWN_REQUESTED = False
+    assert calls == [1]
+
+
+def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
+        tmp_path, monkeypatch):
+    _patch_paths(monkeypatch, tmp_path)
+    harvested = []
+    started = []
+    monkeypatch.setattr(sup, "_SHUTDOWN_REQUESTED", False)
+    monkeypatch.setattr(sup, "ensure_baselines", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "build_snapshot", lambda *a, **k: {
+        "variants": {}, "symbols_hit": set(), "families_hit": set(),
+    })
+    monkeypatch.setattr(sup, "evaluate_goal", lambda *a, **k: (False, ["not yet"]))
+    monkeypatch.setattr(sup, "_read_cpu_hours", lambda: 0.0)
+    monkeypatch.setattr(sup, "_read_token_m", lambda: (0.0, False))
+    monkeypatch.setattr(sup, "materialize_known_verdicts", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup, "_queue_busy", lambda: False)
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+
+    def _ensure_phase(st):
+        sup._SHUTDOWN_REQUESTED = True
+        return st
+
+    monkeypatch.setattr(sup, "ensure_phase", _ensure_phase)
+    monkeypatch.setattr(sup, "_maybe_harvest", lambda *a, **k: harvested.append("harvest") or False)
+    monkeypatch.setattr(sup, "_maybe_enqueue_retests", lambda *a, **k: harvested.append("retest"))
+    monkeypatch.setattr(
+        sup, "decide_fast_loop",
+        lambda *a, **k: started.append("start") or [{"action": "run_started"}])
+    monkeypatch.setattr(sup.time, "sleep", lambda *_a, **_k: None)
+    goal = tmp_path / "goal.yaml"
+    goal.write_text(
+        "goal:\n  success_condition: ['all_symbols_pass_phase1']\n"
+        "  budgets: {max_cycles: 2000, cpu_hours: 2000, token_budget_m: 80, deadline: '2028-10-02'}\n"
+        "  cadence: {survivors_per_cycle: 3, aligned_max_points: 600,\n"
+        "            run_budget_hours: 1.5, quota_window_hours: 5.0, quota_margin_min: 30}\n",
+        encoding="utf-8")
+    (tmp_path / "task_FM").mkdir()
+    try:
+        rc = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
+    finally:
+        sup._SHUTDOWN_REQUESTED = False
+    assert rc == 0
+    assert harvested == []
+    assert started == []

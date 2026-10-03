@@ -32,6 +32,16 @@ def _make_run(root, proposal, filename=None):
     fn = filename or ("%s_%s.json" % (symbol, cov))
     with open(os.path.join(pdir, fn), "w", encoding="utf-8") as f:
         json.dump(proposal, f, ensure_ascii=False)
+    config = os.path.join(root, "task_FM", "config")
+    os.makedirs(config, exist_ok=True)
+    base = os.path.join(config, "baseline_points_%s_nocov.jsonl" % symbol)
+    if not os.path.exists(base):
+        with open(base, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({
+                "protocol_fingerprint": "current-protocol",
+                "cutoff": "2026-01-01 00:00:00",
+                "dir_ok": True,
+            }) + "\n")
 
 
 def _prop(symbol="m", cov="vor", **over):
@@ -61,6 +71,7 @@ def tmproot(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
     # W6.4: 固定实验指纹, 测试 vid 确定性 (真实 fp 由生产路径覆盖)
     monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
     return str(tmp_path)
 
 
@@ -81,6 +92,17 @@ def test_good_proposal_enqueued(tmproot):
     assert r["source"] == "peer_proposal"
     assert r["max_points"] == 600
     assert r["stage"] == "aligned"
+
+
+def test_symbol_without_current_nocov_baseline_gets_no_seat(tmproot):
+    _make_run(tmproot, _prop(symbol="m", cov="vor"), filename="m_vor.json")
+    _make_run(tmproot, _prop(symbol="cf", cov="vor"), filename="cf_vor.json")
+    missing = os.path.join(
+        tmproot, "task_FM", "config", "baseline_points_cf_nocov.jsonl")
+    os.remove(missing)
+    rows, stats = _harvest(tmproot, top_k=3)
+    assert [r["symbol"] for r in rows] == ["m"]
+    assert stats["reject_reasons"].get("no_current_baseline") == 1
 
 
 def test_short_mechanism_rejected(tmproot):
@@ -314,16 +336,20 @@ def test_dead_family_harvest_rejected(tmproot):
     snap = {
         "m_ccl_prev": {"variant_id": "m_ccl_prev", "symbol": "m",
                        "cov_override": "ccl_prev", "cov_family": "inventory",
-                       "status": "ok", "gate_pass": False, "dir_acc": 0.45},
+                       "status": "ok", "gate_pass": False, "dir_acc": 0.45,
+                       "dm_status": "ok", "run_mode": "exploration"},
         "ss_ccl_prev": {"variant_id": "ss_ccl_prev", "symbol": "ss",
                         "cov_override": "ccl_prev2", "cov_family": "inventory",
-                        "status": "ok", "gate_pass": False, "dir_acc": 0.44},
+                        "status": "ok", "gate_pass": False, "dir_acc": 0.44,
+                        "dm_status": "ok", "run_mode": "exploration"},
         "rb_ccl_prev": {"variant_id": "rb_ccl_prev", "symbol": "rb",
                         "cov_override": "ccl_prev3", "cov_family": "inventory",
-                        "status": "ok", "gate_pass": False, "dir_acc": 0.43},
+                        "status": "ok", "gate_pass": False, "dir_acc": 0.43,
+                        "dm_status": "ok", "run_mode": "exploration"},
         "jd_ccl_prev": {"variant_id": "jd_ccl_prev", "symbol": "jd",
                         "cov_override": "ccl_prev4", "cov_family": "inventory",
-                        "status": "ok", "gate_pass": False, "dir_acc": 0.42},
+                        "status": "ok", "gate_pass": False, "dir_acc": 0.42,
+                        "dm_status": "ok", "run_mode": "exploration"},
     }
     _make_run(tmproot, _prop(symbol="m", cov="ccl", family="inventory"))
     rows, stats = _harvest(tmproot, snap=snap)
