@@ -406,10 +406,31 @@ def load_family_members(path):
 
 
 def save_family_members(path, members):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
         for member in members:
             fh.write(json.dumps(member, ensure_ascii=False) + "\n")
+    os.replace(tmp, path)
+
+
+def _merge_family_members(members, family_key, returned):
+    """同一 family_key 整段替换。其它 family 的相对顺序保留。"""
+    returned = list(returned or [])
+    out = []
+    placed = False
+    for member in members:
+        if member.get("family_key") != family_key:
+            out.append(member)
+            continue
+        if not placed:
+            out.extend(returned)
+            placed = True
+    if not placed:
+        out.extend(returned)
+    return out
 
 
 def _maybe_enqueue_confirmations(log, now_ts):
@@ -444,24 +465,33 @@ def _maybe_enqueue_confirmations(log, now_ts):
     added = 0
     members = load_family_members(FAMILY_REGISTRY)
     for row in rows:
-        proposal = {
-            "prereg_id": row["prereg_id"],
-            "symbol": row["symbol"],
-            "variant_id": row["variant_id"],
-            "family_key": family_key_for(row["symbol"]),
-        }
-        decision = dispatch_confirmation(proposal, registry, members)
-        if not decision["accepted"] or str(decision.get("registration") or "").startswith("rejected"):
-            _log_decision(log, "confirmation_rejected",
-                          decision.get("reason") or decision.get("registration") or "",
-                          [row["variant_id"]])
-            continue
-        members = decision["members"]
-        n = rl.queue_enqueue(QUEUE, [row], dead=set(), existing=set())
-        added += n
-        if n:
-            _log_decision(log, "confirmation_enqueued", row["prereg_id"], [row["variant_id"]])
-    save_family_members(FAMILY_REGISTRY, members)
+        try:
+            family_key = family_key_for(row["symbol"])
+            proposal = {
+                "prereg_id": row["prereg_id"],
+                "symbol": row["symbol"],
+                "variant_id": row["variant_id"],
+                "family_key": family_key,
+            }
+            family_members = [
+                member for member in members
+                if member.get("family_key") == family_key
+            ]
+            decision = dispatch_confirmation(proposal, registry, family_members)
+            if not decision["accepted"] or str(decision.get("registration") or "").startswith("rejected"):
+                _log_decision(log, "confirmation_rejected",
+                              decision.get("reason") or decision.get("registration") or "",
+                              [row["variant_id"]])
+                continue
+            members = _merge_family_members(members, family_key, decision.get("members") or [])
+            save_family_members(FAMILY_REGISTRY, members)
+            n = rl.queue_enqueue(QUEUE, [row], dead=set(), existing=set())
+            added += n
+            if n:
+                _log_decision(log, "confirmation_enqueued", row["prereg_id"], [row["variant_id"]])
+        except Exception as e:
+            _log_decision(log, "confirmation_enqueue_error", str(e),
+                          [str(row.get("variant_id") or "")])
     return added
 
 
@@ -3056,10 +3086,31 @@ def _maybe_finish_slow(goal, log):
             for verdict in batch_verdicts:
                 if not isinstance(verdict, dict) or verdict.get("run_mode") != "confirmation":
                     continue
-                result = _finalize_confirmation_verdict(verdict, members, now)
-                if isinstance(result, dict) and isinstance(result.get("members"), list):
-                    members = result["members"]
+                try:
+                    symbol = verdict.get("symbol")
+                    if isinstance(symbol, str) and symbol:
+                        family_key = family_key_for(symbol)
+                    else:
+                        family_key = None
+                        vid = verdict.get("variant_id")
+                        for member in members:
+                            if member.get("variant_id") == vid:
+                                family_key = member.get("family_key")
+                                break
+                    family_members = [
+                        member for member in members
+                        if family_key is not None and member.get("family_key") == family_key
+                    ]
+                    result = _finalize_confirmation_verdict(verdict, family_members, now)
+                    if not isinstance(result, dict) or not isinstance(result.get("members"), list):
+                        continue
+                    if family_key is None:
+                        continue
+                    members = _merge_family_members(members, family_key, result["members"])
                     touched = True
+                except Exception as e:
+                    _log_decision(log, "confirmation_finalize_error", str(e),
+                                  [str(verdict.get("variant_id") or "")])
             if touched:
                 save_family_members(FAMILY_REGISTRY, members)
         except Exception as e:

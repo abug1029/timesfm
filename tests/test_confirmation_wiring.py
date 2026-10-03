@@ -603,3 +603,53 @@ def test_enqueue_due_confirmation_then_peek_does_not_seal(tmp_path, monkeypatch)
     assert out["sealed"] is False
     assert out.get("fdr_pass") is not True
     assert out["run_label"] != "confirmed"
+
+
+def test_enqueue_due_jd_and_sr_registers_each_family(tmp_path, monkeypatch):
+    prereg_path = tmp_path / "preregistry.jsonl"
+    family_path = tmp_path / "family_registry.jsonl"
+    queue_path = tmp_path / "pending.jsonl"
+    jd = {
+        "prereg_id": "6f944c74e2c94ca5a5b70e64676e518b",
+        "symbol": "jd",
+        "registered_at": "2026-10-02T00:00:00+00:00",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 1199,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
+    }
+    sr = {
+        "prereg_id": "ef908a2214e141abaa2d480ca82b53bb",
+        "symbol": "sr",
+        "registered_at": "2026-10-02T00:00:00+00:00",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 986,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vwap_deviation"]},
+    }
+    prereg_path.write_text(json.dumps(jd) + "\n" + json.dumps(sr) + "\n", encoding="utf-8")
+    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    monkeypatch.setattr(sv, "load_covariate_pool", lambda: {
+        "vor": {"family": "momentum"},
+        "vwap_deviation": {"family": "momentum"},
+    })
+    monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {})
+    n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
+    assert n == 2
+    queued = [json.loads(line) for line in queue_path.read_text(encoding="utf-8").splitlines()]
+    assert [row["symbol"] for row in queued] == ["jd", "sr"]
+    assert [row["run_mode"] for row in queued] == ["confirmation", "confirmation"]
+    assert queued[0]["max_points"] == 1199
+    assert queued[1]["max_points"] == 986
+    members = sv.load_family_members(str(family_path))
+    by_symbol = {member["symbol"]: member for member in members}
+    assert sorted(by_symbol) == ["jd", "sr"]
+    assert by_symbol["jd"]["status"] == "registered"
+    assert by_symbol["sr"]["status"] == "registered"
+    assert by_symbol["jd"]["family_key"] == sv.family_key_for("jd")
+    assert by_symbol["sr"]["family_key"] == sv.family_key_for("sr")
+    assert sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00") == 0
