@@ -134,7 +134,11 @@ PID 393 于重生波中途（eg 201/589）被 WSL VM 回收击杀：无traceback
 ## 七、未解缺口
 
 1. **确认级产出 = 0（符合设计，非故障）**：44/44 为 `run_mode=exploration`；活跃视图 `passing=0`。两条 p<0.05 候选的 `pairing_valid=False` 且 `missingness_admissible=False`（§7.8 裁定前保守默认），按 W3.4 不可确认。确认通道需累积 986–1,199 个新 cutoff（约 1.2–2.0 年）。
-2. **`star` 字段 44/44 为 None**：评级链在 v4 行未产出，与 `gate_pass` 判定脱节，跨两夜未解。
+2. ~~**`star` 字段 44/44 为 None**：评级链在 v4 行未产出，与 `gate_pass` 判定脱节，跨两夜未解。~~
+   【勘误 2026-10-03】**该表述不成立**：`star` 键在 v4 44 行与旧代 188 行中**均不存在**（并非"未产出"）。
+   真实评级由 **`tier`** 承载（`cascade/tier_classifier.py:133`），v4 分布 S6/A6/B21/C11，过门行 S6/A4/B2/C1。
+   `star` 是未使用的遗留字段名（`--three-star` 系历史 CLI 名，现映射"信用≥2星"）。
+   详见 `docs/superpowers/reports/2026-10-03-fm-a-open-issues.md` §4。
 3. **两条 DM 显著候选的协变量均 `self_referential`**：`m_momentum` / `lh_momentum` 自指类协变量需 known_ahead 或等价论证才能进入确认集。**`cf_calendar_5bd18d23ae63`（dir_acc 0.576、known_ahead）是当前唯一同时满足过门 + 前视安全的组合**，是最值得追加预注册的候选。
 4. **`family_dead` 曾拒 602 条**：v4 仅 44 条裁决时即有多个 family 被判死（4+ 评估全败），建议复核 `_dead_families` 的最小样本要求，避免新代样本尚小时过早判死。
 

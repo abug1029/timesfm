@@ -135,4 +135,6 @@
 
 ② **46h 战果**：v4 裁决 44 条、gate_pass 13/44、单侧 p<0.05 两条、fdr_pass 1/44、known_ahead 3/44、FDR 晋升 44 个（23+21）；基线 9/9 零重生；提案 2582→3592；cycles 178→203。③ **确认级仍 0（符合设计）**：44/44 exploration，W3.4 严格链要求 run_mode=confirmation + fdr_pass；两条 p<0.05 候选 pairing_valid=False 且 missingness_admissible=False（§7.8 前保守默认），预注册通道已注册 jd(1199)/sr(986) 两项，confirm_from=2026-10-03。④ 未解缺口：`star` 字段 44/44 None；`family_dead` 在 44 条样本下已拒 602 条（建议复核最小样本要求）；SIGTERM 首次被忽略（信号处理路径待查）；两处测试红（fixture 缺指纹 / 一次性脚本未挂账，均测试侧）。
 
+- 2026-10-03 未决问题清单落档 ✅（46h 窗口巡检后）：报告 `reports/2026-10-03-fm-a-open-issues.md`。**P0**：`family_dead` 判据（≥4 ok 裁决且 0 pass）与确认机制耦合——`pass_variants` 要求 `run_mode=confirmation`+`fdr_pass`，确认产出前 pass 恒 0，故任何 family 累积 4 条 ok 裁决即被判死（`term_structure` 已死）；实测 `family_dead` 602→642、`no_failure_delta` 1226→1922、可用候选 123→67（13.6h 内 −46%），数日内将重演已修的收割饿死（病因不同、后果相同）。**P1**：确认通道空窗 1.2–2.0y（与 P0 互为因果）；两条 p<0.05 候选（m_momentum 0.0236 / lh_momentum 0.0374）协变量均为 self_referential 且 pairing/missingness 不可用；唯一「过门+known_ahead」组合 `cf_calendar_5bd18d23ae63`（dir 0.576）p_value=None，是最值得追加预注册的对象。**P2**：红测试 2 处（fixture 缺指纹 / 一次性脚本未挂账）、SIGTERM 首次被忽略、agri 板块 5/10 长期半退化。**勘误**：此前"`star` 字段 v4 未产出"不成立——该键全历史不存在，评级实由 `tier` 承载（v4 S6/A6/B21/C11），已在运行成果报告中同步更正。【2026-10-03 10:05 提交】
+
 - （后续追加）
