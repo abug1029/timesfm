@@ -174,3 +174,18 @@ def test_goal_yaml_drops_old_bar_and_unbounded_budget():
     assert goal["budgets"]["deadline"] == "2028-10-02"
     assert goal["cadence"]["survivors_per_cycle"] == 3
     assert len(goal["cadence"]["target_symbols"]) == 24
+
+
+def test_runbook_states_live_success_and_bounded_budget():
+    text = (project_root / "docs" / "runbook_praxist_three_loop.md").read_text(encoding="utf-8")
+    assert "all_symbols_pass_phase1" in text
+    assert "`max_cycles`=2000" in text
+    assert "`cpu_hours`=2000" in text
+    assert "`token_budget_m`=null" in text
+    assert "`deadline`=2028-10-02" in text
+    assert "999999" not in text
+    assert "2099-12-31" not in text
+    assert "n_gate_pass_variants" not in text
+    assert "0.51" not in text
+    assert "n_tier_a_or_b" not in text
+    assert "已锁定的预注册样本量不在监督环里改写" in text
