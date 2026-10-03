@@ -295,8 +295,10 @@ DELTA = ("相对 m_vor（dir_acc 未过门），本次改用持仓量 oi："
 
 
 def test_failure_delta_required_when_symbol_already_failed(tmproot):
+    # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
     snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
-                      "status": "ok", "gate_pass": False, "dir_acc": 0.45}}
+                      "status": "ok", "gate_pass": False, "dir_acc": 0.45,
+                      "dm_status": "set_mismatch_ok"}}
     _make_run(tmproot, _prop(symbol="m", cov="oi"))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 0
@@ -304,8 +306,10 @@ def test_failure_delta_required_when_symbol_already_failed(tmproot):
 
 
 def test_failure_delta_required_when_cov_already_failed(tmproot):
+    # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
     snap = {"rb_oi": {"variant_id": "rb_oi", "symbol": "rb", "cov_override": "oi",
-                      "status": "ok", "gate_pass": False, "dir_acc": 0.40}}
+                      "status": "ok", "gate_pass": False, "dir_acc": 0.40,
+                      "dm_status": "set_mismatch_ok"}}
     _make_run(tmproot, _prop(symbol="m", cov="oi"))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 0
@@ -313,8 +317,10 @@ def test_failure_delta_required_when_cov_already_failed(tmproot):
 
 
 def test_failure_delta_short_rejected(tmproot):
+    # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
     snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
-                      "status": "ok", "gate_pass": False, "dir_acc": 0.45}}
+                      "status": "ok", "gate_pass": False, "dir_acc": 0.45,
+                      "dm_status": "set_mismatch_ok"}}
     _make_run(tmproot, _prop(symbol="m", cov="oi", failure_delta="太短"))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 0
@@ -322,8 +328,10 @@ def test_failure_delta_short_rejected(tmproot):
 
 
 def test_failure_delta_enqueued_when_present(tmproot):
+    # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
     snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
-                      "status": "ok", "gate_pass": False, "dir_acc": 0.45}}
+                      "status": "ok", "gate_pass": False, "dir_acc": 0.45,
+                      "dm_status": "set_mismatch_ok"}}
     _make_run(tmproot, _prop(symbol="m", cov="oi", failure_delta=DELTA))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 1
@@ -377,11 +385,18 @@ def test_live_family_still_enqueued(tmproot):
 # 口径: v2 verdict 无 pf/ev/ic，"失败" = status=ok 且 gate_pass=False
 # ---------------------------------------------------------------------------
 
-def _sv(symbol, cov, gate_pass, decided_at, status="ok"):
+def _sv(symbol, cov, gate_pass, decided_at, status="ok", dm_status="set_mismatch_ok"):
+    """裁决夹具。
+
+    2026-10-03 起「失败」只认可确认的 DM（_is_confirmable_failure）：描述性行与
+    no_common_cutoff 不是检验结论。因此默认给 set_mismatch_ok；需要构造
+    「描述性失败不触发门禁」时显式传 dm_status="set_mismatch_descriptive"。
+    """
     return {"schema": "fm.aligned_verdict.v2",
             "variant_id": "%s_%s" % (symbol, cov),
             "symbol": symbol, "cov_override": cov, "cov_family": "f",
-            "status": status, "gate_pass": gate_pass, "decided_at": decided_at}
+            "status": status, "gate_pass": gate_pass, "decided_at": decided_at,
+            "dm_status": dm_status}
 
 
 # 有失败履历的组合必须带 failure_delta，否则先被 no_failure_delta 拦截
@@ -570,6 +585,8 @@ def _mixed_protocol_rows():
             "variant_id": vid, "symbol": symbol, "cov_override": cov,
             "schema": "fm.aligned_verdict.v2", "status": "ok",
             "gate_pass": False, "n": 100, "dir_acc": 0.55,
+            # 2026-10-03：prior_failure 只认确认失败，故当前协议行给可确认 DM
+            "dm_status": "set_mismatch_ok",
         }
         if fp is not None:
             item["protocol_fingerprint"] = fp

@@ -457,6 +457,14 @@ def _maybe_enqueue_confirmations(log, now_ts):
             continue
         if src.get("prereg_id") in already or src.get("prereg_id") in produced:
             continue
+        # 2026-10-03：确认通道要跑 1.2–2.0 年，无条件每轮记账会写出
+        # 30–40 万条/年（实测 17 分钟 8 条）。同一 prereg 每 6h 记一次。
+        _pid = src.get("prereg_id") or ""
+        _last = _CONFIRMATION_NOTICE.get(_pid, 0.0)
+        _now = time.time()
+        if _now - _last < _CONFIRMATION_NOTICE_TTL_S:
+            continue
+        _CONFIRMATION_NOTICE[_pid] = _now
         _log_decision(log, "confirmation_not_enqueued",
                       src.get("prereg_id") or "",
                       [str(src.get("symbol") or "")])
@@ -1302,11 +1310,16 @@ def _finite_dir_acc(v):
 
 
 def _has_prior_failure(snapshot, symbol, cov):
-    """True if snapshot has an ok+unpassed verdict on this symbol or this cov."""
+    """True if snapshot has an ok+unpassed+confirmable verdict on this symbol or this cov.
+
+    2026-10-03：只认可确认 DM 的失败（见 _is_confirmable_failure）。描述性行不是
+    检验结论，不能用来否决新提案——否则确认产出前几乎每份提案都会被
+    no_failure_delta 拒收（实测单轮拒 1,922 份、可用候选 7 轮内 123→47）。
+    """
     for v in (snapshot or {}).values():
         if not isinstance(v, dict):
             continue
-        if v.get("status", "ok") != "ok" or v.get("gate_pass"):
+        if not _is_confirmable_failure(v):
             continue
         if str(v.get("symbol") or "").lower() == str(symbol).lower():
             return True
@@ -1471,6 +1484,21 @@ def _cross_run_repeat_counts(root=None, max_runs=20):
 
 
 _CONFIRMATORY_DM = frozenset({"ok", "set_mismatch_ok"})
+
+# 2026-10-03：confirmation_not_enqueued 的节流状态（prereg_id -> 上次记账时间戳）
+_CONFIRMATION_NOTICE: dict[str, float] = {}
+_CONFIRMATION_NOTICE_TTL_S = 6 * 3600
+
+
+def _is_confirmable_failure(v):
+    """失败 = 未过门**且** DM 可确认。
+
+    2026-10-03：描述性 DM（set_mismatch_descriptive）与 no_common_cutoff 不是
+    检验结论，不能当失败用。确认产出前全库都是描述性行，若把它们算失败，
+    _dead_families 会误杀整族、_sector_filter_check 会把板块推向断路器 ——
+    与 2026-09-24 饿死同构的陷阱，只是高一层。
+    """
+    return not v.get("gate_pass") and v.get("dm_status") in _CONFIRMATORY_DM
 
 
 def _family_confirmatory_counts(rows):
@@ -1821,8 +1849,10 @@ def _sector_filter_check(symbol, snapshot):
         return False, sector, 0
     sector_size = len(SECTORS[sector])  # 板块在 sector_map 中定义的品种总数
     latest = _latest_verdict_per_symbol(snapshot)
+    # 2026-10-03：失败数只认可确认的 DM 失败（见 _is_confirmable_failure）。
+    # 否则描述性行会把板块推向断路器，而断路器一拦就是全局饿死。
     n_failed = sum(1 for s, v in latest.items()
-                   if sector_of(s) == sector and not v.get("gate_pass"))
+                   if sector_of(s) == sector and _is_confirmable_failure(v))
 
     # T7: 板块部分退化预警（50% 阈值）
     if n_failed >= sector_size * 0.5 and n_failed < sector_size:
@@ -1971,8 +2001,15 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     run_dirs = sorted(glob.glob(os.path.join(root, "task_FM", "experiments", "run_*")),
                       key=os.path.getmtime, reverse=True)
     for run_dir in run_dirs:
+        if _SHUTDOWN_REQUESTED:
+            # 长扫描不得吃掉停机信号：立刻中止，且不返回半份候选（避免停机途中入队）
+            stats["aborted_by_shutdown"] = True
+            break
         for sp in glob.glob(os.path.join(run_dir, "results", "**", "proposals", "*.json"),
                             recursive=True):
+            if _SHUTDOWN_REQUESTED:
+                stats["aborted_by_shutdown"] = True
+                return [], stats
             try:
                 with open(sp, encoding="utf-8") as f:
                     p = json.load(f)

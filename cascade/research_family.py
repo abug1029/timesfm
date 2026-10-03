@@ -200,6 +200,7 @@ def make_member(
         "variant_id": variant_id,
         "registered_at": _as_utc(registered_at).isoformat(),
         "status": "registered",
+        "run_mode": run_mode,
         "p_value": None,
         "p_value_family_adjusted": None,
     }
