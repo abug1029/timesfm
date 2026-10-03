@@ -144,6 +144,19 @@ def _eval_end_ts_for_run(run_mode, anchor, n_completed, n_required):
     return anchor
 
 
+def _stamp_confirmation_verdict(verdict, row):
+    """确认裁决落盘前写入队列上的预注册身份。n_confirm_actual 缺了才用 n。"""
+    if not isinstance(verdict, dict):
+        return verdict
+    if (row.get("run_mode") or verdict.get("run_mode")) != "confirmation":
+        return verdict
+    verdict["prereg_id"] = row.get("prereg_id")
+    verdict["n_confirm_required"] = row.get("n_confirm_required")
+    if verdict.get("n_confirm_actual") is None:
+        verdict["n_confirm_actual"] = verdict.get("n")
+    return verdict
+
+
 def _confirmation_run_label(verdict, row):
     """样本已满才调用 classify_confirmation。未满不写确认标签。
 
@@ -297,6 +310,7 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             # build_summary 对非探索行把 run_label 留空；个体标签在这里填。
             # fdr_pass 仍只来自 family 封账，这一步不写成 True。
             if run_mode == "confirmation":
+                _stamp_confirmation_verdict(v, row)
                 v["run_label"] = _confirmation_run_label(v, row)
                 _metrics = v.get("metrics")
                 if isinstance(_metrics, dict) and "run_label" in _metrics:

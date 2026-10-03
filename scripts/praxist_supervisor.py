@@ -477,14 +477,20 @@ def _maybe_enqueue_confirmations(log, now_ts):
                 member for member in members
                 if member.get("family_key") == family_key
             ]
-            decision = dispatch_confirmation(proposal, registry, family_members)
-            if not decision["accepted"] or str(decision.get("registration") or "").startswith("rejected"):
-                _log_decision(log, "confirmation_rejected",
-                              decision.get("reason") or decision.get("registration") or "",
-                              [row["variant_id"]])
-                continue
-            members = _merge_family_members(members, family_key, decision.get("members") or [])
-            save_family_members(FAMILY_REGISTRY, members)
+            # 已登记只跳过再次 register。没进快照、也不在队里时仍可入队一次。
+            registered = any(
+                member.get("variant_id") == row.get("variant_id")
+                for member in family_members
+            )
+            if not registered:
+                decision = dispatch_confirmation(proposal, registry, family_members)
+                if not decision["accepted"] or str(decision.get("registration") or "").startswith("rejected"):
+                    _log_decision(log, "confirmation_rejected",
+                                  decision.get("reason") or decision.get("registration") or "",
+                                  [row["variant_id"]])
+                    continue
+                members = _merge_family_members(members, family_key, decision.get("members") or [])
+                save_family_members(FAMILY_REGISTRY, members)
             n = rl.queue_enqueue(QUEUE, [row], dead=set(), existing=set())
             added += n
             if n:
