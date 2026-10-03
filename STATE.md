@@ -6,13 +6,13 @@
 
 **最后更新**: 2026-10-01（v4 收口阶段 2 完成并重启：窗口锚 / checkpoint 身份 / 协议 v4 / vid 生产接线全部落地，v4 重生波 9/9 闭环。见下方「三环状态」与「Stage 3 交付状态」小节）
 
-> **三环状态**：**运行中**，supervisor **PID 418**（2026-10-01 v4 重启，已加载 v4 收口全部代码）。
+> **三环状态**：**运行中**，supervisor **PID 416**（2026-10-02 20:27 重启，已加载 v4 收口 + 阶段 3 确认机制）。
 > `cycles_done` / PID / phase 是**活计数**，此处一律不记录 —— 读 `data/cache/supervisor_state.json`。
 > 封存已于 **2026-09-28 解除**（停滞根因 = 快环提案被门禁 ~100% 拒绝 + 无基线 → 慢环饿死；
 > 修复 = baselines 重生 + 提案门禁调整 + 1-bar 前视修复）。封存快照仍在
 > `data/archive/fm_a_sealed_2026-09-24T1422/`（234MB）供对照，非当前状态。
 >
-> **v4 重启已执行**（2026-10-01，计划 2.9）。旧 PID 670 由宿主停机（日志已轮转
+> **v4 收口重启已执行**（2026-10-01 计划 2.9 → 2026-10-02 20:27 再重启）。PID 418 于 2026-10-02 19:05:40 干净退出（`exit_code 0`，uptime 114,957s；第一次 SIGTERM 被忽略、第二次生效，见 `docs/supervisor_restart_backlog.md` 已知缺陷）；20:27 重启为 **PID 416**（`setsid nohup`；`SID` 自有会话 / `PPID=/init` / 无 TTY → 会话无依赖）。更早的 PID 670 由宿主于 2026-09-30 停机（日志已轮转
 > `logs/supervisor_pre_restart_20260929.log`）。新代码生效的端到端证据：
 > `protocol_fingerprint` **v4 = `f02b2a433fd572ea…`**，ensure_baselines 重生波 9/9
 > （cj/eg/fu/jd/lh/m/rb/sr/ss 全带 v4 指纹；fu 为入集后首个有效基线），
@@ -56,13 +56,14 @@
 | PR-B1 `experiment_fingerprint` | ⚠️→✅ 模块就绪，真接线已完成（2026-10-01 `c0e3aa4`） | `cascade/experiment_fingerprint.py` |
 | §8.3 出口条件核验记录 | ✅ | `docs/superpowers/reports/2026-09-29-stage3-verification-record.md` |
 
-**测试**：`1646 passed / 7 skipped / 1 xfailed / 0 failed`。基线 eecf05a 的 14 项预存在
+**测试（2026-10-03 现况）**：`1557 passed / 0 failed / 6 skipped / 1 xfailed`（v4 收口后基准；2026-09-29 的 1646/7/1 为阶段 3 收口时点）。基线 eecf05a 的 14 项预存在
 失败中 13 项由 Phase 9 修复，第 14 项（a2_p1 smoke）于 `b8a6d36` 退役。
 
 **未做**：PR-D1 / PR-D2（Stage 4 正式）、supervisor variant_id 接线、
 supervisor 重启（用户保留决定）。
 **→ 2026-10-01 更新**：后两项已完成——variant_id 生产接线（commit `c0e3aa4`，计划 2.4）、
 supervisor v4 重启（PID 418，计划 2.9）。
+**→ 2026-10-02（阶段 3 已接线，11 笔 `eee38fb..b745831` + `045c7e2`）**：确认窗口透传、checkpoint 命名空间隔离、family 分派与封账、goal 重写（唯一成功条件 `all_symbols_pass_phase1` + 有界预算 2000/2000/null/2028-10-02）、首批 2 条预注册（jd 1,199 / sr 986，`confirm_from_ts=2026-10-03`）、**收割/复测只看当前协议**（`_active_protocol_snapshot`，修掉收割枯竭：入队率 50%→100%、产出 0.72→1.62 条/h）。
 **→ 2026-10-01（阶段 3 启动）**：PR-D1/D2 = v4 计划阶段 3，设计定型（Q7 裁定 (a′)：
 Δ\*=0.08、功效 80%、单侧 α=0.05、N(品种)=实测 986–1,199 点），实施分层 A–E 推进中。
 关键勘查结论：① `run_symbol_backtest` 缺 `eval_start_ts`（需新增；`eval_indices[:max_points]`
