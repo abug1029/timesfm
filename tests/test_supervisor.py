@@ -1658,3 +1658,66 @@ def test_ensure_baselines_asks_generate_only_for_a_missing_file(monkeypatch, tmp
     ready.write_text(line * 100, encoding="utf-8")
     sup.ensure_baselines(["m", "cf"], str(tmp_path))
     assert calls == [("cf", None)]
+
+
+def test_sleep_returns_on_the_slice_that_sees_the_flag(monkeypatch):
+    calls = []
+
+    def _sleep(seconds):
+        calls.append(seconds)
+        sup._SHUTDOWN_REQUESTED = True
+
+    monkeypatch.setattr(sup.time, "sleep", _sleep)
+    sup._SHUTDOWN_REQUESTED = False
+    try:
+        sup._sleep_interruptible(180)
+    finally:
+        sup._SHUTDOWN_REQUESTED = False
+    assert calls == [1]
+
+
+def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
+        tmp_path, monkeypatch):
+    _patch_paths(monkeypatch, tmp_path)
+    harvested = []
+    started = []
+    monkeypatch.setattr(sup, "_SHUTDOWN_REQUESTED", False)
+    monkeypatch.setattr(sup, "ensure_baselines", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "build_snapshot", lambda *a, **k: {
+        "variants": {}, "symbols_hit": set(), "families_hit": set(),
+    })
+    monkeypatch.setattr(sup, "evaluate_goal", lambda *a, **k: (False, ["not yet"]))
+    monkeypatch.setattr(sup, "_read_cpu_hours", lambda: 0.0)
+    monkeypatch.setattr(sup, "_read_token_m", lambda: (0.0, False))
+    monkeypatch.setattr(sup, "materialize_known_verdicts", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
+    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup, "_queue_busy", lambda: False)
+    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+
+    def _ensure_phase(st):
+        sup._SHUTDOWN_REQUESTED = True
+        return st
+
+    monkeypatch.setattr(sup, "ensure_phase", _ensure_phase)
+    monkeypatch.setattr(sup, "_maybe_harvest", lambda *a, **k: harvested.append("harvest") or False)
+    monkeypatch.setattr(sup, "_maybe_enqueue_retests", lambda *a, **k: harvested.append("retest"))
+    monkeypatch.setattr(
+        sup, "decide_fast_loop",
+        lambda *a, **k: started.append("start") or [{"action": "run_started"}])
+    monkeypatch.setattr(sup.time, "sleep", lambda *_a, **_k: None)
+    goal = tmp_path / "goal.yaml"
+    goal.write_text(
+        "goal:\n  success_condition: ['all_symbols_pass_phase1']\n"
+        "  budgets: {max_cycles: 2000, cpu_hours: 2000, token_budget_m: 80, deadline: '2028-10-02'}\n"
+        "  cadence: {survivors_per_cycle: 3, aligned_max_points: 600,\n"
+        "            run_budget_hours: 1.5, quota_window_hours: 5.0, quota_margin_min: 30}\n",
+        encoding="utf-8")
+    (tmp_path / "task_FM").mkdir()
+    try:
+        rc = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
+    finally:
+        sup._SHUTDOWN_REQUESTED = False
+    assert rc == 0
+    assert harvested == []
+    assert started == []

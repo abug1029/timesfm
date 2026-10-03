@@ -391,6 +391,28 @@ def _signal_handler(signum, frame):
     _SHUTDOWN_REQUESTED = True
 
 
+def _shutdown_exit():
+    """标志为真时走与循环顶相同的干净退出。不收割，不启动新 run，不杀已经在跑的子进程。"""
+    if not _SHUTDOWN_REQUESTED:
+        return None
+    _emit_event("critical", "supervisor_stopped", {
+        "reason": "signal_received",
+        "exit_code": 0,
+        "uptime_s": round(time.time() - _START_TIME, 1),
+    })
+    return 0
+
+
+def _sleep_interruptible(seconds):
+    """最多睡 seconds 秒。每 1 秒看一次标志。处理函数本身仍然只置标志。"""
+    remaining = max(1, int(seconds))
+    while remaining > 0:
+        if _SHUTDOWN_REQUESTED:
+            return
+        time.sleep(1)
+        remaining -= 1
+
+
 def _atexit_handler():
     """Emit stop event on any exit path not already handled."""
     global _STOP_EMITTED
@@ -2916,13 +2938,9 @@ def _main_locked(args):
         print(f"[ERROR] ensure_baselines pre-flight failed: {e}", file=sys.stderr)
     while True:
         _write_heartbeat()
-        if _SHUTDOWN_REQUESTED:
-            _emit_event("critical", "supervisor_stopped", {
-                "reason": "signal_received",
-                "exit_code": 0,
-                "uptime_s": round(time.time() - _START_TIME, 1),
-            })
-            return 0
+        code = _shutdown_exit()
+        if code is not None:
+            return code
         # Reload goal every poll so hot token_budget_m / max_cycles edits apply
         # without restart (2026-09-08: stale 50 in-memory while disk was 80 → false
         # budget_exhausted at tok_m=52.516).
@@ -2998,6 +3016,9 @@ def _main_locked(args):
             else:
                 # Drain finished-run harvest + local slow queue BEFORE exiting on budget.
                 st_pre = load_state()
+                code = _shutdown_exit()
+                if code is not None:
+                    return code
                 _maybe_harvest(st_pre, goal, log)
             st_pre = load_state()
             if st_pre.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
@@ -3067,6 +3088,9 @@ def _main_locked(args):
         st = ensure_phase(load_state())
         st = _merge_save({"phase": st["phase"]})
         # Harvest finished runs even during paused_429 / wait_quota.
+        code = _shutdown_exit()
+        if code is not None:
+            return code
         if not _run_active():
             _maybe_harvest(st, goal, log)
         # n-不足型近失误自动复测 (本地慢环, 不受 LLM 暂停/failover 影响)。
@@ -3112,7 +3136,7 @@ def _main_locked(args):
         for a in planned:
             if a.get("sleep_s"):
                 sleep_s = min(sleep_s, int(a["sleep_s"]))
-        time.sleep(max(1, sleep_s))
+        _sleep_interruptible(max(1, sleep_s))
 
 if __name__ == "__main__":
     sys.exit(main() or 0)
