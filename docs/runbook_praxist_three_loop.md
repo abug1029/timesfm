@@ -146,7 +146,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 
 ### 当前 goal（以 `scripts/praxist_goal.yaml` 为准）
 
-成功条件（以 `scripts/praxist_goal.yaml` 为准）：只有 `all_symbols_pass_phase1`。一个品种达到「可预测」当且仅当至少有一条 family 封账的确认：`run_label` 为 confirmed 且 `fdr_pass` 为 True。原三阶段门槛和无界预算已经退役，本文件不再记录那些公式。目标品种 24 个：m/ss/sr/cj/jd/lh/eg/rb/i/p/y/cf/bu/fu/ta/ma/fg/ur/px/oi/sh/sp/ao/sc。预算：`max_cycles`=2000，`cpu_hours`=2000，`token_budget_m`=null（不参与停机），`deadline`=2028-10-02。cadence：survivors=3、aligned_max_points=600、quota 窗 5h、run 预算 1.5h。`dir_acc` 主口径为剔零变动（spec W6.5①，PR-B4）；经济数值仅作报表参考，不参与裁决。已锁定的预注册样本量不在监督环里改写。jd 的确认样本仍是 1199，sr 的确认样本仍是 986，都写在 `task_FM/config/preregistry.jsonl`。Q7 备忘录要求重启后按 live 密度修订日历，并且每季按实测 Var_LR 复核 Δ_min；那是宿主动作，监督环不为此改预注册文件，也不改 Δ\*=0.08。
+成功条件（以 `scripts/praxist_goal.yaml` 为准）：只有 `all_symbols_pass_phase1`。一个品种达到「可预测」当且仅当至少有一条 family 封账的确认：`run_label` 为 confirmed 且 `fdr_pass` 为 True。原三阶段门槛和无界预算已经退役，本文件不再记录那些公式。目标品种 24 个：m/ss/sr/cj/jd/lh/eg/rb/i/p/y/cf/bu/fu/ta/ma/fg/ur/px/oi/sh/sp/ao/sc。预算：`max_cycles`=2000，`cpu_hours`=2000，`token_budget_m`=null（不参与停机），`deadline`=2028-10-02。cadence：survivors=3、aligned_max_points=600、quota 窗 5h、run 预算 1.5h。`dir_acc` 主口径为剔零变动（spec W6.5①，PR-B4）；经济数值仅作报表参考，不参与裁决。已锁定的预注册样本量不在监督环里改写。jd 的确认样本仍是 1199，sr 的确认样本仍是 986，都写在 `task_FM/config/preregistry.jsonl`。Q7 备忘录要求重启后按 live 密度修订日历，并且每季按实测 Var_LR 复核 Δ_min；那是宿主动作，监督环不为此改预注册文件，也不改 Δ*=0.08。
 
 ---
 
