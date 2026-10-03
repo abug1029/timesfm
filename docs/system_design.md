@@ -70,7 +70,7 @@ FM_a 是一个**两阶段级联预测系统**，不是自动交易系统。它�
 | **防穿越** | 回测按 cutoff 截断；实盘 `DailyModel.predict` 经 `read_daily_frame` 走 `get_safe_daily`（见 §2.4） |
 | **可复现** | 相同输入产生相同输出，所有随机种子固定 |
 
-### 1.3 当前接线（2026-09-12；C1 / C3 已落地）
+### 1.3 当前接线（2026-10-03 更新；C1 / C3 已落地，v4 协议与确认通道已接线）
 
 | 路径 | 现在怎样 | 不要写成 |
 |------|----------|----------|
@@ -565,6 +565,13 @@ verdict（`p_value`，`fdr_pass=null` 待结算）。Supervisor 按 `batch_id` �
 按品种分组执行 BH-FDR（q=0.10）；组内 K<4 时降级为固定 Bonferroni α=0.025。
 伪代码与数值示例见 spec §4.2。
 
+**`fdr_pass` 落盘口径（2026-10 起收紧）**：BH/Bonferroni 算术本身仍由
+`cascade/statistical_tests.bh_fdr_promote` 负责，但**能否落成 `fdr_pass=True` 由监督环侧过滤**：
+需同时满足 `run_mode == "confirmation"`、`missingness_admissible is True`、
+`dm_status ∈ {ok, set_mismatch_ok}`（spec §4.3 W3.4）。探索行与描述性 DM（`set_mismatch_descriptive`、
+`no_common_cutoff`）即使算术显著也只落 `fdr_pass=False`。
+（2026-10-03 实测发现存量一行探索行带 `fdr_pass=True`，属该漏洞的历史残留，不回写 jsonl。）
+
 ### 7.3 硬门逻辑（v23）
 
 `gate_pass` **只判静态质量底线**（n、n_eff、dir_acc），不含任何经济指标：
@@ -578,27 +585,54 @@ def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
     return n >= min_n and n_eff >= min_n_eff and dir_acc >= effective_min
 ```
 
-统计显著性由 Supervisor 批次结算的 BH-FDR 判定（`fdr_pass`）。裁决三态
-（`scripts/praxist_supervisor.py::materialize_known_verdicts`）：
+统计显著性由 Supervisor 批次结算的 BH-FDR 判定（`fdr_pass`，落盘口径见 §7.2）。
 
-| 裁决态 | 条件（v2 schema） |
-|--------|-------------------|
-| `v2_pass` | gate_pass=True 且 (fdr_pass 或 migrated_pass) |
-| `hard-gate-but-losing` | gate_pass=True 但未过统计检验 |
-| `DEAD` | gate_pass=False（status=ok） |
+**成功计数口径（W3.4 严格链，`registry_lib.pass_variants`）**：一条裁决要计入
+「成功」，必须同时成立：
 
-### 7.4 信用星级
+```
+run_mode == "confirmation"          # 探索行一律不算（spec §1.4）
+AND gate_pass                       # 静态质量底线
+AND fdr_pass                        # 批次 FDR（受 §7.2 过滤）
+AND p_value is not None
+AND pairing_valid == True           # 共同样本口径：配对可算 + 缺失可接受
+AND missingness_admissible is True   # §7.8 裁定前恒 False（保守默认）
+AND dm_status ∈ {ok, set_mismatch_ok}
+AND 在确认集窗口的共同 cutoff 上 DM 显著优于无协变量基线
+```
 
-| 星级 | 标准 | 品种数 | 建议仓位 |
-|------|------|--------|----------|
-| ⭐⭐⭐ | 无（系统未达 3 星标准） | 0 | — |
-| ⭐⭐ | v23：过硬门 + DM/FDR（经济报表参考，不参与 Praxist 裁决） | 7 | 中等仓位 |
-| ⭐ | underpowered / v23 复测未过门 | 13 | 轻仓或观望 |
-| 待固化 | data pool 已加入但无 GREEN | 1（SH） | 不纳入 SCHEMES |
+`migrated_pass` 已于 v4 收口退役（2.7）。因此：
 
-**2 星品种**（SCHEMES，2026-09-20）：SR, M, RB, EG, LH, CJ, JD
+| 分类 | 条件 |
+|------|------|
+| 计入成功（`pass_variants`） | 上列全部成立（当前库中 **0 条**） |
+| 探索诊断级 | `run_mode == "exploration"`（v4 现有 44 条全部属此类） |
+| 描述性 DM | `dm_status ∈ {set_mismatch_descriptive, no_common_cutoff}`（当前 44 条全为此类或过门但描述性） |
 
-**SS 降级说明**：2026-09-17 v23 复测 dir_acc=0.502<0.52 未过门，从 2★ 降为 1★。goal.yaml（2026-09-23 起）目标品种集含 ss——目标为全部 24 个品种通过三阶段验证，不再单点去留。
+**这解释了为什么当前 `n_confirmed_variants = 0`**：确认通道自 2026-10-03 起累积，
+按 Q7 裁定 (a′) 的 live 密度，jd 需 1,199 个新 cutoff、sr 需 986 个（约 1.2–2.0 年）。
+
+### 7.4 品种评级：`tier`（不是 `star`）
+
+**评级字段是 `tier`，由 `cascade/tier_classifier.py` 写入；裁决行里不存在 `star` 键。**
+`--three-star` 只是历史 CLI 名（`scripts/cascade_predict.py::--three-star`），现映射
+「信用≥2星」，与 `star` 字段无关——不要补写 `star`。
+
+v4 协议下 `tier` 分布（截至 2026-10-03，共 44 条 v4 裁决）：
+
+| tier | 条数 | 其中过门 | 含义 |
+|------|------|----------|------|
+| S | 6 | 6 | 最强档 |
+| A | 6 | 4 | 次强档 |
+| B | 21 | 2 | 中档 |
+| C | 11 | 1 | 弱档 |
+
+**过门变体 Top（按 `dir_acc`）**：`cf_calendar` 0.576（`known_ahead`）、`sh_momentum` 0.564、
+`sh_momentum` 0.550、`cf_volatility` 0.544、`i_inventory` 0.542。
+
+**重要口径**：过门 ≠ 成功。`gate_pass` 只是静态质量底线；成功还要过 §7.3 的 W3.4 严格链。
+当前 13 条过门行全部是探索诊断级，`fdr_pass` 真正为 True 的仅 1 条且已被 §7.2 的过滤认定为
+历史残留。
 
 **品种状态**（2026-09-29）：`task_FM/config/symbol_status.json` 已于 2026-09-28 清空（`symbols={}`），当前无 DEAD/HOLD 品种，全部品种可入队；此前的 eg=DEAD、jd/lh=HOLD 标记不再有效。
 
@@ -884,18 +918,38 @@ Stage 3（协变量可信度）2026-09-28/29 结案，在慢环/监督环侧新�
 | horizon 尾填充契约 | `cascade/horizon_fill.py` | `horizon_known` 四类受控词表（`known_ahead` / `persistence` / `self_referential` / `unknowable`），唯一家 `task_FM/config/covariate_pool.json`；非 `known_ahead` 的 horizon 段逐值填 context 末值并落 `horizon_fill` 标记（替代历史 zeros/decay 填充），配套修复 1-bar 前视 |
 | 实验指纹 | `cascade/experiment_fingerprint.py` | 单次实验身份 = `weight_fingerprint` + `target_snapshot_hash` + `context_config_hash`（48-bit 截断）；与 `research_target_hash`（研究问题身份，稳定）严格区分，不得混用 |
 | 研究 family | `cascade/research_family.py` | 多重比较纪律：一个品种 = 一个研究问题 = 一个 family（同一 protocol_fingerprint 下），批次 / 运行 / 代际不重置校正；family 90 天关闭、≤20 成员、单成员 180 天 T_max |
-| 基线协议指纹 | `scripts/praxist_supervisor.py::ensure_baselines` | 基线协议指纹不符（协议成分变更，现 v3）→ 整品种基线自动重生；2026-09-29 实测 9 个 nocov 基线（v2 指纹）全部捕获重生 |
-| 物化修复 K6/M4 | `scripts/praxist_supervisor.py` | `known_verdicts.inc.md` 图例单条、`v2_pass` 统一为 `gate_pass` 且 `not (fdr_pass or migrated_pass)`（K6）；品种表不截断 + `verdicts_truncated=<N>` 截断标记（M4） |
+| 基线协议指纹 | `scripts/praxist_supervisor.py::ensure_baselines` | 基线协议指纹不符（协议成分变更，**现 v4 = `f02b2a43…`**，v3 = `91ab913e…`，v2 = `bd851c9c…`）→ 整品种基线自动重生；2026-10-01/02 实测 9 个 nocov 基线全部带 v4 指纹落章（fu 为入集后首个基线），两次波均全量重生 |
+| 物化修复 K6/M4 | `scripts/praxist_supervisor.py` | `known_verdicts.inc.md` 图例单条、`v2_pass` 已退役，K6 现表述为 `gate_pass` 且 `not fdr_pass`（K6）；品种表不截断 + `verdicts_truncated=<N>` 截断标记（M4）。`migrated_pass` 随v4 收口（计划 2.7）一并退役 |
 
 smoke 套件（`test_smoke_ss_end_to_end`）已于 2026-09-29 按用户裁定退役（连续两次同栈 pyarrow ImportError，`cascade/lgbm_features.py`）；回归以 `pytest tests/` 全量为准。
 
-### 11.5 当前运行状态（2026-09-29）
+### 11.5 当前运行状态（2026-10-03）
 
-- 裁决注册表：**171 verdicts / 43 gate_pass / 3 fdr_pass / 3 migrated_pass**（全部 status=ok；当日快照，以 `task_FM/config/aligned_verdicts.jsonl` 为准）
-- 监督环 2026-09-29 19:24 经规范启动器重启（旧进程干净退出），`cycles_done=172` 续累加；基线 v3 指纹端到端验证通过（bump → 检测 → 重生）；stdout 落 `data/cache/supervisor.out`
-- TypeSafe Jev 预筛（2026-09-22 落地，SDK v0.7.1，7 commits `cc856cb..411183e`）：verdict 注册表现有 **22 条带 `metadata.prescreen`**（2026-09-29 快照），质量校准（≥50 样本门禁）待积累
+- 裁决注册表：**232 行 = 188 条跨协议旧行（活跃视图外）+ 44 条 v4**。v4 明细：`gate_pass` 13/44 ·
+  `tier` S6/A6/B21/C11 · `run_mode` **全部 `exploration`** · 确认级（`pass_variants`）**0 条**
+  （口径见 §7.3）
+- 监督环：**PID 416**（2026-10-02 20:27 经 `scripts/start_supervisor.sh` 重启，`setsid nohup` 脱离会话；
+  前一进程 PID 418 于 10-02 19:05 干净退出 `exit_code 0` / uptime 114,957s）。基线 v4 指纹端到端验证通过；
+  stdout 落 `data/cache/supervisor.out`（历史轮转为 `data/cache/supervisor_pre_restart_*.out`）
+- **阶段 3（确认机制）已接线**（2026-10-02，11 笔提交 `eee38fb..b745831`）：确认窗口透传、checkpoint 命名空间隔离
+  （`{vid}__prereg_{id[:8]}.jsonl`，防 resume 把探索点混进确认 DM）、family 分派与封账、underpowered 可封账、
+  goal 重写、首批 2 条预注册、**收割/复测只看当前协议**（`_active_protocol_snapshot`，修复了收割枯竭）
+- 未决问题（截至 2026-10-03，见 `docs/superpowers/reports/2026-10-03-fm-a-open-issues.md`）：
+  `_dead_families` 把不可确认的描述性失败计入死亡阈值（`term_structure` 已误判死）；两处红测待转绿；
+  第一次 SIGTERM 会被忽略（睡眠未切片）；agri 板块 5/10 长期半退化
 - 运行计数以 `data/cache/supervisor_state.json` 为准（cycles_done 随调度递增，不在此写死）
-- 目标（`scripts/praxist_goal.yaml`，2026-09-23 起）：**所有目标品种（24 个）通过三阶段验证**——Phase 1 `n_gate_pass_variants >= 10` + `avg_dir_acc_gate_pass >= 0.51`；Phase 2 `n_tier_a_or_b >= 8`；Phase 3 `n_validated_multi_seed >= 3` + `decay_below_threshold <= 2`；预算无限制
+- 目标（`scripts/praxist_goal.yaml`，**2026-10-02 重写**）：**唯一成功条件 `all_symbols_pass_phase1`**——
+  每个目标品种（24 个）至少 1 个**经 family 封账的确认变体**（`run_label == confirmed` 且 `fdr_pass is True`）。
+  **原三阶段门槛全部退役**：`n_gate_pass_variants >= 10`、`avg_dir_acc_gate_pass >= 0.51`、
+  `n_tier_a_or_b >= 8`（0.51 作为绝对水平低于 `detection_threshold_vs_random`，作为相对基线增量
+  低于 `detection_threshold_vs_baseline`，两条路径都不达标）。
+  Phase 3 的 `multi_seed` / `decay` **仍未实现且不发明通过线**
+  （见 `docs/superpowers/specs/2026-10-02-phase3-multiseed-decay-todo.md`）。
+- 预算（2026-10-02 起有界）：`max_cycles` 2000 · `cpu_hours` 2000 · `token_budget_m` **null（不参与停机）**
+  · `deadline` 2028-10-02。cadence：`survivors_per_cycle` 3 · `aligned_max_points` 600 ·
+  quota 窗 5h · run 预算 1.5h
+- 预注册样本量（**已锁定，监督环不改写**）：jd 1,199 · sr 986（`task_FM/config/preregistry.jsonl`）。
+  Q7 备忘录要求按 live 密度修订日历、每季按实测 Var_LR 复核 Δ*=0.08——**那是宿主动作**
 
 ---
 
@@ -911,7 +965,9 @@ FM_a 系统的核心价值在于：
 6. **人机协作**：系统输出方向性建议，人类做最终决策
 
 **使用建议**：
-- 优先关注 2 星品种（SR/M/RB/EG/LH/CJ/JD；SS 2026-09-17 降级 1★）
+- 品种强弱看 `tier`（S/A/B/C，见 §7.4），**过门不等于成功**——成功还要过 W3.4 严格链（§7.3）；
+  当前协议下确认级变体为 0（确认通道自 2026-10-03 起累积，需 1.2–2.0 年）
+- 历史 2 星品种（SCHEMES，2026-09-20 口径）：SR/M/RB/EG/LH/CJ/JD；SS 2026-09-17 复测 dir_acc=0.502 未过门降级
 - 看【可交易方向】（加权 1H）；【日线状态】只是副标签
 - 轻仓试探，根据实际表现调整仓位
 - 结合基本面和主观判断，不盲从模型
