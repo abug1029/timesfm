@@ -554,3 +554,52 @@ def test_due_confirmation_row_uses_the_locked_preregistration():
         family_for=lambda cov: "momentum",
     )
     assert ran == []
+
+
+def test_enqueue_due_confirmation_then_peek_does_not_seal(tmp_path, monkeypatch):
+    prereg_path = tmp_path / "preregistry.jsonl"
+    family_path = tmp_path / "family_registry.jsonl"
+    queue_path = tmp_path / "pending.jsonl"
+    jd = {
+        "prereg_id": "6f944c74e2c94ca5a5b70e64676e518b",
+        "symbol": "jd",
+        "registered_at": "2026-10-02T00:00:00+00:00",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 1199,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
+    }
+    prereg_path.write_text(json.dumps(jd) + "\n", encoding="utf-8")
+    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    monkeypatch.setattr(sv, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {})
+    n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
+    assert n == 1
+    queued = [json.loads(line) for line in queue_path.read_text(encoding="utf-8").splitlines()]
+    assert queued[0]["run_mode"] == "confirmation"
+    assert queued[0]["max_points"] == 1199
+    members = sv.load_family_members(str(family_path))
+    assert len(members) == 1
+    assert members[0]["status"] == "registered"
+    # 同一 vid 已在队里，第二轮不再入队，也不抢占。
+    assert sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00") == 0
+    verdict = {
+        "variant_id": queued[0]["variant_id"],
+        "run_mode": "confirmation",
+        "prereg_id": jd["prereg_id"],
+        "n": 10,
+        "n_confirm_required": 1199,
+        "p_value": 0.01,
+        "gate_pass": True,
+        "dm_status": "set_mismatch_descriptive",
+        "missingness_admissible": False,
+    }
+    out = sv._finalize_confirmation_verdict(verdict, members, datetime(2026, 10, 3, tzinfo=timezone.utc))
+    assert out["audit"]["event"] == "no_peek_rejected"
+    assert out["sealed"] is False
+    assert out.get("fdr_pass") is not True
+    assert out["run_label"] != "confirmed"

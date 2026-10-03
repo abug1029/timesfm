@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """三环监督环: goal 判定 + 两环调度, 纯 Python 0 token"""
 import argparse, atexit, fcntl, glob, json, logging, os, re, signal, subprocess, sys, threading, time, traceback, uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import yaml
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -176,6 +176,7 @@ from cascade.research_family import (  # noqa: E402
 )
 
 FAMILY_REGISTRY = os.path.join(FM_ROOT, "task_FM", "config", "family_registry.jsonl")
+PREREGISTRY_PATH = os.path.join(FM_ROOT, "task_FM", "config", "preregistry.jsonl")
 
 
 def family_key_for(symbol, **kwargs):
@@ -374,6 +375,107 @@ def due_confirmations(registry, now_ts, blocked_ids, already_ran_ids,
             continue
         out.append(confirmation_queue_row(row, vid))
     return out
+
+
+def load_preregistry(path):
+    rows = []
+    if not os.path.exists(path):
+        return rows
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            if line.strip():
+                rows.append(json.loads(line))
+    return rows
+
+
+def load_family_members(path):
+    by_vid = {}
+    order = []
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            member = json.loads(line)
+            vid = member.get("variant_id")
+            if vid not in by_vid:
+                order.append(vid)
+            by_vid[vid] = member
+    return [by_vid[vid] for vid in order]
+
+
+def save_family_members(path, members):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        for member in members:
+            fh.write(json.dumps(member, ensure_ascii=False) + "\n")
+
+
+def _maybe_enqueue_confirmations(log, now_ts):
+    registry = load_preregistry(PREREGISTRY_PATH)
+    blocked = rl.in_flight_ids(QUEUE, INPROGRESS)
+    snap = _active_protocol_snapshot(REGISTRY)
+    already = {
+        v.get("prereg_id") for v in (snap or {}).values()
+        if isinstance(v, dict) and v.get("prereg_id")
+    }
+    pool = load_covariate_pool()
+
+    def family_for(cov):
+        return (pool.get(cov) or {}).get("family")
+
+    rows = due_confirmations(
+        registry, now_ts, blocked, already, _experiment_fp_for, family_for)
+    produced = {row["prereg_id"] for row in rows}
+    for src in registry:
+        if not isinstance(src, dict) or src.get("terminal_state") not in (None, ""):
+            continue
+        confirm_from = src.get("confirm_from_ts")
+        if not isinstance(confirm_from, str) or confirm_from > now_ts:
+            continue
+        if src.get("prereg_id") in already or src.get("prereg_id") in produced:
+            continue
+        _log_decision(log, "confirmation_not_enqueued",
+                      src.get("prereg_id") or "",
+                      [str(src.get("symbol") or "")])
+    if not rows:
+        return 0
+    added = 0
+    members = load_family_members(FAMILY_REGISTRY)
+    for row in rows:
+        proposal = {
+            "prereg_id": row["prereg_id"],
+            "symbol": row["symbol"],
+            "variant_id": row["variant_id"],
+            "family_key": family_key_for(row["symbol"]),
+        }
+        decision = dispatch_confirmation(proposal, registry, members)
+        if not decision["accepted"] or str(decision.get("registration") or "").startswith("rejected"):
+            _log_decision(log, "confirmation_rejected",
+                          decision.get("reason") or decision.get("registration") or "",
+                          [row["variant_id"]])
+            continue
+        members = decision["members"]
+        n = rl.queue_enqueue(QUEUE, [row], dead=set(), existing=set())
+        added += n
+        if n:
+            _log_decision(log, "confirmation_enqueued", row["prereg_id"], [row["variant_id"]])
+    save_family_members(FAMILY_REGISTRY, members)
+    return added
+
+
+def _finalize_confirmation_verdict(verdict, members, now):
+    """样本未满只 peek。不把 fdr_pass 写成 True，不设 request_early_seal。"""
+    if not isinstance(verdict, dict) or verdict.get("run_mode") != "confirmation":
+        return None
+    row = dict(verdict)
+    if row.get("n_confirm_actual") is None:
+        row["n_confirm_actual"] = row.get("n") if row.get("n") is not None else 0
+    if row.get("n_confirm_required") is None:
+        return None
+    row["request_early_seal"] = False
+    return finalize_confirmation(row, members, now)
 
 
 def _mark_stop_emitted():
@@ -2935,6 +3037,7 @@ def _maybe_finish_slow(goal, log):
             _log_decision(log, "wait_for_batch_error", str(e))
     # Batch completion: apply FDR promotion to batch verdicts
     if batch_id:
+        batch_verdicts = []
         try:
             all_verdicts = rl.read_verdicts(REGISTRY)
             batch_verdicts = [v for v in all_verdicts if v.get("batch_id") == batch_id]
@@ -2946,6 +3049,21 @@ def _maybe_finish_slow(goal, log):
                                  f"batch={batch_id} promoted={len(updates)}")
         except Exception as e:
             _log_decision(log, "batch_fdr_error", str(e))
+        try:
+            members = load_family_members(FAMILY_REGISTRY)
+            now = datetime.now(timezone.utc)
+            touched = False
+            for verdict in batch_verdicts:
+                if not isinstance(verdict, dict) or verdict.get("run_mode") != "confirmation":
+                    continue
+                result = _finalize_confirmation_verdict(verdict, members, now)
+                if isinstance(result, dict) and isinstance(result.get("members"), list):
+                    members = result["members"]
+                    touched = True
+            if touched:
+                save_family_members(FAMILY_REGISTRY, members)
+        except Exception as e:
+            _log_decision(log, "confirmation_finalize_error", str(e))
         try:
             cleanup_batch_workers(batch_id)
         except Exception as e:
@@ -3160,6 +3278,10 @@ def _main_locked(args):
             _maybe_enqueue_retests(goal, log)
         except Exception as e:
             _log_decision(log, "retest_scan_error", str(e))
+        try:
+            _maybe_enqueue_confirmations(log, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        except Exception as e:
+            _log_decision(log, "confirmation_enqueue_error", str(e))
         st = load_state()
         # Local aligned drain is never blocked by LLM pause/failover.
         if st.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
