@@ -1523,19 +1523,53 @@ def test_dead_families_identified():
     """Families with 4+ ok and 0 pass should be DEAD."""
     snap = {
         "m_ccl": {"variant_id": "m_ccl", "symbol": "m", "cov_override": "ccl",
-                  "cov_family": "ccl", "status": "ok", "gate_pass": False},
+                  "cov_family": "ccl", "status": "ok", "gate_pass": False,
+                  "dm_status": "ok", "run_mode": "exploration"},
         "ss_ccl": {"variant_id": "ss_ccl", "symbol": "ss", "cov_override": "ccl",
-                   "cov_family": "ccl", "status": "ok", "gate_pass": False},
+                   "cov_family": "ccl", "status": "ok", "gate_pass": False,
+                   "dm_status": "ok", "run_mode": "exploration"},
         "rb_ccl": {"variant_id": "rb_ccl", "symbol": "rb", "cov_override": "ccl",
-                   "cov_family": "ccl", "status": "ok", "gate_pass": False},
+                   "cov_family": "ccl", "status": "ok", "gate_pass": False,
+                   "dm_status": "ok", "run_mode": "exploration"},
         "jd_ccl": {"variant_id": "jd_ccl", "symbol": "jd", "cov_override": "ccl",
-                   "cov_family": "ccl", "status": "ok", "gate_pass": False},
+                   "cov_family": "ccl", "status": "ok", "gate_pass": False,
+                   "dm_status": "ok", "run_mode": "exploration"},
         "m_oi": {"variant_id": "m_oi", "symbol": "m", "cov_override": "oi",
-                 "cov_family": "oi", "status": "ok", "gate_pass": True},
+                 "cov_family": "oi", "status": "ok", "gate_pass": True,
+                 "dm_status": "ok"},
     }
     dead = sup._dead_families(snap)
     assert "ccl" in dead, "ccl should be DEAD (4 ok, 0 pass)"
     assert "oi" not in dead, "oi should NOT be DEAD (has pass)"
+
+
+def test_descriptive_failures_do_not_kill_a_family():
+    rows = {}
+    for i, status in enumerate(
+        ["set_mismatch_descriptive", "set_mismatch_descriptive",
+         "no_common_cutoff", "no_common_cutoff", "insufficient_common"]
+    ):
+        rows["r%s" % i] = {
+            "variant_id": "r%s" % i, "symbol": "m", "cov_family": "term_structure",
+            "status": "ok", "gate_pass": False, "dm_status": status,
+            "run_mode": "exploration",
+        }
+    assert "term_structure" not in sup._dead_families(rows)
+    confirmatory = {
+        "r%s" % i: {
+            "variant_id": "r%s" % i, "symbol": "m", "cov_family": "term_structure",
+            "status": "ok", "gate_pass": False, "dm_status": "ok",
+            "run_mode": "exploration",
+        }
+        for i in range(3)
+    }
+    assert "term_structure" not in sup._dead_families(confirmatory)
+    confirmatory["r3"] = {
+        "variant_id": "r3", "symbol": "ss", "cov_family": "term_structure",
+        "status": "ok", "gate_pass": False, "dm_status": "set_mismatch_ok",
+        "run_mode": "exploration",
+    }
+    assert "term_structure" in sup._dead_families(confirmatory)
 
 
 

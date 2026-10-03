@@ -314,16 +314,20 @@ def test_dead_family_harvest_rejected(tmproot):
     snap = {
         "m_ccl_prev": {"variant_id": "m_ccl_prev", "symbol": "m",
                        "cov_override": "ccl_prev", "cov_family": "inventory",
-                       "status": "ok", "gate_pass": False, "dir_acc": 0.45},
+                       "status": "ok", "gate_pass": False, "dir_acc": 0.45,
+                       "dm_status": "ok", "run_mode": "exploration"},
         "ss_ccl_prev": {"variant_id": "ss_ccl_prev", "symbol": "ss",
                         "cov_override": "ccl_prev2", "cov_family": "inventory",
-                        "status": "ok", "gate_pass": False, "dir_acc": 0.44},
+                        "status": "ok", "gate_pass": False, "dir_acc": 0.44,
+                        "dm_status": "ok", "run_mode": "exploration"},
         "rb_ccl_prev": {"variant_id": "rb_ccl_prev", "symbol": "rb",
                         "cov_override": "ccl_prev3", "cov_family": "inventory",
-                        "status": "ok", "gate_pass": False, "dir_acc": 0.43},
+                        "status": "ok", "gate_pass": False, "dir_acc": 0.43,
+                        "dm_status": "ok", "run_mode": "exploration"},
         "jd_ccl_prev": {"variant_id": "jd_ccl_prev", "symbol": "jd",
                         "cov_override": "ccl_prev4", "cov_family": "inventory",
-                        "status": "ok", "gate_pass": False, "dir_acc": 0.42},
+                        "status": "ok", "gate_pass": False, "dir_acc": 0.42,
+                        "dm_status": "ok", "run_mode": "exploration"},
     }
     _make_run(tmproot, _prop(symbol="m", cov="ccl", family="inventory"))
     rows, stats = _harvest(tmproot, snap=snap)

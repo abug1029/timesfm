@@ -1218,16 +1218,23 @@ def _cross_run_repeat_counts(root=None, max_runs=20):
     return counts
 
 
-def _dead_families(snapshot, min_ok=4):
-    """Return set of family names with >= min_ok ok verdicts and 0 pass.
+_CONFIRMATORY_DM = frozenset({"ok", "set_mismatch_ok"})
 
-    These families are considered DEAD: no amount of re-proposing will help
-    without a fundamental mechanism change.
+
+def _dead_families(snapshot, min_ok=4):
+    """一族至少 min_ok 条可确认 DM 的 ok 裁决且 0 条过门，才算死亡。
+
+    dm_status 缺省、set_mismatch_descriptive、no_common_cutoff、
+    insufficient_common 都不计数。min_ok 仍是 4。
+    run_mode 不读：探索行上的可确认失败同样计数。
+    pass 计数是 gate_pass，不调用 pass_variants。
     """
     fam_ok = {}
     fam_pass = {}
     for v in (snapshot or {}).values():
         if not isinstance(v, dict) or v.get("status", "ok") != "ok":
+            continue
+        if v.get("dm_status") not in _CONFIRMATORY_DM:
             continue
         fam = str(v.get("cov_family") or "").strip()
         if not fam:
