@@ -1617,3 +1617,44 @@ def test_exploration_or_descriptive_dm_cannot_persist_fdr_pass():
     assert sup.promote_batch_for_persistence([status_only])["jd_momentum_abc123abc123"]["fdr_pass"] is False
     assert sup.fdr_pass_persistable(exploration) is False
     assert sup.fdr_pass_persistable(ready) is True
+
+
+def test_goal_target_symbols_follow_yaml_order():
+    goal = {"cadence": {"target_symbols": ["SS", "m", "cf", "m"]}}
+    assert sup._goal_target_symbols(goal) == ["ss", "m", "cf"]
+    assert sup._goal_target_symbols({}) == []
+    live = sup.load_goal(os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "scripts", "praxist_goal.yaml"))
+    got = sup._goal_target_symbols(live)
+    assert got[:4] == ["m", "ss", "sr", "cj"]
+    assert {"cf", "i", "p", "sh", "ma"} <= set(got)
+    assert len(got) == 24
+
+
+def test_ensure_baselines_asks_generate_only_for_a_missing_file(monkeypatch, tmp_path):
+    import sys
+    import types
+    calls = []
+    fake = types.ModuleType("generate_baseline_points")
+
+    def baseline_filename(sym, cov):
+        assert cov is None
+        return "baseline_points_%s_nocov.jsonl" % sym
+
+    def generate(sym, cov, root):
+        calls.append((sym, cov))
+
+    fake.baseline_filename = baseline_filename
+    fake.generate = generate
+    monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp-current")
+    config = tmp_path / "task_FM" / "config"
+    config.mkdir(parents=True)
+    (config / "baseline_metrics.json").write_text(
+        json.dumps({"m": {"n": 588}, "cf": {"n": 588}}), encoding="utf-8")
+    ready = config / "baseline_points_m_nocov.jsonl"
+    line = json.dumps({"protocol_fingerprint": "fp-current", "dir_ok": True}) + "\n"
+    ready.write_text(line * 100, encoding="utf-8")
+    sup.ensure_baselines(["m", "cf"], str(tmp_path))
+    assert calls == [("cf", None)]

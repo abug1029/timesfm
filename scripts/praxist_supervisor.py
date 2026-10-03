@@ -458,6 +458,19 @@ def load_goal(path):
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)["goal"]
 
+def _goal_target_symbols(goal):
+    cad = (goal or {}).get("cadence") or {}
+    raw = cad.get("target_symbols") or []
+    out = []
+    seen = set()
+    for item in raw:
+        sym = str(item).lower().strip()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        out.append(sym)
+    return out
+
 def _env_first(*names):
     """First non-empty env value among names (never log/echo secrets)."""
     for n in names:
@@ -2897,7 +2910,8 @@ def _main_locked(args):
     one_shot = args.dry_run or args.once
     # Pre-flight: ensure baseline metrics/points exist for all goal symbols
     try:
-        ensure_baselines(GOAL_SYMBOLS_SET, args.root)
+        goal_for_baselines = load_goal(args.goal)
+        ensure_baselines(_goal_target_symbols(goal_for_baselines), args.root)
     except Exception as e:
         print(f"[ERROR] ensure_baselines pre-flight failed: {e}", file=sys.stderr)
     while True:
