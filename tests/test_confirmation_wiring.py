@@ -496,3 +496,61 @@ def test_finalize_seals_only_when_every_member_is_terminal():
     assert sealed["members"][1]["status"] == "refuted"
     assert sealed["members"][0].get("fdr_pass") is not True
     assert sealed["members"][1].get("fdr_pass") is not True
+
+
+def test_due_confirmation_row_uses_the_locked_preregistration():
+    jd = {
+        "prereg_id": "6f944c74e2c94ca5a5b70e64676e518b",
+        "symbol": "jd",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 1199,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
+    }
+    sr = {
+        "prereg_id": "ef908a2214e141abaa2d480ca82b53bb",
+        "symbol": "sr",
+        "confirm_from_ts": "2026-10-03 00:00:00",
+        "n_confirm_required": 986,
+        "terminal_state": None,
+        "cov_fingerprint": {"keys": ["daily_slope", "vwap_deviation"]},
+    }
+    early = dict(jd)
+    early["prereg_id"] = "too-early"
+    early["confirm_from_ts"] = "2026-10-04 00:00:00"
+    assert sv._requested_covariate(jd) == "vor"
+    assert sv._requested_covariate({"cov_fingerprint": {"keys": ["daily_slope"]}}) is None
+    due = sv.due_confirmations(
+        [jd, sr, early],
+        "2026-10-03 12:00:00",
+        blocked_ids=set(),
+        already_ran_ids=set(),
+        fingerprint_for=lambda symbol, cov: "ab" * 32,
+        family_for=lambda cov: "momentum",
+    )
+    assert [row["symbol"] for row in due] == ["jd", "sr"]
+    assert due[0]["run_mode"] == "confirmation"
+    assert due[0]["variant_id"] == "jd_momentum_" + ("ab" * 32)[:12]
+    assert due[0]["cov_override"] == "vor"
+    assert due[0]["prereg_id"] == jd["prereg_id"]
+    assert due[0]["confirm_from_ts"] == "2026-10-03 00:00:00"
+    assert due[0]["n_confirm_required"] == 1199
+    assert due[0]["max_points"] == 1199
+    assert due[0]["source"] == "confirmation"
+    assert "request_early_seal" not in due[0]
+    blocked = sv.due_confirmations(
+        [jd], "2026-10-03 12:00:00",
+        blocked_ids={due[0]["variant_id"]},
+        already_ran_ids=set(),
+        fingerprint_for=lambda symbol, cov: "ab" * 32,
+        family_for=lambda cov: "momentum",
+    )
+    assert blocked == []
+    ran = sv.due_confirmations(
+        [jd], "2026-10-03 12:00:00",
+        blocked_ids=set(),
+        already_ran_ids={jd["prereg_id"]},
+        fingerprint_for=lambda symbol, cov: "ab" * 32,
+        family_for=lambda cov: "momentum",
+    )
+    assert ran == []

@@ -314,6 +314,68 @@ def finalize_confirmation(row, members, now):
 def _now_iso():
     return datetime.now().isoformat()
 
+
+_BASE_COVARIATE = "daily_slope"
+
+
+def _requested_covariate(prereg_row):
+    keys = ((prereg_row or {}).get("cov_fingerprint") or {}).get("keys") or []
+    extra = [key for key in keys if key != _BASE_COVARIATE]
+    if len(extra) != 1:
+        return None
+    return extra[0]
+
+
+def confirmation_queue_row(prereg_row, variant_id):
+    cov = _requested_covariate(prereg_row)
+    n_req = int(prereg_row["n_confirm_required"])
+    return {
+        "variant_id": variant_id,
+        "symbol": str(prereg_row["symbol"]).lower(),
+        "cov_override": cov,
+        "max_points": n_req,
+        "stage": "aligned",
+        "checkpoint_path": "",
+        "enqueued_at": _now_iso(),
+        "src_run": "confirmation_dispatch",
+        "source": "confirmation",
+        "run_mode": "confirmation",
+        "prereg_id": prereg_row["prereg_id"],
+        "confirm_from_ts": prereg_row["confirm_from_ts"],
+        "n_confirm_required": n_req,
+    }
+
+
+def due_confirmations(registry, now_ts, blocked_ids, already_ran_ids,
+                      fingerprint_for, family_for):
+    """到期且未占用、未跑过的预注册。不入队，不读时钟，不读权重。"""
+    import cascade.experiment_fingerprint as ef
+
+    out = []
+    for row in registry or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("terminal_state") not in (None, ""):
+            continue
+        confirm_from = row.get("confirm_from_ts")
+        if not isinstance(confirm_from, str) or confirm_from > now_ts:
+            continue
+        if row.get("prereg_id") in already_ran_ids:
+            continue
+        cov = _requested_covariate(row)
+        if cov is None:
+            continue
+        fp = fingerprint_for(str(row.get("symbol") or "").lower(), cov)
+        fam = family_for(cov)
+        if not fp or not fam:
+            continue
+        vid = ef.build_variant_id(str(row["symbol"]).lower(), fam, fp)
+        if vid in blocked_ids:
+            continue
+        out.append(confirmation_queue_row(row, vid))
+    return out
+
+
 def _mark_stop_emitted():
     global _STOP_EMITTED
     _STOP_EMITTED = True
