@@ -19,6 +19,8 @@
 > 活跃视图干净（188 旧行 = 143 legacy + 27 v2 + 18 v3 全排除，passing=0/dead=0），
 > 首 tick 收割入队 vid 已是新格式（`{symbol}_{family}_{fp12}`，2.4 生产首验）。
 > 执行记录见 `docs/superpowers/plans/2026-09-30-v4-convergence-implementation-plan.md` 执行日志。
+> **运行成果报告**：`docs/superpowers/reports/2026-10-03-three-loop-v4-operations-report.md`
+> （46h 窗口：v4 裁决 44 条 / gate_pass 13 / 收割枯竭根因与修复验证 2.3× 吞吐 / 确认级 0 的设计性原因）。
 **Phase 1 状态**: **L1 ops 全量完成 → ECONOMIC_PASS=False → 生产 REMAIN_OFF**  
 **人类文档**: `docs/README.md`（含 product_positioning / module_freeze / 新口径全表链接）  
 **冲突债**: `reports/research/20260808_conflict_debt_register.md`（绝大多数 DONE）  

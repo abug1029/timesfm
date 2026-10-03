@@ -131,4 +131,8 @@
 
 - 2026-10-02 D ✅ 本 commit：D 完成；两行预注册（jd vor，样本量 1199；sr vwap_deviation，样本量 986）；确认起点 `2026-10-03 00:00:00`；Phase 3 文档 `docs/superpowers/specs/2026-10-02-phase3-multiseed-decay-todo.md`；监督环仍不调用确认分派；E 尚未执行。生产函数对 ss 的样本量是 1116，备忘录印的 1115 不改函数。
 
+- 2026-10-03 2.9 运行成果 ✅ 本 commit（46h 窗口收口）：报告落档 `reports/2026-10-03-three-loop-v4-operations-report.md`。要点——① **收割枯竭根因定位与修复验证**：阶段① 连续 9 轮 `harvest_empty`（每轮可用候选 44→0），根因为 `_harvest_rows` 用未过滤快照（`_has_prior_failure` 按 symbol×cov 配对，非 vid），使被 v4 波作废的 188 条旧代裁决继续压制新提案；A/B 实测正确口径下候选 7 → 134；对方 agent `045c7e2` 以 `_active_protocol_snapshot` 修复，阶段② 首轮即入队 3 行、入队率 50%→100%、`no_failure_delta` 2384→1226、裁决产出 0.72→1.62 条/h（**2.3×**）。② **46h 战果**：v4 裁决 44 条、gate_pass 13/44、单侧 p<0.05 两条、fdr_pass 1/44、known_ahead 3/44、FDR 晋升 44 个（23+21）；基线 9/9 零重生；提案 2582→3592；cycles 178→203。③ **确认级仍 0（符合设计）**：44/44 exploration，W3.4 严格链要求 run_mode=confirmation + fdr_pass；两条 p<0.05 候选 pairing_valid=False 且 missingness_admissible=False（§7.8 前保守默认），预注册通道已注册 jd(1199)/sr(986) 两项，confirm_from=2026-10-03。④ 未解缺口：`star` 字段 44/44 None；`family_dead` 在 44 条样本下已拒 602 条（建议复核最小样本要求）；SIGTERM 首次被忽略（信号处理路径待查）；两处测试红（fixture 缺指纹 / 一次性脚本未挂账，均测试侧）。
+
+② **46h 战果**：v4 裁决 44 条、gate_pass 13/44、单侧 p<0.05 两条、fdr_pass 1/44、known_ahead 3/44、FDR 晋升 44 个（23+21）；基线 9/9 零重生；提案 2582→3592；cycles 178→203。③ **确认级仍 0（符合设计）**：44/44 exploration，W3.4 严格链要求 run_mode=confirmation + fdr_pass；两条 p<0.05 候选 pairing_valid=False 且 missingness_admissible=False（§7.8 前保守默认），预注册通道已注册 jd(1199)/sr(986) 两项，confirm_from=2026-10-03。④ 未解缺口：`star` 字段 44/44 None；`family_dead` 在 44 条样本下已拒 602 条（建议复核最小样本要求）；SIGTERM 首次被忽略（信号处理路径待查）；两处测试红（fixture 缺指纹 / 一次性脚本未挂账，均测试侧）。
+
 - （后续追加）
