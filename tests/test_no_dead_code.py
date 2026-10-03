@@ -55,7 +55,13 @@ LIVE_ENTRIES: dict[str, str] = {
 
 # 2.9 已完成（2026-10-01）：regen 三件套随 v4 重生波闭环 git mv 归档，名单释放为空
 # （monitor_rb_regen.sh 为 .sh 非节点，随批归档）。
-TEMPORARY_ALLOWLIST: dict[str, str] = {}
+TEMPORARY_ALLOWLIST: dict[str, str] = {
+    "write_first_preregistry": (
+        "一次性人工命令（scripts/write_first_preregistry.py）："
+        "2026-10-02 已执行，task_FM/config/preregistry.jsonl 已有两条；"
+        "文件存在时拒绝重写；零运行时引用。不归档，不并入 REVIEW_CANDIDATES。"
+    ),
+}
 
 # 检测测试首跑发现（2026-09-30）：零引用 / 零文档 / 零配置调用；
 # 不在已批准归档清单内 → 先显式挂账，2.9 后宿主复核处置

@@ -986,13 +986,16 @@ def test_failover_env_auth_token_matches_api_key(monkeypatch):
 # ── n-不足型近失误自动复测 (cj_oi: PF1.133/ev19.46/ic0.08 全过, 仅 n=324<350) ──
 
 def _aligned_verdict(vid, symbol, cov, n, pf, ev, ic, gate, status="ok",
-                     max_points=600):
-    return {"variant_id": vid, "symbol": symbol, "cov_override": cov,
-            "max_points": max_points, "n": n, "pf": pf, "ev": ev, "maxdd": -0.2,
-            "dir_acc": 0.5 + ic / 2.0, "gate_pass": gate, "ic": ic,
-            "decided_at": "2026-09-08T00:00:00", "checkpoint_path": "",
-            "slow_loop_pid": 1, "git_rev": "x", "schema": "fm.aligned_verdict.v1",
-            "status": status}
+                     max_points=600, protocol_fingerprint=None):
+    row = {"variant_id": vid, "symbol": symbol, "cov_override": cov,
+           "max_points": max_points, "n": n, "pf": pf, "ev": ev, "maxdd": -0.2,
+           "dir_acc": 0.5 + ic / 2.0, "gate_pass": gate, "ic": ic,
+           "decided_at": "2026-09-08T00:00:00", "checkpoint_path": "",
+           "slow_loop_pid": 1, "git_rev": "x", "schema": "fm.aligned_verdict.v1",
+           "status": status}
+    if protocol_fingerprint is not None:
+        row["protocol_fingerprint"] = protocol_fingerprint
+    return row
 
 def test_retest_candidates_only_n_near_miss():
     snap = {
@@ -1012,9 +1015,11 @@ def test_retest_candidates_only_n_near_miss():
 
 def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "current")
     with open(sup.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(_aligned_verdict(
-            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False,
+            protocol_fingerprint="current")) + "\n")
     log = str(tmp_path / "decisions.jsonl")
     goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 1}}
     live_n = {"cj": 324}
@@ -1038,9 +1043,11 @@ def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
 
 def test_maybe_enqueue_retests_respects_margin(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "current")
     with open(sup.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(_aligned_verdict(
-            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False,
+            protocol_fingerprint="current")) + "\n")
     goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 30}}
     monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: 350)
     # 350-324=26 < margin 30 → 不排队
@@ -1049,9 +1056,11 @@ def test_maybe_enqueue_retests_respects_margin(monkeypatch, tmp_path):
 
 def test_maybe_enqueue_retests_fail_open_on_db_error(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "current")
     with open(sup.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(_aligned_verdict(
-            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False)) + "\n")
+            "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False,
+            protocol_fingerprint="current")) + "\n")
     goal = {"cadence": {"retest_min_new_points": 1}}
     monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: None)
     # DB 查询失败 → 0 排队, 不抛
