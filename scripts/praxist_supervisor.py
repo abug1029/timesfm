@@ -17,6 +17,33 @@ try:
 except ImportError:
     bh_fdr_promote = None
 
+_PERSISTABLE_DM = frozenset({"ok", "set_mismatch_ok"})
+
+
+def fdr_pass_persistable(verdict):
+    """W3.4：只有确认运行、缺失可接受、且 DM 状态可确认时，fdr_pass=True 才能落盘。"""
+    if not isinstance(verdict, dict):
+        return False
+    return (
+        verdict.get("run_mode") == "confirmation"
+        and verdict.get("missingness_admissible") is True
+        and verdict.get("dm_status") in _PERSISTABLE_DM
+    )
+
+
+def promote_batch_for_persistence(verdicts):
+    """先做原 BH/Bonferroni，再拒绝不可确认行的 True。不写文件。"""
+    updates = bh_fdr_promote(verdicts)
+    by_vid = {}
+    for verdict in verdicts or []:
+        vid = verdict.get("variant_id")
+        if vid is not None:
+            by_vid[vid] = verdict
+    for vid, update in updates.items():
+        if update.get("fdr_pass") is True and not fdr_pass_persistable(by_vid.get(vid)):
+            update["fdr_pass"] = False
+    return updates
+
 # 惰性解析: 导入期不得要求 praxist 存在，否则新克隆 / CI / worktree 无法收集测试。
 _PRAXIST = None
 
@@ -2795,7 +2822,7 @@ def _maybe_finish_slow(goal, log):
             all_verdicts = rl.read_verdicts(REGISTRY)
             batch_verdicts = [v for v in all_verdicts if v.get("batch_id") == batch_id]
             if batch_verdicts and bh_fdr_promote is not None:
-                updates = bh_fdr_promote(batch_verdicts)
+                updates = promote_batch_for_persistence(batch_verdicts)
                 if updates:
                     rl.update_batch_verdicts(REGISTRY, batch_id, updates)
                     _log_decision(log, "batch_fdr_promote",

@@ -1551,3 +1551,35 @@ def test_harvest_survivors_fp_unavailable_skips(tmp_path, monkeypatch):
     rows = sup.harvest_survivors(str(tmp_path), snapshot={}, dead=set(),
                                  existing=set(), top_k=5, aligned_max_points=400)
     assert rows == []
+
+
+def _promotable(run_mode, dm_status, missingness, p_value=0.01, gate_pass=True):
+    return {
+        "variant_id": "jd_momentum_abc123abc123",
+        "symbol": "jd",
+        "gate_pass": gate_pass,
+        "p_value": p_value,
+        "run_mode": run_mode,
+        "dm_status": dm_status,
+        "missingness_admissible": missingness,
+    }
+
+
+def test_exploration_or_descriptive_dm_cannot_persist_fdr_pass():
+    exploration = _promotable("exploration", "set_mismatch_descriptive", False)
+    no_cutoff = _promotable("confirmation", "no_common_cutoff", False)
+    status_only = _promotable("confirmation", "ok", False)
+    ready = _promotable("confirmation", "ok", True)
+    mismatch_ok = _promotable("confirmation", "set_mismatch_ok", True)
+    mismatch_ok["variant_id"] = "sr_momentum_def456def456"
+    updates = sup.promote_batch_for_persistence(
+        [exploration, no_cutoff, status_only, ready, mismatch_ok])
+    assert updates["jd_momentum_abc123abc123"]["fdr_pass"] is True
+    assert updates["sr_momentum_def456def456"]["fdr_pass"] is True
+    # 同 variant_id 后写覆盖前写。不可确认的三条都用了同一个 vid，最后一条 ready 才为 True。
+    # 下面把不可确认行单独送入，确认它们自己不会被写成 True。
+    assert sup.promote_batch_for_persistence([exploration])["jd_momentum_abc123abc123"]["fdr_pass"] is False
+    assert sup.promote_batch_for_persistence([no_cutoff])["jd_momentum_abc123abc123"]["fdr_pass"] is False
+    assert sup.promote_batch_for_persistence([status_only])["jd_momentum_abc123abc123"]["fdr_pass"] is False
+    assert sup.fdr_pass_persistable(exploration) is False
+    assert sup.fdr_pass_persistable(ready) is True
