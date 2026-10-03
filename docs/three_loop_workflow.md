@@ -197,14 +197,16 @@ data = mb.run_symbol_backtest(
 | `aligned_slow_loop.py`（无数据） | 回测返回 None -> `_no_data_verdict()` |
 | `wait_for_batch`（timeout=0） | 批次完成时写 timeout 墓碑 |
 
-### 2026-09-29 现状（方案 A 过滤后）
+### 2026-10-03 现状（方案 A 过滤后）
 
 | 协议指纹 | 条数 | 状态 |
 |---------|:----:|------|
-| `f02b2a43...`（v4） | **6** | **当前有效** |
+| `f02b2a43...`（v4） | **44** | **当前有效**（活跃视图） |
 | `91ab913e...`（v3） | 18 | 排除（协议升级，全排除） |
 | `bd851c9c...`（v2） | 27 | 排除 |
 | 无指纹 | 143 | 排除（pre-v2 遗留） |
+
+v4 指纹值自 2026-10-01 起未再变；新增裁决持续按 v4 落盘（44 条中 `gate_pass` 13 条）。
 
 ### pass_variants 过滤链
 
@@ -223,9 +225,13 @@ def pass_variants(snapshot):
 ```
 
 **当前 pass_variants（v4 活跃视图）返回 0 条**：
-- v4 的 6 条从零累积，尚不足统计样本
+- v4 的 44 条从零累积，尚不足统计样本
 - v3 的 18 条全被协议指纹过滤排除（active=v4）
-- 0 条 `run_mode="confirmation"`（PR-D1 未实施，pre-registration 不存在）
+- **PR-D1 已于 2026-10-02 实施**：首批 2 条预注册已写入 `task_FM/config/preregistry.jsonl`
+  （jd n_confirm_required=1,199 · sr n_confirm_required=986，`confirm_from_ts=2026-10-03 00:00:00`），
+  确认入队与终结已接到主循环；按 Q7 裁定 (a′) 的 live 密度，累积到样本量约需 **1.2–2.0 年**，
+  故当前仍无 `run_mode="confirmation"` 裁决——**这是设计预期，不是缺陷**
+- 未决问题见 `docs/superpowers/reports/2026-10-03-fm-a-open-issues.md`
 
 ---
 

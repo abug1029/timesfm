@@ -113,19 +113,33 @@ Stage 3 契约（2026-09-28/29 结案）：评估带 horizon 填充标记（`cas
 - 裁决：`task_FM/config/aligned_verdicts.jsonl`（按 `variant_id` 最新行）
 - 目标与预算：`scripts/praxist_goal.yaml`
 
-成功条件（goal.yaml 现行，2026-09-23 起）：**所有目标品种**（24 个：`m/ss/sr/cj/jd/lh/eg/rb/i/p/y/cf/bu/fu/ta/ma/fg/ur/px/oi/sh/sp/ao/sc`）均通过三阶段验证：
+成功条件（goal.yaml 现行，**2026-10-02 重写**）：**唯一成功条件 `all_symbols_pass_phase1`**
+——24 个目标品种（`m/ss/sr/cj/jd/lh/eg/rb/i/p/y/cf/bu/fu/ta/ma/fg/ur/px/oi/sh/sp/ao/sc`）
+**每品种至少 1 个经 family 封账的确认变体**（`run_label == confirmed` 且 `fdr_pass is True`）。
 
-- Phase 1 基础质量门槛（每品种）：`n_gate_pass_variants >= 10` 且 `avg_dir_acc_gate_pass >= 0.51`
-- Phase 2 高质量变体（每品种）：`n_tier_a_or_b >= 8`
-- Phase 3 稳定性验证（每品种）：`n_validated_multi_seed >= 3` 且 `decay_below_threshold <= 2`
-- 过门 = `pass_variants()`（v2 schema）：`gate_pass` 且（`fdr_pass` 或 `migrated_pass`）；裁决三态 `v2_pass` / `hard-gate-but-losing` / `DEAD`（`scripts/praxist_supervisor.py::materialize_known_verdicts`）
-- **预算已无限制**：`max_cycles` / `cpu_hours` / `token_budget_m` = 999999，`deadline` = 2099-12-31
+- **原三阶段门槛全部退役**：`n_gate_pass_variants >= 10`、`avg_dir_acc_gate_pass >= 0.51`
+  （0.51 作为绝对水平低于 `detection_threshold_vs_random`，作为相对基线增量低于
+  `detection_threshold_vs_baseline`，两条路径都不达标）、`n_tier_a_or_b >= 8`。
+  Phase 3 的 `multi_seed` / `decay` **仍未实现，且不发明通过线**
+  （`docs/superpowers/specs/2026-10-02-phase3-multiseed-decay-todo.md`）
+- 过门 = `pass_variants()`（严格链）：`run_mode == "confirmation"`（探索行一律不算）且 `gate_pass`
+  且 `fdr_pass` 且 `p_value` 非空 且 `pairing_valid` 且 `missingness_admissible`
+  且 `dm_status ∈ {ok, set_mismatch_ok}`。`migrated_pass` 与 `v2_pass` 已随v4 收口退役
+- 预算（**有界**）：`max_cycles` 2000 · `cpu_hours` 2000 · `token_budget_m` **null（不参与停机）**
+  · `deadline` 2028-10-02
+- **预注册样本量已锁定**（监督环不改写）：jd 1,199 · sr 986，见 `task_FM/config/preregistry.jsonl`
 
-磁盘快照（2026-09-29；过期以 JSON 为准）：
+磁盘快照（**2026-10-03**；过期以 JSON 为准）：
 
-- `phase=fast`，`cycles_done=172`，`paused_429=false`
-- 裁决注册表 171 verdicts：43 `gate_pass` / 3 `fdr_pass` / 3 `migrated_pass`（全部 status=ok）
-- 监督环 2026-09-29 19:24 经规范启动器重启，`cycles_done` 续累加；基线协议指纹升 v3 后 `ensure_baselines` 自动检测并重生不符基线（9 个 nocov 基线全部重生）
+- `phase=fast`，`cycles_done=203`，`paused_429=false`
+- 裁决注册表 **232 行 = 188 条跨协议旧行（活跃视图外）+ 44 条 v4**；v4 明细：`gate_pass` 13/44 ·
+  `tier` S6/A6/B21/C11 · `run_mode` 全部 `exploration` · **确认级 `pass_variants` 0 条**
+- 监督环 **PID 416**（2026-10-02 20:27 经规范启动器重启，`setsid nohup` 脱离会话；前一进程 PID 418
+  于 10-02 19:05 干净退出 `exit_code 0` / uptime 114,957s）
+- 协议指纹 **v4 = `f02b2a43…`**；9 个 nocov 基线全部带 v4 指纹（2026-10-01/02 重生，fu 为入集后首个基线）
+- 阶段 3 确认机制已接线（2026-10-02，11 笔）：确认窗口透传、checkpoint 命名空间隔离、family 分派与封账、
+  goal 重写、首批 2 条预注册、收割/复测只看当前协议
+- 未决问题见 `docs/superpowers/reports/2026-10-03-fm-a-open-issues.md`
 - 历史经济示例（`ss_vor` / `i_oi` / `m_ccl` / `cj_oi` 的磁盘裁决表）见 [system_design.md §4.3](./system_design.md)；「过硬门但亏钱 **不是** already solved」的纪律不变
 
 重启（规范方式 = `scripts/start_supervisor.sh`，2026-09-21 起；PATH / `.env.praxist` / setsid 孤儿化由 launcher 处理并打印 PID）：
