@@ -116,8 +116,15 @@ def _no_data_verdict(row, batch_id=None):
         "checkpoint_path": "",
         "slow_loop_pid": os.getpid(),
         "git_rev": _git_rev(),
-        "run_mode": None,        # _no_data_verdict 非评估产物，无运行模式
+        # 2026-10-03（D2）：墓碑必须保留队列行的运行模式与 prereg_id。
+        # 否则「已跑过」去重看不见它 → 确认行被无限重复入队
+        # （实测 jd 10 座 / sr 10 座 no_data 墓碑，confirmation_enqueued 20 次）。
+        # 墓碑仍然不是评估产物：status=no_data、n=0、p=1、fdr_pass=False，
+        # 不会进入成功计数（pass_variants 要求 status=="ok"）。
+        "run_mode": row.get("run_mode"),
         "run_label": None,
+        "prereg_id": row.get("prereg_id"),
+        "confirm_from_ts": row.get("confirm_from_ts"),
         "metrics": {
             "batch_id": bid,
             "symbol": row["symbol"],

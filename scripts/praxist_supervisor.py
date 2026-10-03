@@ -433,6 +433,43 @@ def _merge_family_members(members, family_key, returned):
     return out
 
 
+_CONFIRM_DATA_TTL_S = 1800
+_CONFIRM_DATA_CACHE: dict[str, tuple] = {}   # symbol -> (queried_at, latest_dt | None)
+
+
+def _confirm_data_ready(symbol, confirm_from_ts):
+    """该品种的 1H 数据是否已越过 confirm_from_ts。
+
+    2026-10-03（D1）：confirm_from_ts 是注册时锁定的固定日历边界，但数据要过几天
+    才追上来。边界之前派发确认行 → 评估窗口必然为空 → 每轮落一座 no_data 墓碑
+    （实测每 ~5.7 分钟一座）。这里做 fail-closed 的数据闸门：查不到数据也算未就绪。
+    查询结果按 symbol 缓存 30 分钟，避免每轮打库。
+    """
+    import time as _time
+    key = str(symbol).lower()
+    now = _time.time()
+    hit = _CONFIRM_DATA_CACHE.get(key)
+    if hit is not None and now - hit[0] <= _CONFIRM_DATA_TTL_S:
+        latest = hit[1]
+    else:
+        latest = None
+        try:
+            from data.data_store import DataStore
+            store = DataStore(key)
+            try:
+                h1 = store.get_main_contract_1h(limit=99999)
+            finally:
+                store.close()
+            if h1 is not None and not h1.empty:
+                latest = str(h1["dt"].astype(str).max())
+        except Exception:
+            latest = None
+        _CONFIRM_DATA_CACHE[key] = (now, latest)
+    if not latest:
+        return False
+    return latest > str(confirm_from_ts)
+
+
 def _maybe_enqueue_confirmations(log, now_ts):
     registry = load_preregistry(PREREGISTRY_PATH)
     blocked = rl.in_flight_ids(QUEUE, INPROGRESS)
@@ -448,6 +485,10 @@ def _maybe_enqueue_confirmations(log, now_ts):
 
     rows = due_confirmations(
         registry, now_ts, blocked, already, _experiment_fp_for, family_for)
+    # 2026-10-03（D1）：数据未越过 confirm_from_ts 的先不派发 —— 否则空评估 +
+    # no_data 墓碑 + 去重失效 = 每轮重复入队。已在队里的不受影响。
+    rows = [r for r in rows
+            if _confirm_data_ready(r["symbol"], r.get("confirm_from_ts") or "")]
     produced = {row["prereg_id"] for row in rows}
     for src in registry:
         if not isinstance(src, dict) or src.get("terminal_state") not in (None, ""):

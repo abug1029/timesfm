@@ -575,6 +575,10 @@ def test_enqueue_due_confirmation_then_peek_does_not_seal(tmp_path, monkeypatch)
     monkeypatch.setattr(sv, "QUEUE", str(queue_path))
     monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
     monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    # 2026-10-03：数据闸门（D1）桩——确认集数据未越过 confirm_from_ts 时不派发
+    # （否则空评估 + no_data 墓碑 + 去重失效 = 每轮重复入队）。本测试关注
+    # 「派发 → peek」链路，故显式放行；闸门本身由 test_confirm_bugs_20261003.py 覆盖。
+    monkeypatch.setattr(sv, "_confirm_data_ready", lambda s, t: True)
     monkeypatch.setattr(sv, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {})
     n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
@@ -633,6 +637,10 @@ def test_enqueue_due_jd_and_sr_registers_each_family(tmp_path, monkeypatch):
     monkeypatch.setattr(sv, "QUEUE", str(queue_path))
     monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
     monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    # 2026-10-03：数据闸门（D1）桩——确认集数据未越过 confirm_from_ts 时不派发
+    # （否则空评估 + no_data 墓碑 + 去重失效 = 每轮重复入队）。本测试关注
+    # 「派发 → peek」链路，故显式放行；闸门本身由 test_confirm_bugs_20261003.py 覆盖。
+    monkeypatch.setattr(sv, "_confirm_data_ready", lambda s, t: True)
     monkeypatch.setattr(sv, "load_covariate_pool", lambda: {
         "vor": {"family": "momentum"},
         "vwap_deviation": {"family": "momentum"},
