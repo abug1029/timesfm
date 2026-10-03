@@ -310,11 +310,11 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             # build_summary 对非探索行把 run_label 留空；个体标签在这里填。
             # fdr_pass 仍只来自 family 封账，这一步不写成 True。
             if run_mode == "confirmation":
-                _stamp_confirmation_verdict(v, row)
                 v["run_label"] = _confirmation_run_label(v, row)
                 _metrics = v.get("metrics")
                 if isinstance(_metrics, dict) and "run_label" in _metrics:
                     _metrics["run_label"] = v["run_label"]
+    _stamp_confirmation_verdict(v, row)
     v["checkpoint_path"] = cp
     v["slow_loop_pid"] = os.getpid()
     v["git_rev"] = _git_rev()

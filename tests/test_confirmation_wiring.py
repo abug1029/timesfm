@@ -671,6 +671,12 @@ def test_stamp_confirmation_verdict_writes_prereg_fields():
     assert kept["n_confirm_actual"] == 4
     assert kept["prereg_id"] == row["prereg_id"]
     assert kept["n_confirm_required"] == 1199
+    no_data = {"status": "no_data", "n": 0, "run_mode": None, "run_label": None, "fdr_pass": False}
+    asl._stamp_confirmation_verdict(no_data, row)
+    assert no_data["prereg_id"] == row["prereg_id"]
+    assert no_data["n_confirm_required"] == 1199
+    assert no_data["run_label"] is None
+    assert no_data["fdr_pass"] is False
 
 
 def test_snapshot_prereg_id_blocks_second_enqueue(tmp_path, monkeypatch):
