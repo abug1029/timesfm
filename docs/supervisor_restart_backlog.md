@@ -56,9 +56,10 @@
 **`scripts/stop_supervisor.sh` 不存在**，日志也不在 `logs/supervisor.log`。实测流程:
 
 ```bash
-kill -TERM <supervisor_pid>          # 只置标志，主循环最迟下个 tick（≤300s）退出
-# 等 data/cache/supervisor.out 出现:
+kill -TERM <supervisor_pid>          # 实测即时优雅退出（勘误 2026-10-04：单次 TERM → exit_code 0，未复现「首次被忽略」）
+# 等 data/cache/stop_report.json（或 supervisor_events.jsonl 末行）出现:
 #   supervisor_stopped{reason: signal_received, exit_code: 0}
+# （勘误 2026-10-04：停止标记不在 supervisor.out，退出为即时而非「最迟下个 tick ≤300s」——本文档此前两处记载有误）
 setsid nohup python scripts/praxist_supervisor.py --goal scripts/praxist_goal.yaml   >> data/cache/supervisor.out 2>&1 < /dev/null &
 ```
 
