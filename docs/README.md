@@ -16,6 +16,9 @@
 | [supervisor_restart_backlog.md](./supervisor_restart_backlog.md) | 重启待办（3 项：1 已实施 / 2 登记 / **3 已完成**） | 在用 |
 | [superpowers/reports/2026-09-29-stage3-verification-record.md](./superpowers/reports/2026-09-29-stage3-verification-record.md) | §8.3 出口条件核验记录 | 在用 |
 | [superpowers/specs/2026-09-24-covariate-research-credibility-design.md](./superpowers/specs/2026-09-24-covariate-research-credibility-design.md) | 上游 spec **v15** | 在用 |
+| **2026-10-03 三环范式审计（未提交）** | | |
+| [superpowers/specs/2026-10-03-peer-memory-loop-closure-spec.md](./superpowers/specs/2026-10-03-peer-memory-loop-closure-spec.md) | **Peer 记忆回路闭合**：死亡族名单 + 协议指纹回流给 peer（D2/D3 本轮）；拒收摘要（D1）与 `decision=abandon`（D4）待做。只改可见性，不改门判据 | 实施中 |
+| [superpowers/reports/2026-10-03-three-loop-autoresearch-paradigm-audit.md](./superpowers/reports/2026-10-03-three-loop-autoresearch-paradigm-audit.md) | 四维定位代码级核实。**顶部有勘误节**：P0 三项经 spec 裁定后在飞计划禁止，已作废——读它之前先读勘误 | 在用（含勘误） |
 | **Praxist 三环合同** | | |
 | [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（提示词纪律以 2026-09-19 为准） | 在用 |
 | [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 | 在用 |
