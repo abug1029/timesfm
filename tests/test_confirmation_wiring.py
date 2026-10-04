@@ -581,6 +581,7 @@ def test_enqueue_due_confirmation_then_peek_does_not_seal(tmp_path, monkeypatch)
     monkeypatch.setattr(sv, "_confirm_data_ready", lambda s, t: True)
     monkeypatch.setattr(sv, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {})
+    sv._CONFIRM_REDISPATCH.clear()   # 2026-10-04（E2）：重派节流是进程内状态，测试间必须清
     n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
     assert n == 1
     queued = [json.loads(line) for line in queue_path.read_text(encoding="utf-8").splitlines()]
@@ -646,6 +647,7 @@ def test_enqueue_due_jd_and_sr_registers_each_family(tmp_path, monkeypatch):
         "vwap_deviation": {"family": "momentum"},
     })
     monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {})
+    sv._CONFIRM_REDISPATCH.clear()   # 2026-10-04（E2）：同上，进程内节流状态隔离
     n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
     assert n == 2
     queued = [json.loads(line) for line in queue_path.read_text(encoding="utf-8").splitlines()]
@@ -718,8 +720,12 @@ def test_snapshot_prereg_id_blocks_second_enqueue(tmp_path, monkeypatch):
     monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
     monkeypatch.setattr(sv, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {
-        vid: {"variant_id": vid, "prereg_id": prereg_id, "run_mode": "confirmation"},
+        # 2026-10-04（E1）：阻断条件收紧为「满样终态裁决」——fixture 补上
+        # status=ok 与满样 n_confirm 戳；未满样 peek 不再永久阻断。
+        vid: {"variant_id": vid, "prereg_id": prereg_id, "run_mode": "confirmation",
+              "status": "ok", "n_confirm_actual": 1199, "n_confirm_required": 1199},
     })
+    sv._CONFIRM_REDISPATCH.clear()
     n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
     assert n == 0
     assert not queue_path.exists() or queue_path.read_text(encoding="utf-8").strip() == ""

@@ -219,6 +219,13 @@ def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path, b
         return _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid)
     except Exception as e:
         tombstone = rl.make_error_tombstone(row["symbol"], row["variant_id"], bid, e)
+        # 2026-10-04（E5）：墓碑保身份（与 _no_data_verdict 的 D2 同型）。
+        # 确认行的 error 墓碑必须带 prereg_id/run_mode —— 否则快照
+        # last-wins 会把确认身份冲掉，去重与审计都看不见它。
+        # E1 语义下墓碑不占坑，重派由 6h 节流兜底。
+        tombstone["run_mode"] = row.get("run_mode")
+        tombstone["prereg_id"] = row.get("prereg_id")
+        tombstone["confirm_from_ts"] = row.get("confirm_from_ts")
         # 注入 tier 字段（与正常 verdict 一致）
         from cascade.tier_classifier import compute_tier_score
         _tier = compute_tier_score(tombstone)

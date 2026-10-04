@@ -136,10 +136,11 @@ def test_no_data_tombstone_does_not_block_reenqueue(tmp_path, monkeypatch):
 
     D2 让墓碑带上了 prereg_id（轮内去重 + 审计留痕），但若墓碑也计入
     already_ran_ids，该预注册将永远不再派发——确认通道被永久锁死。
-    锁定语义：只有真实评估（status != "no_data"）算「已跑过」；
+    锁定语义：墓碑不占用「已跑过」名额；
     数据未到位时不派发由 D1 闸门负责（本测试显式放行）。
-    对照：test_snapshot_prereg_id_blocks_second_enqueue 里的真实裁决
-    （无 status 字段）仍永久阻断，语义边界不受本修正影响。
+    2026-10-04（E1）起语义进一步收紧：只有满样终态裁决（status=ok 且
+    n_confirm_actual >= n_confirm_required）才永久阻断——边界由
+    tests/test_confirmation_finality_20261004.py 锁定。
     """
     prereg_path = tmp_path / "preregistry.jsonl"
     family_path = tmp_path / "family_registry.jsonl"
@@ -171,6 +172,7 @@ def test_no_data_tombstone_does_not_block_reenqueue(tmp_path, monkeypatch):
     monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)
     monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
+    sup._CONFIRM_REDISPATCH.clear()   # 2026-10-04（E2）：进程内节流状态，测试间必须清
     n = sup._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
     assert n == 1, "快照里只有 no_data 墓碑时，数据到位后仍应派发确认行"
     queued = [json.loads(l) for l in queue_path.read_text(encoding="utf-8").splitlines() if l.strip()]

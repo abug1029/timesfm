@@ -2,7 +2,9 @@
 
 规则: 该协变量在其他品种失败 >= 3 次且从未在任一品种过门 → 拦截。
 例外: 任一品种过门即放行（品种特异性优先）。
-口径: v2 无 ev 字段，"失败" = status=ok 且 gate_pass=False。
+口径: v2 无 ev 字段，"失败" = status=ok 且 gate_pass=False 且可确认
+      （dm_status ∈ {ok, set_mismatch_ok}）。2026-10-04（E4）对齐
+      _sector_filter_check —— 描述性失败不得推向跨品种拦截。
 """
 import os
 import sys
@@ -16,12 +18,16 @@ sys.path.insert(0, ROOT)
 import praxist_supervisor as S  # noqa: E402
 
 
-def _v(symbol, cov, gate_pass, decided_at, status="ok"):
+def _v(symbol, cov, gate_pass, decided_at, status="ok", dm_status="ok"):
+    # 2026-10-04（E4）：默认 dm_status="ok" —— 合成行代表可确认的 DM 失败，
+    # 保持各用例「N 次失败拦截/放行」的原意；描述性口径见
+    # test_descriptive_failures_not_counted。
     return {
         "schema": "fm.aligned_verdict.v2",
         "variant_id": "%s_%s" % (symbol, cov),
         "symbol": symbol, "cov_override": cov, "cov_family": "f",
         "status": status, "gate_pass": gate_pass, "decided_at": decided_at,
+        "dm_status": dm_status,
     }
 
 
@@ -66,6 +72,26 @@ class TestCovariateFilter:
         blocked, n_fail, _ = S._covariate_filter_check("vor", "m", snap)
         assert n_fail == 2, "m 自身的失败不应计入"
         assert blocked is False
+
+    def test_descriptive_failures_not_counted(self):
+        """2026-10-04（E4）：描述性失败（dm_status 缺省/set_mismatch_descriptive/
+        no_common_cutoff）不计入跨品种拦截；set_mismatch_ok 视同可确认，计入。"""
+        snap = {
+            "a_vor": _v("a", "vor", False, "2026-09-01T00:00:00",
+                        dm_status="set_mismatch_descriptive"),
+            "b_vor": _v("b", "vor", False, "2026-09-02T00:00:00",
+                        dm_status="no_common_cutoff"),
+            "c_vor": _v("c", "vor", False, "2026-09-03T00:00:00", dm_status=None),
+        }
+        blocked, n_fail, _ = S._covariate_filter_check("vor", "m", snap)
+        assert n_fail == 0, "描述性/缺省 dm_status 不得计数"
+        assert blocked is False
+
+        snap2 = dict(snap)
+        snap2["d_vor"] = _v("d", "vor", False, "2026-09-04T00:00:00",
+                            dm_status="set_mismatch_ok")
+        blocked, n_fail, _ = S._covariate_filter_check("vor", "m", snap2)
+        assert n_fail == 1, "set_mismatch_ok 视同可确认，应计数"
 
     def test_other_covariate_failures_not_counted(self):
         """其他协变量的失败不计入"""

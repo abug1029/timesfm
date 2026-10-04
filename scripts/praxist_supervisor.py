@@ -470,18 +470,34 @@ def _confirm_data_ready(symbol, confirm_from_ts):
     return latest > str(confirm_from_ts)
 
 
+def _confirmation_is_final(v):
+    """确认终态 = 真实评估落账且样本已满（n_confirm_actual >= n_confirm_required）。
+
+    2026-10-04（E1）：peek（status=ok 但样本未满）不算终态。字段缺失视为
+    非终态（走 E2 节流自愈），同时防御 None 参与比较崩溃。
+    """
+    if not isinstance(v, dict) or v.get("status") != "ok":
+        return False
+    n_act = v.get("n_confirm_actual")
+    n_req = v.get("n_confirm_required")
+    return n_act is not None and n_req is not None and n_act >= n_req
+
+
 def _maybe_enqueue_confirmations(log, now_ts):
     registry = load_preregistry(PREREGISTRY_PATH)
     blocked = rl.in_flight_ids(QUEUE, INPROGRESS)
     snap = _active_protocol_snapshot(REGISTRY)
-    # 2026-10-03：只有真实评估才算「已跑过」。no_data 墓碑（D2 起带 prereg_id）
-    # 若也计入，数据到位后该预注册将永远不再派发 —— 墓碑必须排除。
-    # 闸门（D1）保证数据未越过 confirm_from_ts 时不派发；闸门通过 ⇒ 评估
-    # 窗口必有数据 ⇒ 真实裁决落账 ⇒ 去重永久生效，无残余重复入队路径。
+    # 2026-10-04（E1）：只有满样终态裁决才算「已跑过」。D1 闸门只保证有
+    # 1 根 bar 越过 confirm_from_ts，不保证 1199/986 个带 24h 前向标签的
+    # 样本已就位——数据恢复后的首裁决必然是 status=ok 的未满样 peek
+    # （_finalize_confirmation_verdict 的既有语义），若把 peek 计入
+    # already，该预注册将永不再派发，n_confirm_required 永远到不了，
+    # 确认通道静默死亡。no_data / error / timeout 墓碑同理不占坑；
+    # 重派频次由 E2 节流兜底，不会 churn。
     already = {
         v.get("prereg_id") for v in (snap or {}).values()
         if isinstance(v, dict) and v.get("prereg_id")
-        and v.get("status") != "no_data"
+        and _confirmation_is_final(v)
     }
     pool = load_covariate_pool()
 
@@ -494,6 +510,19 @@ def _maybe_enqueue_confirmations(log, now_ts):
     # no_data 墓碑 + 去重失效 = 每轮重复入队。已在队里的不受影响。
     rows = [r for r in rows
             if _confirm_data_ready(r["symbol"], r.get("confirm_from_ts") or "")]
+    # 2026-10-04（E2）：非终态结果不永久占坑，但每 prereg 至少间隔 6h 才重派。
+    # 否则未满样期间每 ~5.7 分钟一条 peek/墓碑（~250 行/天 × ~50 天填充期
+    # ≈ 1.2 万行/prereg），等于把 D1 修掉的死循环换个形式请回来。
+    _now_r = time.time()
+    throttled = set()
+    kept = []
+    for r in rows:
+        _pid = r.get("prereg_id") or ""
+        if _now_r - _CONFIRM_REDISPATCH.get(_pid, 0.0) < _CONFIRM_REDISPATCH_TTL_S:
+            throttled.add(_pid)
+            continue
+        kept.append(r)
+    rows = kept
     produced = {row["prereg_id"] for row in rows}
     for src in registry:
         if not isinstance(src, dict) or src.get("terminal_state") not in (None, ""):
@@ -511,9 +540,11 @@ def _maybe_enqueue_confirmations(log, now_ts):
         if _now - _last < _CONFIRMATION_NOTICE_TTL_S:
             continue
         _CONFIRMATION_NOTICE[_pid] = _now
+        _state = ("redispatch_throttle"
+                  if (src.get("prereg_id") or "") in throttled else "not_ready")
         _log_decision(log, "confirmation_not_enqueued",
                       src.get("prereg_id") or "",
-                      [str(src.get("symbol") or "")])
+                      [str(src.get("symbol") or ""), _state])
     if not rows:
         return 0
     added = 0
@@ -549,6 +580,7 @@ def _maybe_enqueue_confirmations(log, now_ts):
             added += n
             if n:
                 _log_decision(log, "confirmation_enqueued", row["prereg_id"], [row["variant_id"]])
+                _CONFIRM_REDISPATCH[row["prereg_id"]] = time.time()
         except Exception as e:
             _log_decision(log, "confirmation_enqueue_error", str(e),
                           [str(row.get("variant_id") or "")])
@@ -1534,6 +1566,10 @@ _CONFIRMATORY_DM = frozenset({"ok", "set_mismatch_ok"})
 # 2026-10-03：confirmation_not_enqueued 的节流状态（prereg_id -> 上次记账时间戳）
 _CONFIRMATION_NOTICE: dict[str, float] = {}
 _CONFIRMATION_NOTICE_TTL_S = 6 * 3600
+# 2026-10-04（E2）：非终态确认结果的重派节流（prereg_id -> 上次派发时间戳）。
+# 进程内状态：重启后各放行一次（有界），不落盘。
+_CONFIRM_REDISPATCH: dict[str, float] = {}
+_CONFIRM_REDISPATCH_TTL_S = 6 * 3600
 
 
 def _is_confirmable_failure(v):
@@ -1930,7 +1966,11 @@ def _covariate_filter_check(cov, symbol, snapshot):
             continue
         if v.get("gate_pass"):
             n_pass += 1
-        elif str(v.get("symbol") or "").lower().strip() != sym:
+        elif str(v.get("symbol") or "").lower().strip() != sym and _is_confirmable_failure(v):
+            # 2026-10-04（E4）：同 _sector_filter_check —— 失败数只认可确认的
+            # DM 失败（dm_status ∈ {ok, set_mismatch_ok}）。描述性行（dm_status
+            # 缺省 / set_mismatch_descriptive / no_common_cutoff）不得把协变量
+            # 推向跨品种拦截。
             n_fail += 1
     return (n_pass == 0 and n_fail >= COV_CROSS_FAIL_MIN), n_fail, n_pass
 
@@ -2050,7 +2090,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
         if _SHUTDOWN_REQUESTED:
             # 长扫描不得吃掉停机信号：立刻中止，且不返回半份候选（避免停机途中入队）
             stats["aborted_by_shutdown"] = True
-            break
+            return [], stats
         for sp in glob.glob(os.path.join(run_dir, "results", "**", "proposals", "*.json"),
                             recursive=True):
             if _SHUTDOWN_REQUESTED:
@@ -2322,6 +2362,12 @@ def _retest_candidates(snapshot):
     out = []
     for vid, v in snapshot.items():
         if v.get("status", "ok") != "ok" or v.get("gate_pass") is not False:
+            continue
+        # 2026-10-04（E3）：确认通道的行不进探索复测。peek（status=ok、
+        # gate_pass=False、0<n<RETEST_GATE_N）天然满足复测入选条件，被当
+        # 探索复测会生成无 run_mode/prereg_id 的同 vid 探索行，快照
+        # last-wins 覆盖 peek → prereg_id 从快照消失 → 去重失效 → 振荡。
+        if v.get("run_mode") == "confirmation" or v.get("prereg_id"):
             continue
         n = int(v.get("n") or 0)
         if n <= 0 or n >= RETEST_GATE_N:
@@ -3114,6 +3160,13 @@ def wait_for_batch(batch_id, batch_records, registry_path, timeout=7200):
                 tomb = rl.make_timeout_tombstone(
                     r.get("symbol", ""), r["variant_id"], batch_id
                 )
+                # 2026-10-04（E5）：墓碑保身份（与 _no_data_verdict 的 D2 同型）。
+                # 确认行的 timeout 墓碑必须带 prereg_id/run_mode，否则快照
+                # last-wins 会把确认身份冲掉。batch_records 来自派发行；
+                # 探索行此处取到 None，与旧行为一致。
+                tomb["run_mode"] = r.get("run_mode")
+                tomb["prereg_id"] = r.get("prereg_id")
+                tomb["confirm_from_ts"] = r.get("confirm_from_ts")
                 try:
                     rl.append_verdict(registry_path, tomb)
                 except Exception as e:
