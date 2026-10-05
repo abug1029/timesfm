@@ -2270,7 +2270,10 @@ def _row_eval_end_ts(v, cache=None, root=None):
                         t = rec.get("eval_end_ts")
                         if isinstance(t, str) and t:
                             ts_found = t
-        except OSError:
+        # T2c (2026-10-05 审计): UnicodeDecodeError 是 ValueError 子类——
+        # 撕裂 checkpoint（崩溃多字节字符）不得穿透炸 harvest。撕裂点前的
+        # 可信行保留；候选文件整体不可读时弃读（部分读语义与 OSError 一致）。
+        except (OSError, ValueError):
             continue
         if ts_found is not None:
             break

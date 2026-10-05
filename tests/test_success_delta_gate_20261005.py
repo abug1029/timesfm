@@ -220,6 +220,13 @@ def test_gate_success_delta_length_threshold(tmproot):
     assert stats2["selected"] == 1
     assert stats2.get("success_gate_states", {}).get("success_delta_ok") == 1
 
+    # T2c 边界补强：恰好 20 字放行（阈值语义 >=）
+    root3 = os.path.join(tmproot, "r3")
+    _make_run(root3, _prop(success_delta="增" * 20))
+    rows3, stats3 = _harvest(root3, snap=snap)
+    assert stats3["selected"] == 1
+    assert stats3.get("success_gate_states", {}).get("success_delta_ok") == 1
+
 
 def test_retest_bypasses_success_gate_structurally(tmp_path, monkeypatch):
     """路径 6：复测豁免是结构性的——_maybe_enqueue_retests 直接入队。
@@ -257,3 +264,38 @@ def test_retest_bypasses_success_gate_structurally(tmp_path, monkeypatch):
     queued = S.rl.queue_load(S.QUEUE)
     assert [r["variant_id"] for r in queued] == ["cj_oi_nearmiss"]
     assert queued[0]["source"] == "sample_retest"
+
+
+def test_gate_survives_non_utf8_checkpoint_fails_open(tmproot):
+    """T2c (2026-10-05 审计修复): checkpoint 含非 UTF-8 字节（崩溃撕裂多字节
+    字符，WSL 强杀实证场景）不得以 UnicodeDecodeError 炸 harvest。
+
+    语义（钉死契约）：字节级损坏的 checkpoint = 不可靠证据 → 文件级弃读 →
+    该行无锚 → anchor_unavailable 放行。text 迭代器按块解码，撕裂可波及
+    块内先行行——统一向 fail-open 收敛，不承诺部分读保留。文件级异常面 =
+    OSError + ValueError（UnicodeDecodeError 子类）。
+    """
+    # 7a: 首行合法、尾部撕裂 → 弃读整文件 → anchor_unavailable 放行（不炸）
+    root = os.path.join(tmproot, "r_corrupt")
+    prior = _sv("m_volatility_corrupt", "m", "vor", gate_pass=True)
+    _make_run(root, _prop())
+    cp_dir = os.path.join(root, "data", "cache", "aligned_checkpoints")
+    os.makedirs(cp_dir, exist_ok=True)
+    with open(os.path.join(cp_dir, "m_volatility_corrupt.jsonl"), "wb") as f:
+        f.write(b'{"eval_end_ts": "2026-09-30 15:00:00"}\n')
+        f.write(b'\xff\xfe torn tail\n')  # 非 UTF-8 撕裂字节
+    rows, stats = _harvest(root, snap={"m_volatility_corrupt": prior})
+    assert stats["selected"] == 1
+    assert stats.get("success_gate_states", {}).get("anchor_unavailable") == 1
+
+    # 7b: 全文皆非 UTF-8 → 同样弃读 → anchor_unavailable 放行（不炸）
+    root2 = os.path.join(tmproot, "r_corrupt2")
+    prior2 = _sv("m_volatility_corrupt2", "m", "vor", gate_pass=True)
+    _make_run(root2, _prop())
+    cp_dir2 = os.path.join(root2, "data", "cache", "aligned_checkpoints")
+    os.makedirs(cp_dir2, exist_ok=True)
+    with open(os.path.join(cp_dir2, "m_volatility_corrupt2.jsonl"), "wb") as f:
+        f.write(b'\xff\xfe\xff\xfe binary garbage\n')
+    rows2, stats2 = _harvest(root2, snap={"m_volatility_corrupt2": prior2})
+    assert stats2["selected"] == 1
+    assert stats2.get("success_gate_states", {}).get("anchor_unavailable") == 1
