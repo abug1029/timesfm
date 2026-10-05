@@ -4,6 +4,8 @@
 > **审核依据**: `reports/2026-10-05-peer-learning-review-and-plan-audit.md`（Issue 1-14；其关键断言已按 09-28 纪律独立复核，见 §0）
 > **来源链**: 原报告（a5c1412）→ 评审 + 计划 v1（ee01b56）→ 独立审核 → **本计划 v2**
 >
+> **执行状态（2026-10-05 收口）**: T0 ✅ `4165554` · T1 ✅ `054de29`（重启后首份快照验收全过：pass/n+low-n、generated_at/protocol_fp8/registry_mtime 头、交叉矩阵 16 行、旧协议注记 34 行/2 组）· T2 ✅ `318daca` + T2b `739a583`（六路径测试 6/6；真实 v4 快照冒烟：118 行全可锚定、50 已成功组合 → 21 现窗执法 / 28 窗口平移放行；拒收日志带先验分类与 run_mode）· T3 部署 ✅（PID 403 单次 TERM exit_code 0 / uptime 26h；fp `f02b2a43` 不变、零基线重生；新 PID 77504）——**观察期开启（2026-10-05 → 10-19）**，观察项见 T3。
+>
 > **设计原则**（v2 修订）:
 > 1. registry 唯一事实源；`task_FM/known_verdicts.inc.md` 是其按当前协议过滤的可再生视图，不另建平行快照
 > 2. 注入统计一律带 `pass/n` + 协议指纹前缀 + `generated_at`；n<10 不出现裸比率
@@ -25,15 +27,15 @@
 
 ### T0（P0 · docs）三处勘误 + 审核报告入库 —— 先改文档再改代码
 
-- [ ] (a) 原报告 `reports/2026-10-05-peer-learning-gap-analysis.md` 顶部勘误块：
+- [x] (a) 原报告 `reports/2026-10-05-peer-learning-gap-analysis.md` 顶部勘误块：
   1. 结论替换句（审核 Issue 2，不得写入「peer 自主读取注册表、反馈没有系统保证」）：「结果回传已由 `known_verdicts.inc.md` 注入每一代提示词（`prompt_base.jinja2:89`；supervisor 于慢环收尾与主循环按当前协议重写）；缺口是这份快照族计数无分母、无品种×族交叉矩阵、无生成时刻、不展示旧协议先验，成功侧仍只有散文约束」
   2. §1 通道表补三行：known_verdicts 注入通道（:76/:1227/:3329/:3405）、`no_failure_delta` 拒收门（:2147-2150）、PI agenda 回路
   3. §2/§4：「22/3/6」= 10:40 快照当前协议精确统计、由提示词送达，非幻觉非 peer 自算；原复核 41/96 混协议
   4. §5 归因：16:55 切开两个评估窗口（eval_end_ts 整体更换）；比率差不显著（Fisher 双侧 p≈0.30），不得写成已证实跃升；删除 E1-E6 机制归因；新协变量句改为「9522900 提交于 10-04 15:47，且截至审核无任何裁决使用 pmi/crack_spread_acceleration」
   5. 全部数字标注截止时刻与查询
-- [ ] (b) 评审报告 `reports/2026-10-05-peer-learning-gap-analysis-review.md` 顶部加审核指针块（不重写正文）：G1 不成立（Issue 1）；9522900 时间与「同向」证据勘误（Issue 7）；Fisher p=0.299（Issue 8）；附录 A 需加 decided_at 上限（Issue 9）；§7 否决理由部分不成立（示例有 ts 与 pass/fail，缺的是协议指纹；Issue 10）；G3 收窄、G4 改指 :1409（Issue 11）；211→212、225→226 带时刻（Issue 13）；族名单抄 ALLOWED_FAMILIES、PIAgentConfig :1328、07-18 仅 gen1（Issue 14）；变体名勘误（`sr_term_structure_b796d1e1483d`/`sr_term_structure_82991327cde2`，评审误写为协变量名）
-- [ ] (c) `docs/supervisor_restart_backlog.md` :78-104 调和勘误：结构根因分析保留为风险描述，但补记 10-04 15:14:38 实测单次 TERM 即时退出（exit_code 0，changelog :86）；操作口径与停机判据（stop_report.json / supervisor_events.jsonl）以 10-04 实证为准
-- [ ] (d) 审核报告若作者会话尚未入库，随本任务一并 commit（勘误链需要可追溯）
+- [x] (b) 评审报告 `reports/2026-10-05-peer-learning-gap-analysis-review.md` 顶部加审核指针块（不重写正文）：G1 不成立（Issue 1）；9522900 时间与「同向」证据勘误（Issue 7）；Fisher p=0.299（Issue 8）；附录 A 需加 decided_at 上限（Issue 9）；§7 否决理由部分不成立（示例有 ts 与 pass/fail，缺的是协议指纹；Issue 10）；G3 收窄、G4 改指 :1409（Issue 11）；211→212、225→226 带时刻（Issue 13）；族名单抄 ALLOWED_FAMILIES、PIAgentConfig :1328、07-18 仅 gen1（Issue 14）；变体名勘误（`sr_term_structure_b796d1e1483d`/`sr_term_structure_82991327cde2`，评审误写为协变量名）
+- [x] (c) `docs/supervisor_restart_backlog.md` :78-104 调和勘误：结构根因分析保留为风险描述，但补记 10-04 15:14:38 实测单次 TERM 即时退出（exit_code 0，changelog :86）；操作口径与停机判据（stop_report.json / supervisor_events.jsonl）以 10-04 实证为准
+- [x] (d) 审核报告若作者会话尚未入库，随本任务一并 commit（勘误链需要可追溯）
 - 依赖：无
 - 验收：原报告不含未修订的「盲猜/幻觉/矛盾」；不出现「peer 自算」结论；比率差不写成显著；所有数字带截止时刻
 
@@ -41,14 +43,14 @@
 
 > 隔离 worktree 实现；回归失败集与 HEAD 恒等后方可合并。只改 `scripts/praxist_supervisor.py` 与 `task_FM/prompt_base.jinja2`，不动 site-packages。
 
-- [ ] `_effective_clue_lines`（:1409）：族计数从「N gate_pass」改为「N/M gate_pass」（pass/样本）；样本 <10 追加 `low-n`；不出现裸比率（分母 `fam_ok` 已在函数内）；Weak families 节同记法
-- [ ] `materialize_known_verdicts`（:1227）：
+- [x] `_effective_clue_lines`（:1409）：族计数从「N gate_pass」改为「N/M gate_pass」（pass/样本）；样本 <10 追加 `low-n`；不出现裸比率（分母 `fam_ok` 已在函数内）；Weak families 节同记法
+- [x] `materialize_known_verdicts`（:1227）：
   1. 头部加 `generated_at`（ISO）+ `protocol_fp8` + 源 registry mtime
   2. 新增品种×族交叉矩阵：紧凑分组（按品种一行、族内 pass/n 列表），只列非空格，行数预算 ≤40，超出截断并注明
   3. 旧协议先验注记：N3 守卫（primary_fp 选择）排除的协议组不再只报计数——为有旧指纹裁决的 (symbol, cov) 附行（fp 前缀 + decided_at + gate_pass/dir_acc + 「仅上下文，不构成当前证据」），行数预算 ≤20，优先含 confirmation/gate_pass 行
   4. 近失节不动：谓词与截断即活代码（`0.49 <= dir_acc < effective_min`、12 条）——不新增第二套定义
-- [ ] `task_FM/prompt_base.jinja2` Known verdicts 节引用纪律：引用快照数字必须带 pass/n 与 generated_at；n<10 不得写成百分比结论；转述进 handoff/session 记忆时保留 fp12 前缀与 as-of（G3 收窄版）
-- [ ] 不新建任何快照文件、不加 .gitignore 条目（`known_verdicts.inc.md` 已被 .gitignore:106 忽略，由既有调用点 :3329/:3405 继续重写）
+- [x] `task_FM/prompt_base.jinja2` Known verdicts 节引用纪律：引用快照数字必须带 pass/n 与 generated_at；n<10 不得写成百分比结论；转述进 handoff/session 记忆时保留 fp12 前缀与 as-of（G3 收窄版）
+- [x] 不新建任何快照文件、不加 .gitignore 条目（`known_verdicts.inc.md` 已被 .gitignore:106 忽略，由既有调用点 :3329/:3405 继续重写）
 - 新测试：`tests/test_known_verdicts_injection_20261005.py`（fixture 混合协议 registry：族计数含分母与 low-n / 交叉矩阵只列非空 / generated_at 头 / 旧协议注记且不进主排名 / 近失谓词与 :1409 行为一致 / 幂等重写（除时间戳外输出恒等）/ 全文无裸比率）
 - 依赖：T0
 - 验收（可证伪）：合并重启后第一份 `known_verdicts.inc.md` 含 N/M 族计数、generated_at、旧协议注记；快照统计等于按当前协议当场重算（10:40 数字只作历史对照，活数据持续追加）
@@ -57,18 +59,18 @@
 
 > 隔离 worktree 实现；只改 `scripts/praxist_supervisor.py`（`no_failure_delta` 同域 :2147-2150 附近）与 `task_FM/prompt_base.jinja2`（proposal schema 增加可选字段说明）。
 
-- [ ] 执法对象 = `prompt_base.jinja2:80` 的集合：当前协议 `gate_pass=True` 的同一 (symbol, cov_override)。不按 gate+fdr 窄条件（当前仅 1 条探索行，打不中；「已解决」= confirmation+p_value 集合当前为空）；拒收信息中带先验分类（v2-pass / hard-gate-but-losing）与 run_mode，探索先验不当封账成功
-- [ ] 命中时要求 `success_delta` ≥20 字：点名先验 variant_id + 本次增量；拒收码 `no_success_delta`，计数日志与 `no_failure_delta` 同模式
-- [ ] 逃逸阀跟窗口锚走（Issue 6）：该 (symbol, cov) 最新 ok 裁决的 `eval_end_ts` ≠ 当前评估窗口锚 → 放行并记 notice（窗口已平移，旧 pass 不再是当前证据）。eval_end_ts 来源：新裁决落账行新增可选字段（append-only 兼容）；历史行按 variant_id 查 `data/cache/aligned_checkpoints`（已复核 266 文件均含 eval_end_ts）；仍不可得 → 放行并记 notice（fail-open = 现状语义）
-- [ ] 与 `_maybe_enqueue_retests`（:2422）的边界：本门只作用于 peer 提案校验路径；系统复测不经本门——实现时确认复测入队确绕过提案校验，若不绕过则加豁免标记
-- [ ] 不改失败侧 `_has_prior_failure`（:1390）的「品种或协变量」匹配
+- [x] 执法对象 = `prompt_base.jinja2:80` 的集合：当前协议 `gate_pass=True` 的同一 (symbol, cov_override)。不按 gate+fdr 窄条件（当前仅 1 条探索行，打不中；「已解决」= confirmation+p_value 集合当前为空）；拒收信息中带先验分类（v2-pass / hard-gate-but-losing）与 run_mode，探索先验不当封账成功
+- [x] 命中时要求 `success_delta` ≥20 字：点名先验 variant_id + 本次增量；拒收码 `no_success_delta`，计数日志与 `no_failure_delta` 同模式
+- [x] 逃逸阀跟窗口锚走（Issue 6）：该 (symbol, cov) 最新 ok 裁决的 `eval_end_ts` ≠ 当前评估窗口锚 → 放行并记 notice（窗口已平移，旧 pass 不再是当前证据）。eval_end_ts 来源：新裁决落账行新增可选字段（append-only 兼容）；历史行按 variant_id 查 `data/cache/aligned_checkpoints`（已复核 266 文件均含 eval_end_ts）；仍不可得 → 放行并记 notice（fail-open = 现状语义）
+- [x] 与 `_maybe_enqueue_retests`（:2422）的边界：本门只作用于 peer 提案校验路径；系统复测不经本门——实现时确认复测入队确绕过提案校验，若不绕过则加豁免标记
+- [x] 不改失败侧 `_has_prior_failure`（:1390）的「品种或协变量」匹配
 - 新测试：`tests/test_success_delta_gate_20261005.py`（命中拒收 / 未命中放行 / eval_end_ts 不等放行 / eval_end_ts 缺失放行 / 长度校验 / 复测豁免 六路径）
 - 依赖：T0；建议在 T1 之后小步合并
 - 验收：测试过；拒收计数入日志；慢环与复测队列深度无饿死迹象
 
 ### T3（P2 · 部署与观察）重启部署 + 观察两周（原 T5 修正；审核 Issue 12）
 
-- [ ] 部署：worktree 回归全绿（失败集与 HEAD 恒等）→ 合并 → 协议指纹校验（本计划不触碰评估语义，fp 应不变、零基线重生，实测确认）→ 单次 TERM 重启（10-04 实证即时退出；停机判据 stop_report.json / supervisor_events.jsonl）
+- [x] 部署：worktree 回归全绿（失败集与 HEAD 恒等）→ 合并 → 协议指纹校验（本计划不触碰评估语义，fp 应不变、零基线重生，实测确认）→ 单次 TERM 重启（10-04 实证即时退出；停机判据 stop_report.json / supervisor_events.jsonl）
 - 观察指标（两周，均可证伪）：
   1. 重启后第一份快照含 N/M 族计数、generated_at、旧协议注记（T1 验收即时复查）
   2. peer handoff 对族计数的转述带 pass/n 与 generated_at（G3 收窄后的真风险点：转述丢戳）
