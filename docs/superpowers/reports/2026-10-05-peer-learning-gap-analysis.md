@@ -1,4 +1,13 @@
 # Peer 学习机制断裂分析报告
+> **⚠ 勘误（2026-10-05，T0）——本块取代正文相应表述**
+>
+> 勘误链：评审 `2026-10-05-peer-learning-gap-analysis-review.md` → 审核 `2026-10-05-peer-learning-review-and-plan-audit.md`（Issue 1-14）→ 实施计划 v2 `plans/2026-10-05-peer-learning-feedback-hardening.md`。
+>
+> 1. **「结果没有回传」不成立**。结果回传已由 `known_verdicts.inc.md` 注入每一代提示词（`prompt_base.jinja2:89` include；supervisor `materialize_known_verdicts`（:1227）于慢环收尾（:3329）与主循环（:3405）按当前协议指纹重写）。真实缺口：这份快照族计数无分母、无品种×族交叉矩阵、无生成时刻、不展示旧协议先验；成功侧仍只有散文约束。
+> 2. 正文 §1 通道表遗漏三行：known_verdicts 注入通道（:76/:1227/:3329/:3405）、`no_failure_delta` 拒收门（:2147-2150）、PI agenda 回路（每两代间运行）。
+> 3. **「22/3/6」非幻觉、亦非 peer 自算**：为 2026-10-05T10:40 快照（decided_at 截止）下当前协议（fp8 `f02b2a43`）精确统计——momentum 22 过门/50 样本、inventory 3/13、calendar 6/10——由提示词 Effective clues 节送达（09:10 run `gen0_peer0_prompt.md`:214-217 与交接引用逐字一致）。本文「实际 41/96」混用了协议版本，不成立。
+> 4. §5 归因修正：10-04 16:55 切开的是**两个评估窗口**——两侧 checkpoint `eval_end_ts` 整体更换（2026-09-23 15:00:00 → 2026-09-30 15:00:00）；通过率 37.0%→58.3% 的比率差在该样本量下不显著（Fisher 双侧 p=0.299），不得写成已证实的跃升。E1-E6 只改确认通道语义、未触碰 gate 评估，不构成机制归因。另：`9522900`（pmi/crack_spread_acceleration 入队）提交于 2026-10-04 15:47:28，且截至审核无任何裁决使用这两个协变量。
+> 5. 正文所有未标时刻的统计数字以本块为准；registry 为持续追加文件，复算必须加 decided_at 上限。
 
 > 日期：2026-10-05
 > 触发：用户提问「peer们是否可以从历史成果中学习到更有效果的方向、方法？」

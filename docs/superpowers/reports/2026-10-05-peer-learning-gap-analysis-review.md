@@ -1,4 +1,10 @@
 # Peer 学习机制断裂分析报告 · 独立评审（勘误裁定）
+> **⚠ 审核修正指针（2026-10-05，T0）**
+>
+> 本评审经 `2026-10-05-peer-learning-review-and-plan-audit.md` 修正（Issue 1-14，其关键断言已独立复核）。主要修正：
+> ① G1「反馈无系统保证」不成立——「22/3/6」由 `known_verdicts.inc.md` 注入送达，非 peer 自算（Issue 1；09:10 提示词 :214-217 实证）；② `9522900` 提交于 10-04 15:47:28 而非「10-05 晨」，且无裁决使用其新协变量；「各族同向」应引注册表 3/10→4/8 与 4/9→3/4 并带样本量（Issue 7）；③ 37.0%→58.3% 比率差 Fisher 双侧 p=0.299，不显著（Issue 8）；④ 附录 A 需加 `decided_at < 2026-10-05T10:40` 上限，否则活数据追加后不复现（Issue 9）；⑤ §7 否决理由部分不成立——示例有 `ts` 与 `pass`/`fail`（即样本量），缺的是协议指纹；族×品种矩阵现有 clues 确实没有（Issue 10）；⑥ G3 收窄为「转述丢戳」（include 已带 fp12），G4 证据改指 `_effective_clue_lines`（:1409）只打印通过数的输出格式（Issue 11）；⑦ 计数勘误：research_memory 211→212、cycles_done 225→226（评审时点值），均须带统计时刻（Issue 13）；⑧ 族名单应抄 `ALLOWED_FAMILIES`（含 momentum 共 6 族；anti_mainline 列的是 5 个被忽略族）、`PIAgentConfig` 位于 task_spec.py:1328、07-18 run 仅有 gen1（Issue 14）；⑨ 变体名勘误：失败哈希对应 variant_id 为 `sr_term_structure_b796d1e1483d` / `sr_term_structure_82991327cde2`（crack_spread_zscore / crack_spread_slope 是协变量名，本评审误作 variant_id）。
+>
+> 本评审的方向性结论（「回传存在且失败侧有执法、原报告核心事实链不成立」）维持；缺口重界定与落地方案见计划 v2（T0-T3）。
 
 > **日期**: 2026-10-05
 > **评审对象**: `docs/superpowers/reports/2026-10-05-peer-learning-gap-analysis.md`（commit `a5c1412`）

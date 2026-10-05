@@ -76,6 +76,7 @@ launcher 内部已做 `setsid nohup` 孤儿化；验证会话独立性看 `ps -o
 `SID` 应与调用方不同、`PPID` 应为 `/init`、`TTY` 为 `?`。
 
 **⚠ 已知缺陷：SIGTERM 停机不可靠（2026-10-02 首现，2026-10-03 修订为结构性根因）**
+> **勘误（2026-10-05，T0）**：下述结构根因分析保留为风险描述。2026-10-04 15:14:38 实测**单次 SIGTERM 即时退出**（exit_code 0；changelog `2026-10-03-confirmation-channel-and-failure-accounting-fixes.md:86`）。停机是否即时取决于信号落点（主循环顶 vs 阻塞调用中），10-04 为一次成功样本；操作口径以 10-04 实证为准，停机判据看 `data/cache/stop_report.json` 与 `data/cache/supervisor_events.jsonl` 的 `supervisor_stopped` 事件。
 
 症状：发送 `SIGTERM` 后 supervisor 长时间不退出，且期间继续收割、继续发起快环。
 
