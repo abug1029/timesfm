@@ -1,6 +1,6 @@
 # 正期望协变量搜索 Spec
 
-- **spec 日期**：2026-10-05（同日两次修订）
+- **spec 日期**：2026-10-05（同日两次修订；2026-10-06 修订 3 勘误）
 - **对照代码**：WSL `/home/abug/timesfm`，初稿与修订均对照 HEAD `9dccbbc`
 - **上位**：`docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（v15）；Q7 备忘录 `docs/superpowers/reports/2026-09-30-q7-target-effect-power-memo.md`（宿主裁定 a′：Δ\*=0.08，单侧 α=0.05，功效 80%）
 - **文档标记**：`[事实]` 可回代码核验 · `[规定]` 本文件的要求 · `[待决]` 需宿主裁定后才能打开 · `[决定]` 已定
@@ -8,6 +8,7 @@
 - **修订记录**：
   - **修订 1（同日，审核修订）**：P1 裁定为途径 (a)：晋升在 `preregistry.jsonl` 追加行（S5、§4、§6.6 相应改写）；新增 `shadow` 档与 §6.9 同伴教学；§6.5 补家族死亡停止；§6.2 原因表补 `search_root_while_tree_active`、`search_parent_not_near_miss`、`search_role_conflict`；§6.3 数例钉 `T=588` 并落 `delta_post_shrunk`；§6.4 补现任序列不可得=fail；§6.6 条件 6 补 `eval_end_ts` fail-closed；§3 补 `success_delta` 与 `no_success_delta`；S4 交叉引用修正。
   - **修订 2（同日，宿主落地指示）**：§3 快照行修正——族线索现状已是「通过数/总数」（`- 族: pass/total gate_pass`），非「只打印通过次数」，审核漏检一并勘正；§6.8 补族线索「仅当前协议」注记与不另做摘要文件；§4 补新指标不自动入池、公式搜索拒绝证据（arXiv 记账后预算 100 条全拒、前视泄漏非缩水可挡）、序贯 p 值/历史先验/横截面双重选择三条不接；§8 挂接实施计划。
+  - **修订 3（2026-10-06，P2.1 审核勘误）**：§6.1 示例 yaml 补引号——裸 `off` 被 YAML 1.1（PyYAML）解析为布尔 `False`，照抄即触发陷阱；生产 `praxist_goal.yaml` 已带引号落地并有测试锁定，归一函数对布尔亦 fail-closed 回 off 并留痕。§6.1 生效时机澄清：监督环每 poll 热重载 goal（2026-09-08 起与 budgets/cadence 同一热重载设计），宿主改键下一轮 poll 生效、无需重启（勘正实施侧初版的相反说法）。纯文档勘误，值空间与档位行为不变。
 
 > 正期望在本文件里只有一个意思：扣掉已经做过的尝试、和同一品种现任协变量的重复、以及挑选造成的上偏之后，再付一次慢环或一次确认的成本，期望增量仍然为正。它不是「这条协变量以后能赚钱」。
 
@@ -126,14 +127,14 @@ se = sqrt(compute_hac_se(d_t) / T)
 `scripts/praxist_goal.yaml` 增加：
 
 ```yaml
-search_policy: off   # off | shadow | enforce
+search_policy: "off"   # off | shadow | enforce（必须带引号：裸 off 会被 YAML 1.1 当布尔 False）
 ```
 
 - `off` 是批准前和批准后的默认值。收割行为与今日相同。
 - `shadow`：树检查照常求值，「本会拒绝的原因」只进拒绝计数与决策日志，提案照常走后续管道；不写 `search_commitments.jsonl`，不建树。用于 `enforce` 打开前观测同伴是否学会新字段（重点看 `search_role_missing` 占比）。
 - `enforce`：第 6.2 节起的拒绝生效。
 
-宿主把该键改成 `shadow` 或 `enforce` 之后对应档位才生效。本文件不授权代理自行改这一键。
+宿主把该键改成 `shadow` 或 `enforce` 之后对应档位才生效（监督环每 poll 热重载 goal：下一轮 poll 生效，无需重启）。本文件不授权代理自行改这一键。
 
 ### 6.2 提案如何进入一棵树 `[规定]`
 
