@@ -1,11 +1,13 @@
 # 正期望协变量搜索 Spec
 
-- **spec 日期**：2026-10-05（同日按审核报告修订）
+- **spec 日期**：2026-10-05（同日两次修订）
 - **对照代码**：WSL `/home/abug/timesfm`，初稿与修订均对照 HEAD `9dccbbc`
 - **上位**：`docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（v15）；Q7 备忘录 `docs/superpowers/reports/2026-09-30-q7-target-effect-power-memo.md`（宿主裁定 a′：Δ\*=0.08，单侧 α=0.05，功效 80%）
 - **文档标记**：`[事实]` 可回代码核验 · `[规定]` 本文件的要求 · `[待决]` 需宿主裁定后才能打开 · `[决定]` 已定
 - **状态**：待宿主批准。批准前不改收割、不改确认、不重启监督环。
-- **修订记录**：2026-10-05 审核修订——P1 裁定为途径 (a)：晋升在 `preregistry.jsonl` 追加行（S5、§4、§6.6 相应改写）；新增 `shadow` 档与 §6.9 同伴教学；§6.5 补家族死亡停止；§6.2 原因表补 `search_root_while_tree_active`、`search_parent_not_near_miss`、`search_role_conflict`；§6.3 数例钉 `T=588` 并落 `delta_post_shrunk`；§6.4 补现任序列不可得=fail；§6.6 条件 6 补 `eval_end_ts` fail-closed；§3 补 `success_delta` 与 `no_success_delta`；S4 交叉引用修正。
+- **修订记录**：
+  - **修订 1（同日，审核修订）**：P1 裁定为途径 (a)：晋升在 `preregistry.jsonl` 追加行（S5、§4、§6.6 相应改写）；新增 `shadow` 档与 §6.9 同伴教学；§6.5 补家族死亡停止；§6.2 原因表补 `search_root_while_tree_active`、`search_parent_not_near_miss`、`search_role_conflict`；§6.3 数例钉 `T=588` 并落 `delta_post_shrunk`；§6.4 补现任序列不可得=fail；§6.6 条件 6 补 `eval_end_ts` fail-closed；§3 补 `success_delta` 与 `no_success_delta`；S4 交叉引用修正。
+  - **修订 2（同日，宿主落地指示）**：§3 快照行修正——族线索现状已是「通过数/总数」（`- 族: pass/total gate_pass`），非「只打印通过次数」，审核漏检一并勘正；§6.8 补族线索「仅当前协议」注记与不另做摘要文件；§4 补新指标不自动入池、公式搜索拒绝证据（arXiv 记账后预算 100 条全拒、前视泄漏非缩水可挡）、序贯 p 值/历史先验/横截面双重选择三条不接；§8 挂接实施计划。
 
 > 正期望在本文件里只有一个意思：扣掉已经做过的尝试、和同一品种现任协变量的重复、以及挑选造成的上偏之后，再付一次慢环或一次确认的成本，期望增量仍然为正。它不是「这条协变量以后能赚钱」。
 
@@ -60,7 +62,7 @@
 | 新指标 | `new_cov_<name>.json` 只进 `covariate_backlog.jsonl`，不入评估队列 |
 | 面板 | `task_FM/task.yaml` 的 `panel_topology:fm_two_peer`，`peer_role_rotation` 为 `exploit`、`falsifier`。`graph_maintainers` 为空。`evaluation` 下没有 `frontier_lanes` |
 | 收割 | `harvest_proposals` 拒绝不在池中、机制过短、缺少 `failure_delta`、品种死亡或冻结、重复、以及成功门 `no_success_delta`（已有 `gate_pass=True` 的 (symbol, cov) 组合复跑缺 `success_delta`）。选座 `survivors_per_cycle` 以目标文件为准，当前为 3。优先品种为空，同档内先按族各给一席 |
-| 快照 | `materialize_known_verdicts` 写 `known_verdicts.inc.md`，由 `prompt_base.jinja2` include。族线索只打印通过次数 |
+| 快照 | `materialize_known_verdicts` 写 `known_verdicts.inc.md`，由 `prompt_base.jinja2` include。族线索已是「通过数/总数」（`- 族: pass/total gate_pass`，如 `- momentum: 30/63 gate_pass`）：分母为当前协议快照内该族全部裁决（含描述性），分子为 `gate_pass=True`；`n_ok < 10` 的族带 `low-n` 标记。快照本身已滤旧协议 |
 | 近失 | `_effective_clue_lines` 的近失是 `0.49 <= dir_acc < effective_min`，最多 12 条 |
 | 检验 | 配对 DM 与功效规划的唯一实现是 `cascade/statistical_tests.py` 的 `compute_hac_se` 和 `n_required`。途径 B 用 `compute_hac_se` 的长程方差当 `var_d`，`vif=1`，因为长程方差已经含自相关。禁止再乘一个 VIF |
 | 裁决 | `aligned_verdicts.jsonl` 只由慢环追加。当前协议行有 `dir_acc`、`baseline_dir_acc`、`p_value`、`dm_status`、`eval_end_ts`。没有 `delta_ci`。`eval_end_ts` 在首跑（无历史 checkpoint）时为 `null`，锚在 checkpoint 行里 |
@@ -81,8 +83,12 @@
 | 不改 Δ\*=0.08、单侧 0.05、功效 80%、协议指纹 | Q7 与 v4 协议 |
 | 不改成功条件 `all_symbols_pass_phase1` | 本文件不发明新的通过线 |
 | 不建第二份统计表 | 方向准确率和 DM 仍只住在裁决文件里 |
+| 新指标不自动入池 | `new_cov_<name>.json` 继续只进 `covariate_backlog.jsonl`；人实现并标 `active` 之后才允许被提议。对象始终是现有池子里的 31 个活跃协变量 |
+| 不做遗传规划、蒙特卡洛公式树、AlphaGen 一类表达式搜索 | 尝试次数会把期望增量打成负数：arXiv 上把尝试次数记账之后，预算放到 100 条的公式搜索全部被拒绝；前视泄漏也不是缩水能挡住的 |
+| 不接始终有效的序贯 p 值 | 确认窗口是 `eval_end_ts` 之后另开的锁定样本，固定样本的 `n_required` 对得上这一段；序贯检验是另一套功效框架，不在本文件引入 |
+| 不用历史实验估计先验 | `τ=0.04` 写死。历史实验是挑选出来的，从它们估出的先验会把上偏请回来 |
+| 不接横截面上的双重选择 | FGX 的双重选择为横截面因子回归设计；单品种时间序列上的增量由 §6.4 的现有配对 DM 承担，不另建一套回归 |
 | 不打开框架的 `graph_maintainers` 或 `frontier_lanes` | 不改 `.venv` 里的 Praxist |
-| 不做遗传规划、蒙特卡洛公式树、AlphaGen 一类表达式搜索 | 尝试次数会把期望增量打成负数 |
 | 不在监督环运行时改活仓代码 | 实施放在工作树，合入后核对指纹再重启 |
 
 ---
@@ -249,6 +255,8 @@ n_required(var_d=compute_hac_se(d_t), vif=1, z_alpha=1.645, z_beta=0.842, delta=
 
 `materialize_known_verdicts` 增加一节「未停止的树」：`tree_id`、品种、族、已用次数、预算 4、父节点 `variant_id`、该父节点是否近失、是否为本轮扩展树。存在本轮扩展树时，这一节末尾追加一句：本轮两份提案应为本轮扩展树的 `exploit` 与 `falsifier`。不写标准误公式，不写代码行号。没有未停止的树时，这一节写「无」，避免同伴沿用上一轮的父节点。
 
+族线索保持「通过数/总数」的现行写法（`- 族: pass/total gate_pass`），节首或行尾注明：仅当前协议，旧协议已滤除；分母含描述性裁决。不另做一份摘要文件，不另开展示通道。这一条与树节、§6.9 的 prompt 教学同批落地。
+
 ### 6.9 同伴如何学会新字段 `[规定]`
 
 `prompt_base.jinja2` 的提案 schema 段落加入三个可选字段的说明与示例：`search_role` 取 `root`、`exploit`、`falsifier` 之一；`root` 的 `search_parent_id` 留空；子角色的 `search_parent_id` 填 `known_verdicts` 树节给出的父节点 `variant_id`；`tree_id` 照抄该树节。既有字段（含 `success_delta`）的说明保持不变。schema 版本仍为 `fm.hypothesis_proposal.v1`。
@@ -288,7 +296,7 @@ n_required(var_d=compute_hac_se(d_t), vif=1, z_alpha=1.645, z_beta=0.842, delta=
 
 只有一件需要宿主另行说「打开」：把 `search_policy` 从 `off` 改成 `enforce`。建议路径是先 `shadow` 至少一轮（§6.1），观测 `search_role_missing` 占比确认同伴已学会新字段，再改 `enforce`。
 
-实施顺序：T2d（裁决行 `eval_end_ts` 的 checkpoint 兜底）先于本文件实施落地；在此之前 6.6 条件 6 按 fail-closed 执行。
+实施顺序：T2d（裁决行 `eval_end_ts` 的 checkpoint 兜底）先于本文件实施落地；在此之前 6.6 条件 6 按 fail-closed 执行。落地任务拆解、部署步骤与验收判据见 `docs/superpowers/plans/2026-10-05-positive-ev-factor-search-plan.md`。
 
 `B=4` 和 `τ=0.04` 是本文件的规定，不是打开之后可以按结果再调的参数。要改这两个数，先改本文件并重新批准，且不得发生在第一行 `search_commitments.jsonl` 写入之后。
 
