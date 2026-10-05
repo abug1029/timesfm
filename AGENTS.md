@@ -100,7 +100,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 - Phase 11 单协变量穷举结案：12 品种协变量替换固化，34 GREEN（详见 `docs/archive/history/backtest_registry.md`）
 - Phase 12 BU 组合协变量：`calendar_cyclical+hourly_slope` 固化（PF=1.01 边际 GREEN）
 - M/P/SR 基线验证保持（当前方案优于 Phase 11 单协变量候选）
-- 信用档不变：≥2★ = CJ/SS/SR/M/JD/LH/EG/RB（8 品种）；1★ = 12 品种
+- 信用档：清单以 `list_by_stars(2)` 为唯一事实源（2026-10-05 实测 7 品种 `cj eg jd lh m rb sr`，无 SS）；1★ 恰好 14 品种
 - 冲突债：`20260808_conflict_debt_register.md`（DONE）
 
 **2026-08-08 状态锚点**  
@@ -313,19 +313,34 @@ python -m unittest tests.test_future_bar_guard tests.test_vol_threshold_contract
 
 > **无真实 3 星。** 2026-08-03 前 SP/SR 曾保留旧 3 星标签。2026-08-08 G005-E 全量 rebaseline 后，最高星级降为 2 星。  
 > **可交易方向** = 加权 1H（`cascade/signal_contract.py`），日线斜率仅为 regime 副标签。详见 `docs/product_positioning.md`。  
-> **全表**: `reports/research/20260808_g005e_results.md`（Phase 11/12 后协变量已刷新，星级不变）。
+> **全表**: `reports/research/20260808_g005e_results.md`（文件已不在仓内，历史指针）。Phase 11/12 后协变量已刷新。
 
-### 信用≥2 星（可辩护 / 边界）
+### ⚠️ 信用档以代码为唯一事实源
 
-| 档 | 品种 | 新口径 PF（约） | 备注 |
-|----|------|-----------------|------|
-| 弱正 | **SS, SR, M, JD** | 1.06–1.15 | n≈396 较足 |
-| 弱正·小样本 | **CJ, LH** | 1.05–1.26 | n&lt;350 underpowered |
-| 边界 | **EG, RB** | ≈1.00 | EV≈0 |
+**不要从本文档表格读清单**——表格是 2026-08 v2 口径的快照，已被后续降级动作覆盖。
+实时清单一律查代码：
 
-### 1 星（新口径经济弱/失效，12 品种）
+```python
+from config.prediction_scheme import list_by_stars
+list_by_stars(2)   # → 可辩护档（CLI --three-star 映射到此）
+list_by_stars(1)   # → 含 2 星的全部可辩护+弱档
+```
 
-SP TA FU BU P CF FG JM I AO UR MA — short_horizon **CF 仍失效**（Phase 11 best PF=0.90）；**BU 经 Phase 12 边际 GREEN**（PF=1.01, cal+hs）；**P 经 G004 翻正仍 1★**（PF=1.01）；多数 ha_body 单因子仍弱。
+2026-10-05 实测：`list_by_stars(2)` = **cj, eg, jd, lh, m, rb, sr**（7 品种，**无 SS**）。
+
+### 2026-08 v2 口径历史快照（已被降级动作覆盖，勿据此判断现状）
+
+| 档 | 品种 | 新口径 PF（约） | 后续变化 |
+|----|------|-----------------|---------|
+| 弱正 | SS, SR, M, JD | 1.06–1.15 | **SS 已于 2026-09-17 降 1★（commit `9c7fc2a`，ss_vor v23 复测未过门）** |
+| 弱正·小样本 | CJ, LH | 1.05–1.26 | — |
+| 边界 | EG, RB | ≈1.00 | — |
+
+**1 星（2026-08 快照 12 品种）**：SP TA FU BU P CF FG JM I AO UR MA
+— short_horizon **CF 仍失效**（Phase 11 best PF=0.90）；**BU 经 Phase 12 边际 GREEN**（PF=1.01, cal+hs）；**P 经 G004 翻正仍 1★**（PF=1.01）；多数 ha_body 单因子仍弱。
+
+> 该 12 品种快照此后有增减：**SS 降级后进入 1★**，**SH（烧碱）已加入品种池**。
+> 2026-10-05 实测恰好 1★ = **14 品种**：ao bu cf fg fu i jm ma p sh sp ss ta ur。
 
 ### 使用
 

@@ -1,13 +1,20 @@
 # FM_a 系统状态
 
+> **勘误（2026-10-05）**：本文件此前多处钉死了会腐烂的活数字（PID、裁决条数、信用档清单）。
+> 已修正 3 处（PID / 裁决数 / 信用档）。**规则：本文件不再钉任何活快照**——
+> 需要实时值一律查代码或 `data/cache/supervisor_state.json`。
+> 这是本文件第二次犯同类错（2026-09-29 曾钉 `cycles_done=36` / PID 31638）。
+>
 > **canonical_state 声明 (2026-09-01, P0b)**：本文件是系统状态的**唯一事实所有者**。
 > `reports/` 全部为 derived_view（可从 `predictions.json` / 回测 JSONL / db 产物重建），
 > 冲突时以 **STATE.md + 磁盘回测产物**为准。此规则用于终结"滞后文档事故"（如 SH 状态那次）。
 
 **最后更新**: 2026-10-01（v4 收口阶段 2 完成并重启：窗口锚 / checkpoint 身份 / 协议 v4 / vid 生产接线全部落地，v4 重生波 9/9 闭环。见下方「三环状态」与「Stage 3 交付状态」小节）
 
-> **三环状态**：**运行中**，supervisor **PID 416**（2026-10-02 20:27 重启，已加载 v4 收口 + 阶段 3 确认机制）。
-> `cycles_done` / PID / phase 是**活计数**，此处一律不记录 —— 读 `data/cache/supervisor_state.json`。
+> **三环状态**：**运行中**（是否真在跑：`pgrep -f praxist_supervisor`，无输出即已停）。
+> 已加载 v4 收口 + 阶段 3 确认机制（2026-10-02 20:27 启动的那次）。
+> `cycles_done` / **PID** / phase 是**活计数**，此处一律不记录 —— 读 `data/cache/supervisor_state.json`。
+> （2026-10-05 勘误：本行原钉「PID 416」，与下一行的「不记录活计数」自相矛盾，且实测活进程为 PID 403。已改为指向查询命令。）
 > 封存已于 **2026-09-28 解除**（停滞根因 = 快环提案被门禁 ~100% 拒绝 + 无基线 → 慢环饿死；
 > 修复 = baselines 重生 + 提案门禁调整 + 1-bar 前视修复）。封存快照仍在
 > `data/archive/fm_a_sealed_2026-09-24T1422/`（234MB）供对照，非当前状态。
@@ -26,7 +33,7 @@
 **冲突债**: `reports/research/20260808_conflict_debt_register.md`（绝大多数 DONE）  
 **Ultragoal**: `20260808-tradable-alpha-debt` 完成；可交易 alpha **6.7/10**  
 **新口径 monthly 20/20**: 全表 `reports/research/20260808_g005e_results.md`；最新批次报告 `monthly_backtest/20260808_2249_monthly_report.md`  
-**信用档**: **无 3 星**；≥2★ = CJ/SS/SR/M/JD/LH + EG/RB（8 品种）；`--three-star` CLI = `list_by_stars(2)`  
+**信用档**: **无 3 星**；清单以 `config.prediction_scheme.py::list_by_stars(2)` 为唯一事实源（2026-10-05 实测 = 7 品种 `cj eg jd lh m rb sr`，**SS 已于 2026-09-17 降 1★** commit `9c7fc2a`）；`--three-star` CLI = `list_by_stars(2)`  
 **G004 (2026-08-17)**: P 固化 `rsi_state+reversal_shadow`（v2 GREEN-EV，PF=1.014，保持 1★）；BU 不固化。见 `reports/research/20260817_g004_verdict.md`  
 **Phase 11 (2026-08-21 结案)**: 单协变量穷举 138 作业全完成，34 GREEN，12 品种协变量替换固化，M/P/SR 基线验证保持。详见下节。  
 **Phase 12 (2026-08-21)**: BU 组合协变量 `calendar_cyclical+hourly_slope` 固化（PF=1.01 边际 GREEN，替换 ha_body）。

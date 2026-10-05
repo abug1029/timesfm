@@ -63,11 +63,13 @@ spec v15 的 §8.3 八项出口条件已全部核验。**新增三个模块是�
 - `scripts/praxist_supervisor.py` 的 family 接线是**薄接线**，逻辑全在 `cascade/research_family.py`，别把状态机搬进监督环
 
 指纹与 fail-loud：
-- `PROTOCOL_FINGERPRINT_VERSION = "protocol_v3"`，七个 spec 组件（CONTEXT_BARS/DAYS、EVAL_WINDOW_BARS、STEP、HORIZON、cutoff、cov_fill、adj_rule+roll_guard）→ 映射表见 `docs/fingerprint_component_mapping.md`
+- `PROTOCOL_FINGERPRINT_VERSION = "protocol_v4"`（定义在 `task_FM/evaluations/fm_eval/evaluator.py:284`；`scripts/restart_readiness_check.py:70` 有断言守着，不是 v4 会启动失败），七个 spec 组件（CONTEXT_BARS/DAYS、EVAL_WINDOW_BARS、STEP、HORIZON、cutoff、cov_fill、adj_rule+roll_guard）→ 映射表见 `docs/fingerprint_component_mapping.md`
 - `scripts/fingerprint_lib.py` 的**静默回退已退役**（W6.4）：找不到 praxist 二进制会抛异常，不再假装成功
 - 新增统计公式（`detection_threshold_vs_random/_vs_baseline`、`n_required`）带输入守卫，`n_eff=0` / `delta<=0` 直接抛
 
-**尚未接线**：`experiment_fingerprint` 的 `variant_id` 还没被 supervisor 调用。171 条现存裁决全是 pre-A1 遗留（`schema=v2` 但缺全部新字段），接线前它们不可用。属 Stage 4。
+**已接线**（2026-10-05 勘误，原文写「尚未接线 / 171 条」已过时）：`ef.build_variant_id()` 在 `praxist_supervisor.py` 有 **3 个调用点**（373 / 1167 / 2146）；2339 行是 `ef.compute_experiment_fingerprint()`，**不同函数**，勿混淆。新裁决按 `{symbol}_{family}_{fp12}` 生成 vid。`baseline_dir_acc` / `effective_min` / `metadata` / `prereg_id` 字段均已落盘。
+
+历史 `aligned_verdicts.jsonl` 里混着两种 vid 格式：旧行 `{symbol}_{cov}`（如 `cf_rsi6`），新行 `{symbol}_{family}_{fp12}`（如 `lh_momentum_e5272a12ce30`）。**读历史行时不要假设格式统一**；总行数是活计数，实时 `wc -l`。
 
 权威文档：spec `docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（v15）· 核验记录 `docs/superpowers/reports/2026-09-29-stage3-verification-record.md` · family 边界 `docs/family_boundary_rules.md`
 
@@ -287,8 +289,8 @@ python -m unittest tests.test_future_bar_guard tests.test_vol_threshold_contract
 
 > **口径声明**：本节 stars 与 PF 源自 2026-08 v2 月度回测口径，v23 复测进行中，裁决以 aligned verdicts（v23）为准。（更新 2026-09-17：ss_vor 复测未过门，ss 已降级 1★ 移出下列 ≥2★ 清单，见 9c7fc2a；本节 PF 值为 v2 历史口径，v23 裁决以 STATE.md verdicts 为准）
 
-**≥2★**: CJ SR M JD LH（弱正 PF 1.06–1.29）+ EG RB（弱边界 PF 1.04–1.09）（SS 2026-09-17 降级移出）  
-**1★**: SP TA FU BU P CF FG JM I AO UR MA  
+**≥2★**: 以 `list_by_stars(2)` 为唯一事实源（2026-10-05 实测 7 品种 `cj eg jd lh m rb sr`；SS 2026-09-17 降级移出，commit `9c7fc2a`）  
+**1★**（恰好 1★ 共 14 品种）: ao bu cf fg fu i jm ma p sh sp ss ta ur  
 （P 已 G004 换 `rsi_state+reversal_shadow`，PF=1.01 刚过线，仍 1★；BU 经 Phase 12 换 `calendar_cyclical+hourly_slope` PF=1.01 边际 GREEN，仍 1★）  
 **待固化**: SH 烧碱（data/config.py 已加入品种池，Phase 11 best PF=0.90 无 GREEN，待后续数据积累后复评，不纳入 SCHEMES）
 

@@ -537,7 +537,9 @@ def list_solidified() -> list[str]:
 def list_by_stars(min_stars: int = 2) -> list[str]:
     """按 scheme.stars 筛选（信用档，2026-08-08 新口径 rebaseline 后无 3 星）。
 
-    默认 min_stars=2 → 可辩护信用档（CJ/SS/SR/M/JD/LH/EG/RB）。
+    默认 min_stars=2 → 可辩护信用档。
+    返回值以 SCHEMES 的 stars 字段为准；**不要在本 docstring 里硬编码品种清单**——
+    SS 已于 2026-09-17 降级（commit 9c7fc2a），任何写死的清单都会随降级动作腐烂。
     CLI 历史名 --three-star 现映射到此列表。
     """
     return sorted(

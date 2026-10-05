@@ -182,6 +182,19 @@ def archive_slow_cycle(st: dict, goal: dict | None = None) -> dict:
     metrics = FM_ROOT / "data" / "cache" / "slow_loop_metrics.jsonl"
     metrics_meta = _copy_small(metrics, dest / "slow_loop_metrics.jsonl")
 
+    # 2026-10-05 补：family_registry 与 baseline_points 此前不在归档范围。
+    # family_registry = 90 天封账状态机（丢了时间窗不可复原）；
+    # baseline_points = 实测校准（丢了要重跑 ensure_baselines，且数据窗口
+    # 已变时结果可能不同）。两者都是慢环裁决的前置输入。
+    cfgdir = FM_ROOT / "task_FM" / "config"
+    family_reg = cfgdir / "family_registry.jsonl"
+    family_meta = _copy_small(family_reg, dest / "family_registry.jsonl")
+    baselines = {}
+    for bp in sorted(cfgdir.glob("baseline_points_*.jsonl")):
+        m = _copy_small(bp, dest / "baselines" / bp.name)
+        baselines[bp.name] = {"copied": m.get("copied"), "sha256": m.get("sha256"),
+                              "note": m.get("note")}
+
     # recent checkpoint files mentioned in last metrics lines
     survivors = []
     if metrics.exists():
@@ -227,6 +240,8 @@ def archive_slow_cycle(st: dict, goal: dict | None = None) -> dict:
         "gates_tail": gates[-10:],
         "verdicts": verdicts_meta,
         "metrics_file": metrics_meta,
+        "family_registry": family_meta,
+        "baseline_points": baselines,
         "phase_after": (st or {}).get("phase"),
     }
     _append_jsonl(ASSETS / "manifest.jsonl", rec)
@@ -236,7 +251,9 @@ def archive_slow_cycle(st: dict, goal: dict | None = None) -> dict:
     ) or "(no new gates)"
     _append_timeline(
         f"slow drain cycle={cycle}",
-        [f"run={run_id}", f"gates: {gate_s}", f"phase_after={rec['phase_after']}"],
+        [f"run={run_id}", f"gates: {gate_s}", f"phase_after={rec['phase_after']}",
+         f"archived family_registry={family_meta.get('copied')} "
+         f"baselines={sum(1 for v in baselines.values() if v.get('copied'))}/{len(baselines)}"],
     )
     _update_index({
         "ts": ts, "kind": "slow_drain", "ref": f"cycle={cycle}",

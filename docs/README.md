@@ -9,6 +9,7 @@
 | **先读这三份** | | |
 | [praxist.md](./praxist.md) | **架构概览**：Praxist 本体 vs 本仓三环、方案 A 合同 | 在用 |
 | [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | **运维手册**：启停、429 failover、队列/checkpoint、方案 A 收割、故障速查 | 在用 |
+| [run_artifacts.md](./run_artifacts.md) | **运行产物生命周期**：run 目录分级、真相源隔离、清理流程与保留策略 | 在用 |
 | [system_design.md](./system_design.md) | 系统设计全景（数据流 + 模块依赖 + 评估口径） | 在用 |
 | **Stage 3 交付（2026-09-29 结案）** | | |
 | [family_boundary_rules.md](./family_boundary_rules.md) | 研究 family 边界规则（90 天封账 / 20 成员上限 / T_max / p=1 适用范围） | 在用 |
