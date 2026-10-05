@@ -131,13 +131,22 @@ scripts/start_supervisor.sh
 
 ### 对账工具（**2026-09-30 已归档**，仅历史参考）
 
+⚠️ **原路径已失效**。工具实际位置：
+`scripts/archive/2026-09-30-a2-retired/a2_p1_restore_manifest.py`
+
+<details>
+<summary>展开历史命令（需自行加 archive 前缀才可运行）</summary>
+
 ```bash
-python scripts/a2_p1_restore_manifest.py --dry-run      # 扫描主/备份目录，打印 20 品种状态
-python scripts/a2_p1_restore_manifest.py --canonicalize # 对重复写入的 JSONL 去重
-python scripts/a2_p1_restore_manifest.py --restore      # 从备份恢复缺失文件
+A2=scripts/archive/2026-09-30-a2-retired/a2_p1_restore_manifest.py
+python "$A2" --dry-run       # 扫描主/备份目录，打印 20 品种状态
+python "$A2" --canonicalize  # 对重复写入的 JSONL 去重
+python "$A2" --restore       # 从备份恢复缺失文件
 ```
 
-详见 [runbook.md](./runbook.md) "A2-P1 完整性工具" 章节（同已归档标注）。工具实际位置：`scripts/archive/2026-09-30-a2-retired/`。
+</details>
+
+详见 [runbook.md](./runbook.md) "A2-P1 完整性工具" 章节（同已归档标注）。
 
 ## 当前生产姿态
 

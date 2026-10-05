@@ -72,18 +72,26 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 ## 3. 目录职责
 
-| 目录 | 职责 | 规模 |
-|------|------|-----:|
-| `cascade/` | 级联预测：日线/1H 模型、特征、协变量族、horizon 契约、family 状态机、统计检验 | ~29 py |
-| `config/` | 生产 SCHEMES、品种配置、回测参数 | ~5 py |
-| `data/` | 数据管理、配置常量、防护 | ~12 py |
-| `scripts/` | CLI 入口、supervisor、回测、采集 | ~81 py |
-| `task_FM/` | **Praxist 任务包**（科学合同 + 运行产物） | 4 py + 1.6k 产物 |
-| `tests/` | pytest | ~120 py |
-| `db/` | 每品种一个 SQLite（30 个） | — |
-| `docs/` | 本手册 + spec/report 证据层 | 79 在用 md |
-| `data/assets/` | **运行产物归档**（append-only） | 59 MB |
-| `data/archive/` | 历史封存包 | 234 MB |
+| 目录 | 职责 |
+|------|------|
+| `cascade/` | 级联预测：日线/1H 模型、特征、协变量族、horizon 契约、family 状态机、统计检验 |
+| `config/` | 生产 SCHEMES、品种配置、回测参数 |
+| `data/` | 数据管理、配置常量、防护 |
+| `scripts/` | CLI 入口、supervisor、回测、采集 |
+| `task_FM/` | **Praxist 任务包**（科学合同 + 运行产物；手写合同见其 `AGENTS.md`） |
+| `tests/` | pytest |
+| `db/` | 每品种一个 SQLite |
+| `docs/` | 本手册（L0/L1）+ `superpowers/` 证据层（L2） |
+| `data/assets/` | **运行产物归档**（append-only） |
+| `data/archive/` | 历史封存包 |
+
+> **规模会漂移，不写死数字。** 实时查：
+> ```bash
+> ls <dir>/*.py | wc -l                        # 某目录 py 数
+> ls db/futures_*.db | wc -l                  # 数据库数
+> find docs -name '*.md' -not -path '*/archive/*' | wc -l   # 在用文档数
+> du -sh data/assets data/archive             # 产物体积
+> ```
 
 各目录另有 `AGENTS.md` 路由（`cascade/` · `config/` · `data/` · `scripts/` · `tests/` · `task_FM/` · `docs/`）。
 
@@ -104,7 +112,8 @@ python scripts/data_management.py --1h --daily
 
 # 三环（生产监督环）
 scripts/start_supervisor.sh          # canonical launcher
-scripts/stop_supervisor.sh           # SIGTERM，等 supervisor_stopped 事件
+# ⚠️ 没有 stop_supervisor.sh —— 停法是 kill -TERM，再等 supervisor_stopped 事件
+#    （详见 runbook_praxist_three_loop.md「启动 / 停止」）
 
 # 月度回测
 python scripts/monthly_backtest.py

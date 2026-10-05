@@ -82,7 +82,8 @@ list_by_stars(2)   # 可辩护档；CLI --three-star 映射到此
 
 ## 3. 数据库（每品种一个 SQLite）
 
-`db/futures_<symbol>.db` —— **30 个文件**，每个含 7 张表。
+`db/futures_<symbol>.db` —— 每品种一个文件，数量随采集范围变化（`ls db/futures_*.db | wc -l`），
+每个含 7 张表。
 
 ### 3.1 核心表
 
