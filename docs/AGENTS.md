@@ -11,10 +11,17 @@
 
 | File | Description |
 |------|-------------|
-| **`praxist.md`** | **架构概览（先读）**：Praxist 本体 vs 三环；现行合同 |
+| **`handbook.md`** | **入口（先读这个）**：5 分钟上手 + 按需阅读路径 + agent 硬约束 |
+| **`evaluation.md`** | ⚠️ **阈值唯一权威**：n / n_eff / effective_min / DM / FDR / fail-closed。其他文档不得复述 |
+| **`runtime_contract.md`** | 三环运行合同：goal DSL / 门判据 / 指纹 / family / 预注册 |
+| **`glossary.md`** | 术语表（每条带代码锚点） |
+| **`tech_stack.md`** | 依赖版本 / 环境 / 目录职责 / 入口命令 |
+| **`data_dictionary.md`** | 品种集合 / 协变量族 / 数据表 / 防穿越 |
+| **`praxist.md`** | 架构概览：Praxist 本体 vs 三环；方案 A 合同 |
 | **`runbook_praxist_three_loop.md`** | **运维手册**：启停、429、队列/checkpoint、方案 A 收割、故障速查 |
 | **`system_design.md`** | 系统设计全景：架构/数据流/协变量/评估/Praxist 三环 + TypeSafe 预筛 |
-| **`README.md`** | 文档索引（分「在用 / 已归档」两段） |
+| **`run_artifacts.md`** | 运行产物分级 / 真相源隔离 / 清理流程 |
+| **`README.md`** | 文档索引（按 L0 手册 / L1 规范 / L2 证据分层） |
 | `family_boundary_rules.md` | 研究 family 边界规则（封账 / 成员上限 / T_max / p=1 范围） |
 | `fingerprint_component_mapping.md` | spec 七组件 → 承载方映射（跨实现校验索引） |
 | `supervisor_restart_backlog.md` | 重启待办（3 项：1 已实施 / 2 登记 / 3 已完成 2026-09-29） |
@@ -49,12 +56,14 @@
 
 ### Praxist 裁决口径 v23（Validation Criteria v2 已退役）
 
-> 固化判据 v2 的 Rule1–Rule5（MaxDD 一票否决 / EV 翻正绿通等）已随 v23 退役出裁决链；旧文见 `./archive/history/validation_criteria.md`（已归档）。现行裁决口径唯一权威 = v23 spec `./superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`：
+> ⚠️ **阈值唯一权威 = [`./evaluation.md`](./evaluation.md)**。本节只留指针，不复述数字。
+> 固化判据 v2 的 Rule1–Rule5（MaxDD 一票否决 / EV 翻正绿通等）已随 v23 退役出裁决链；
+> 旧文见 `./archive/history/validation_criteria.md`（已归档）。
+> 设计论证 = v23 spec `./superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`。
 
-- 硬门：n≥350、n_eff≥50（Bartlett）、dir_acc ≥ `effective_min`（`max(0.50, min(0.52, baseline_dir_acc))`）。新 verdict 落库这两字段；缺字段的历史行按「未知门槛」读，不要假设恒为 0.52。
-- 统计裁决：DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol 多重校正；K<4 时降级固定 Bonferroni α=0.025）
-- 裁决三态：`v2_pass` / `hard-gate-but-losing` / 变体级 `DEAD`（`materialize_known_verdicts`）。品种级探索状态另见 `task_FM/config/symbol_status.json`（`SYMBOL_DEAD` / `HOLD`），不要和变体级 DEAD 混名。
-- PF/EV/MaxDD/IC：仅经济报表字段，不参与裁决
+- **硬门 / 统计裁决 / 裁决三态 / 退役字段** → 全见 [`./evaluation.md`](./evaluation.md)
+- 品种级探索状态（`SYMBOL_DEAD` / `HOLD`）另见 `task_FM/config/symbol_status.json`——
+  **不要和变体级 `DEAD` 混名**（两套状态机，见 `evaluation.md` §6）
 
 ### Note on EV unit
 

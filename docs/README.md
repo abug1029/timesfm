@@ -2,15 +2,49 @@
 
 面向人类操作者与下游接手者。AI 会话约定见根目录 `AGENTS.md` / `CLAUDE.md`；**当前门禁与待办以 `STATE.md` 为准**。
 
-> Praxist 裁决口径（v23）见 `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`；过时文档见 docs/archive/README.md。
+> **不知道从哪读起？→ [handbook.md](./handbook.md)（手册入口 + 按需阅读路径）**
+
+## 分层结构
+
+| 层 | 定位 | 规则 |
+|----|------|------|
+| **L0 手册层** | handbook · glossary · tech_stack · data_dictionary | 查"是什么/多少" |
+| **L1 规范层** | system_design · runtime_contract · **evaluation** · runbook* · run_artifacts | 改代码前先查，改完同步 |
+| **L2 证据层** | `superpowers/{specs,reports,changelogs,plans}` · `archive/` | 不合并、不重写，只链接 |
+
+> ⚠️ **单一权威**：阈值只在 [evaluation.md](./evaluation.md) 定义，其他文档一律链接不得复述。
+> 过时文档见 [archive/README.md](./archive/README.md)。
+
+## L0 手册层
+
+| 文档 | 内容 | 状态 |
+|------|------|:----:|
+| [handbook.md](./handbook.md) | **入口**：5 分钟上手 + 按需阅读路径 + agent 硬约束 | 在用 |
+| [glossary.md](./glossary.md) | 术语表（每条带代码锚点） | 在用 |
+| [tech_stack.md](./tech_stack.md) | 技术栈 · 依赖版本 · 环境 · 目录职责 | 在用 |
+| [data_dictionary.md](./data_dictionary.md) | 品种 / 协变量族 / 数据表 / 字段 / 防穿越 | 在用 |
+
+## L1 规范层
 
 | 文档 | 内容 | 状态 |
 |------|------|:----:|
 | **先读这三份** | | |
-| [praxist.md](./praxist.md) | **架构概览**：Praxist 本体 vs 本仓三环、方案 A 合同 | 在用 |
+| [system_design.md](./system_design.md) | 系统设计全景（数据流 + 模块依赖 + 评估口径） | 在用 |
+| [runtime_contract.md](./runtime_contract.md) | **三环运行合同**：goal DSL / 门判据 / 指纹 / family / 预注册 | 在用 |
+| [evaluation.md](./evaluation.md) | **评估口径唯一权威**：阈值 / n_eff / DM / FDR / fail-closed | 在用 |
+| [praxist.md](./praxist.md) | 架构概览：Praxist 本体 vs 本仓三环、方案 A 合同 | 在用 |
 | [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | **运维手册**：启停、429 failover、队列/checkpoint、方案 A 收割、故障速查 | 在用 |
 | [run_artifacts.md](./run_artifacts.md) | **运行产物生命周期**：run 目录分级、真相源隔离、清理流程与保留策略 | 在用 |
-| [system_design.md](./system_design.md) | 系统设计全景（数据流 + 模块依赖 + 评估口径） | 在用 |
+| [../task_FM/AGENTS.md](../task_FM/AGENTS.md) | 任务包：手写合同 vs 运行产物、18 道提案门、evaluator 接口 | 在用 |
+
+> ⚠️ **同名不同物**：[runtime_contract.md](./runtime_contract.md) 是三环运行合同；
+> [`superpowers/specs/praxist_control_plane.md`](./superpowers/specs/praxist_control_plane.md)
+> 是**资源控制 spec**（内存/cgroup · 429 · Session 解卡 · ghost `active_work`）。
+
+### 规范层其余在用文档
+
+| 文档 | 内容 | 状态 |
+|------|------|:----:|
 | **Stage 3 交付（2026-09-29 结案）** | | |
 | [family_boundary_rules.md](./family_boundary_rules.md) | 研究 family 边界规则（90 天封账 / 20 成员上限 / T_max / p=1 适用范围） | 在用 |
 | [fingerprint_component_mapping.md](./fingerprint_component_mapping.md) | spec 七组件 → 承载方映射（跨实现校验索引） | 在用 |

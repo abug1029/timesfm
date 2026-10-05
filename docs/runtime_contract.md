@@ -1,15 +1,18 @@
-# Praxist 控制面：运行合同
+# Praxist 运行合同（runtime_contract）
 
-> **定位**：三环**运行时可执行的合同**——门判据、指纹、family、预注册、资源红线。
+> **定位**：三环**运行时可执行的合同**——门判据、指纹、family、预注册。
+>
+> ⚠️ **同名不同物**：[`superpowers/specs/praxist_control_plane.md`](./superpowers/specs/praxist_control_plane.md)
+> 是**资源控制 spec**（内存/cgroup 红线 · 429 failover · Session 解卡 · ghost `active_work`），
+> 本文**不含**这些。资源红线见该 spec；本文只讲运行合同。
 >
 > **不重复**（各有归属）：
 > - 架构与两层关系 → [praxist.md](./praxist.md)
 > - 启停命令与故障速查 → [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md)
 > - 任务包与 peer 行为 → [../task_FM/AGENTS.md](../task_FM/AGENTS.md)
 > - 运行产物分级 → [run_artifacts.md](./run_artifacts.md)
+> - **门判据阈值 → [evaluation.md](./evaluation.md)**（唯一权威）
 > - spec 级设计论证 → `superpowers/specs/`
->
-> 裁决口径唯一权威 = [superpowers/specs/2026-09-14-prediction-quality-redesign-design.md](./superpowers/specs/2026-09-14-prediction-quality-redesign-design.md)（v23）
 >
 > 最后核实：2026-10-05，commit `ee01b56`。**本文档不钉活快照**。
 
@@ -69,17 +72,19 @@ cadence:
 
 ## 3. v23 门判据
 
-慢环唯一的裁决口径。**PF / EV / MaxDD / IC 已退役出裁决链**，仅作经济报表字段。
+慢环唯一的裁决口径。
 
-| 门 | 阈值 | 实现 |
-|----|------|------|
-| 样本量 n | ≥ **350** | `evaluator.gate(min_n=350)` |
-| 有效样本 n_eff | ≥ **50**（Bartlett） | `effective_sample_size(n, horizon, step)` |
-| 方向准确率 | ≥ `effective_min` | `compute_effective_min()`（`evaluator.py:697`） |
-| 统计检验 | DM（Newey-West HAC + HLN） | `cascade/statistical_tests.py::diebold_mariano_p` |
-| 多重比较 | BH-FDR（per-symbol）；K<4 降级 Bonferroni α=0.025 | 同上 |
+> ⚠️ **阈值定义见 [`evaluation.md`](./evaluation.md)（唯一权威）**，本文只讲「门在哪、怎么接线」。
+> 要改阈值：改 `evaluator.py` / `statistical_tests.py`，然后同步 `evaluation.md`——
+> **不要在其他文档复述数字**。
 
-`effective_min = max(0.50, min(0.52, baseline_dir_acc))`——**自适应门槛**：基线差时门槛跟着降，基线缺失时按 0.52 读。所以低于字面 0.52 仍过门是设计而非 bug。新 verdict 落盘 `baseline_dir_acc` / `effective_min` 两字段；**旧行缺这两字段时按「未知门槛」读，不要假设恒为 0.52**。
+| 门 | 实现 |
+|----|------|
+| 硬门（n / n_eff / effective_min） | `evaluator.gate()` / `compute_effective_min()`（`evaluator.py:697`） |
+| 统计检验（DM） | `cascade/statistical_tests.py::diebold_mariano_p` |
+| 多重比较（BH-FDR / Bonferroni） | 同上 `bh_fdr_promote()` |
+
+要点：**自适应门槛**（基线差时门槛自动降，低于字面值仍过门是设计）· **fail-closed**（NaN/inf 一律拒）· **旧行缺 `baseline_dir_acc` 时按「未知门槛」读**。
 
 **裁决三态**：`v2_pass` / `hard-gate-but-losing` / 变体级 `DEAD`（`materialize_known_verdicts`）。
 品种级 `SYMBOL_DEAD` / `HOLD`（`config/symbol_status.json`）是**另一套状态机**，别与变体级 DEAD 混名。

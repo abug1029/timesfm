@@ -92,13 +92,13 @@ FM_a 的 Praxist 任务包：把「找更好的协变量」这件事写成一份
 
 ### 门判据（v23）
 
-| 阈值 | 值 | 承载方 |
-|------|---|--------|
-| n | ≥ 350 | `evaluator.gate(min_n=350)` |
-| n_eff | ≥ 50（Bartlett） | `effective_sample_size()` |
-| dir_acc | ≥ `effective_min` = `max(0.50, min(0.52, baseline_dir_acc))` | `compute_effective_min()`（`evaluator.py:697`） |
-| 统计裁决 | DM（Newey-West HAC + HLN）+ BH-FDR（per-symbol；K<4 降级 Bonferroni α=0.025） | `cascade/statistical_tests.py` |
-| PF / EV / MaxDD / IC | **已退役出裁决链**，仅经济报表字段 | v23 spec |
+> ⚠️ **阈值唯一权威 = [`../docs/evaluation.md`](../docs/evaluation.md)**，本文不复述数字。
+
+| 门 | 承载方 |
+|----|--------|
+| 硬门（n / n_eff / effective_min） | `evaluator.gate()` · `compute_effective_min()`（`evaluator.py:697`） |
+| 统计裁决（DM + BH-FDR） | `cascade/statistical_tests.py` |
+| PF / EV / MaxDD / IC | **已退役出裁决链**，仅经济报表字段 |
 
 裁决三态：`v2_pass` / `hard-gate-but-losing` / 变体级 `DEAD`。
 品种级 `SYMBOL_DEAD` / `HOLD` 是另一套状态机，**不要与变体级 DEAD 混名**。
