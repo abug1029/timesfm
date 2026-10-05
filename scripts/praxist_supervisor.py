@@ -766,6 +766,28 @@ def load_goal(path):
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)["goal"]
 
+def _norm_search_policy(goal):
+    """spec 2026-10-05 §6.1：search_policy ∈ {off, shadow, enforce}，缺省 off。
+
+    - off：批准前后默认，收割行为与今日相同。
+    - shadow：树检查照常求值，只进拒绝计数与决策日志（plan 2.9）。
+    - enforce：§6.2 起的拒绝生效（plan 2.2）。
+    非法值 fail-closed 回 off 并 warning 留痕（打错键不得静默改变收割行为）。
+    精确匹配三个字面量、不做空白归一：带引号的病态值（如 " enforce"）必须
+    留痕走 off，不得无痕激活拒绝（审核 NIT-1，2026-10-06）。
+    goal 每 poll 热重载（main 循环 load_goal，2026-09-08 起与 budgets/
+    cadence 同一热重载设计），宿主改键下一轮 poll 生效、无需重启
+    （审核 MINOR-1 勘正：此前「需重启」的说法与事实相反）。
+    """
+    raw = (goal or {}).get("search_policy", "off")
+    if raw is None:
+        return "off"
+    if raw in ("off", "shadow", "enforce"):
+        return raw
+    logging.warning("search_policy 非法值 %r → 按 off 处理"
+                    "（合法值 off|shadow|enforce，精确匹配）", raw)
+    return "off"
+
 def _goal_target_symbols(goal):
     cad = (goal or {}).get("cadence") or {}
     raw = cad.get("target_symbols") or []
@@ -2341,7 +2363,8 @@ def _success_delta_gate(prop, symbol, cov, snapshot, root=None, cache=None):
 
 
 def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
-                      aligned_max_points=600, priority_symbols=None):
+                      aligned_max_points=600, priority_symbols=None,
+                      search_policy="off"):
     """收割 peer 机制化假设 (results/**/proposals/*.json) → aligned 队列行。
     与 harvest_survivors 平行但:
       - 不依赖诊断评估 (peer 不跑 eval)，验证证据来自慢环
@@ -2358,6 +2381,8 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     status_map = load_symbol_status()
     stats = {"seen": 0, "rejected": 0, "backlog": 0, "selected": 0,
              "reject_reasons": {},
+             # spec 2026-10-05 §6.1：档位随收割留档（off|shadow|enforce）
+             "search_policy": search_policy,
              # PR-B6 质量门计数（键名与 reject_reasons 一致，防止两套计数漂移）
              "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0,
              # T2 (2026-10-05): success 门分类计数（放行侧也计数，供观察口径是否过宽）
@@ -3248,7 +3273,8 @@ def _harvest_rows(goal):
         FM_ROOT, snap_now, dead, existing, pool,
         top_k=cad.get("survivors_per_cycle", 2),
         aligned_max_points=cad.get("aligned_max_points", 400),
-        priority_symbols=cad.get("priority_symbols"))
+        priority_symbols=cad.get("priority_symbols"),
+        search_policy=_norm_search_policy(goal))
     return rows, dead, existing, pstats
 
 def _maybe_harvest(st, goal, log):
