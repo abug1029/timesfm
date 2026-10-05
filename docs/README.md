@@ -19,6 +19,8 @@
 | **2026-10-03 三环范式审计（未提交）** | | |
 | [superpowers/specs/2026-10-03-peer-memory-loop-closure-spec.md](./superpowers/specs/2026-10-03-peer-memory-loop-closure-spec.md) | **Peer 记忆回路闭合**：死亡族名单 + 协议指纹回流给 peer（D2/D3 本轮）；拒收摘要（D1）与 `decision=abandon`（D4）待做。只改可见性，不改门判据 | 实施中 |
 | [superpowers/reports/2026-10-03-three-loop-autoresearch-paradigm-audit.md](./superpowers/reports/2026-10-03-three-loop-autoresearch-paradigm-audit.md) | 四维定位代码级核实。**顶部有勘误节**：P0 三项经 spec 裁定后在飞计划禁止，已作废——读它之前先读勘误 | 在用（含勘误） |
+| **2026-10-05 Peer 学习机制分析** | | |
+| [superpowers/reports/2026-10-05-peer-learning-gap-analysis.md](./superpowers/reports/2026-10-05-peer-learning-gap-analysis.md) | **Peer 学习断裂**：225 cycle 结果未回传，peer 每次提案 = 盲猜。Cross-run feedback channel 未实现 | 在用 |
 | **Praxist 三环合同** | | |
 | [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（提示词纪律以 2026-09-19 为准） | 在用 |
 | [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 | 在用 |
