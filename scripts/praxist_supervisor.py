@@ -2322,6 +2322,18 @@ def _success_delta_gate(prop, symbol, cov, snapshot, root=None, cache=None):
     delta = str((prop or {}).get("success_delta") or "").strip()
     if len(delta) >= SUCCESS_DELTA_MIN_CHARS:
         return None, "success_delta_ok"
+    # T2b: 拒收信息带先验分类与 run_mode（known_verdicts 图例口径）——
+    # 探索先验（gate 过但 fdr/p_value 缺）不得在日志里被封账为成功。
+    logging.warning(
+        "success_gate: %s_%s 复跑缺 success_delta (len=%d < %d) → 拒收 (no_success_delta)；"
+        "prior=%s class=%s run_mode=%s eval_end_ts=%s",
+        str(symbol or ""), str(cov or ""), len(delta), SUCCESS_DELTA_MIN_CHARS,
+        str(prior.get("variant_id") or ""),
+        ("v2-pass" if (prior.get("fdr_pass")
+                       and prior.get("p_value") is not None
+                       and prior.get("run_mode") == "confirmation")
+         else "hard-gate-but-losing"),
+        str(prior.get("run_mode") or "None"), prior_ts)
     return "no_success_delta", "no_success_delta"
 
 

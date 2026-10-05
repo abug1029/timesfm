@@ -112,15 +112,29 @@ def _harvest(root, **kw):
                                aligned_max_points=kw.get("max_points", 600))
 
 
-def test_gate_rejects_rerun_without_success_delta(tmproot):
-    """路径 1：同窗已成功组合，复跑不带 success_delta → 拒收并计数。"""
+def test_gate_rejects_rerun_without_success_delta(tmproot, caplog):
+    """路径 1：同窗已成功组合，复跑不带 success_delta → 拒收并计数。
+
+    拒收信息必须带先验分类（v2-pass / hard-gate-but-losing）与 run_mode：
+    探索先验（gate 过了但 fdr/p_value 缺、run_mode=exploration）在日志里
+    不得被封账为成功——按 known_verdicts 图例口径分类。
+    """
+    import logging as _logging
     prior = _sv("m_volatility_prior", "m", "vor", gate_pass=True,
-                eval_end_ts="2026-09-30 15:00:00")
+                eval_end_ts="2026-09-30 15:00:00",
+                extra={"run_mode": "exploration"})
     _make_run(tmproot, _prop())  # 无 success_delta
-    rows, stats = _harvest(tmproot, snap={"m_volatility_prior": prior})
+    with caplog.at_level(_logging.WARNING):
+        rows, stats = _harvest(tmproot, snap={"m_volatility_prior": prior})
     assert stats["selected"] == 0
     assert stats.get("reject_reasons", {}).get("no_success_delta") == 1
     assert stats.get("success_gate_states", {}).get("no_success_delta") == 1
+    warn = "\n".join(r.getMessage() for r in caplog.records
+                     if "no_success_delta" in r.getMessage())
+    assert "m_volatility_prior" in warn, "拒收信息须点名先验 variant_id"
+    assert "hard-gate-but-losing" in warn, "探索先验不得封账为 v2-pass"
+    assert "exploration" in warn, "拒收信息须带先验 run_mode"
+    assert "v2-pass" not in warn
 
 
 def test_gate_allows_when_no_prior_success_for_combo(tmproot):
