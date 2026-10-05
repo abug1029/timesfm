@@ -1996,6 +1996,8 @@ MIN_QUALITY_SCORE = 0.0        # score < 该值 → 拒绝 (0.0 = 仅拦截净�
 # T1 (2026-10-05): known_verdicts 注入通道行数预算（module 常量，供测试 monkeypatch）
 CROSS_MATRIX_MAX_ROWS = 40     # 品种×族矩阵最多列出的品种行数（超出截断注明）
 OLD_PRIORS_MAX_ROWS = 20       # 旧协议先验注记最多行数（超出截断注明）
+# T2 (2026-10-05): 已成功组合复跑的 success_delta 增量论证最少字数
+SUCCESS_DELTA_MIN_CHARS = 20
 # SECTOR_BLOCK_MIN_FAILED 已废弃: 改为 sector_map 定义的全部品种都失败才拦截
 # (见 _sector_filter_check 的 circuit-breaker 注释)
 COV_CROSS_FAIL_MIN = 3         # 该协变量在其他品种失败 >= N 次且从无过门 → 拦截
@@ -2204,6 +2206,125 @@ def _symbol_has_current_nocov_baseline(symbol, root):
     return status == "ok" and got == fp
 
 
+def _prior_success_row(snapshot, symbol, cov):
+    """snapshot 内该 (symbol, cov_override) 最新一条 ok+gate_pass=True 裁决。
+
+    T2 (2026-10-05)：与失败侧 (_has_prior_failure) 刻意不同口径——成功侧要求
+    **品种与协变量同时**命中（失败侧是「品种或协变量」）。理由：已过硬门的
+    组合复跑必须有增量论证；仅"品种有过成功"或"协变量在别处成功"不构成
+    挤占席位的重复提案。
+    """
+    best = None
+    for v in (snapshot or {}).values():
+        if not isinstance(v, dict):
+            continue
+        if v.get("status", "ok") != "ok" or not v.get("gate_pass"):
+            continue
+        if str(v.get("symbol") or "").lower() != str(symbol or "").lower():
+            continue
+        if str(v.get("cov_override") or "") != str(cov or ""):
+            continue
+        if best is None or _verdict_sort_key(v) >= _verdict_sort_key(best):
+            best = v
+    return best
+
+
+def _row_eval_end_ts(v, cache=None, root=None):
+    """裁决行的评估窗锚 eval_end_ts。
+
+    行字段优先（T2 起由 aligned_slow_loop 落章）；缺失时兜底查 checkpoint：
+    行内 checkpoint_path 字段 → root 相对 data/cache/aligned_checkpoints/<vid>.jsonl。
+    checkpoint 按行扫描，**末行胜出**（同 run 同锚；续跑多 run 取最新）。
+    找不到 → None（调用方 fail-open，不用墙钟猜）。
+    """
+    ts = v.get("eval_end_ts")
+    if isinstance(ts, str) and ts:
+        return ts
+    vid = str(v.get("variant_id") or "")
+    if not vid:
+        return None
+    cache = {} if cache is None else cache
+    row_ts = cache.setdefault("_row_ts", {})
+    if vid in row_ts:
+        return row_ts[vid]
+    ts_found = None
+    cands = []
+    cp = v.get("checkpoint_path")
+    if isinstance(cp, str) and cp:
+        cands.append(cp)
+    if root:
+        cands.append(os.path.join(str(root), "data", "cache",
+                                  "aligned_checkpoints", vid + ".jsonl"))
+    for path in cands:
+        try:
+            with open(path, encoding="utf-8") as f:
+                for ln in f:
+                    ln = ln.strip()
+                    if not ln:
+                        continue
+                    try:
+                        rec = json.loads(ln)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                    if isinstance(rec, dict):
+                        t = rec.get("eval_end_ts")
+                        if isinstance(t, str) and t:
+                            ts_found = t
+        except OSError:
+            continue
+        if ts_found is not None:
+            break
+    row_ts[vid] = ts_found
+    return ts_found
+
+
+def _current_window_anchor(snapshot, cache=None, root=None):
+    """当前评估窗锚（近似）：全部 ok 裁决行 eval_end_ts 的最大值。
+
+    存量行普遍缺 eval_end_ts 时（T2 上线前）锚可能为 None → 调用方
+    fail-open。不引入墙钟：没有可靠锚就不执法。
+    """
+    anchor = None
+    for v in (snapshot or {}).values():
+        if not isinstance(v, dict) or v.get("status", "ok") != "ok":
+            continue
+        ts = _row_eval_end_ts(v, cache, root)
+        if isinstance(ts, str) and ts and (anchor is None or ts > anchor):
+            anchor = ts
+    return anchor
+
+
+def _success_delta_gate(prop, symbol, cov, snapshot, root=None, cache=None):
+    """T2 (2026-10-05): 已成功组合的增量论证门。
+
+    同 (symbol, cov_override) 在当前评估窗口已有 ok+gate_pass=True 裁决时，
+    复跑提案必须用 success_delta (>=SUCCESS_DELTA_MIN_CHARS 字) 写清相对
+    上次成功的增量，否则拒收 no_success_delta。
+    逃逸阀（fail-open，不用墙钟）：评估窗已平移（prior_ts != anchor）或锚
+    不可得（行字段与 checkpoint 均缺失）时放行——窗口平移后旧成功不再是
+    当前窗证据（2026-10-04 审计：09-23→09-30 15:00 窗整体更换同理）。
+    返回 (reject_reason_or_None, state)；state 计入 stats["success_gate_states"]：
+    no_prior_success / window_moved / anchor_unavailable / success_delta_ok /
+    no_success_delta。
+    """
+    prior = _prior_success_row(snapshot, symbol, cov)
+    if prior is None:
+        return None, "no_prior_success"
+    cache = {} if cache is None else cache
+    if "anchor" not in cache:
+        cache["anchor"] = _current_window_anchor(snapshot, cache, root)
+    anchor = cache["anchor"]
+    prior_ts = _row_eval_end_ts(prior, cache, root)
+    if prior_ts is None or anchor is None:
+        return None, "anchor_unavailable"
+    if prior_ts != anchor:
+        return None, "window_moved"
+    delta = str((prop or {}).get("success_delta") or "").strip()
+    if len(delta) >= SUCCESS_DELTA_MIN_CHARS:
+        return None, "success_delta_ok"
+    return "no_success_delta", "no_success_delta"
+
+
 def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                       aligned_max_points=600, priority_symbols=None):
     """收割 peer 机制化假设 (results/**/proposals/*.json) → aligned 队列行。
@@ -2223,7 +2344,10 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     stats = {"seen": 0, "rejected": 0, "backlog": 0, "selected": 0,
              "reject_reasons": {},
              # PR-B6 质量门计数（键名与 reject_reasons 一致，防止两套计数漂移）
-             "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0}
+             "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0,
+             # T2 (2026-10-05): success 门分类计数（放行侧也计数，供观察口径是否过宽）
+             "success_gate_states": {}}
+    _sg_cache = {}  # T2: 单次 harvest 内复用评估窗锚与行级 eval_end_ts
     passing_ids = {v["variant_id"] for v in rl.pass_variants(snapshot or {})}
     archived = getattr(ev, "ARCHIVED_COVARIATES", {}) if ev else {}
     valid_covs = getattr(ev, "VALID_COVARIATES", None) if ev else None
@@ -2317,6 +2441,16 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             if quality_score < MIN_QUALITY_SCORE:
                 stats["quality_below_threshold"] += 1
                 _reject("quality_below_threshold"); continue
+
+            # ── T2 (2026-10-05) 已成功组合增量论证门（dedup+PR-B6 之后、
+            # prescreen 之前——只作用于此前会被选中的提案，既有 reject 归因
+            # 绝对不变）──
+            _sg_reason, _sg_state = _success_delta_gate(
+                p, symbol, cov, _snap, root, cache=_sg_cache)
+            stats["success_gate_states"][_sg_state] = \
+                stats["success_gate_states"].get(_sg_state, 0) + 1
+            if _sg_reason is not None:
+                _reject(_sg_reason); continue
 
             family = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or "other"
             repeat_counts = _cross_run_repeat_counts()

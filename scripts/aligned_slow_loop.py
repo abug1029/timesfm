@@ -306,6 +306,9 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
                               run_mode=run_mode)
             v["variant_id"] = row["variant_id"]
             v.setdefault("decided_at", _now())
+            # T2 (2026-10-05): 裁决落章评估窗锚 eval_end_ts——success 门锚定用。
+            # 探索行 = 锚的纯函数；确认未满时为 None（右边界跟数据末端）。
+            v["eval_end_ts"] = eval_end_ts or None
             # spec W5.3(4)：verdict 落 horizon_exogenous。
             # 用 row["cov_override"]（pool 键）而非 cov_keys（输出标签，ccl/oi 有别名）。
             _cov_type = row.get("cov_override")
