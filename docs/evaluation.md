@@ -1,7 +1,9 @@
 # 评估口径（唯一权威）
 
-> **本文是评估阈值与判定的唯一事实源。** 任何其他文档（含 spec / changelog / 审计报告 /
-> `AGENTS.md` / `CLAUDE.md` / `STATE.md`）**不得独立复述阈值数字**，只能链接本文。
+> **本文是评估阈值与判定的唯一事实源。** 其他**规范层文档**
+> （`AGENTS.md` / `CLAUDE.md` / `STATE.md` / `runtime_contract.md` / `system_design.md` / `praxist.md`）
+> **不得独立复述阈值数字**，只能链接本文。
+> `superpowers/` 下的历史 spec/changelog/报告（L2 证据层）可含原始数字作为历史快照。
 >
 > 上游设计论证：[superpowers/specs/2026-09-14-prediction-quality-redesign-design.md](./superpowers/specs/2026-09-14-prediction-quality-redesign-design.md)（v23）
 > 实现：[../task_FM/evaluations/fm_eval/evaluator.py](../task_FM/evaluations/fm_eval/evaluator.py)

@@ -139,7 +139,7 @@ cadence:
 | **abandoned / timeout 计入 K** | — | **防「结果不好就丢掉」式 p-hacking** |
 | 封账 | **一次性**跑 BH-FDR | 防止封账时选择性汇报 |
 
-**DEAD 家族判据**（`praxist_supervisor.py:1604` `_dead_families(snapshot, min_ok=4)`）：
+**DEAD 家族判据**（`praxist_supervisor.py:1752` `_dead_families(snapshot, min_ok=4)`）：
 只数 `dm_status ∈ {ok, set_mismatch_ok}` 的 ok 行；`n_ok ≥ 4` 且 `gate_pass == 0` 才算死亡。
 `insufficient_common` / `no_common_cutoff` / `set_mismatch_descriptive` 等**描述性 DM 一律不计数**——它们不代表「试过且失败」。
 
@@ -234,7 +234,7 @@ T7 追加：失败数 ≥ 板块 50% 但未全失败时打 WARN 预警（部分�
 
 ### Stage 3 三个新模块的接线状态
 
-`experiment_fingerprint` **已接线**：`ef.build_variant_id()` 在 `praxist_supervisor.py` 有 **3 个调用点**（373 / 1167 / 2146）。
+`experiment_fingerprint` **已接线**：`ef.build_variant_id()` 在 `praxist_supervisor.py` 有 **3 个调用点**（373 / 1167 / 2436）。
 另有 2339 行的 `ef.compute_experiment_fingerprint()`——**不同函数**，勿混淆。
 历史 `aligned_verdicts.jsonl` 混着两种 vid 格式——旧行 `{symbol}_{cov}`，新行 `{symbol}_{family}_{fp12}`。**读历史行别假设格式统一。**
 

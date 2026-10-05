@@ -34,9 +34,19 @@ source .venv/bin/activate
 |----|---------|-------|
 | `timesfm` | ≥ 3.0.0 | 时序基础模型（**仅慢环加载**） |
 | `torch` | ≥ 2.0 | **CPU 版**（本机无 GPU） |
-| `pandas` | ≥ 2.0 **且 < 3** | ⚠️ `cascade/` 用了 pandas 3 已移除的 `'H'` 频率别名 |
+| `pandas` | ≥ 2.0 | 见下方说明 |
 | `numpy` | **< 3** | 兼容性 |
 | `pyarrow` | — | parquet 缓存 |
+
+> ⚠️ **`requirements.txt` 的 pandas 注释已过期**（2026-10-05 核实）：注释称「必须 <3，
+> 因 `cascade/` 用了 pandas 3 已移除的 `'H'` 频率别名」，但——
+> ① `requirements.txt` 的**约束行并没有 `<3` 上界**（只有 `>=2.0`）；
+> ② 代码实际用的是**小写** `freq='h'`（`cascade/features.py`）与 `freq='1h'`
+> （`cascade/data_validator.py`），**没有 `'H'`**；
+> ③ 实测安装版本为 **pandas 3.0.5**。
+>
+> 即该约束**当前不成立**。若将来真要限制 `<3`，需先修正注释与约束行使其一致——
+> 不要仅凭这条过期注释就拒绝升级。
 
 **安装 torch（CPU）**：
 ```bash
@@ -107,8 +117,8 @@ python scripts/cascade_predict.py ss
 python scripts/copilot.py ss fu
 
 # 数据采集
-python scripts/collect_1h.py ss
-python scripts/data_management.py --1h --daily
+python scripts/data_management.py --1h          # 单品种（如 --1h ss）
+python scripts/data_management.py --1h --daily   # 全品种
 
 # 三环（生产监督环）
 scripts/start_supervisor.sh          # canonical launcher
@@ -157,4 +167,3 @@ python -m pytest tests/ -q
 | 本机**无 GPU** | TimesFM 只能 CPU 推理，慢环成本受限 |
 | 内存 ~7.7 GiB | TimesFM **仅慢环加载**，peer 零 TimesFM（方案 A） |
 | 并发受 `flock` 限制 | eval 同时最多 1–2 个 |
-| `pandas < 3` | 升 3 会破坏 `cascade/` 的 `'H'` 别名 |

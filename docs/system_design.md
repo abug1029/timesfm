@@ -312,8 +312,8 @@ SS 生产协变量是 `calendar_cyclical`。慢环过门的 `ss_vor` **没有**�
     │
     ├── 2. 慢环回测验证
     │   ├── 计算 DirAcc / MAPE / endpoint_mape / n_eff（Bartlett）
-    │   ├── gate_pass = n≥350 且 n_eff≥50 且 dir_acc≥effective_min（品种自适应 0.50~0.52，单侧不取 abs）
-    │   └── Supervisor 批次结算：DM 检验（Newey-West HAC + HLN）p 值 → BH-FDR（per-symbol，K<4 降级 Bonferroni α=0.025）
+    │   ├── gate_pass / 统计裁决 → **[evaluation.md](./evaluation.md)**（阈值唯一权威）
+    │   └── Supervisor 批次结算
     │
     └── 3. 固化到 SCHEMES：须人工，慢环不过这一步
 ```
@@ -548,8 +548,8 @@ def apply_neutral_override_v2(point_forecast, base_price, quantile_forecast,
 |------|------|------|
 | **dir_acc** | `mean(dir_ok)`（零变动点判 False，spec §3.5） | **主门控 + 主排序** |
 | **endpoint_mape** | 终点幅度误差 | 副门控（幅度约束） |
-| **n** | 有效评估点数 | 门控（≥350） |
-| **n_eff** | Bartlett 有效样本量 | 门控（≥50） |
+| **n** | 有效评估点数 | → [evaluation.md §2](./evaluation.md) |
+| **n_eff** | Bartlett 有效样本量 | → [evaluation.md §3](./evaluation.md) |
 | **p_value** | DM 检验单侧 p 值（Newey-West HAC + HLN） | Supervisor 批次结算 |
 | endpoint_bias_pct / path_corr / weighted_dir_acc / mae / mape / decay | 诊断 | 观察，不参与门控 |
 | PF / EV / MaxDD | 经济报表 | **仅经济报表字段，不参与 Praxist 裁决** |
@@ -558,12 +558,13 @@ PF/EV/MaxDD 的计算与经济报表口径仍见 `cascade/evaluation_metrics.py`
 
 ### 7.2 统计检验：DM + BH-FDR（v23）
 
+> **阈值定义 → [evaluation.md §4](./evaluation.md)**（唯一权威）。本节只讲**怎么算**，不重复数字。
+
 变体与 Baseline 面对完全相同的评估时间点，逐点命中差 `d_t = v_ok − b_ok` 构成配对样本。
 DM 检验用 Newey-West HAC（Bartlett 核，`q = horizon//step − 1`）校正 T+24 重叠窗口自相关，
 保留全量评估点（~588 点，不下采样）；HLN 有限样本校正后取单侧 p 值，由慢环逐变体写入
 verdict（`p_value`，`fdr_pass=null` 待结算）。Supervisor 按 `batch_id` 收集本批次全部变体，
-按品种分组执行 BH-FDR（q=0.10）；组内 K<4 时降级为固定 Bonferroni α=0.025。
-伪代码与数值示例见 spec §4.2。
+按品种分组执行 BH-FDR；小批量降级 Bonferroni。伪代码与数值示例见 spec §4.2。
 
 **`fdr_pass` 落盘口径（2026-10 起收紧）**：BH/Bonferroni 算术本身仍由
 `cascade/statistical_tests.bh_fdr_promote` 负责，但**能否落成 `fdr_pass=True` 由监督环侧过滤**：
@@ -574,16 +575,9 @@ verdict（`p_value`，`fdr_pass=null` 待结算）。Supervisor 按 `batch_id` �
 
 ### 7.3 硬门逻辑（v23）
 
-`gate_pass` **只判静态质量底线**（n、n_eff、dir_acc），不含任何经济指标：
+`gate_pass` **只判静态质量底线**（n、n_eff、dir_acc），不含任何经济指标。
 
-```python
-# task_FM/evaluations/fm_eval/evaluator.py (v23, 简化示意，以实际代码为准)
-def gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, baseline_dir_acc=None):
-    """静态硬门: n / n_eff / dir_acc（品种自适应，单侧不取 abs）"""
-    effective_min = max(0.50, min(min_dir_acc, baseline_dir_acc)) \
-        if baseline_dir_acc is not None else min_dir_acc
-    return n >= min_n and n_eff >= min_n_eff and dir_acc >= effective_min
-```
+> **阈值数字与公式 → [evaluation.md §2](./evaluation.md)**（唯一权威）。
 
 统计显著性由 Supervisor 批次结算的 BH-FDR 判定（`fdr_pass`，落盘口径见 §7.2）。
 
@@ -876,7 +870,7 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
 
 - **方案 A**：peer 只写机制化假设（不加载 TimesFM），慢环是唯一验证器
 - **面板**：`cohort_size=2`，`panel_topology:fm_two_peer`（exploit + falsifier）
-- **硬门**（v23）：n≥350 / n_eff≥50 / dir_acc≥adaptive + DM + BH-FDR
+- **硬门**（v23）：→ [evaluation.md](./evaluation.md) + DM + BH-FDR
 - **品种状态机**（`task_FM/config/symbol_status.json`）：ACTIVE → DEAD/HOLD；harvest 拒绝 DEAD/HOLD（该文件 2026-09-28 起已清空，当前无品种被过滤）
 - **Stage 3 契约**（2026-09-28/29）：horizon 填充 / 实验指纹 / 研究 family / 基线协议指纹重生，见 §11.4
 

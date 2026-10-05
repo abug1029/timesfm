@@ -91,12 +91,9 @@ Peer 第一件事：至少写 2 份假设到
 
 ### 慢环
 
-消费队列，跑 `monthly_backtest.py` 全量 walk-forward。硬门预注册在 `config/praxist_task.yaml`（v23 纯预测质量口径；裁决唯一权威 = `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`）：
+消费队列，跑 `monthly_backtest.py` 全量 walk-forward。**阈值 → [evaluation.md](./evaluation.md)**（唯一权威），本节只讲流程：
 
-- n ≥ 350
-- n_eff ≥ 50（Bartlett 有效样本量）
-- dir_acc ≥ `effective_min`（`max(0.50, min(0.52, baseline_dir_acc))`，基线缺失时 0.52；新 verdict 落库这两字段）
-- 统计显著性：DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol；K<4 时降级固定 Bonferroni α=0.025）
+- 硬门（n / n_eff / dir_acc）与统计裁决（DM + BH-FDR）由慢环逐变体写入 verdict
 - PF/EV/MaxDD/IC 退役出裁决链，仅作经济报表字段
 
 日线预测按 `(symbol, cutoff, 窗口, 模型指纹)` 缓存（日线模型不吃协变量）。队列 claim / inprogress / recover，kill 后零损失。**只有慢环能写** `task_FM/config/aligned_verdicts.jsonl`。伪造 verdict = 破坏预注册纪律。

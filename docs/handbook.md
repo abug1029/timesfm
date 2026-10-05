@@ -70,7 +70,8 @@ scripts/start_supervisor.sh
 
 | 任务 | 读 |
 |------|-----|
-| 启停 / 故障排查 | [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) · [runbook.md](./runbook.md) |
+| 启停 / 故障排查 | [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md)（三环专用） |
+| 数据运维 | [runbook.md](./runbook.md)（环境 / 采集 / 幽灵 K 线） |
 | 长任务操作规范 | [long-task-sop.md](./long-task-sop.md) |
 | 改运行产物 / 清理 | [run_artifacts.md](./run_artifacts.md) |
 | 改 task_FM 下的东西 | [../task_FM/AGENTS.md](../task_FM/AGENTS.md) |

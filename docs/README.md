@@ -60,11 +60,13 @@
 | [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（提示词纪律以 2026-09-19 为准） | 在用 |
 | [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 | 在用 |
 | [three_loop_restart_protocol.md](./three_loop_restart_protocol.md) | 重启清理协议：避免 peer 被历史状态残留误导 | 在用 |
+| [2026-09-30-dead-code-purge-spec.md](./2026-09-30-dead-code-purge-spec.md) | 死代码清理 Spec（v2 修订，已批准执行） | 在用 |
 | [loop-constraints.md](../loop-constraints.md) | 循环强制约束（唯一可写区 / 预注册纪律） | 在用 |
 | **日常运维** | | |
 | [runbook.md](./runbook.md) | 环境、采集、幽灵 K 线、单测、A2-P1 完整性工具、故障排查 | 在用 |
 | [long-task-sop.md](./long-task-sop.md) | 长任务 SOP（回测/慢环操作规范） | 在用 |
 | [host_environment_assessment.md](./host_environment_assessment.md) | 宿主评估（顶部有 2026-09-09 WSL 迁移事实表） | 在用 |
+| [2026-09-17-claude-dual-system-path-map.md](./2026-09-17-claude-dual-system-path-map.md) | Claude Code 双系统 PATH 关系图与排查手册（Windows 主机 + WSL 宿主） | 在用 |
 | [praxist_llm_env.md](./praxist_llm_env.md) | LLM 环境变量（Ark 主 / DashScope 备） | 在用 |
 | **产品与卡面** | | |
 | [copilot.md](./copilot.md) | 主观领航员用法与报告说明 | 在用 |

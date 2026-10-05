@@ -89,9 +89,9 @@
 | 格式 | 样例 | 来源 |
 |------|------|------|
 | 旧 `{symbol}_{cov}` | `cf_rsi6` | Stage 3 之前 |
-| 新 `{symbol}_{family}_{fp12}` | `lh_momentum_e5272a12ce30` | `ef.build_variant_id()` |
+| 新 `{symbol}_{family}_{fp12}` | `lh_momentum_e5272a12ce30` | `cascade/experiment_fingerprint.py::build_variant_id()`（supervisor 中别名为 `ef`） |
 
-**读历史行不要假设格式统一。** 生成方：`praxist_supervisor.py` 3 个调用点（373 / 1167 / 2146）。
+**读历史行不要假设格式统一。** 生成方：`praxist_supervisor.py` 3 个调用点（373 / 1167 / 2436）。
 
 ---
 
