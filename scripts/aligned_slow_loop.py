@@ -151,6 +151,36 @@ def _eval_end_ts_for_run(run_mode, anchor, n_completed, n_required):
     return anchor
 
 
+def _checkpoint_last_anchor(cp, fp_now):
+    """T2d (2026-10-05): checkpoint 末行当前协议锚（首跑裁决行兜底）。
+
+    异常面与部分读语义对齐监督环 _row_eval_end_ts (T2c)：行级 JSON 损伤
+    跳过；文件级 IO/解码异常 (OSError/ValueError) 视为文件结束——撕裂前
+    已解出的行保留（小文件=整文件弃读）；无可读当前协议锚 → None（行
+    fail-closed 不猜）。指纹门与 _load_checkpoint_state 同一：旧协议/
+    无指纹行不参与。
+    """
+    last = None
+    try:
+        with open(cp, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if (isinstance(rec, dict)
+                        and rec.get("protocol_fingerprint") == fp_now
+                        and isinstance(rec.get("eval_end_ts"), str)
+                        and rec["eval_end_ts"]):
+                    last = rec["eval_end_ts"]
+    except (OSError, ValueError):
+        pass
+    return last
+
+
 def _stamp_confirmation_verdict(verdict, row):
     """确认裁决落盘前写入队列上的预注册身份。n_confirm_actual 缺了才用 n。"""
     if not isinstance(verdict, dict):
@@ -309,6 +339,15 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
             # T2 (2026-10-05): 裁决落章评估窗锚 eval_end_ts——success 门锚定用。
             # 探索行 = 锚的纯函数；确认未满时为 None（右边界跟数据末端）。
             v["eval_end_ts"] = eval_end_ts or None
+            # T2d (2026-10-05): 首跑（锚还原为 None——无当前协议 checkpoint
+            # 历史）时，本轮回测已把解析出的窗口锚（数据末端）逐行落
+            # checkpoint（mb `_anchor`）。裁决行回读末行当前协议锚回填，
+            # 使行自含评估窗右边界（spec 6.6 条件 6 / 成功门不再依赖行外
+            # 兜底）。确认未满**有历史**（锚已还原、_eval_end_ts_for_run
+            # 压 None）不回填——右边界跟数据末端是确认窗口自身语义。
+            # checkpoint 撕裂照 T2c 文件级异常面弃读 → 保持 None（fail-closed）。
+            if v["eval_end_ts"] is None and anchor is None:
+                v["eval_end_ts"] = _checkpoint_last_anchor(cp, fp_now)
             # spec W5.3(4)：verdict 落 horizon_exogenous。
             # 用 row["cov_override"]（pool 键）而非 cov_keys（输出标签，ccl/oi 有别名）。
             _cov_type = row.get("cov_override")

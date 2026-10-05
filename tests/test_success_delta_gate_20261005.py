@@ -299,3 +299,29 @@ def test_gate_survives_non_utf8_checkpoint_fails_open(tmproot):
     rows2, stats2 = _harvest(root2, snap={"m_volatility_corrupt2": prior2})
     assert stats2["selected"] == 1
     assert stats2.get("success_gate_states", {}).get("anchor_unavailable") == 1
+
+
+def test_gate_window_judgment_on_first_run_row_post_t2d(tmproot):
+    """T2d 契约（plan P1）：首跑裁决行 eval_end_ts 经 checkpoint 兜底落章后，
+    首跑节点从「锚不可得放行」进入「可窗口判定」——设计语义补全（预期收紧）。
+
+    8a: T2d 前形态（首跑，行无字段且无 checkpoint 可兜底）→ fail-open 放行。
+    8b: T2d 后形态（同一行带回填锚，当前窗锚即该行）→ 同窗复跑缺
+    success_delta 拒收——首跑成功正式进入执法。
+    """
+    # 8a: 首跑行无锚可寻 → anchor_unavailable 放行（T2d 前形态，保持不变）
+    prior_a = _sv("m_volatility_firstrun_a", "m", "vor", gate_pass=True)
+    _make_run(tmproot, _prop())
+    rows, stats = _harvest(tmproot, snap={"m_volatility_firstrun_a": prior_a})
+    assert stats["selected"] == 1
+    assert stats.get("success_gate_states", {}).get("anchor_unavailable") == 1
+
+    # 8b: 同一行带 T2d 回填锚 → 窗口判定 → 拒收（首跑节点执法生效）
+    root2 = os.path.join(tmproot, "r_t2d")
+    prior_b = _sv("m_volatility_firstrun_b", "m", "vor", gate_pass=True,
+                  eval_end_ts="2026-09-30 15:00:00")
+    _make_run(root2, _prop())
+    rows2, stats2 = _harvest(root2, snap={"m_volatility_firstrun_b": prior_b})
+    assert stats2["selected"] == 0
+    assert stats2.get("reject_reasons", {}).get("no_success_delta") == 1
+    assert stats2.get("success_gate_states", {}).get("no_success_delta") == 1
