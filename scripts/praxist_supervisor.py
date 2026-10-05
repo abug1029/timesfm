@@ -1225,7 +1225,8 @@ def _protocol_section_line(fp):
 
 
 def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
-                               status_map=None, queue_ids=None, root=None):
+                               status_map=None, queue_ids=None, root=None,
+                               excluded_items=None):
     if status_map is None:
         status_map = load_symbol_status()
     if queue_ids is None:
@@ -1257,7 +1258,6 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
         _primary_fp = max(_proto_groups, key=lambda f: len(_proto_groups[f]))
     _items = sorted(_proto_groups.get(_primary_fp, items),
                     key=lambda v: str(v.get("symbol") or "").lower())
-    _other_proto_count = len(_proto_groups) - (1 if _primary_fp is not None else 0)
     # 按品种预计算主协议组 best dir_acc (排名字段只取主组).
     _best_by_sym = {}
     for v in _items:
@@ -1269,12 +1269,44 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
                 if _sym not in _best_by_sym or _da > _best_by_sym[_sym]:
                     _best_by_sym[_sym] = _da
 
+    # ── T1 (2026-10-05): 旧协议先验注记（仅上下文，不进主排名） ──
+    # excluded_items: 调用侧传入被 only_protocol 过滤掉的行（dict 或 list）。
+    # None 时从输入内非主协议组兜底推导——只认「有旧指纹」的行；
+    # fp=None 的 v1 legacy 行不进注记（无指纹不构成「旧协议」，也不是当前证据）。
+    if excluded_items is None:
+        _excl = []
+        for _fp, _grp in _proto_groups.items():
+            if _fp == _primary_fp or _fp is None:
+                continue
+            _excl.extend(_grp)
+    else:
+        _excl = (list(excluded_items.values())
+                 if isinstance(excluded_items, dict)
+                 else list(excluded_items))
+        # 安全网：fp == 主协议的行不得进注记区（调用侧混入时防重复计入）。
+        _excl = [v for v in _excl if isinstance(v, dict)
+                 and v.get("protocol_fingerprint") != _primary_fp]
+    _excl_fp_rows = [v for v in _excl
+                     if isinstance(v.get("protocol_fingerprint"), str)
+                     and v.get("protocol_fingerprint")]
+    _excl_fp_groups = sorted({v["protocol_fingerprint"] for v in _excl_fp_rows})
+    # 头部锚点：快照时间 + 主协议指纹 + 源 registry mtime（peer 引用证据时的出处）。
+    try:
+        _reg_mtime = datetime.fromtimestamp(
+            os.path.getmtime(REGISTRY)).isoformat()
+    except Exception:
+        _reg_mtime = "n/a"
+    _fp8 = (_primary_fp[:8]
+            if isinstance(_primary_fp, str) and _primary_fp else "none")
+    lines.append("generated_at=%s protocol_fp8=%s registry_mtime=%s"
+                 % (datetime.now().isoformat(), _fp8, _reg_mtime))
     # ## Symbol status (full GOAL_SYMBOLS_SET, never truncated)
     lines.append("## Symbol status")
     lines.append(_protocol_section_line(_primary_fp))
     lines.append(
-        "按协议指纹分组排名；另有 %d 个协议组的 verdict 未进主排名。"
-        % _other_proto_count)
+        "按协议指纹分组排名；另有 %d 个协议组的 %d 条 verdict 未进主排名"
+        "（见 Old-protocol priors，仅上下文）。"
+        % (len(_excl_fp_groups), len(_excl_fp_rows)))
     for sym in sorted(GOAL_SYMBOLS_SET):
         n_ok = 0
         n_pass = 0
@@ -1313,6 +1345,8 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
         clue_lines.insert(1, _protocol_section_line(_primary_fp))
     lines.extend(clue_lines)
     lines.extend(_dead_family_lines(items, _primary_fp))
+    lines.extend(_cross_matrix_lines(_items, _primary_fp))
+    lines.extend(_old_protocol_prior_lines(_excl_fp_rows))
 
     # ## Do not re-propose; source priority: verdict > queue > proposed
     lines.append("## Do not re-propose (variant_id)")
@@ -1435,7 +1469,9 @@ def _effective_clue_lines(items):
     passing.sort(key=lambda x: (-x[1], x[0]))
     if passing:
         for fam, n in passing:
-            lines.append("- %s: %d gate_pass" % (fam, n))
+            n_ok = fam_ok.get(fam, 0)
+            lines.append("- %s: %d/%d gate_pass%s"
+                         % (fam, n, n_ok, " low-n" if n_ok < 10 else ""))
     else:
         lines.append("- (none yet)")
     lines.append("### Near-miss (0.49 <= dir_acc < effective_min)")
@@ -1452,9 +1488,121 @@ def _effective_clue_lines(items):
     weak.sort()
     if weak:
         for fam in weak:
-            lines.append("- %s: %d ok, 0 pass" % (fam, fam_ok[fam]))
+            n_ok = fam_ok[fam]
+            lines.append("- %s: 0/%d gate_pass%s"
+                         % (fam, n_ok, " low-n" if n_ok < 10 else ""))
     else:
         lines.append("- (none)")
+    lines.append("")
+    return lines
+
+
+def _cross_matrix_lines(items, primary_fp, max_rows=None):
+    """品种×族交叉矩阵（pass/n，仅当前协议主组）— T1 2026-10-05。
+
+    只列有 ok 裁决的品种；每格 `fam p/n`，n<10 追加 low-n（不出现裸比率）。
+    品种行数超出预算截断并注明。
+    """
+    counts = {}
+    for v in items:
+        if not isinstance(v, dict) or v.get("status", "ok") != "ok":
+            continue
+        sym = str(v.get("symbol") or "").lower()
+        fam = _verdict_family(v)
+        if not sym or not fam:
+            continue
+        p, n = counts.get((sym, fam), (0, 0))
+        counts[(sym, fam)] = (p + (1 if v.get("gate_pass") else 0), n + 1)
+    lines = ["## Symbol x family (pass/n, current protocol)",
+             _protocol_section_line(primary_fp)]
+    if not counts:
+        lines.append("- (none)")
+        lines.append("")
+        return lines
+    if max_rows is None:
+        max_rows = CROSS_MATRIX_MAX_ROWS
+    try:
+        max_rows = int(max_rows)
+    except (TypeError, ValueError):
+        max_rows = 0
+    syms = sorted({s for (s, _f) in counts})
+    shown = syms[:max(0, max_rows)]
+    for sym in shown:
+        fams = sorted(f for (s, f) in counts if s == sym)
+        cells = []
+        for fam in fams:
+            p, n = counts[(sym, fam)]
+            cell = "%s %d/%d" % (fam, p, n)
+            if n < 10:
+                cell += " low-n"
+            cells.append(cell)
+        lines.append("- %s: %s" % (sym, ", ".join(cells)))
+    if len(syms) > len(shown):
+        lines.append("cross_matrix_truncated=%d" % (len(syms) - len(shown)))
+    lines.append("")
+    return lines
+
+
+def _prior_class(v):
+    """旧协议先验的展示优先级：confirmation > gate_pass > 其余。"""
+    if str(v.get("run_mode") or "") == "confirmation":
+        return 0
+    if v.get("gate_pass"):
+        return 1
+    return 2
+
+
+def _old_protocol_prior_lines(rows, max_rows=None):
+    """旧协议先验注记 — T1 2026-10-05。仅上下文，不构成当前证据，不进主排名。
+
+    每 (symbol, cov_override) 取最优行（confirmation > gate_pass > 其余，
+    同级取 decided_at 最新）；行数超出预算截断并注明。
+    """
+    if max_rows is None:
+        max_rows = OLD_PRIORS_MAX_ROWS
+    try:
+        max_rows = int(max_rows)
+    except (TypeError, ValueError):
+        max_rows = 0
+    lines = ["## Old-protocol priors (context only, NOT current evidence)",
+             "旧协议 = protocol_fingerprint 不同的历史裁决；仅上下文，不构成当前证据。"]
+    best = {}
+    for v in rows:
+        if not isinstance(v, dict):
+            continue
+        fp = v.get("protocol_fingerprint")
+        if not (isinstance(fp, str) and fp):
+            continue
+        key = (str(v.get("symbol") or "").lower(),
+               str(v.get("cov_override") or ""))
+        cur = best.get(key)
+        if (cur is None or _prior_class(v) < _prior_class(cur)
+                or (_prior_class(v) == _prior_class(cur)
+                    and str(v.get("decided_at") or "")
+                    > str(cur.get("decided_at") or ""))):
+            best[key] = v
+    if not best:
+        lines.append("- (none)")
+        lines.append("")
+        return lines
+    ordered = sorted(best.values(),
+                     key=lambda v: str(v.get("decided_at") or ""),
+                     reverse=True)
+    ordered.sort(key=_prior_class)  # 稳定排序：类内保持 decided_at 降序
+    shown = ordered[:max(0, max_rows)]
+    for v in shown:
+        fp = v.get("protocol_fingerprint")
+        da = _finite_dir_acc(v)
+        lines.append(
+            "- [%s] %s: symbol=%s cov=%s decided_at=%s gate_pass=%s "
+            "dir_acc=%s — 仅上下文，不构成当前证据"
+            % (fp[:12], v.get("variant_id"),
+               str(v.get("symbol") or "").lower(),
+               v.get("cov_override"), v.get("decided_at") or "n/a",
+               bool(v.get("gate_pass")),
+               ("%.3f" % da) if da is not None else "n/a"))
+    if len(ordered) > len(shown):
+        lines.append("old_priors_truncated=%d" % (len(ordered) - len(shown)))
     lines.append("")
     return lines
 
@@ -1845,6 +1993,9 @@ def _append_backlog(prop, src_path):
 # decided_at / cov_override / symbol)，不引入不可得字段。
 
 MIN_QUALITY_SCORE = 0.0        # score < 该值 → 拒绝 (0.0 = 仅拦截净负分提案)
+# T1 (2026-10-05): known_verdicts 注入通道行数预算（module 常量，供测试 monkeypatch）
+CROSS_MATRIX_MAX_ROWS = 40     # 品种×族矩阵最多列出的品种行数（超出截断注明）
+OLD_PRIORS_MAX_ROWS = 20       # 旧协议先验注记最多行数（超出截断注明）
 # SECTOR_BLOCK_MIN_FAILED 已废弃: 改为 sector_map 定义的全部品种都失败才拦截
 # (见 _sector_filter_check 的 circuit-breaker 注释)
 COV_CROSS_FAIL_MIN = 3         # 该协变量在其他品种失败 >= N 次且从无过门 → 拦截
@@ -3326,11 +3477,17 @@ def _maybe_finish_slow(goal, log):
             print("[INFO] 物化证据按 protocol 过滤: active=%d/%d fp=%s… 排除=%s"
                   % (len(snap), len(_full), _cur_fp[:16],
                      " ".join("%s:%d" % (k, v) for k, v in sorted(_hist.items()))))
+    # T1 (2026-10-05): 被过滤的旧协议行作为「仅上下文」注记传入，不再静默丢弃。
+    # 指纹不可得（fail-open 未过滤）时传 None，由 materialize 走输入内兜底推导。
+    _excl = ({vid: v for vid, v in _full.items()
+              if v.get("protocol_fingerprint") != _cur_fp}
+             if _cur_fp is not None else None)
     materialize_known_verdicts(
         snap, VERDICTS_INC,
         status_map=load_symbol_status(),
         queue_ids=rl.in_flight_ids(QUEUE, INPROGRESS),
         proposed_ids=collect_proposed_variant_ids(FM_ROOT),
+        excluded_items=_excl,
     )
     materialize_covariate_menu(load_covariate_pool(), MENU_INC)
     gate_ok, _ = quota_gate(goal)
@@ -3402,12 +3559,25 @@ def _main_locked(args):
             _mark_stop_emitted()
             return 0
 
+        # T1 (2026-10-05): 主循环物化同样注记旧协议行。snap["variants"] 已按
+        # 当前协议过滤——从其唯一指纹反查全量 registry 求差（不重算指纹）；
+        # 指纹不可得或混合时留空，由 materialize 走输入内兜底推导。
+        _mb_kwargs = {}
+        _fps_mb = {v.get("protocol_fingerprint")
+                   for v in snap["variants"].values()
+                   if isinstance(v, dict)}
+        if len(_fps_mb) == 1 and None not in _fps_mb:
+            _only_fp_mb = next(iter(_fps_mb))
+            _full_mb = rl.load_snapshot(REGISTRY)
+            _mb_kwargs["excluded_items"] = {
+                vid: v for vid, v in _full_mb.items()
+                if v.get("protocol_fingerprint") != _only_fp_mb}
         materialize_known_verdicts(
             snap["variants"], VERDICTS_INC,
             status_map=load_symbol_status(),
             queue_ids=rl.in_flight_ids(QUEUE, INPROGRESS),
             proposed_ids=collect_proposed_variant_ids(FM_ROOT),
-        )
+            **_mb_kwargs)
         materialize_covariate_menu(load_covariate_pool(), MENU_INC)
         if ok:
             rec = _log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")

@@ -1475,8 +1475,8 @@ def test_materialize_known_verdicts_primary_fp_ranking_guard(tmp_path):
     assert "best=0.600" in m_line, (
         "_primary_fp 守卫缺失: best 应只取主协议组 (fp_AAA, 0.600), "
         "但实际行为跨协议比较了 fp_BBB (0.900). 行: %s" % m_line)
-    # 次协议组数量标注可见.
-    assert "另有 1 个协议组的 verdict 未进主排名" in text
+    # 次协议组数量与行数标注可见（T1 2026-10-05：计数行带行数）.
+    assert "另有 1 个协议组的 1 条 verdict 未进主排名" in text
 
 
 # ──────────────────────────────────────────────────────────────
