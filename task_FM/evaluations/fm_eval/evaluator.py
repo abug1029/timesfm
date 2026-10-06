@@ -26,6 +26,7 @@ try:
         detection_threshold_vs_random, detection_threshold_vs_baseline, n_required,
         pair_dir_ok_series, diebold_mariano_p,
         pair_dir_ok_series_with_diagnostics,
+        paired_delta_se, shrink_delta_post,
     )
     from cov_family import resolve_cov_family
 except ImportError as e:
@@ -34,6 +35,8 @@ except ImportError as e:
     diebold_mariano_p = None
     pair_dir_ok_series_with_diagnostics = None
     resolve_cov_family = None
+    paired_delta_se = None
+    shrink_delta_post = None
 
 # §1.4 双运行模式：导入 RUN_LABEL_EXPLORATION
 sys.path.insert(0, FM_ROOT)
@@ -511,6 +514,27 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         except Exception as e:
             print(f"[WARN] resolve_cov_family failed: {e}", file=sys.stderr)
     s.pop("point_dir_ok_list", None)
+    # ── 2.5 (spec 2026-10-05 §5/§6.3): 缩水增量 δ_post 与 se 落账 ──
+    # d_t = 变体对该变体的配对差序列（v_series − b_series，与 DM 同一家）；
+    # se = sqrt(compute_hac_se(d_t)/T)。se 不可算（无配对序列 / T<2 /
+    # 长程方差非有限正）→ se 与 delta_post_shrunk 均落 None，不参与 6.6 条件 1
+    # 的树内比较与 6.5 条件 3 的上界比较。
+    # 口径说明：生产诊断的 missingness_admissible 保守默认 False，dm_status
+    # 落 set_mismatch_descriptive（实测 169/376）；se 是配对差序列的统计属性，
+    # 与 missingness 可采纳性正交，故按 §5 由序列本身判定可算性，不额外用
+    # dm_status ∈ {ok, set_mismatch_ok} 收窄——否则生产恒 None，2.4 dominated
+    # 与 2.7 晋升永久休眠。协议不匹配/无共同 cutoff 时序列为空 → None。
+    _d_t = None
+    _vs = dm_diag.get("variant_series")
+    _bs = dm_diag.get("baseline_series")
+    if _vs and _bs and len(_vs) == len(_bs):
+        _d_t = [a - b for a, b in zip(_vs, _bs)]
+    _se = (paired_delta_se(_d_t)
+           if (paired_delta_se is not None and _d_t is not None) else None)
+    _delta_post_shrunk = None
+    if _se is not None and baseline_dir_acc is not None and shrink_delta_post is not None:
+        _delta_post_shrunk = shrink_delta_post(
+            m["dir_acc"] - baseline_dir_acc, _se)
     effective_min = compute_effective_min(0.52, baseline_dir_acc)
     out = {
         "schema": "fm.aligned_verdict.v2",
@@ -541,6 +565,9 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         "gate_pass": gate_pass,
         "baseline_dir_acc": baseline_dir_acc,
         "effective_min": effective_min,
+        # 2.5 (spec 2026-10-05 §6.3): 缩水增量与配对差标准误。se 不可算时均 None。
+        "se": _se,
+        "delta_post_shrunk": _delta_post_shrunk,
         "p_value": p_value,
         "fdr_pass": None,
         "migrated_pass": None,

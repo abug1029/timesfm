@@ -616,3 +616,76 @@ def n_required(
 
     n = var_d * vif * (z_alpha + z_beta) ** 2 / delta ** 2
     return int(np.ceil(n))
+
+
+# ── 正期望协变量搜索（spec 2026-10-05 §5/§6.3）─────────────────────
+# τ=0.04 写死（§5/§8）：打开开关前定值，不用本族裁决估计，打开后不得改。
+SHRINK_TAU_SD = 0.04
+
+
+def paired_delta_se(d_t) -> Optional[float]:
+    """配对差序列的标准误（spec 2026-10-05 §5）。
+
+    se = sqrt(compute_hac_se(d_t) / T)，与 DM 同一家（同一 HAC 实现）。
+    compute_hac_se 返回长程**方差**，此处再除以 T 开方得**均值**标准误。
+
+    T < 2、序列含非有限值、或长程方差非有限正数 → None（§5 fail-closed，
+    晋升与停止都失败关闭，不换一套标准误）。
+    """
+    if d_t is None:
+        return None
+    arr = np.asarray(d_t, dtype=float).ravel()
+    T = int(arr.size)
+    if T < 2:
+        return None
+    if not np.all(np.isfinite(arr)):
+        return None
+    var_lr = compute_hac_se(arr)
+    if not np.isfinite(var_lr) or var_lr <= 0:
+        return None
+    return float(np.sqrt(var_lr / T))
+
+
+def shrink_delta_post(delta, se, tau_sd: float = SHRINK_TAU_SD) -> Optional[float]:
+    """缩水增量 δ_post（spec 2026-10-05 §6.3）。
+
+    δ_post = δ × τ² / (τ² + se²)，τ=0.04（τ²=0.0016）。与 δ 同号、绝对值更小；
+    不估计 τ。se 不可算（None / 非有限）或 δ 不可算 → None。
+    """
+    if delta is None or se is None:
+        return None
+    delta = float(delta)
+    se = float(se)
+    if not (np.isfinite(delta) and np.isfinite(se)):
+        return None
+    tau2 = float(tau_sd) ** 2
+    return delta * tau2 / (tau2 + se * se)
+
+
+def n_required_via_long_run(d_t, delta_post) -> Optional[int]:
+    """功效规划**途径 B**（spec 2026-10-05 §6.3）。
+
+    n_required(var_d=compute_hac_se(d_t), vif=1, z_alpha=1.645, z_beta=0.842,
+               delta=δ_post)
+
+    - var_d 用长程方差**本身**（compute_hac_se 返回值），**不**再乘规划 VIF；
+      vif 恒 1（长程方差已含自相关）。T10：vif 与长程方差不同时进入同一次
+      n_required —— 本函数只走 vif=1 单路径。
+    - δ_post <= 0（或 None/非有限）→ 直接返回 None，不调用 n_required（不晋升）。
+    - d_t 不可用（T<2/非有限）或长程方差非有限正 → None。
+    """
+    if delta_post is None:
+        return None
+    delta_post = float(delta_post)
+    if not np.isfinite(delta_post) or delta_post <= 0:
+        return None
+    if d_t is None:
+        return None
+    arr = np.asarray(d_t, dtype=float).ravel()
+    if arr.size < 2 or not np.all(np.isfinite(arr)):
+        return None
+    var_lr = compute_hac_se(arr)
+    if not np.isfinite(var_lr) or var_lr <= 0:
+        return None
+    return n_required(var_d=var_lr, vif=1.0, z_alpha=1.645, z_beta=0.842,
+                      delta=delta_post)

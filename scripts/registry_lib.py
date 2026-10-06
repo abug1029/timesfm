@@ -42,6 +42,9 @@ VERDICT_FIELDS_V2 = {
     "family_key", "family_status", "p_value_family_adjusted", "family_sealed_at",
     # PR-C6: horizon 填充契约（spec W5.2/W5.3）
     "horizon_known", "horizon_fill", "horizon_exogenous",
+    # 正期望协变量搜索 2.5（spec 2026-10-05 §5/§6.3）：配对差标准误 +
+    # 缩水增量。均为新增可选字段（同时登记 _NULLABLE），历史裁决没有。
+    "se", "delta_post_shrunk",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
@@ -68,6 +71,8 @@ VERDICT_FIELDS_V2_NULLABLE = {
     "family_key", "family_status", "p_value_family_adjusted", "family_sealed_at",
     # PR-C6: horizon 契约字段，历史裁决一律没有
     "horizon_known", "horizon_fill", "horizon_exogenous",
+    # 正期望协变量搜索 2.5：新增可选统计字段，历史裁决没有
+    "se", "delta_post_shrunk",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",
