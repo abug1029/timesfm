@@ -140,17 +140,16 @@ def test_off_keeps_legacy_proposal_rules(tmproot):
         assert not reason.startswith("search_"), stats["reject_reasons"]
 
 
-def test_21_plumbing_is_inert_for_shadow_and_enforce(tmproot):
-    """2.1 只做开关管道：形参已通、行为未接（2.2/2.9 接管后本断言由专项测试取代）。"""
+def test_21_plumbing_is_inert_for_shadow(tmproot):
+    """2.1 只做开关管道：形参已通、行为未接。enforce 的拒绝语义自 2.2 起由
+    test_search_tree_admission_20261006.py 接管（旧式提案 → search_role_missing，
+    不再断言惰性）；shadow 的「本会拒绝」计数 2.9 接线，届时同样由专项测试取代。"""
     _make_run(tmproot, _prop())
     rows_off, stats_off = _harvest(tmproot, search_policy="off")
     rows_sh, stats_sh = _harvest(tmproot, search_policy="shadow")
-    rows_en, stats_en = _harvest(tmproot, search_policy="enforce")
-    assert stats_off["selected"] == stats_sh["selected"] == stats_en["selected"] == 1
+    assert stats_off["selected"] == stats_sh["selected"] == 1
     assert [r["variant_id"] for r in rows_sh] == [r["variant_id"] for r in rows_off]
-    assert [r["variant_id"] for r in rows_en] == [r["variant_id"] for r in rows_off]
     assert stats_sh["search_policy"] == "shadow"
-    assert stats_en["search_policy"] == "enforce"
 
 
 # ── 生产配置落点 ─────────────────────────────────────────────

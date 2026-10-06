@@ -12,6 +12,7 @@ import registry_lib as rl
 from goal_dsl import evaluate_goal
 from cascade.cov_family import ALLOWED_FAMILIES, resolve_cov_family
 from cascade import experiment_fingerprint as ef
+import search_trees as st
 try:
     from cascade.statistical_tests import bh_fdr_promote
 except ImportError:
@@ -71,6 +72,8 @@ def _praxist_bin() -> str:
 QUEUE = os.path.join(FM_ROOT, "data", "cache", "aligned_pending.jsonl")
 INPROGRESS = os.path.join(FM_ROOT, "data", "cache", "aligned_pending.inprogress.jsonl")
 REGISTRY = os.path.join(FM_ROOT, "task_FM", "config", "aligned_verdicts.jsonl")
+# P2.2 (spec 2026-10-05 §6.7): 搜索树事件账（append-only；写入侧 2.3 落地）
+SEARCH_COMMITMENTS_PATH = os.path.join(FM_ROOT, "task_FM", "config", "search_commitments.jsonl")
 STATE_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_state.json")
 LOCK_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor.lock")
 VERDICTS_INC = os.path.join(FM_ROOT, "task_FM", "known_verdicts.inc.md")
@@ -2392,6 +2395,12 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     archived = getattr(ev, "ARCHIVED_COVARIATES", {}) if ev else {}
     valid_covs = getattr(ev, "VALID_COVARIATES", None) if ev else None
     allowed_syms = getattr(ev, "ALLOWED_SYMBOLS", None) if ev else None
+    # ── P2.2 (spec 2026-10-05 §6.2) 搜索树资格门：enforce 档才构造。树索引与
+    # 扩展树仲裁在收割开始时一次性装载（root_round = 无未停止树）。守卫活态：
+    # guard-pass 即建树/占座（先处理的 root 先建树；后到的同角色合法提案按
+    # 收割处理顺序拒绝）。shadow 档 2.9 前不构造（行为与 off 相同）。──
+    search_guard = (st.SearchGuard.load(SEARCH_COMMITMENTS_PATH, snapshot or {})
+                    if search_policy == "enforce" else None)
 
     def _reject(reason):
         stats["rejected"] += 1
@@ -2431,6 +2440,17 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             mechanism = str(p.get("mechanism") or "").strip()
             if not symbol or not cov:
                 _reject("missing_symbol_or_cov"); continue
+            # ── P2.2 (spec §6.2) 树资格检查钉在管道最前（先于池/机制长度/族
+            # 死亡/去重/质量门/成功门）。族未解析时跳过守卫，归因仍走下方既有
+            # family_unresolved（树拒绝码不覆盖非树归因）。──
+            search_info = None
+            if search_guard is not None:
+                _fam = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or ""
+                if _fam:
+                    _sr, search_info = search_guard.check(
+                        p, symbol, _fam, cov, os.path.relpath(sp, root))
+                    if _sr is not None:
+                        _reject(_sr); continue
             if allowed_syms is not None and symbol not in allowed_syms:
                 _reject("symbol_not_allowed"); continue
             if cov in archived:
@@ -2511,7 +2531,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                     tier = 1
             else:
                 tier = 0
-            candidates.append({
+            _cand = {
                 "variant_id": vid, "symbol": symbol, "cov_override": cov,
                 "max_points": int(aligned_max_points), "stage": "aligned",
                 "checkpoint_path": "", "enqueued_at": _now_iso(),
@@ -2519,7 +2539,12 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 # PR-B6 质量门留痕 (队列行，供宿主审查门是否过严)
                 "quality_score": round(quality_score, 4), "sector": sector,
                 "_family": family, "_score": score, "_tier": tier,
-                "_proposal_path": sp})
+                "_proposal_path": sp}
+            if search_info is not None:
+                # P2.2 (spec §6.2): enforce 档队列行携带树三字段（2.3 落账依据）；
+                # off/shadow 不带（S1：off 下行形状与今日相同）
+                _cand.update(search_info)
+            candidates.append(_cand)
             # ── TypeSafe 预筛触发 (fire-and-forget, 不阻塞 harvest) ──
             _prescreen_async(p, sp, symbol)
 
