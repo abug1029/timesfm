@@ -62,7 +62,7 @@ metrics/notes；如需在 mechanism 叙述中提及旧结果，只能带
 6. **ACTIVE 品种优先**。SYMBOL_DEAD / HOLD 品种不要提案（会被 harvest 拒绝）。
 7. **过门/近门族迁品种优先**：Effective clues 里的 Passing families 迁到另一个 ACTIVE 品种，优于再挖一个没测过的族。
 8. **failure_delta**：若该 symbol 或该 cov 已有 `gate_pass=False` 的 ok verdict，必须填写 ≥20 字，点名失败 `variant_id` 并说明这次为何不同。没有增量的照抄会被拒收 (`no_failure_delta`)。
-9. **success_delta**：若本 symbol 与本 cov 的**组合**已有 `gate_pass=True` 的 ok verdict 且评估窗口未平移，复跑必须填写 ≥20 字 `success_delta`，写清相对上次成功的增量（口径/机制/样本变化）。窗口已平移或锚不可得时放行。缺 `success_delta` 的复跑会被拒收 (`no_success_delta`)。
+9. **success_delta**：若本 symbol 与本 cov 的**组合**已有 `gate_pass=True` 的 ok verdict 且评估窗口未平移，复跑必须填写 ≥20 字 `success_delta`，写清相对上次成功的增量（口径/机制/样本变化）。窗口已平移或锚不可得时放行。缺 `success_delta` 的复跑会被拒收 (`no_success_delta`)。当前窗口被锁的组合见下文 Locked this window；该名单为空时不要为了过门去补 success_delta。
 
 ## Covariate pool (your valid menu, with mechanisms)
 {% include 'covariate_menu.inc.md' ignore missing %}

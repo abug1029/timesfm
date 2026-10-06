@@ -20,10 +20,14 @@
    含 checkpoint 兜底两分支（行 checkpoint_path 字段 / root 相对路径末行胜出）
 5. success_delta <20 字拒、>=20 字过
 6. 复测豁免是结构性的：_maybe_enqueue_retests 直接入队，不经过 harvest_proposals
+数据冻结旁路 data_stale（上海日历年龄 > STALE_DATA_DAYS）见
+tests/test_success_gate_stale_20261006.py。本文件的同窗用例把 kline 钉在「今天」，
+避免活库停在旧日期时把拒收断言翻成放行。
 """
 import json
 import os
 import sys
+from datetime import date
 
 import pytest
 
@@ -101,6 +105,8 @@ def tmproot(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
     monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
     monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(S, "_today_shanghai", lambda: date(2099, 1, 1))
+    monkeypatch.setattr(S, "_kline_1h_max_dt", lambda symbol: "2099-01-01 14:00:00")
     return str(tmp_path)
 
 

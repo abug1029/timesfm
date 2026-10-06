@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+from datetime import date
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -217,3 +218,58 @@ def test_idempotent_rewrite_except_generated_at(tmp_path):
     norm = lambda t: [ln for ln in t.splitlines()
                       if not ln.startswith("generated_at=")]
     assert norm(t1) == norm(t2), "除 generated_at 外输出必须幂等"
+
+
+def test_locked_section_lists_same_window_combo(tmp_path, monkeypatch):
+    monkeypatch.setattr(sup, "_today_shanghai", lambda: date(2026, 10, 8))
+    monkeypatch.setattr(sup, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
+    row = _v("rb_basis_1", "rb", "basis_momentum", "basis", gate_pass=True)
+    row["eval_end_ts"] = "2026-09-30 15:00:00"
+    text = _write(tmp_path, {"rb_basis_1": row})
+    sec = text.split("## Locked this window", 1)[1].split("\n## ", 1)[0]
+    assert "rb cov=basis_momentum prior=rb_basis_1 class=hard-gate-but-losing eval_end_ts=2026-09-30 15:00:00" in sec
+    assert text.index("## Locked this window") < text.index("## Do not re-propose")
+
+
+def test_locked_section_empty_when_data_stale(tmp_path, monkeypatch):
+    monkeypatch.setattr(sup, "_today_shanghai", lambda: date(2026, 10, 6))
+    monkeypatch.setattr(sup, "_kline_1h_max_dt", lambda symbol: "2026-09-30 14:00:00")
+    row = _v("rb_basis_1", "rb", "basis_momentum", "basis", gate_pass=True)
+    row["eval_end_ts"] = "2026-09-30 15:00:00"
+    text = _write(tmp_path, {"rb_basis_1": row})
+    sec = text.split("## Locked this window", 1)[1].split("\n## ", 1)[0]
+    assert "- (none)" in sec
+    assert "basis_momentum" not in sec
+
+
+def test_locked_section_uses_checkpoint_when_row_has_no_anchor(tmp_path, monkeypatch):
+    monkeypatch.setattr(sup, "_today_shanghai", lambda: date(2026, 10, 8))
+    monkeypatch.setattr(sup, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
+    row = _v("rb_basis_1", "rb", "basis_momentum", "basis", gate_pass=True,
+             run_mode="confirmation")
+    row["fdr_pass"] = True
+    row["p_value"] = 0.01
+    cp = tmp_path / "data" / "cache" / "aligned_checkpoints"
+    cp.mkdir(parents=True)
+    (cp / "rb_basis_1.jsonl").write_text(
+        json.dumps({"eval_end_ts": "2026-09-30 15:00:00"}) + "\n",
+        encoding="utf-8")
+    text = _write(tmp_path, {"rb_basis_1": row}, root=str(tmp_path))
+    sec = text.split("## Locked this window", 1)[1].split("\n## ", 1)[0]
+    assert "class=v2-pass" in sec
+    assert "eval_end_ts=2026-09-30 15:00:00" in sec
+
+
+def test_locked_section_truncates_at_40(tmp_path, monkeypatch):
+    monkeypatch.setattr(sup, "_today_shanghai", lambda: date(2026, 10, 8))
+    monkeypatch.setattr(sup, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
+    snap = {}
+    for i in range(41):
+        vid = "s%02d_basis" % i
+        row = _v(vid, "s%02d" % i, "basis_momentum", "basis", gate_pass=True)
+        row["eval_end_ts"] = "2026-10-08 15:00:00"
+        snap[vid] = row
+    text = _write(tmp_path, snap)
+    sec = text.split("## Locked this window", 1)[1].split("\n## ", 1)[0]
+    assert sum(1 for ln in sec.splitlines() if ln.startswith("- ")) == 40
+    assert "locked_window_truncated=1" in sec

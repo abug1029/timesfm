@@ -1347,6 +1347,8 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
     lines.extend(_dead_family_lines(items, _primary_fp))
     lines.extend(_cross_matrix_lines(_items, _primary_fp))
     lines.extend(_old_protocol_prior_lines(_excl_fp_rows))
+    lines.extend(_locked_window_lines(
+        snapshot if isinstance(snapshot, dict) else {}, root))
 
     # ## Do not re-propose; source priority: verdict > queue > proposed
     lines.append("## Do not re-propose (variant_id)")
@@ -1996,8 +1998,10 @@ MIN_QUALITY_SCORE = 0.0        # score < 该值 → 拒绝 (0.0 = 仅拦截净�
 # T1 (2026-10-05): known_verdicts 注入通道行数预算（module 常量，供测试 monkeypatch）
 CROSS_MATRIX_MAX_ROWS = 40     # 品种×族矩阵最多列出的品种行数（超出截断注明）
 OLD_PRIORS_MAX_ROWS = 20       # 旧协议先验注记最多行数（超出截断注明）
+LOCKED_WINDOW_MAX_ROWS = 40    # 同窗锁定组合最多行数（超出截断注明）
 # T2 (2026-10-05): 已成功组合复跑的 success_delta 增量论证最少字数
 SUCCESS_DELTA_MIN_CHARS = 20
+STALE_DATA_DAYS = 3            # 上海日历年龄 > 此值 → data_stale 放行；等于此值不放行
 # SECTOR_BLOCK_MIN_FAILED 已废弃: 改为 sector_map 定义的全部品种都失败才拦截
 # (见 _sector_filter_check 的 circuit-breaker 注释)
 COV_CROSS_FAIL_MIN = 3         # 该协变量在其他品种失败 >= N 次且从无过门 → 拦截
@@ -2297,18 +2301,104 @@ def _current_window_anchor(snapshot, cache=None, root=None):
     return anchor
 
 
+
+def _today_shanghai():
+    """上海日历日。测试钉这一个函数，不钉 datetime.now。
+
+    ZoneInfo 不可用时回退 UTC 日历日。这是防御，不是预期失败：
+    zoneinfo 与 datetime 都是标准库。
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    except Exception:
+        return datetime.now(timezone.utc).date()
+
+
+def _kline_1h_max_dt(symbol):
+    """只读 kline_1h 的 MAX(dt)。缺库、空表、SQL 错误 → None。不建库。"""
+    import sqlite3
+    try:
+        from data.config import get_db_path
+        path = get_db_path(str(symbol or ""))
+    except Exception:
+        return None
+    if path is None or not os.path.exists(path):
+        return None
+    try:
+        conn = sqlite3.connect("file:%s?mode=ro" % path, uri=True)
+    except sqlite3.Error:
+        return None
+    try:
+        row = conn.execute("SELECT MAX(dt) FROM kline_1h").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    if not row or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def _symbol_data_stale(symbol, cache):
+    """日历年龄 > STALE_DATA_DAYS 时为真。读失败、日期坏、未来 bar 都为假。
+
+    cache['_kline_max'] 按 symbol 记原始 MAX(dt)。
+    cache['_stale_logged'] 保证同一 cache 里每个 symbol 只打一条 WARNING。
+    cache['_probe'] 为真时不打日志（物化锁定名单只探门，不假装有提案被拒）。
+    """
+    if cache is None:
+        cache = {}
+    key = str(symbol or "").lower()
+    maxes = cache.setdefault("_kline_max", {})
+    if key not in maxes:
+        maxes[key] = _kline_1h_max_dt(key)
+    raw = maxes[key]
+    if not isinstance(raw, str) or len(raw) < 10:
+        return False
+    try:
+        bar_day = datetime.strptime(raw[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return False
+    today = _today_shanghai()
+    age = (today - bar_day).days
+    if age <= STALE_DATA_DAYS:
+        return False
+    if not cache.get("_probe"):
+        logged = cache.setdefault("_stale_logged", set())
+        if key not in logged:
+            logged.add(key)
+            logging.warning(
+                "success_gate: %s 数据末端 %s 距上海日历 %s 已 %d 天 > %d → data_stale 放行",
+                key, raw, today.isoformat(), age, STALE_DATA_DAYS)
+    return True
+
+
+def _prior_success_class(prior):
+    """known_verdicts 图例口径：确认且过 FDR 才是 v2-pass。"""
+    if (isinstance(prior, dict)
+            and prior.get("fdr_pass")
+            and prior.get("p_value") is not None
+            and prior.get("run_mode") == "confirmation"):
+        return "v2-pass"
+    return "hard-gate-but-losing"
+
+
 def _success_delta_gate(prop, symbol, cov, snapshot, root=None, cache=None):
     """T2 (2026-10-05): 已成功组合的增量论证门。
 
     同 (symbol, cov_override) 在当前评估窗口已有 ok+gate_pass=True 裁决时，
     复跑提案必须用 success_delta (>=SUCCESS_DELTA_MIN_CHARS 字) 写清相对
     上次成功的增量，否则拒收 no_success_delta。
-    逃逸阀（fail-open，不用墙钟）：评估窗已平移（prior_ts != anchor）或锚
-    不可得（行字段与 checkpoint 均缺失）时放行——窗口平移后旧成功不再是
-    当前窗证据（2026-10-04 审计：09-23→09-30 15:00 窗整体更换同理）。
+    逃逸阀（fail-open）：评估窗已平移（prior_ts != anchor）或锚不可得
+    （行字段与 checkpoint 均缺失）时放行——这两条不看墙钟。窗口平移后旧成功
+    不再是当前窗证据（2026-10-04 审计：09-23→09-30 15:00 窗整体更换同理）。
+    数据末端距上海日历超过 STALE_DATA_DAYS 天时另放行 data_stale：锚钉死、
+    窗口无法平移，空 success_delta 不再把复跑全部拒掉。新 bar 进入 3 天内
+    后这条旁路自行关闭。
     返回 (reject_reason_or_None, state)；state 计入 stats["success_gate_states"]：
-    no_prior_success / window_moved / anchor_unavailable / success_delta_ok /
-    no_success_delta。
+    no_prior_success / window_moved / anchor_unavailable / data_stale /
+    success_delta_ok / no_success_delta。
     """
     prior = _prior_success_row(snapshot, symbol, cov)
     if prior is None:
@@ -2322,22 +2412,81 @@ def _success_delta_gate(prop, symbol, cov, snapshot, root=None, cache=None):
         return None, "anchor_unavailable"
     if prior_ts != anchor:
         return None, "window_moved"
+    if _symbol_data_stale(symbol, cache):
+        return None, "data_stale"
     delta = str((prop or {}).get("success_delta") or "").strip()
     if len(delta) >= SUCCESS_DELTA_MIN_CHARS:
         return None, "success_delta_ok"
     # T2b: 拒收信息带先验分类与 run_mode（known_verdicts 图例口径）——
     # 探索先验（gate 过但 fdr/p_value 缺）不得在日志里被封账为成功。
-    logging.warning(
-        "success_gate: %s_%s 复跑缺 success_delta (len=%d < %d) → 拒收 (no_success_delta)；"
-        "prior=%s class=%s run_mode=%s eval_end_ts=%s",
-        str(symbol or ""), str(cov or ""), len(delta), SUCCESS_DELTA_MIN_CHARS,
-        str(prior.get("variant_id") or ""),
-        ("v2-pass" if (prior.get("fdr_pass")
-                       and prior.get("p_value") is not None
-                       and prior.get("run_mode") == "confirmation")
-         else "hard-gate-but-losing"),
-        str(prior.get("run_mode") or "None"), prior_ts)
+    # 物化锁定名单会以空 success_delta 探门，cache['_probe'] 时不打拒收日志。
+    if not cache.get("_probe"):
+        logging.warning(
+            "success_gate: %s_%s 复跑缺 success_delta (len=%d < %d) → 拒收 (no_success_delta)；"
+            "prior=%s class=%s run_mode=%s eval_end_ts=%s",
+            str(symbol or ""), str(cov or ""), len(delta), SUCCESS_DELTA_MIN_CHARS,
+            str(prior.get("variant_id") or ""),
+            _prior_success_class(prior),
+            str(prior.get("run_mode") or "None"), prior_ts)
     return "no_success_delta", "no_success_delta"
+
+
+def _locked_success_rows(snapshot, root, cache=None):
+    """同窗已成功、空 success_delta 会被拒的 prior，每个 (symbol, cov) 一条。
+
+    data_stale / window_moved / anchor_unavailable 不进名单，名单与门同一谓词。
+    """
+    cache = {} if cache is None else cache
+    # 原地写入：_symbol_data_stale 会往这份 cache 填 _kline_max / _stale_logged，这里再写 _probe。
+    cache["_probe"] = True
+    keys = set()
+    for v in (snapshot or {}).values():
+        if not isinstance(v, dict):
+            continue
+        if v.get("status", "ok") != "ok" or not v.get("gate_pass"):
+            continue
+        symbol = str(v.get("symbol") or "").lower()
+        cov = str(v.get("cov_override") or "")
+        if symbol:
+            keys.add((symbol, cov))
+    locked = []
+    for symbol, cov in sorted(keys):
+        reason, state = _success_delta_gate(
+            {"success_delta": ""}, symbol, cov, snapshot, root, cache)
+        if reason == "no_success_delta" and state == "no_success_delta":
+            prior = _prior_success_row(snapshot, symbol, cov)
+            if prior is not None:
+                locked.append(prior)
+    return locked
+
+
+def _locked_window_lines(snapshot, root):
+    """## Locked this window 段落。不含墙钟，保证除 generated_at 外物化幂等。"""
+    rows = _locked_success_rows(snapshot, root, cache={})
+    lines = [
+        "## Locked this window",
+        "同评估窗已有 gate_pass=True 的 (symbol, cov)。复跑必须写 success_delta（≥20 字）"
+        "并点名 prior。空 success_delta 会被拒 (no_success_delta)。"
+        "数据末端距上海日历超过 %d 天时此名单为空。" % STALE_DATA_DAYS,
+    ]
+    if not rows:
+        lines.append("- (none)")
+    else:
+        cache = {"_probe": True}
+        shown = rows[:max(0, LOCKED_WINDOW_MAX_ROWS)]
+        for prior in shown:
+            symbol = str(prior.get("symbol") or "").lower()
+            cov = str(prior.get("cov_override") or "")
+            prior_ts = _row_eval_end_ts(prior, cache, root)
+            lines.append(
+                "- %s cov=%s prior=%s class=%s eval_end_ts=%s" % (
+                    symbol, cov, prior.get("variant_id"),
+                    _prior_success_class(prior), prior_ts))
+        rest = len(rows) - len(shown)
+        if rest > 0:
+            lines.append("locked_window_truncated=%d" % rest)
+    lines.append("")
+    return lines
 
 
 def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
@@ -3636,6 +3785,7 @@ def _maybe_finish_slow(goal, log):
         status_map=load_symbol_status(),
         queue_ids=rl.in_flight_ids(QUEUE, INPROGRESS),
         proposed_ids=collect_proposed_variant_ids(FM_ROOT),
+        root=FM_ROOT,
         excluded_items=_excl,
     )
     materialize_covariate_menu(load_covariate_pool(), MENU_INC)
@@ -3726,6 +3876,7 @@ def _main_locked(args):
             status_map=load_symbol_status(),
             queue_ids=rl.in_flight_ids(QUEUE, INPROGRESS),
             proposed_ids=collect_proposed_variant_ids(FM_ROOT),
+            root=FM_ROOT,
             **_mb_kwargs)
         materialize_covariate_menu(load_covariate_pool(), MENU_INC)
         if ok:
