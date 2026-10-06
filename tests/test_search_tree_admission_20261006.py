@@ -220,7 +220,8 @@ def test_order_busy_before_root_while_tree_active(tmproot):
 
 # ── T12：exploit 父节点非近失 ─────────────────────────────────
 
-@pytest.mark.parametrize("dir_acc,emin", [(0.51, 0.5), (0.48, 0.5)])
+@pytest.mark.parametrize("dir_acc,emin",
+                         [(0.51, 0.5), (0.48, 0.5), (0.50, 0.50)])
 def test_T12_exploit_parent_not_near_miss(tmproot, dir_acc, emin):
     _tree()
     _make_run(tmproot, _child())

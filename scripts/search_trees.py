@@ -3,37 +3,38 @@
 数据来源：
 - task_FM/config/search_commitments.jsonl（append-only，schema
   fm.search_commitments.v1）：树的存在性（event=accept）、成员（accept 行的
-  variant_id）、终态（event=stop/promote）。写入方在 2.3 落地（收割 selection
-  时）；本模块只读。
+  variant_id）、终态（event=stop/promote）。写入器 append_commitment 在本
+  模块（P2.3）：收割侧 _commit_search_accepts 落 accept；stop/promote 的
+  触发语义在 2.4/2.7 接线，此处只锁写入器合同。
 - 收割传入的裁决快照（当前协议视图，{variant_id: 裁决行}）：父节点 ok 判定、
   近失判据、预算计数。快照在调用侧已按当前协议过滤，本模块不二次过滤。
 
 解读裁决（spec 未逐字规定处；实施解读，专家复核点）：
 1. search_role_missing 兼收字段-值合同违反：root 带非空 search_parent_id；
-   exploit/falsifier 缺 search_parent_id 或 tree_id（空值视同缺）。
-   role 值与 id 值均不做空白归一（与 _norm_search_policy 对 " enforce" 的
-   处置一致：宁拒勿静默改写）。
+    exploit/falsifier 缺 search_parent_id 或 tree_id（空值视同缺）。
+    role 值与 id 值均不做空白归一（与 _norm_search_policy 对 " enforce" 的
+    处置一致：宁拒勿静默改写）。
 2. root 自带的 tree_id 字段值被收割忽略重写（spec：根提案的 tree_id 由收割
-   写成）。
+    写成）。
 3. 子提案 (symbol, family) 与目标树身份不匹配 → search_tree_busy
-   （该 tree_id 对这份提案而言不可用，与「tree_id 不属于任何已知树」同族）。
+    （该 tree_id 对这份提案而言不可用，与「tree_id 不属于任何已知树」同族）。
 4. 近失判据 fail-closed：dir_acc 或 effective_min 缺失/非有限 →
-   not_near_miss。不采用 known_verdicts 渲染侧的 0.52 回退——放行侧不可
-   缺值放行（当前协议 v2 行实际总带 effective_min，该分支只是防御）。
+    not_near_miss。不采用 known_verdicts 渲染侧的 0.52 回退——放行侧不可
+    缺值放行（当前协议 v2 行实际总带 effective_min，该分支只是防御）。
 5. 预算 = 树成员（accept 行 variant_id，distinct）∩ 快照 status=ok 行数；
-   复测不重复计数（同一节点的再裁决不占新预算）；no_data 不占（spec §5）。
+    复测不重复计数（同一节点的再裁决不占新预算）；no_data 不占（spec §5）。
 6. 守卫活态在 guard-pass 时建树/占座（spec「先处理的 root 先建树」「后到的
-   同角色提案按收割处理顺序拒绝」）：guard-pass 后被下游（池/质量门/去重等）
-   拒绝的提案会留下同轮幻影占位——后到同 (symbol,family) root 记 busy、
-   后到同角色合法提案记 conflict。占座只认「通过树检查」的提案
-   （T18：首份 parent_missing 不占座）。spec 的检查顺序（管道最前、
-   first-hit）要求活态检查必须在守卫内完成，无法推迟到 selection 后。
+    同角色提案按收割处理顺序拒绝」）：guard-pass 后被下游（池/质量门/去重等）
+    拒绝的提案会留下同轮幻影占位——后到同 (symbol,family) root 记 busy、
+    后到同角色合法提案记 conflict。占座只认「通过树检查」的提案
+    （T18：首份 parent_missing 不占座）。spec 的检查顺序（管道最前、
+    first-hit）要求活态检查必须在守卫内完成，无法推迟到 selection 后。
 7. promote 与 stop 同为终态（spec §6.5 停止四规则含 promoted）；
-   已停止的 (symbol,family) 允许开新树（新 proposal_id → 新 tree_id）。
+    已停止的 (symbol,family) 允许开新树（新 proposal_id → 新 tree_id）。
 8. 防御：根提案计算出的 tree_id 与已停止树同名（同文件重提）→
-   search_tree_closed，不得重开已探索的树。
+    search_tree_closed，不得重开已探索的树。
 9. commitments 坏行/撕裂行跳过并告警（append-only jsonl 容错）；文件缺失
-   = 无树（首开 enforce 的状态）。
+    = 无树（首开 enforce 的状态）。
 10. 族未解析（pool 与提案均无 family）时收割跳过守卫，交由既有
     family_unresolved 拒收——树拒绝码不覆盖非树归因。
 """
@@ -42,6 +43,7 @@ import json
 import logging
 import math
 import os
+from datetime import datetime
 
 # spec §5/§8：B 与 τ 是 spec 规定值，不是可调参数；
 # 不得在第一行 search_commitments.jsonl 写入之后更改。
@@ -269,3 +271,47 @@ class SearchGuard:
         self._claimed_roles.add(role)
         return None, {"search_role": role, "search_tree_id": tree_id_field,
                       "search_parent_id": parent_id}
+
+
+def append_commitment(path, event, tree_id, symbol="", family="",
+                      proposal_id="", variant_id="", search_role="",
+                      search_parent_id="", stop_reason=None,
+                      delta_post=None, n_required=None):
+    """向 search_commitments.jsonl 追加一条事件行（append-only，spec §6.7）。
+
+    - event ∈ {accept, stop, promote} 且 tree_id 非空，否则 ValueError
+      （fail-loud；校验先于建目录/开文件，不留半行）。
+    - 每行携带 schema/ts/event/B/tau（§8：B/τ 在首行写入后不得更改）。
+    - stop 行应带 stop_reason（§6.5：budget/promoted/dominated/family_dead）；
+      promote 行可带 delta_post/n_required（§6.3 数例；2.7 接线）。
+      条件字段只在传值时写入——accept 行不携带停止/晋升字段。
+    - 时间戳与收割 _now_iso 同源（datetime.now().isoformat()，本地时区）。
+    - 读侧容错在 load_tree_index（坏行跳过）；本函数不做读回验。
+    """
+    if event not in ("accept", "stop", "promote"):
+        raise ValueError("event 必须是 accept/stop/promote: %r" % (event,))
+    if not tree_id:
+        raise ValueError("tree_id 不能为空")
+    rec = {"schema": COMMITMENTS_SCHEMA,
+           "ts": datetime.now().isoformat(),
+           "event": event,
+           "tree_id": str(tree_id),
+           "symbol": str(symbol or ""),
+           "family": str(family or ""),
+           "proposal_id": str(proposal_id or ""),
+           "variant_id": str(variant_id or ""),
+           "search_role": str(search_role or ""),
+           "search_parent_id": str(search_parent_id or ""),
+           "B": BUDGET_B, "tau": TAU_SD}
+    if stop_reason is not None:
+        rec["stop_reason"] = str(stop_reason)
+    if delta_post is not None:
+        rec["delta_post"] = delta_post
+    if n_required is not None:
+        rec["n_required"] = int(n_required)
+    parent_dir = os.path.dirname(str(path or ""))
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return rec

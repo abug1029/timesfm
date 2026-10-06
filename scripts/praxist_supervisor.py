@@ -2447,10 +2447,15 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             if search_guard is not None:
                 _fam = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or ""
                 if _fam:
+                    _pid = os.path.relpath(sp, root)
                     _sr, search_info = search_guard.check(
-                        p, symbol, _fam, cov, os.path.relpath(sp, root))
+                        p, symbol, _fam, cov, _pid)
                     if _sr is not None:
                         _reject(_sr); continue
+                    # P2.3 (spec §6.7)：落账辅助字段（spec 三字段之外的记账
+                    # 辅助）——写入器按行落 accept 时不再反查 pool/relpath。
+                    search_info["search_family"] = _fam
+                    search_info["search_proposal_id"] = _pid
             if allowed_syms is not None and symbol not in allowed_syms:
                 _reject("symbol_not_allowed"); continue
             if cov in archived:
@@ -3302,6 +3307,37 @@ def _harvest_rows(goal):
         search_policy=_norm_search_policy(goal))
     return rows, dead, existing, pstats
 
+def _commit_search_accepts(rows, dead=None, existing=None):
+    """对将真实入队的搜索行落 accept（spec §6.7；P2.3）。
+
+    镜像 rl.queue_enqueue 的 vid 去重（dead/existing/在队/批内首见，
+    first-wins）——被去重拦下的行不落账，防「成员永不评估」的持久幻影
+    占位（2.2 审核 MINOR 的持久化防线）。置于 queue_enqueue 之前：
+    崩溃重放时已入队的 vid 在此被跳过（不重复落账）、未入队的重写
+    （成员集合语义幂等）。off/shadow 行无 search_role → 空操作。
+    写入 OSError 向上抛，由外层主循环异常处理接管并整轮重试。
+    """
+    dead = dead or set()
+    existing = existing or set()
+    queued = {r.get("variant_id") for r in rl.queue_load(QUEUE)}
+    n, seen = 0, set()
+    for r in rows:
+        vid = r.get("variant_id")
+        if not r.get("search_role") or not vid:
+            continue
+        if vid in dead or vid in existing or vid in queued or vid in seen:
+            continue
+        seen.add(vid)
+        st.append_commitment(
+            SEARCH_COMMITMENTS_PATH, "accept",
+            tree_id=r["search_tree_id"], symbol=r.get("symbol") or "",
+            family=r.get("search_family") or "",
+            proposal_id=r.get("search_proposal_id") or "",
+            variant_id=vid, search_role=r.get("search_role") or "",
+            search_parent_id=r.get("search_parent_id") or "")
+        n += 1
+    return n
+
 def _maybe_harvest(st, goal, log):
     """Harvest a finished run's peer proposals into the aligned queue.
 
@@ -3318,9 +3354,17 @@ def _maybe_harvest(st, goal, log):
                       "seen=%(seen)d rejected=%(rejected)d backlog=%(backlog)d reasons=%(reject_reasons)s" % pstats,
                       [])
     if rows:
+        # P2.3 (spec §6.7)：先落搜索 accept 再入队（顺序依据见
+        # _commit_search_accepts docstring：崩溃重放幂等；且必须在
+        # _merge_save 之前完成，防 accept 因 harvested_already 永久丢失）。
+        n_acc = _commit_search_accepts(rows, dead, existing)
         n = rl.queue_enqueue(QUEUE, rows, dead, existing)
         _log_decision(log, "harvested_proposals", f"enqueued {n}",
                       [r["variant_id"] for r in rows])
+        if n_acc:
+            _log_decision(log, "search_accepts", f"committed {n_acc}",
+                          [r["variant_id"] for r in rows
+                           if r.get("search_role")])
         _merge_save({"last_harvested_run_id": last, "phase": "slow"})
         try:
             from praxist_assets_archive import archive_fast_harvest
