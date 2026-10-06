@@ -45,6 +45,9 @@ VERDICT_FIELDS_V2 = {
     # 正期望协变量搜索 2.5（spec 2026-10-05 §5/§6.3）：配对差标准误 +
     # 缩水增量。均为新增可选字段（同时登记 _NULLABLE），历史裁决没有。
     "se", "delta_post_shrunk",
+    # 正期望协变量搜索 2.6（spec 2026-10-05 §6.4）：对现任的增量 DM 裁决。
+    # 取值 pass/fail/not_applicable。不参与 gate()、不改 gate_pass/fdr_pass。
+    "incremental_vs_incumbent",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
@@ -73,6 +76,8 @@ VERDICT_FIELDS_V2_NULLABLE = {
     "horizon_known", "horizon_fill", "horizon_exogenous",
     # 正期望协变量搜索 2.5：新增可选统计字段，历史裁决没有
     "se", "delta_post_shrunk",
+    # 正期望协变量搜索 2.6：对现任增量 DM 裁决，历史裁决没有
+    "incremental_vs_incumbent",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",
@@ -255,6 +260,8 @@ def in_flight_ids(pending_path, inprogress_path):
 _v1_validate_verdict = validate_verdict
 _v1_append_verdict = append_verdict
 
+_INCREMENTAL_VALID_VALUES = frozenset({"pass", "fail", "not_applicable"})
+
 
 def validate_verdict_v2(v):
     errs = []
@@ -266,6 +273,11 @@ def validate_verdict_v2(v):
     for k in ("n", "n_eff", "dir_acc", "weighted_dir_acc", "p_value"):
         if k in v and v.get(k) is not None and not isinstance(v[k], (int, float)):
             errs.append(f"{k} must be numeric")
+    _ivi = v.get("incremental_vs_incumbent")
+    if _ivi is not None and _ivi not in _INCREMENTAL_VALID_VALUES:
+        errs.append(
+            f"incremental_vs_incumbent must be one of "
+            f"{sorted(_INCREMENTAL_VALID_VALUES)}, got {_ivi!r}")
     return errs
 
 
