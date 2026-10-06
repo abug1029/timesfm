@@ -3315,7 +3315,8 @@ def _commit_search_accepts(rows, dead=None, existing=None):
     占位（2.2 审核 MINOR 的持久化防线）。置于 queue_enqueue 之前：
     崩溃重放时已入队的 vid 在此被跳过（不重复落账）、未入队的重写
     （成员集合语义幂等）。off/shadow 行无 search_role → 空操作。
-    写入 OSError 向上抛，由外层主循环异常处理接管并整轮重试。
+    写入 OSError 向上抛：main() 顶层 re-raise → 进程退出 → 由外部重启
+    （宿主/服务）重放整轮收割，accept 落账幂等（同 vid 集合语义）。
     """
     dead = dead or set()
     existing = existing or set()
@@ -3324,6 +3325,10 @@ def _commit_search_accepts(rows, dead=None, existing=None):
     for r in rows:
         vid = r.get("variant_id")
         if not r.get("search_role") or not vid:
+            continue
+        # N4（P2.3 审核）：病态行防御——守卫恒随 search_role 一起给出
+        # search_tree_id，缺键跳过不落账，不 KeyError。
+        if not r.get("search_tree_id"):
             continue
         if vid in dead or vid in existing or vid in queued or vid in seen:
             continue
@@ -3337,6 +3342,34 @@ def _commit_search_accepts(rows, dead=None, existing=None):
             search_parent_id=r.get("search_parent_id") or "")
         n += 1
     return n
+
+def _sweep_search_stops(goal, log, snapshot):
+    """P2.4（spec §6.5）：巡检未停止树的停止条件并落 stop 行（enforce-only）。
+
+    主循环每轮调用（materialize 之后、同轮收割之前——停止先于新 admit）。
+    snapshot 用主循环当前协议视图（snap["variants"]），族死亡判据照旧
+    _dead_families(min_ok=4)。promoted 不在此判定（§6.6 晋升是 2.7 的
+    事件驱动落账，promote 行同为终态）。写入失败向上抛：main() 顶层
+    re-raise → 进程退出 → 由外部重启重放整轮（sweep 幂等：已停止树
+    不再巡检，重放只补缺失的 stop 行）。
+    """
+    if _norm_search_policy(goal) != "enforce":
+        return 0
+    index = st.load_tree_index(SEARCH_COMMITMENTS_PATH)
+    if not index.unstopped():
+        return 0
+    stops = st.evaluate_tree_stops(index, snapshot or {},
+                                   _dead_families(snapshot or {}))
+    for tid, reason in stops:
+        tree = index.trees[tid]
+        st.append_commitment(SEARCH_COMMITMENTS_PATH, "stop",
+                             tree_id=tid, symbol=tree.symbol,
+                             family=tree.family, stop_reason=reason)
+        _log_decision(log, "search_stop",
+                      "tree=%s reason=%s symbol=%s family=%s"
+                      % (tid, reason, tree.symbol, tree.family))
+    return len(stops)
+
 
 def _maybe_harvest(st, goal, log):
     """Harvest a finished run's peer proposals into the aligned queue.
@@ -3823,6 +3856,9 @@ def _main_locked(args):
             proposed_ids=collect_proposed_variant_ids(FM_ROOT),
             **_mb_kwargs)
         materialize_covariate_menu(load_covariate_pool(), MENU_INC)
+        # P2.4（spec §6.5）：每轮巡检未停止树的停止条件，先于同轮收割
+        # （停止先于新 admit；enforce-only 在函数内门控；写失败向上传播）。
+        _sweep_search_stops(goal, log, snap["variants"])
         if ok:
             rec = _log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
             write_stop_report("goal_reached", snap, why, rec["reason"])

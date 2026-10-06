@@ -34,9 +34,23 @@
 8. 防御：根提案计算出的 tree_id 与已停止树同名（同文件重提）→
     search_tree_closed，不得重开已探索的树。
 9. commitments 坏行/撕裂行跳过并告警（append-only jsonl 容错）；文件缺失
-    = 无树（首开 enforce 的状态）。
+    = 无树（首开 enforce 的状态）。行内 B/τ 与常量不符则 ValueError
+    fail-loud（M3，spec §8 冻结的读侧闸）；字段缺席放行（兼容手写行）。
 10. 族未解析（pool 与提案均无 family）时收割跳过守卫，交由既有
     family_unresolved 拒收——树拒绝码不覆盖非树归因。
+11. 停止巡检（2.4，§6.5）：evaluate_tree_stops 只判定不落账（落账在
+    supervisor _sweep_search_stops）；条件序 budget → dominated →
+    family_dead first-hit（promoted 是 2.7 事件驱动落 promote 行，同为
+    终态，不由巡检判定）。dominated fail-closed（停止不可逆）：se 不可算
+    的节点不参与；现任 se 不可算则条件禁用；无现任时现任下界 0；严格
+    小于才停；δ 平手取 se 较大者（上界更高更难停——保守方向）。今日
+    裁决行尚无 se 字段 → 条件休眠，2.5 落字段后自然激活。
+12. M1 重放通道（P2.3 审核）：崩溃窗口 A（accept 已落账、入队未发生）
+    的 root 重放——同 proposal_id 已是未停止树成员且该成员尚无当前协议
+    裁决 → 幂等放行原指派（守卫拒绝=整行丢弃：否则成员永不评估，
+    幻影树作为唯一扩展树冻结整个搜索）。已裁决成员的陈旧重扫仍撞
+    search_tree_busy（防每轮重扫都重新放行）；树已停止的重放撞
+    search_tree_closed（不得重开已探索的树）。
 """
 import hashlib
 import json
@@ -52,6 +66,10 @@ TAU_SD = 0.04
 NEAR_MISS_FLOOR = 0.49
 ROLES = ("root", "exploit", "falsifier")
 COMMITMENTS_SCHEMA = "fm.search_commitments.v1"
+# spec §6.5：停止原因枚举（append_commitment event=stop 的写入闸 N2）
+STOP_REASONS = ("budget", "promoted", "dominated", "family_dead")
+# spec §6.5-3：dominated 上/下界的单侧 95% Z 值
+DOMINATED_Z = 1.645
 
 
 def tree_id_for(symbol, family, proposal_id):
@@ -77,14 +95,15 @@ def _finite(value):
 
 
 class _Tree:
-    __slots__ = ("tree_id", "symbol", "family", "member_vids", "accept_ts",
-                 "stop_reason")
+    __slots__ = ("tree_id", "symbol", "family", "member_vids",
+                 "member_pid_vid", "accept_ts", "stop_reason")
 
     def __init__(self, tree_id, symbol, family, accept_ts):
         self.tree_id = tree_id
         self.symbol = symbol
         self.family = family
         self.member_vids = set()
+        self.member_pid_vid = {}    # proposal_id -> vid（M1 重放通道，2.4）
         self.accept_ts = accept_ts
         self.stop_reason = ""
 
@@ -120,6 +139,9 @@ def _apply_record(index, rec):
         vid = str(rec.get("variant_id") or "")
         if vid:
             tree.member_vids.add(vid)
+        pid = str(rec.get("proposal_id") or "")
+        if pid:
+            tree.member_pid_vid[pid] = vid
     elif event in ("stop", "promote"):
         index.stopped.add(tid)
         tree = index.trees.get(tid)
@@ -128,7 +150,12 @@ def _apply_record(index, rec):
 
 
 def load_tree_index(path):
-    """读 commitments → TreeIndex。文件缺失 = 无树；坏行跳过并告警。"""
+    """读 commitments → TreeIndex。文件缺失 = 无树；坏行跳过并告警。
+
+    行内 B/τ 与常量不符 → ValueError fail-loud（M3：spec §8 B/τ 首行
+    写入后不得更改，违例是合同破坏，必须人工介入而非静默继续）；字段
+    缺席放行（兼容手写行/测试夹具）。
+    """
     index = TreeIndex()
     if not path or not os.path.exists(path):
         return index
@@ -149,6 +176,15 @@ def load_tree_index(path):
                     logging.warning("search_commitments 非 %s 行跳过 %s:%d",
                                     COMMITMENTS_SCHEMA, path, lineno)
                     continue
+                # M3（spec §8 冻结读侧闸）：存在性校验，不符 fail-loud
+                if "B" in rec and rec.get("B") != BUDGET_B:
+                    raise ValueError(
+                        "search_commitments B 与常量不符（spec §8 冻结）"
+                        " %s:%d: %r" % (path, lineno, rec.get("B")))
+                if "tau" in rec and _finite(rec.get("tau")) != TAU_SD:
+                    raise ValueError(
+                        "search_commitments tau 与常量不符（spec §8 冻结）"
+                        " %s:%d: %r" % (path, lineno, rec.get("tau")))
                 _apply_record(index, rec)
     except OSError as exc:
         logging.warning("search_commitments 读取失败（按无树处理）: %s", exc)
@@ -184,12 +220,7 @@ class SearchGuard:
         return cls(load_tree_index(commitments_path), snapshot)
 
     def _count_budget(self, tree):
-        n = 0
-        for vid in tree.member_vids:
-            row = self.snapshot.get(vid)
-            if isinstance(row, dict) and row.get("status", "ok") == "ok":
-                n += 1
-        return n
+        return count_ok_members(tree, self.snapshot)
 
     def _ok_row(self, vid):
         row = self.snapshot.get(vid)
@@ -217,11 +248,27 @@ class SearchGuard:
             # 2 search_tree_closed（防御：同 proposal_id 不得重开已停止树）
             if assigned in self.index.stopped:
                 return "search_tree_closed", None
+            existing = self.index.unstopped_for(symbol, family)
+            # M1 重放通道（2.4，P2.3 审核）：崩溃窗口 A（accept 已落账、
+            # 入队未发生）的 root 重放——同 proposal_id 已是本树成员且该
+            # 成员尚无当前协议裁决 → 幂等放行原指派（守卫拒绝=整行丢弃：
+            # 否则成员永不评估，幻影树作为唯一扩展树冻结整个搜索）。
+            # 已裁决成员的陈旧重扫仍撞 busy（防每轮重扫都重新放行）。
+            # 不占本轮建树座。
+            if existing is not None:
+                pid = str(proposal_id)
+                if pid in existing.member_pid_vid:
+                    mvid = existing.member_pid_vid.get(pid) or ""
+                    mrow = self.snapshot.get(mvid) if mvid else None
+                    if not mvid or not isinstance(mrow, dict):
+                        return None, {"search_role": "root",
+                                      "search_tree_id": existing.tree_id,
+                                      "search_parent_id": ""}
             # 4 search_tree_busy（同轮先处理的 root 已建树；
             #    或该 (symbol, family) 已有未停止树）
             if (symbol, family) in self._round_trees:
                 return "search_tree_busy", None
-            if self.index.unstopped_for(symbol, family) is not None:
+            if existing is not None:
                 return "search_tree_busy", None
             # 8 search_root_while_tree_active（收割开始时有未停止树）
             if not self.root_round:
@@ -273,6 +320,103 @@ class SearchGuard:
                       "search_parent_id": parent_id}
 
 
+def count_ok_members(tree, snapshot):
+    """树成员中当前协议 status=ok 裁决数（§6.5-1 预算计数；status 缺省按 ok）。
+
+    守卫 _count_budget 与停止巡检 evaluate_tree_stops 共用同一口径。
+    """
+    n = 0
+    for vid in tree.member_vids:
+        row = snapshot.get(vid) if isinstance(snapshot, dict) else None
+        if isinstance(row, dict) and row.get("status", "ok") == "ok":
+            n += 1
+    return n
+
+
+def _delta_se(row):
+    """(δ, se)（§5 δ=dir_acc−baseline_dir_acc；§6.5-3 se）。
+
+    status=ok 且 dir_acc/baseline_dir_acc 均有限才可算 δ；se 单独返回
+    （可为 None=不可算）。任一前提不满足 δ 为 None（节点不参与比较）。
+    """
+    if not isinstance(row, dict) or row.get("status", "ok") != "ok":
+        return (None, None)
+    da = _finite(row.get("dir_acc"))
+    base = _finite(row.get("baseline_dir_acc"))
+    if da is None or base is None:
+        return (None, None)
+    return (da - base, _finite(row.get("se")))
+
+
+def _incumbent_lower_bound(snapshot, symbol):
+    """现任下界（§6.5-3；现任定义 §5：同品种当前协议 ok∧gate_pass δ 最大者）。
+
+    无现任 → 0.0；现任 se 不可算 → None（条件禁用：停止不可逆，
+    fail-closed 宁不停勿错停）。现任 δ 平手取先见者（快照序=jsonl 序，
+    病态情形，不影响正确性——各候选同为最大 δ）。
+    """
+    best = None   # (δ, se)
+    for row in (snapshot or {}).values():
+        if not isinstance(row, dict) or row.get("symbol") != symbol:
+            continue
+        if row.get("status", "ok") != "ok" or not row.get("gate_pass"):
+            continue
+        d, se = _delta_se(row)
+        if d is None:
+            continue
+        if best is None or d > best[0]:
+            best = (d, se)
+    if best is None:
+        return 0.0
+    if best[1] is None:
+        return None
+    return best[0] - DOMINATED_Z * best[1]
+
+
+def evaluate_tree_stops(index, snapshot, dead_families):
+    """对未停止树按 §6.5 列表序求 first-hit 停止原因（只判定不落账）。
+
+    Returns: [(tree_id, stop_reason), ...]——调用侧（supervisor
+    _sweep_search_stops）负责落 stop 行与决策日志。
+
+    条件序（spec §6.5）：
+      1. budget   成员 ok 裁决数 ≥ B（count_ok_members 同守卫口径）；
+      2. promoted §6.6 晋升——2.7 事件驱动落 promote 行（同为终态，
+         本函数不判定）；
+      3. dominated se 可算节点中 δ 最大者的上界 δ+Z·se 严格小于
+         现任下界（_incumbent_lower_bound；无现任 → 0；现任 se 不可算
+         → 条件禁用）。δ 平手取 se 较大者——上界更高更难停，保守方向；
+      4. family_dead 树族 ∈ dead_families（supervisor 传
+         _dead_families(snapshot)，判据照旧 min_ok=4/gate_pass）。
+
+    全部条件 fail-closed：数据不齐不停止（停止不可逆）。
+    """
+    dead = dead_families if isinstance(dead_families, (set, frozenset)) \
+        else set()
+    stops = []
+    for tree in index.unstopped():
+        reason = None
+        if count_ok_members(tree, snapshot) >= BUDGET_B:
+            reason = "budget"
+        else:
+            lb = _incumbent_lower_bound(snapshot, tree.symbol)
+            if lb is not None:
+                cands = []
+                for vid in tree.member_vids:
+                    d, se = _delta_se((snapshot or {}).get(vid))
+                    if d is not None and se is not None:
+                        cands.append((d, se, vid))
+                if cands:
+                    d, se, _vid = max(cands)
+                    if d + DOMINATED_Z * se < lb:
+                        reason = "dominated"
+        if reason is None and tree.family in dead:
+            reason = "family_dead"
+        if reason is not None:
+            stops.append((tree.tree_id, reason))
+    return stops
+
+
 def append_commitment(path, event, tree_id, symbol="", family="",
                       proposal_id="", variant_id="", search_role="",
                       search_parent_id="", stop_reason=None,
@@ -282,7 +426,8 @@ def append_commitment(path, event, tree_id, symbol="", family="",
     - event ∈ {accept, stop, promote} 且 tree_id 非空，否则 ValueError
       （fail-loud；校验先于建目录/开文件，不留半行）。
     - 每行携带 schema/ts/event/B/tau（§8：B/τ 在首行写入后不得更改）。
-    - stop 行应带 stop_reason（§6.5：budget/promoted/dominated/family_dead）；
+    - stop 行必须带合法 stop_reason ∈ {budget, promoted, dominated,
+      family_dead}（§6.5 枚举，N2 写入闸；缺省/非法 → ValueError）；
       promote 行可带 delta_post/n_required（§6.3 数例；2.7 接线）。
       条件字段只在传值时写入——accept 行不携带停止/晋升字段。
     - 时间戳与收割 _now_iso 同源（datetime.now().isoformat()，本地时区）。
@@ -292,6 +437,10 @@ def append_commitment(path, event, tree_id, symbol="", family="",
         raise ValueError("event 必须是 accept/stop/promote: %r" % (event,))
     if not tree_id:
         raise ValueError("tree_id 不能为空")
+    # N2（§6.5 枚举写入闸）：stop 行必须携带合法停止原因
+    if event == "stop" and stop_reason not in STOP_REASONS:
+        raise ValueError("stop 行必须带合法 stop_reason（§6.5: %s）: %r"
+                         % ("/".join(STOP_REASONS), stop_reason))
     rec = {"schema": COMMITMENTS_SCHEMA,
            "ts": datetime.now().isoformat(),
            "event": event,
