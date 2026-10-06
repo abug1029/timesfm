@@ -7,6 +7,19 @@
 
 人类可读运维与研究文档；回测实验注册表与固化判据的**文档真相源**。
 
+
+## Mandatory Pre-Action Reads
+
+动手前扫一眼这张表——读完再改，省得改完被 evaluator 打回来。
+
+| 你要改…… | 先读 |
+|---------|------|
+| 任何评估/门槛/统计口径 | [evaluation.md](./evaluation.md)（唯一权威） |
+| 快环/慢环/监督环流程 | [runtime_contract.md](./runtime_contract.md) |
+| 协变量/品种/数据表 | [data_dictionary.md](./data_dictionary.md) |
+| 依赖/环境/入口命令 | [tech_stack.md](./tech_stack.md) |
+| 术语含义/状态标志 | [glossary.md](./glossary.md) |
+
 ## Key Files
 
 | File | Description |
