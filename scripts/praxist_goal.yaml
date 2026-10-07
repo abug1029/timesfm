@@ -5,6 +5,11 @@
 # Phase 3 的 multi_seed / decay 仍未实现，这里不设通过条件。
 
 goal:
+  # spec 2026-10-05 §6.1：正期望协变量搜索档位 off | shadow | enforce。
+  # off=批准前后默认（收割行为与今日相同）；shadow=树检查只计数不拒收；
+  # enforce=§6.2 起的拒绝生效。本键只有宿主改；goal 每 poll 热重载，
+  # 改键下一轮 poll 生效、无需重启（与 budgets/cadence 同路径）。
+  search_policy: "off"   # 必须带引号：裸 off 会被 YAML 1.1 当布尔 False
   success_condition:
     - "all_symbols_pass_phase1"
 

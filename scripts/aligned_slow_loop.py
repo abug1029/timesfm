@@ -17,6 +17,9 @@ from evaluator import (build_summary, effective_sample_size, load_baseline_point
                        attach_gated_metrics, compute_protocol_fingerprint)
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
+from cascade.statistical_tests import (
+    pair_dir_ok_series_with_diagnostics, diebold_mariano_p,
+)
 
 try:
     import torch
@@ -179,6 +182,124 @@ def _checkpoint_last_anchor(cp, fp_now):
     except (OSError, ValueError):
         pass
     return last
+
+
+# ── 2.6 (spec 2026-10-05 §6.4/§5): 现任增量 DM ──────────────
+
+def find_incumbent(symbol, fp_now, snapshot):
+    """现任定位（spec §5）：同品种、当前协议、status=ok、gate_pass=True 里 δ 最大。
+
+    δ = dir_acc − baseline_dir_acc。无符合条件的裁决 → None。
+    δ 相同时按 variant_id 字典序取最小（确定性 tiebreak）。
+    """
+    best = None
+    best_delta = None
+    best_vid = None
+    for vid, v in snapshot.items():
+        if not isinstance(v, dict):
+            continue
+        if v.get("symbol") != symbol:
+            continue
+        if v.get("protocol_fingerprint") != fp_now:
+            continue
+        if v.get("status") != "ok":
+            continue
+        if not v.get("gate_pass"):
+            continue
+        da = v.get("dir_acc")
+        bda = v.get("baseline_dir_acc")
+        if da is None or bda is None:
+            continue
+        delta = float(da) - float(bda)
+        if best is None or delta > best_delta or (delta == best_delta and vid < best_vid):
+            best = v
+            best_delta = delta
+            best_vid = vid
+    return best
+
+
+def load_incumbent_points_from_checkpoint(incumbent_verdict, fp_now):
+    """从现任 checkpoint 读 (cutoff, dir_ok) 点序列（协议指纹门）。
+
+    文件级 IO/解码异常 → None（T14：保守=不晋升）。行级 JSON 损伤跳过。
+    checkpoint_path 空或不存在 → None。无有效当前协议点 → None（序列不可得）。
+    """
+    cp = incumbent_verdict.get("checkpoint_path") if isinstance(incumbent_verdict, dict) else None
+    if not cp:
+        return None
+    if not os.path.exists(cp):
+        return None
+    points = []
+    try:
+        with open(cp, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                if rec.get("protocol_fingerprint") != fp_now:
+                    continue
+                cutoff = rec.get("cutoff")
+                dir_ok = rec.get("dir_ok")
+                if cutoff is not None and dir_ok is not None:
+                    points.append({"cutoff": cutoff, "dir_ok": bool(dir_ok)})
+    except (OSError, ValueError):
+        return None
+    return points if points else None
+
+
+def compute_incremental_vs_incumbent(
+    new_variant_points,
+    incumbent_points,
+    incumbent_verdict,
+    *,
+    variant_protocol=None,
+    incumbent_protocol=None,
+    missingness_admissible=False,
+):
+    """现任增量 DM 判定（spec §6.4）。
+
+    返回 "pass" / "fail" / "not_applicable"。
+    - 缺现任 (incumbent_verdict is None) → not_applicable（视为通过）。
+    - 现任在但序列不可得 (incumbent_points is None) → fail（T14）。
+    - 共同样本须满足 pairing_valid + missingness_admissible +
+      dm_status∈{ok, set_mismatch_ok} + d_mean>0 + p<0.05 → pass；否则 fail。
+    """
+    if incumbent_verdict is None:
+        return "not_applicable"
+    if incumbent_points is None:
+        return "fail"
+    diag = pair_dir_ok_series_with_diagnostics(
+        new_variant_points, incumbent_points,
+        variant_protocol=variant_protocol,
+        baseline_protocol=incumbent_protocol,
+        missingness_admissible=missingness_admissible,
+    )
+    if not diag.get("pairing_valid"):
+        return "fail"
+    if not diag.get("missingness_admissible"):
+        return "fail"
+    if diag.get("dm_status") not in ("ok", "set_mismatch_ok"):
+        return "fail"
+    v_series = diag.get("variant_series") or []
+    i_series = diag.get("baseline_series") or []
+    if len(v_series) < 100 or len(v_series) != len(i_series):
+        return "fail"
+    d_mean = sum(a - b for a, b in zip(v_series, i_series)) / len(v_series)
+    if d_mean <= 0:
+        return "fail"
+    try:
+        p = diebold_mariano_p(v_series, i_series)
+    except Exception:
+        return "fail"
+    if p < 0.05:
+        return "pass"
+    return "fail"
 
 
 def _stamp_confirmation_verdict(verdict, row):
@@ -402,6 +523,31 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
                     "note": _ps.get("note"),
                 }
     os.makedirs(os.path.dirname(registry_path) or ".", exist_ok=True)
+    # ── 2.6 (spec §6.4): 现任增量 DM 落账 ──────────────
+    # 只在 status=ok 的评估裁决上计算（no_data/error 墓碑跳过）。
+    # 现任定位 + 序列获取 + 共同 cutoff 配对 + DM 全在此处完成，
+    # 保持 build_summary 纯函数性。
+    if v.get("status") == "ok":
+        try:
+            _snap = rl.load_snapshot(registry_path, only_protocol=fp_now)
+            _inc = find_incumbent(row["symbol"], fp_now, _snap)
+            if _inc is None:
+                v["incremental_vs_incumbent"] = "not_applicable"
+            else:
+                _inc_pts = load_incumbent_points_from_checkpoint(_inc, fp_now)
+                _new_pts = data.get("points") if data else None
+                v["incremental_vs_incumbent"] = compute_incremental_vs_incumbent(
+                    _new_pts or [],
+                    _inc_pts,
+                    _inc,
+                    variant_protocol=fp_now,
+                    incumbent_protocol=_inc.get("protocol_fingerprint"),
+                )
+        except Exception as _e:
+            logging.warning("incremental_vs_incumbent 计算失败: %s", _e)
+            v["incremental_vs_incumbent"] = "fail"
+    else:
+        v["incremental_vs_incumbent"] = "not_applicable"
     # ── Tier 等级评分注入 ──────────────────────────────
     from cascade.tier_classifier import compute_tier_score
     tier_info = compute_tier_score(v)

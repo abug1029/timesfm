@@ -2,7 +2,8 @@
 
 - **日期**：2026-10-05
 - **关联 spec**：`docs/superpowers/specs/2026-10-05-positive-ev-factor-search-spec.md`（含同日两次修订）
-- **状态**：未启动。P0（宿主批准 spec）通过后按序执行。
+- **状态**：P1 已在 master（`e007a6c`）。P2.1–P2.9 代码在 `feat/positive-ev-factor-search`，`search_policy` 仍为 `"off"`。P3 合入部署、P4 shadow 观测、P5 enforce 未启动，由宿主执行。
+- **进度（2026-10-07）**：晋升、树节与 shadow 计数已有测试。晋升不放宽 `incremental_vs_incumbent`。预注册追加不走 `register()`。本机无 torch，P2.6 现任增量测试与全量失败集基线未在此复跑。记录见 `docs/superpowers/changelogs/2026-10-07-positive-ev-factor-search-p27-p29.md`。
 - **全程原则**：TDD（先红后绿）；全量回归与失败集基线逐项恒等后方可合入；监督环运行时不动活仓、不改 `.venv` 里的 Praxist；`search_policy` 键只有宿主改；提交中文、工作树隔离、线性历史。
 
 ---
