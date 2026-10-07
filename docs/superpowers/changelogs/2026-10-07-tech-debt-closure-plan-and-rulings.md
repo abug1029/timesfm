@@ -76,3 +76,27 @@
 - **勘察实证（C 死因落锤）**：`generate_baseline_points.generate()` 以临时文件 rename 直接覆盖旧档（版本化缺口）；评估点间隔 2h（STEP=2 bars）；**jd 基线末端 2026-09-16 15:00 vs 数据末端 2026-09-30 14:00——14 天边缘漂移实测实锤**（裁定 C 漂移上界条件的真实案例）；基线 33 文件（33 points+metrics），行内含 protocol_fingerprint 无锚定日元数据；`ensure_baselines` 为启动 pre-flight（非周期调用）
 - **步② C 拉取日重锚开工（2/5，进行中）**：设计定稿——① `_latest_data_dt()` 抽出（与派发闸门 `_confirm_data_ready` 共享 `_CONFIRM_DATA_CACHE` 30 分钟 TTL，pre-flight 查过主循环直接命中，原函数变薄壳行为不变）；② `_baseline_reanchor_reason()` 双条件重锚判定：(a) 确认窗覆盖缺口（预注册 confirm_from_ts ∈ (基线末端, 数据末端]——no_common_cutoff 直接死因，精确制导到 jd/sr 两预注册品种）+ (b) 漂移上界（落后 > `_BASELINE_STALENESS_MAX_H`=168h/7 天，捕获假期级漂移且避开 2-3 天重启节奏的误重生）；**fail-open**（数据/基线末端读不到不动作——与派发闸门 fail-closed 相反，重生昂贵缺证据不动，国庆缺口期重启安全：数据末端 09-30 < confirm_from_ts 10-03，条件 (a) 不触发）；③ `_guard_confirm_from_ts_after_regen()` 守卫断言（新档丢失旧档 ≥ confirm_from_ts 的 cutoff → 从归档恢复 + ERROR 留痕，保 v9 修订②；无预注册/无归档/旧档本无确认窗点 → 平凡通过，现状即此态）；④ 三重生点统一入口 `_regen_baseline_with_archive()`（归档→重生→守卫）。12 例红测已写（`tests/test_baseline_reanchor.py`）确认全红；实施进行中（_latest_data_dt 重构+三新函数已插入，ensure_baselines 主循环改造过半）
 - **通道状态**：backup push 正常（01d593d..4ae5336）；origin TLS 仍不通（GnuTLS -110），恢复后补推
+
+## 后续：事项一步③ B + 采集包完成（2026-10-07 晚，续）
+
+- **步③ B 边缘连续块豁免 + admissibility_rule 行级字段 + 五读取点过滤（3/5）完成**：
+  - `cascade/statistical_tests.py`: `pair_dir_ok_series_with_diagnostics` 增加边缘连续块 + 有界性双条件检查（变体侧尾部连续块 / 基线侧头部连续块 + 每侧 ≤30 日期），不通过落回 `set_mismatch_descriptive`；通过则返回 `admissibility_rule="edge_continuous_block_30d"` + `unmatched_variant_dates` / `unmatched_baseline_dates` 位置信息
+  - `scripts/praxist_supervisor.py` + `scripts/preregistry.py`: 五读取点（`fdr_pass_persistable` / `_test_invalid` / `_passes_confirmation` / `classify_confirmation` / `_family_confirmatory_counts`）加 `admissibility_rule is not None` 过滤（旧行缺字段不计入）
+  - 测试 `tests/test_admissibility_rule.py` 14 例全绿（边缘连续块 9 例 + 五读取点 5 例）
+  - 测试 fixture 批量更新（16 个测试文件，helper + inline dict 加 `admissibility_rule`）
+  - 全量回归 18F/1830P（基线 1799P + 步① 5P + 步② 12P + 步③ 14P），零新增失败
+  - 提交 `e3cc1dd` + P1 修复 `71f8517`（专家审核发现边缘连续块检查缺失，补实现 + 补测 4 例 + 位置信息采集）
+- **专家审核（步③）**：P1（Critical）边缘连续块检查缺失 → 已修复；P2（Major）测试覆盖缺失 → 已补 4 例；R2（Major）位置信息采集缺失 → 已补；复审通过
+
+## 后续：事项一步④ 补盖两条预注册完成（2026-10-07 晚，续）
+
+- **步④ 补盖两条预注册 admissibility_rule（4/5）完成**：
+  - **重核验留痕（裁定 A.6 前置条件）**：
+    - **命令**：`grep '<prereg_id>' /home/abug/timesfm/task_FM/config/aligned_verdicts.jsonl | grep -E '"dm_status": "(ok|set_mismatch_ok)"' | wc -l`
+    - **时间**：2026-10-07 22:18 CST
+    - **结果**：jd 可确认行数 = 0（总 13 行，全为非确认状态）✓；sr 可确认行数 = 0（总 13 行，全为非确认状态）✓
+  - **补盖内容**：`task_FM/config/preregistry.jsonl` 两行加 `"admissibility_rule": "edge_continuous_block_30d"` + `"admissibility_note": "admissibility_rule 系 2026-10-07 裁定补设，confirm_from_ts 与 n_confirm_required 不变"`
+  - **测试修复**：`tests/test_first_preregistry.py` 允许磁盘有额外字段（pop `admissibility_rule`/`admissibility_note`）
+  - 全量回归 18F/1830P，零新增失败
+  - 提交 `3233a75`
+- **专家审核（步④）**：有条件通过（补盖符合裁定 A.6 规格、重核验满足要求、测试修复合理）；建议改进：五读取点过滤语义待收紧（当前 `is not None`，裁定要求"匹配"）、测试补正向断言
