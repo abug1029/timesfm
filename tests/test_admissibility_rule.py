@@ -105,6 +105,68 @@ def test_protocol_fingerprint_unchanged():
     assert stored_fp.startswith("f02b2a43")
 
 
+# ── P2 补测：非连续 unmatched 应落 descriptive ──────────────────
+
+def test_descriptive_when_unmatched_not_tail_continuous():
+    """变体侧 unmatched 散落在窗中间（非尾部连续块）→ descriptive。"""
+    base = datetime(2026, 10, 1, 0, 0, 0)
+    # 变体 100 点（10-01 ~ 10-05），基线 95 点（10-01 ~ 10-03 + 10-04 后半 + 10-05 前半）
+    # unmatched_variant = 5 点散落在窗中间（第 20/40/60/80/90 位）→ 非尾部连续
+    variant = _make_points(base, 100)
+    baseline = _make_points(base, 95)
+    # 手动移除基线中间 5 个点（制造非连续 unmatched）
+    baseline = [p for i, p in enumerate(baseline) if i not in [20, 40, 60, 80, 90]]
+    result = st.pair_dir_ok_series_with_diagnostics(
+        variant, baseline, missingness_admissible=True,
+        variant_protocol="fp_test", baseline_protocol="fp_test")
+    assert result["dm_status"] == "set_mismatch_descriptive"
+
+
+def test_descriptive_when_variant_unmatched_not_tail():
+    """变体侧 unmatched 在头部（非尾部）→ descriptive。"""
+    base = datetime(2026, 10, 1, 0, 0, 0)
+    # 变体 100 点（00:00 ~ 10-05），基线 95 点（10:00 ~ 10-05）
+    # only_variant = 变体前 5 点（00:00 ~ 08:00，基线没覆盖）→ 在变体头部（非尾部）
+    variant = _make_points(base, 100)
+    baseline = _make_points(base + timedelta(hours=10), 95)  # 从 10:00 开始
+    result = st.pair_dir_ok_series_with_diagnostics(
+        variant, baseline, missingness_admissible=True,
+        variant_protocol="fp_test", baseline_protocol="fp_test")
+    # 变体 unmatched 在头部 → 非尾部连续 → descriptive
+    assert result["dm_status"] == "set_mismatch_descriptive"
+
+
+def test_descriptive_when_baseline_unmatched_not_head():
+    """基线侧 unmatched 在尾部（非头部）→ descriptive。"""
+    base = datetime(2026, 10, 1, 0, 0, 0)
+    # 变体 95 点（00:00 ~ 10-04），基线 100 点（00:00 ~ 10-05）
+    # only_baseline = 基线尾部 5 点（变体没覆盖）→ 在基线尾部（非头部）
+    variant = _make_points(base, 95)
+    baseline = _make_points(base, 100)
+    result = st.pair_dir_ok_series_with_diagnostics(
+        variant, baseline, missingness_admissible=True,
+        variant_protocol="fp_test", baseline_protocol="fp_test")
+    # 基线 unmatched 在尾部 → 非头部连续 → descriptive
+    assert result["dm_status"] == "set_mismatch_descriptive"
+
+
+# ── R2 采集包：unmatched 位置信息 ──────────────────────────────
+
+def test_unmatched_dates_collected():
+    """通过时采集 unmatched 位置信息（日期列表）。"""
+    base = datetime(2026, 10, 1, 0, 0, 0)
+    variant = _make_points(base, 100)
+    baseline = _make_points(base, 95)
+    result = st.pair_dir_ok_series_with_diagnostics(
+        variant, baseline, missingness_admissible=True,
+        variant_protocol="fp_test", baseline_protocol="fp_test")
+    assert result["dm_status"] == "set_mismatch_ok"
+    assert "unmatched_variant_dates" in result
+    assert "unmatched_baseline_dates" in result
+    assert len(result["unmatched_variant_dates"]) == 5  # 100 - 95 = 5
+    assert len(result["unmatched_baseline_dates"]) == 0
+
+
 # ── 五读取点过滤框架（步③b）─────────────────────────────────────
 
 def test_fdr_pass_persistable_requires_admissibility_rule():

@@ -394,8 +394,27 @@ def pair_dir_ok_series_with_diagnostics(
     # ── 步③ B 边缘连续块 + 有界性检查（2026-10-07 裁定）──
     # 裁定 B：missingness_admissible=True 时，还需检查「变体侧最新连续块 /
     # 基线侧最旧连续块」+ 有界性双条件「每侧 ≤30 日期」，任一不满足落回
-    # descriptive。unmatched 计数是点数，每天约 3 点（STEP=2 bars = 2h，
-    # 一天交易时段约 5.5h ≈ 3 点）。
+    # descriptive。
+    #
+    # 连续性：unmatched variant 必须是变体侧最新连续块（尾部），unmatched
+    # baseline 必须是基线侧最旧连续块（头部）。窗内散点/中间缺失/交错缺失
+    # → descriptive。
+    #
+    # 有界性：unmatched 计数是点数，每天约 3 点（STEP=2 bars = 2h，一天
+    # 交易时段约 5.5h ≈ 3 点）。每侧 ≤30 日期 = ≤90 点。
+    only_variant = sorted(vm.keys() - bm.keys())
+    only_baseline = sorted(bm.keys() - vm.keys())
+    all_variant = sorted(vm.keys())
+    all_baseline = sorted(bm.keys())
+    
+    # 变体侧：unmatched 必须是尾部连续块
+    tail_ok = (only_variant == all_variant[-len(only_variant):]) if only_variant else True
+    # 基线侧：unmatched 必须是头部连续块
+    head_ok = (only_baseline == all_baseline[:len(only_baseline)]) if only_baseline else True
+    
+    if not (tail_ok and head_ok):
+        return _base(dm_status="set_mismatch_descriptive", **counts)
+    
     _POINTS_PER_DAY = 3
     _MAX_UNMATCHED_DAYS = 30
     unmatched_variant_days = counts["dm_unmatched_variant"] / _POINTS_PER_DAY
@@ -405,8 +424,13 @@ def pair_dir_ok_series_with_diagnostics(
 
     set_mismatch = bool(counts["dm_unmatched_variant"]
                         or counts["dm_unmatched_baseline"])
+    # R2 采集包：unmatched 位置信息（日期列表）
+    unmatched_variant_dates = [str(c) for c in only_variant]
+    unmatched_baseline_dates = [str(c) for c in only_baseline]
     return _base(dm_status="set_mismatch_ok" if set_mismatch else "ok",
                  pairing_valid=True, admissibility_rule="edge_continuous_block_30d",
+                 unmatched_variant_dates=unmatched_variant_dates,
+                 unmatched_baseline_dates=unmatched_baseline_dates,
                  **counts)
 
 
