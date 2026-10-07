@@ -26,7 +26,7 @@ try:
         detection_threshold_vs_random, detection_threshold_vs_baseline, n_required,
         pair_dir_ok_series, diebold_mariano_p,
         pair_dir_ok_series_with_diagnostics,
-        paired_delta_se, shrink_delta_post,
+        paired_delta_se, shrink_delta_post, compute_hac_se,
     )
     from cov_family import resolve_cov_family
 except ImportError as e:
@@ -37,6 +37,7 @@ except ImportError as e:
     resolve_cov_family = None
     paired_delta_se = None
     shrink_delta_post = None
+    compute_hac_se = None
 
 # §1.4 双运行模式：导入 RUN_LABEL_EXPLORATION
 sys.path.insert(0, FM_ROOT)
@@ -535,6 +536,14 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
     if _se is not None and baseline_dir_acc is not None and shrink_delta_post is not None:
         _delta_post_shrunk = shrink_delta_post(
             m["dir_acc"] - baseline_dir_acc, _se)
+    _search_var_lr = None
+    if _se is not None and compute_hac_se is not None and _d_t is not None:
+        try:
+            _var = float(compute_hac_se(_d_t))
+        except (TypeError, ValueError):
+            _var = None
+        if _var is not None and _var > 0 and _var == _var and _var != float("inf"):
+            _search_var_lr = _var
     effective_min = compute_effective_min(0.52, baseline_dir_acc)
     out = {
         "schema": "fm.aligned_verdict.v2",
@@ -568,6 +577,7 @@ def build_summary(s, cand, *, baseline_points=None, baseline_dir_acc=None, batch
         # 2.5 (spec 2026-10-05 §6.3): 缩水增量与配对差标准误。se 不可算时均 None。
         "se": _se,
         "delta_post_shrunk": _delta_post_shrunk,
+        "search_var_lr": _search_var_lr,
         "p_value": p_value,
         "fdr_pass": None,
         "migrated_pass": None,

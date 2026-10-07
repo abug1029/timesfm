@@ -417,6 +417,42 @@ def evaluate_tree_stops(index, snapshot, dead_families):
     return stops
 
 
+def render_open_trees(index, snapshot):
+    """known_verdicts「未停止的树」（spec §6.8）。没有未停止的树时写「无」。"""
+    lines = ["## 未停止的树"]
+    trees = index.unstopped()
+    if not trees:
+        lines.append("无")
+        lines.append("")
+        return lines
+    extension = min(
+        (tree.tree_id for tree in trees),
+        key=lambda tid: (index.trees[tid].accept_ts or "", tid))
+    snap = snapshot if isinstance(snapshot, dict) else {}
+    for tree in sorted(trees, key=lambda item: item.tree_id):
+        used = count_ok_members(tree, snap)
+        lines.append(
+            "- %s symbol=%s family=%s used=%d budget=%d extension=%s" % (
+                tree.tree_id, tree.symbol, tree.family, used, BUDGET_B,
+                "yes" if tree.tree_id == extension else "no"))
+        if not tree.member_vids:
+            lines.append("  - parent none")
+            continue
+        for vid in sorted(tree.member_vids):
+            row = snap.get(vid)
+            near = "no"
+            if isinstance(row, dict) and row.get("status", "ok") == "ok":
+                accuracy = _finite(row.get("dir_acc"))
+                floor = _finite(row.get("effective_min"))
+                if (accuracy is not None and floor is not None
+                        and NEAR_MISS_FLOOR <= accuracy < floor):
+                    near = "yes"
+            lines.append("  - parent %s near_miss=%s" % (vid, near))
+    lines.append("本轮两份提案应为本轮扩展树的 exploit 与 falsifier。")
+    lines.append("")
+    return lines
+
+
 def append_commitment(path, event, tree_id, symbol="", family="",
                       proposal_id="", variant_id="", search_role="",
                       search_parent_id="", stop_reason=None,

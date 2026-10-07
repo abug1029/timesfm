@@ -48,6 +48,8 @@ VERDICT_FIELDS_V2 = {
     # 正期望协变量搜索 2.6（spec 2026-10-05 §6.4）：对现任的增量 DM 裁决。
     # 取值 pass/fail/not_applicable。不参与 gate()、不改 gate_pass/fdr_pass。
     "incremental_vs_incumbent",
+    # 2.7：节点 d_t 的长程方差，晋升时抄进预注册 var_lr。历史裁决没有。
+    "search_var_lr",
 }
 VERDICT_FIELDS_V2_NULLABLE = {
     "path_corr", "mae", "mape", "decay", "p_value",
@@ -78,6 +80,7 @@ VERDICT_FIELDS_V2_NULLABLE = {
     "se", "delta_post_shrunk",
     # 正期望协变量搜索 2.6：对现任增量 DM 裁决，历史裁决没有
     "incremental_vs_incumbent",
+    "search_var_lr",
 }
 
 QUEUE_FIELDS = {"variant_id", "symbol", "cov_override", "max_points",

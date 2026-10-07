@@ -13,6 +13,7 @@ from goal_dsl import evaluate_goal
 from cascade.cov_family import ALLOWED_FAMILIES, resolve_cov_family
 from cascade import experiment_fingerprint as ef
 import search_trees as st
+import search_promote
 try:
     from cascade.statistical_tests import bh_fdr_promote
 except ImportError:
@@ -1251,7 +1252,7 @@ def _protocol_section_line(fp):
 
 def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
                                status_map=None, queue_ids=None, root=None,
-                               excluded_items=None):
+                               excluded_items=None, commitments_path=None):
     if status_map is None:
         status_map = load_symbol_status()
     if queue_ids is None:
@@ -1344,10 +1345,10 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
                 n_pass += 1
         best = _best_by_sym.get(sym)
         rec = status_map.get(sym) or {}
-        st = str(rec.get("status") or "ACTIVE").upper()
-        if st == "DEAD":
+        sym_status = str(rec.get("status") or "ACTIVE").upper()
+        if sym_status == "DEAD":
             label = "SYMBOL_DEAD"
-        elif st == "HOLD":
+        elif sym_status == "HOLD":
             label = "HOLD"
         else:
             label = "ACTIVE"
@@ -1357,9 +1358,9 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
         reason = rec.get("reason")
         if reason:
             line += " — %s" % reason
-        if st == "DEAD":
+        if sym_status == "DEAD":
             line += " — 不要提案"
-        elif st == "HOLD":
+        elif sym_status == "HOLD":
             hg = rec.get("hold_generations")
             if hg is not None:
                 line += " — 暂停 %s 代" % hg
@@ -1369,6 +1370,9 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
     if clue_lines and clue_lines[0].startswith("## Effective clues"):
         clue_lines.insert(1, _protocol_section_line(_primary_fp))
     lines.extend(clue_lines)
+    lines.extend(st.render_open_trees(
+        st.load_tree_index(commitments_path or SEARCH_COMMITMENTS_PATH),
+        snapshot if isinstance(snapshot, dict) else {}))
     lines.extend(_dead_family_lines(items, _primary_fp))
     lines.extend(_cross_matrix_lines(_items, _primary_fp))
     lines.extend(_old_protocol_prior_lines(_excl_fp_rows))
@@ -1489,6 +1493,7 @@ def _effective_clue_lines(items):
         if 0.49 <= da < emin:
             near.append((v.get("variant_id"), da, emin))
     lines = ["## Effective clues (from snapshot, not a frozen menu)",
+             "仅当前协议，旧协议已滤除；分母含描述性裁决。",
              "### Passing families"]
     passing = [(fam, fam_pass[fam]) for fam in fam_pass if fam_pass[fam] > 0]
     passing.sort(key=lambda x: (-x[1], x[0]))
@@ -2395,12 +2400,18 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     archived = getattr(ev, "ARCHIVED_COVARIATES", {}) if ev else {}
     valid_covs = getattr(ev, "VALID_COVARIATES", None) if ev else None
     allowed_syms = getattr(ev, "ALLOWED_SYMBOLS", None) if ev else None
-    # ── P2.2 (spec 2026-10-05 §6.2) 搜索树资格门：enforce 档才构造。树索引与
-    # 扩展树仲裁在收割开始时一次性装载（root_round = 无未停止树）。守卫活态：
-    # guard-pass 即建树/占座（先处理的 root 先建树；后到的同角色合法提案按
-    # 收割处理顺序拒绝）。shadow 档 2.9 前不构造（行为与 off 相同）。──
-    search_guard = (st.SearchGuard.load(SEARCH_COMMITMENTS_PATH, snapshot or {})
-                    if search_policy == "enforce" else None)
+    # ── P2.2 / P2.9 (spec §6.2 / §6.1) 搜索树资格门。
+    # enforce：拒绝生效，guard-pass 即内存建树/占座。
+    # shadow：同一套检查只记「本会拒绝」，不拒绝、不把树字段带进队列、不写账。
+    # off：不构造守卫。──
+    search_guard = None
+    shadow_guard = None
+    if search_policy == "enforce":
+        search_guard = st.SearchGuard.load(SEARCH_COMMITMENTS_PATH, snapshot or {})
+    elif search_policy == "shadow":
+        shadow_guard = st.SearchGuard.load(SEARCH_COMMITMENTS_PATH, snapshot or {})
+        stats["search_would_reject"] = {}
+        stats["search_shadow_log"] = []
 
     def _reject(reason):
         stats["rejected"] += 1
@@ -2456,6 +2467,17 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                     # 辅助）——写入器按行落 accept 时不再反查 pool/relpath。
                     search_info["search_family"] = _fam
                     search_info["search_proposal_id"] = _pid
+            if shadow_guard is not None:
+                _fam_s = ((pool.get(cov, {}) or {}).get("family")
+                          or p.get("covariate_family") or "")
+                if _fam_s:
+                    _sr_s, _shadow_info = shadow_guard.check(
+                        p, symbol, _fam_s, cov, os.path.relpath(sp, root))
+                    if _sr_s is not None:
+                        bucket = stats["search_would_reject"]
+                        bucket[_sr_s] = bucket.get(_sr_s, 0) + 1
+                        stats["search_shadow_log"].append(
+                            "%s %s" % (_sr_s, os.path.relpath(sp, root)))
             if allowed_syms is not None and symbol not in allowed_syms:
                 _reject("symbol_not_allowed"); continue
             if cov in archived:
@@ -3371,6 +3393,65 @@ def _sweep_search_stops(goal, log, snapshot):
     return len(stops)
 
 
+def _append_jsonl(path, row):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _sweep_search_promotions(goal, log, snapshot):
+    """P2.7（spec §6.6）：未停止树上六条件都成立则追加一行预注册并写 promote。
+
+    只在 enforce 下写。off / shadow 不追加、不落账。提案文本读不到则跳过
+    这一棵（fail-closed），不发明 mechanism。
+    """
+    if _norm_search_policy(goal) != "enforce":
+        return 0
+    index = st.load_tree_index(SEARCH_COMMITMENTS_PATH)
+    if not index.unstopped():
+        return 0
+    registry = load_preregistry(PREREGISTRY_PATH)
+    promoted = 0
+    for tree in list(index.unstopped()):
+        decision = search_promote.evaluate_tree_promotion(
+            tree, snapshot or {}, registry)
+        if decision is None:
+            continue
+        mechanism, direction = search_promote.read_proposal_copy(
+            FM_ROOT, decision.get("proposal_id") or "")
+        if not mechanism or not direction:
+            if isinstance(log, str) and log:
+                _log_decision(log, "search_promote_skip",
+                              "tree=%s missing proposal text" % tree.tree_id)
+            continue
+        row = search_promote.build_promotion_prereg(
+            decision, mechanism=mechanism, predicted_direction=direction,
+            registered_at=_now_iso(), prereg_id=uuid.uuid4().hex)
+        # 先写 promote：该事件把树标成终态。若随后预注册追加失败，
+        # 下一轮不会再晋升，避免同一棵树追加第二行。
+        st.append_commitment(
+            SEARCH_COMMITMENTS_PATH, "promote",
+            tree_id=tree.tree_id, symbol=decision["symbol"],
+            family=tree.family,
+            proposal_id=decision.get("proposal_id") or "",
+            variant_id=decision["variant_id"],
+            stop_reason="promoted",
+            delta_post=decision["delta_post"],
+            n_required=decision["n_required"])
+        _append_jsonl(PREREGISTRY_PATH, row)
+        registry.append(row)
+        index.stopped.add(tree.tree_id)
+        if isinstance(log, str) and log:
+            _log_decision(log, "search_promote",
+                          "tree=%s vid=%s n=%s" % (
+                              tree.tree_id, decision["variant_id"],
+                              decision["n_confirm_required"]))
+        promoted += 1
+    return promoted
+
+
 def _maybe_harvest(st, goal, log):
     """Harvest a finished run's peer proposals into the aligned queue.
 
@@ -3386,6 +3467,9 @@ def _maybe_harvest(st, goal, log):
         _log_decision(log, "proposal_scan",
                       "seen=%(seen)d rejected=%(rejected)d backlog=%(backlog)d reasons=%(reject_reasons)s" % pstats,
                       [])
+    if pstats and pstats.get("search_shadow_log"):
+        _log_decision(log, "search_shadow",
+                      "would_reject=%s" % (pstats.get("search_would_reject"),))
     if rows:
         # P2.3 (spec §6.7)：先落搜索 accept 再入队（顺序依据见
         # _commit_search_accepts docstring：崩溃重放幂等；且必须在
@@ -3836,6 +3920,13 @@ def _main_locked(args):
             _mark_stop_emitted()
             return 0
 
+        materialize_covariate_menu(load_covariate_pool(), MENU_INC)
+        # P2.4（spec §6.5）：每轮巡检未停止树的停止条件，先于同轮收割
+        # （停止先于新 admit；enforce-only 在函数内门控；写失败向上传播）。
+        # 停止先于晋升：本轮刚撞上预算/上界/家族死亡的树不再晋升（§6.5 序、§6.6 条件 1）。
+        _sweep_search_stops(goal, log, snap["variants"])
+        _sweep_search_promotions(goal, log, snap["variants"])
+        # 树节写在停止和晋升之后，本轮刚关闭的树不再留给同伴当父节点。
         # T1 (2026-10-05): 主循环物化同样注记旧协议行。snap["variants"] 已按
         # 当前协议过滤——从其唯一指纹反查全量 registry 求差（不重算指纹）；
         # 指纹不可得或混合时留空，由 materialize 走输入内兜底推导。
@@ -3855,10 +3946,6 @@ def _main_locked(args):
             queue_ids=rl.in_flight_ids(QUEUE, INPROGRESS),
             proposed_ids=collect_proposed_variant_ids(FM_ROOT),
             **_mb_kwargs)
-        materialize_covariate_menu(load_covariate_pool(), MENU_INC)
-        # P2.4（spec §6.5）：每轮巡检未停止树的停止条件，先于同轮收割
-        # （停止先于新 admit；enforce-only 在函数内门控；写失败向上传播）。
-        _sweep_search_stops(goal, log, snap["variants"])
         if ok:
             rec = _log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
             write_stop_report("goal_reached", snap, why, rec["reason"])

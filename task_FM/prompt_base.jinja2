@@ -64,6 +64,17 @@ metrics/notes；如需在 mechanism 叙述中提及旧结果，只能带
 8. **failure_delta**：若该 symbol 或该 cov 已有 `gate_pass=False` 的 ok verdict，必须填写 ≥20 字，点名失败 `variant_id` 并说明这次为何不同。没有增量的照抄会被拒收 (`no_failure_delta`)。
 9. **success_delta**：若本 symbol 与本 cov 的**组合**已有 `gate_pass=True` 的 ok verdict 且评估窗口未平移，复跑必须填写 ≥20 字 `success_delta`，写清相对上次成功的增量（口径/机制/样本变化）。窗口已平移或锚不可得时放行。缺 `success_delta` 的复跑会被拒收 (`no_success_delta`)。
 
+10. **搜索树字段**（`off` 与 `shadow` 下可选；`enforce` 下缺字段按 `search_role_missing` 拒绝）：`search_role` 取 `root`、`exploit`、`falsifier` 之一。`root` 的 `search_parent_id` 留空。`exploit` 与 `falsifier` 的 `search_parent_id` 填 known_verdicts「未停止的树」给出的父节点 `variant_id`，`tree_id` 照抄该节。已过门组合在当前窗口复跑仍要带 `success_delta`（≥20 字）；搜索字段不代替它。
+
+```json
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "search_role": "exploit",
+  "search_parent_id": "<variant_id from 未停止的树>",
+  "tree_id": "<tree_id from 未停止的树>"
+}
+```
+
 ## Covariate pool (your valid menu, with mechanisms)
 {% include 'covariate_menu.inc.md' ignore missing %}
 

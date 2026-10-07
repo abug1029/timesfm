@@ -207,6 +207,7 @@ def test_build_summary_writes_se_and_delta_post_shrunk():
                            baseline_dir_acc=0.50, batch_id="b1")
     assert out["se"] == pytest.approx(exp_se, rel=1e-9)
     assert out["delta_post_shrunk"] == pytest.approx(exp_dp, rel=1e-9)
+    assert out["search_var_lr"] == pytest.approx(st.compute_hac_se(d_t), rel=1e-9)
     # 与 delta 同号、更小
     assert out["delta_post_shrunk"] < (0.56 - 0.50)
 
