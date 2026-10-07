@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """三环监督环: goal 判定 + 两环调度, 纯 Python 0 token"""
-import argparse, atexit, fcntl, glob, json, logging, os, re, signal, subprocess, sys, threading, time, traceback, uuid
+import argparse, atexit, fcntl, glob, json, logging, os, re, shutil, signal, subprocess, sys, threading, time, traceback, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import yaml
@@ -3694,6 +3694,63 @@ def _current_protocol_fingerprint():
         return None
 
 
+def _archive_baseline_before_regen(points_path):
+    """步① 基线快照版本化（2026-10-07 裁定 A.8，事项一五步之第 1 步）。
+
+    重生即归档：gbp.generate() 以临时文件 rename 覆盖旧档，旧快照会直接
+    丢失。重生前先将旧档复制为带锚定日的归档副本：
+
+        baseline_points_jd_nocov.archive_20250930T1400.jsonl
+
+    锚定日 = 旧档最后一个可解析行的 cutoff（评估窗末端）；全坏/空档回退
+    文件 mtime。copy 语义（原档留给 generate 覆盖）。归档失败仅 WARN 不
+    阻塞重生；归档不清理（重生罕见，历史快照保留供审计）。
+
+    Returns:
+        归档文件路径；无旧档或归档失败时返回 None。
+    """
+    if not os.path.exists(points_path):
+        return None
+    anchor = None
+    try:
+        with open(points_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    anchor = json.loads(line).get("cutoff")
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        pass
+    ts = None
+    if anchor:
+        try:
+            ts = datetime.strptime(anchor, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%dT%H%M")
+        except (TypeError, ValueError):
+            ts = None
+    if ts is None:
+        try:
+            ts = datetime.fromtimestamp(os.path.getmtime(points_path)).strftime("%Y%m%dT%H%M")
+        except OSError:
+            return None
+    d, base = os.path.split(points_path)
+    stem, ext = os.path.splitext(base)
+    archive = os.path.join(d, f"{stem}.archive_{ts}{ext}")
+    n = 1
+    while os.path.exists(archive):
+        archive = os.path.join(d, f"{stem}.archive_{ts}_{n}{ext}")
+        n += 1
+    try:
+        shutil.copy2(points_path, archive)
+        print(f"[INFO] ensure_baselines: 基线快照已归档 → {archive}", file=sys.stderr)
+        return archive
+    except OSError as e:
+        print(f"[WARN] ensure_baselines: 基线快照归档失败 ({base}): {e}", file=sys.stderr)
+        return None
+
+
 def ensure_baselines(symbols, root):
     """Check baseline_metrics.json + baseline_points_{symbol}.jsonl validity.
 
@@ -3729,6 +3786,7 @@ def ensure_baselines(symbols, root):
         points_path = os.path.join(config_dir, gbp.baseline_filename(sym_lower, None))
         met = metrics.get(sym_lower, {})
         if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
+            _archive_baseline_before_regen(points_path)   # 步①: 重生即归档
             try:
                 gbp.generate(sym_lower, None, root)   # E7: 无协变量基线
             except Exception as e:
@@ -3748,6 +3806,7 @@ def ensure_baselines(symbols, root):
             except OSError:
                 pass
         if n_lines < 100:
+            _archive_baseline_before_regen(points_path)   # 步①: 重生即归档
             try:
                 gbp.generate(sym_lower, None, root)   # E7: 无协变量基线
             except Exception as e:
@@ -3772,6 +3831,7 @@ def ensure_baselines(symbols, root):
             )
         else:
             continue          # 行数与指纹均合格
+        _archive_baseline_before_regen(points_path)   # 步①: 重生即归档
         try:
             gbp.generate(sym_lower, None, root)
         except Exception as e:
