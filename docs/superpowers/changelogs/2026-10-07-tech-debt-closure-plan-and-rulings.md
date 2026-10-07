@@ -34,3 +34,10 @@
 
 - `767ad43` docs: 技术债收口方案与实施计划——23 条全核实（6 条勘误）+ 批次 0-4 + 裁定点 Q1-Q6
 - 本次提交：裁定回写（§8 裁定表 + §6 Q6 子项目章程 + Q2/Q3/Q4/Q5 相关章节同步）+ 本 changelog
+
+
+## 后续：Q6 调研 + Q1 溯源完成（2026-10-07 晚）
+
+- 交付 `reports/2026-10-07-dm-status-liveness-root-cause.md`：根因 = spec §7.8 开放问题 #8 未裁定（missingness_admissible 恒 False，可确认分支结构不可达，396 行历史零可确认）；生产"mismatch"实证为基线快照 vs 滚动窗的良性边缘漂移（47.6% 行零不匹配，jd_ccl 案例首尾落点实证）；修复选项 A-E 只列不决策，待宿主裁定
+- Q1 溯源结案：n_eff = fallback_n_eff 解析式 Bartlett 修正（n=588 → 恒 73，monthly_backtest.py:660 唯一生产路径），设计使然非 bug，**M5 关闭零改动**；measured_n_eff / effective_sample_size 为死代码（登记 D 类清理候选）
+- 计划文档同步：§4 M5 溯源完成标记 / §6 交付物已交付标记 / §8 Q1 行补结论
