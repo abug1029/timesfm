@@ -124,3 +124,11 @@ bd1cd16 步② C 拉取日重锚 + confirm_from_ts 守卫
 ```
 
 **步⑤ 前置条件**：数据恢复（1H 数据末端越过 confirm_from_ts 2026-10-03，预计 ~10-09）+ supervisor 重启加载步①②③④新代码
+
+## 后续：备份改回同仓（2026-10-07 晚）
+
+- **宿主裁定**：备份与活仓同一个仓库，远端 GitHub 即备份。撤掉异机 tar、cron 02:15、rclone、180 天日快照和独立 backup remote。
+- **入库**：`aligned_verdicts.jsonl`、`baseline_points_*.jsonl`、`baseline_metrics.json`、`.omc/supervisor_decisions.jsonl`。`.gitignore` 已放开这四类。
+- **仍不入库**：`.env` / `.env.*`、`data/cache/`（检查点与运行状态）、`logs/`。
+- **删除** `scripts/backup_data_assets.sh`。`safe_clean.sh` 保留。当日已经落到备份机的 `/root/timesfm-data` 快照未从磁盘删除。
+- 活仓 `/home/abug/timesfm` 上的文件这次没有提交。那台机器上的 crontab 条目需要宿主自行去掉。

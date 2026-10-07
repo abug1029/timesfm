@@ -22,8 +22,9 @@ timesfm/
 # TimesFM 模型缓存
 timesfm_cache/
 
-# OMC 内部状态
-.omc/
+# OMC 内部状态。决策留痕入库，其余仍忽略。
+.omc/*
+!.omc/supervisor_decisions.jsonl
 .superpowers/
 .claude/
 .agents/
@@ -72,8 +73,7 @@ models/timesfm-*/
 task_FM/docs/praxist_reports/20260904_*
 task_FM/docs/praxist_reports/*.pdf
 
-# Aligned verdict registry (runtime / slow-loop writable)
-task_FM/config/aligned_verdicts.jsonl
+# aligned_verdicts.jsonl 入库（2026-10-07 晚：与活仓同仓，GitHub 即备份）
 
 # Local evaluator dumps (invalid/probe summaries)
 task_FM/evaluations/output/
@@ -97,8 +97,7 @@ task_FM/config/*.bak
 # Runtime artifacts (supervisor-generated, keep on disk only)
 .codegraph/
 task_FM/config/*.lock
-task_FM/config/baseline_metrics.json
-task_FM/config/baseline_points_*.jsonl
+# baseline_metrics.json 与 baseline_points_*.jsonl 入库（2026-10-07 晚）
 task_FM/docs/praxist_reports/
 .agentic-qe/
 data/assets/

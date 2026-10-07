@@ -68,11 +68,12 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 
 ## 数据资产与清理禁令（2026-10-07）
 
-- **裸 `git clean -xdf` 一律禁止**——会一锅端 gitignored 数据资产：裁决史 `aligned_verdicts.jsonl`(+.bak)/基线 `baseline_points_*`/决策留痕 `.omc/`/队列与检查点 `data/cache/`/`.env` 系列/`logs/`
-- 清理必须走 `safe_clean.sh`（仓内 `scripts/safe_clean.sh`；操作副本 `/home/abug/bin/safe_clean.sh`）：默认 dry-run + 白名单自检（命中保护路径即 FATAL），`--apply` 才执行
-- P0 数据资产已纳入异机备份：`/home/abug/bin/backup_data_assets.sh`（cron 02:15 自动跑）→ 备份机 `chong@100.96.19.116` WSL `/root/timesfm-data/{latest,daily/YYYY-MM-DD}/`；含明文 `.env` 系列（宿主裁定，远端 root-only 600）；远端每次全量 `md5sum -c` 校验
-- 备份/清理脚本以仓内 `scripts/` 为源：改版合入后必须重新 `install -m 755` 部署到 `/home/abug/bin/`
-- 备份范围、恢复步骤、远端通道细节 → `docs/runbook_praxist_three_loop.md`「数据资产备份与清理」节
+- **备份就是本仓库。** 推 `origin`（GitHub）。不设异机 tar、不设 cron、不设 rclone、不设第二份 git remote。
+- 入库：`task_FM/config/aligned_verdicts.jsonl`、`baseline_points_*.jsonl`、`baseline_metrics.json`、`.omc/supervisor_decisions.jsonl`。活仓上若尚未提交，在活仓 `git add` 这些路径后推 `origin`。不要用别的机器上的旧快照覆盖活文件。
+- 不入库：`.env` / `.env.*`（密钥）、`data/cache/`（检查点与运行状态）、`logs/`。
+- **裸 `git clean -xdf` 一律禁止**——仍会删掉未入库的 `data/cache/`、`.env`、`logs/`、`.omc/` 里除决策留痕以外的文件。
+- 清理必须走 `safe_clean.sh`（仓内 `scripts/safe_clean.sh`；操作副本 `/home/abug/bin/safe_clean.sh`）：默认 dry-run + 白名单自检（命中保护路径即 FATAL），`--apply` 才执行。改版合入后重新 `install -m 755` 到 `/home/abug/bin/`。
+- 现行规则 → `docs/runbook_praxist_three_loop.md`「数据资产备份与清理」节
 
 ## 分层文档 (deepinit 2026-08-08)
 

@@ -67,7 +67,9 @@ Q1 溯源（0.5 天）       n_eff 计算路径溯源（§4 M5 第一步）─�
 
 ### 2.2 方案（三层防护）
 
-> **2026-10-07 宿主四项裁定**（question 工具落定）：① 批次 0 并入批次 1 一次执行（不做单独手动应急备份）② 目的地=备份机 ③ `.env` 系列**明文包含**（远端 root-only，600 权限随档）④ 一次性全量+里程碑增量+cron 自动化。
+> **2026-10-07 晚裁定（现行，取代下面的异机方案）**：备份与活仓同一个仓库。推 `origin`（GitHub）即可。不再使用 `scripts/backup_data_assets.sh`、备份机 `/root/timesfm-data`、daily 180 天、rclone，也不再维护独立 backup remote。裁决史 `aligned_verdicts.jsonl`、基线 `baseline_points_*.jsonl` / `baseline_metrics.json`、`.omc/supervisor_decisions.jsonl` 改为入库。`.env` 与 `data/cache/` 仍不入库。以下四项裁定与实施记录保留为当日历史，不再执行。
+
+> **2026-10-07 宿主四项裁定**（已被上面的晚裁定取代；question 工具落定）：① 批次 0 并入批次 1 一次执行（不做单独手动应急备份）② 目的地=备份机 ③ `.env` 系列**明文包含**（远端 root-only，600 权限随档）④ 一次性全量+里程碑增量+cron 自动化。
 
 1. **异机每日快照**（批次 0+1 合并，2026-10-07 当日实施完成）：
    - `scripts/backup_data_assets.sh`：**tar-over-ssh**（远端 WSL 无 rsync，2026-10-07 实测只有 tar/md5sum）→ backup 机 `chong@100.96.19.116` → WSL `/root/timesfm-data/`（复用 BACKUP_SYNC_GUIDE.md 的 ssh 通道与密钥）
@@ -318,7 +320,7 @@ D4/D5 优先级最高（运维风险：supervisor 被回收无人拉起 / 父死
 - `docs/superpowers/reports/2026-10-05-peer-learning-gap-analysis.md` — peer 学习断裂分析
 - `docs/superpowers/plans/2026-10-05-positive-ev-factor-search-plan.md` — 在途正期望分支（串行前置）
 - `docs/superpowers/changelogs/2026-10-07-tech-debt-closure-plan-and-rulings.md` — 本计划的裁定记录
-- `BACKUP_SYNC_GUIDE.md` — git 层备份指南（P0 数据层方案的互补件）
+- `BACKUP_SYNC_GUIDE.md` — 已停用。备份改为推 `origin`
 
 **计划生成**: 2026-10-07 上午（核实基于 master@5e7237a + live registry 393 行实跑验证）
 **裁定回写**: 2026-10-07（宿主六项裁定全落定）
