@@ -223,11 +223,23 @@ D4/D5 优先级最高（运维风险：supervisor 被回收无人拉起 / 父死
 
 **落地五步（顺序执行，每步独立提交）**：
 
-1. **基线快照版本化**（第 2 步前置；**批次 0 数据备份先行**——版本化改变 baseline_points 布局）
-2. **C**：拉取日重锚 + 守卫断言
-3. **B + 采集包**：admissibility_rule 行级可选字段——唯一写入路径 = 裁决行产出；五个读取点（fdr_pass_persistable / _test_invalid / _passes_confirmation / classify_confirmation / _family_confirmatory_counts）只计匹配预注册钉定规则的行；旧行缺字段不计入、不回溯解释
-4. **补盖两条预注册**（jd daily_slope+vor、sr daily_slope+vwap_deviation；补盖前必须重核验各自可确认行数 = 0 并留痕命令/时间/结果，非零则暂停另行裁定）
-5. **通电前置核查 #2/#3**（#2 判定标准见派发活性报告 §4）
+1. **基线快照版本化**（第 2 步前置；**批次 0 数据备份先行**——版本化改变 baseline_points 布局）✅ **完成 2026-10-07 21:15**（`4ae5336`）
+2. **C**：拉取日重锚 + 守卫断言 ✅ **完成 2026-10-07 21:45**（`bd1cd16`）
+3. **B + 采集包**：admissibility_rule 行级可选字段——唯一写入路径 = 裁决行产出；五个读取点（fdr_pass_persistable / _test_invalid / _passes_confirmation / classify_confirmation / _family_confirmatory_counts）只计匹配预注册钉定规则的行；旧行缺字段不计入、不回溯解释 ✅ **完成 2026-10-07 22:00**（`e3cc1dd` + P1 修复 `71f8517`）
+4. **补盖两条预注册**（jd daily_slope+vor、sr daily_slope+vwap_deviation；补盖前必须重核验各自可确认行数 = 0 并留痕命令/时间/结果，非零则暂停另行裁定）✅ **完成 2026-10-07 22:20**（`3233a75`）
+5. **通电前置核查 #2/#3**（#2 判定标准见派发活性报告 §4）⏳ **blocked**——待数据恢复（1H 数据末端越过 confirm_from_ts 2026-10-03，预计 ~10-09）+ supervisor 重启加载步①②③④新代码
+
+**实施记录（2026-10-07 晚，事项一五步）**：
+
+- **前置**：rebase tech-debt 分支到最新 master f0a7c23（零冲突，三提交重写 `e475aab/ad81e1d/01d593d`）+ force-push backup
+- **测试基线钉死**（@`01d593d`，183 秒）：18F / 1799P / 5S / 1X / 9E——27 项非绿全部 pre-existing（分支 diff 纯 docs+shell 零 .py）
+- **步① 基线快照版本化**（`4ae5336`）：`_archive_baseline_before_regen()` + ensure_baselines 三重生点统一插桩（归档→重生）；归档名 `{stem}.archive_{锚定日}{ext}`（锚定日=旧档最后可解析行 cutoff，全坏回退 mtime，同名冲突追加序号）；copy 语义、归档失败仅 WARN 不阻塞、归档不清理。测试 5 例全绿。全量回归 18F/1804P（+5P，零新增失败）
+- **步② C 拉取日重锚 + 守卫**（`bd1cd16`）：`_latest_data_dt()` 抽出（与 `_confirm_data_ready` 共享 `_CONFIRM_DATA_CACHE` 30 分钟 TTL）；`_baseline_reanchor_reason()` 双条件重锚判定（(a) 确认窗覆盖缺口 + (b) 漂移上界 168h=7 天）；fail-open（数据/基线末端读不到不动作）；`_guard_confirm_from_ts_after_regen()` 守卫断言（新档丢失旧档 ≥ confirm_from_ts 的 cutoff → 从归档恢复 + ERROR 留痕）；`_regen_baseline_with_archive()` 三重生点统一入口。测试 12 例全绿。全量回归 18F/1816P（+12P，零新增失败）
+- **步③ B + 采集包**（`e3cc1dd` + P1 修复 `71f8517`）：`pair_dir_ok_series_with_diagnostics` 增加边缘连续块 + 有界性双条件检查（变体侧尾部连续块 / 基线侧头部连续块 + 每侧 ≤30 日期）；不通过落回 `set_mismatch_descriptive`；通过返回 `admissibility_rule="edge_continuous_block_30d"` + `unmatched_variant_dates` / `unmatched_baseline_dates` 位置信息；五读取点加 `admissibility_rule is not None` 过滤。测试 14 例全绿（含 P2 补测 4 例）。测试 fixture 批量更新（16 个测试文件）。全量回归 18F/1830P（+14P，零新增失败）。专家审核：P1（Critical）边缘连续块检查缺失 → 已修复；P2（Major）测试覆盖缺失 → 已补；R2（Major）位置信息采集缺失 → 已补；复审通过
+- **步④ 补盖两条预注册**（`3233a75`）：重核验留痕（2026-10-07 22:18 CST，jd/sr 可确认行数 = 0，各 13 行全为非确认状态）；`task_FM/config/preregistry.jsonl` 两行加 `"admissibility_rule": "edge_continuous_block_30d"` + `"admissibility_note": "admissibility_rule 系 2026-10-07 裁定补设，confirm_from_ts 与 n_confirm_required 不变"`。测试修复 `test_first_preregistry.py`。全量回归 18F/1830P（零新增失败）。专家审核：有条件通过（已补正 changelog + 重核验留痕 `86c5902`）
+- **步⑤ 通电前置核查 #2/#3**：blocked——待数据恢复（1H 数据末端越过 confirm_from_ts 2026-10-03，预计 ~10-09）+ supervisor 重启加载步①②③④新代码
+- **总测试状态**：基线 18F/1799P → 步①②③④后 18F/1830P（+31P，零新增失败）
+- **提交清单**：`4ae5336`（步①）→ `bd1cd16`（步②）→ `e3cc1dd`（步③）→ `71f8517`（步③ P1 修复）→ `3233a75`（步④）→ `86c5902`（changelog 补步③④条目）
 
 **证据基线**：逐行边缘连续审计 106/106 非零 unmatched 行通过、零内部散点（报告附录 B，两次读数恒等：(14,13)×57 / (11,10)×35 / (17,16)×14，每侧实测最大 17 < 30）；21 行基线覆写留痕入报告附录 C（全部 recorded (0,0)，评估后覆写，不推翻审计）。
 
@@ -272,7 +284,7 @@ D4/D5 优先级最高（运维风险：supervisor 被回收无人拉起 / 父死
 |---|---|
 | 10-07（已批准） | 批次 0 应急备份（执行时点待确认）+ **Q6 调研启动** + **Q1 溯源启动**（两者只读并行） |
 | 10-07 晚（回写中） | Q6 修复裁定落定 → §6.4 五步；事项三立项并当日完成调研 → §6.5；dm-status 报告补附录 A/B/C（裁定要旨 + 106/106 逐行审计 + 21 行覆写勘误）；pevs 合入 master（b86ddba） |
-| 批次 0+1 落地后 | **事项一（§6.4 五步）实施**：先 rebase → 逐步 TDD（批次 0+1 已于 10-07 16:57 完成，见 §2.5） |
+| 批次 0+1 落地后 | **事项一（§6.4 五步）实施**：步①②③④已完成（`4ae5336`→`bd1cd16`→`e3cc1dd`+`71f8517`→`3233a75`→`86c5902`）；步⑤ blocked（待数据恢复 ~10-09 + supervisor 重启） |
 | 10-07 16:57（已完成） | 批次 0+1 合并执行：首份全量 458 文件/140M + md5 全过 + cron 02:15 装机 + safe_clean + AGENTS/runbook 禁令；rclone 层待宿主端点+密钥（WARN 跳过中） |
 | pevs 合入部署（已完成 10-07，重启待宿主窗口） | 重启窗口顺带完成 A3 根治迁移；P2.7 消费端接线待 B+C |
 | Q6 调研交付（0.5-1 天） | 根因报告 → 宿主裁定 dm_status 口径 → 反哺 pevs P2.7 与 N1 修复 |
@@ -290,7 +302,7 @@ D4/D5 优先级最高（运维风险：supervisor 被回收无人拉起 / 父死
 | 0+1（合并执行，10-07 完成） | backup 机当日快照 md5 一致 ✅（458 文件/140M，latest+daily 双落位）；safe_clean dry-run 零误伤 ✅；禁令入 AGENTS.md ✅；cron 3 天观察期进行中；对象存储端待宿主端点（WARN 跳过） |
 | Q6 子项目 | 根因报告交付（四层问题全答 + 修复选项清单）；宿主据此裁定口径 |
 | Q1 溯源 | n_eff 来源结论明确（三种假设之一落定）；若需修复则指纹评估先行 |
-| 事项一（dm_status 口径修复 = Q6-续） | §6.4 五步顺序落地，每步独立提交 + TDD + 实施前指纹断言；五读取点旧口径行不计入；第 5 步通电核查 #2/#3 通过 |
+| 事项一（dm_status 口径修复 = Q6-续） | 步①②③④已完成 ✅（基线快照版本化 + C 拉取日重锚 + B 边缘连续块 + 补盖预注册）；测试 18F/1830P（+31P，零新增失败）；步⑤ blocked（待数据恢复 + supervisor 重启） |
 | 事项三（派发活性调研） | 报告交付：派发链机制全图 + 50 条留痕实证 + 结构结论（B+C 为确认轨道结构性前置）+ 通电判定标准 |
 | 2 | 回归恒等；L2/L3/L4 新测试全绿；L4 一致性测试入常备 |
 | 3 | prompt 三块新上下文物化；abandon 端到端；dedup 拒收占比下降；专家审核 PASS |

@@ -74,7 +74,7 @@
 - **全量测试基线钉死**（@01d593d，183 秒）：**18 failed / 1799 passed / 5 skipped / 1 xfailed / 9 errors**——27 项非绿全部 pre-existing（分支 diff 纯 docs+shell 零 .py）：13 项国庆数据缺口类（index_continuous_quality 4F+9E、daily_pred_cache ab_bitexact、aligned_slow_loop real_data）+ 14 项 master 自带红测（vwap×4、sector_filter×5、t7_degradation×3、new_covariates×1、supervisor harvest×1）。TDD 准绳 = 新测试全绿 + 零新增失败，不顺手修（超范围，完整清单随终报呈宿主决策是否入批次 4）
 - **步① 基线快照版本化完成（1/5）**：`_archive_baseline_before_regen()`（supervisor）+ ensure_baselines 三个重生点（metrics 无效/行数不足/指纹不符）统一插桩——重生即归档，归档名 `{stem}.archive_{锚定日}{ext}`（锚定日=旧档最后可解析行 cutoff，全坏回退 mtime，同名冲突追加序号）；copy 语义、归档失败仅 WARN 不阻塞、归档不清理。测试 `tests/test_baseline_archival.py` 5 例全绿（归档内容/命名/缺失跳过/冲突序号/坏尾回退/指纹不符集成）；全量回归 **18F/1804P/5S/1X/9E**（基线 1799P+新增 5P，失败清单与 pre-existing 逐项一致，零新增）。提交 **`4ae5336`**，已 push backup
 - **勘察实证（C 死因落锤）**：`generate_baseline_points.generate()` 以临时文件 rename 直接覆盖旧档（版本化缺口）；评估点间隔 2h（STEP=2 bars）；**jd 基线末端 2026-09-16 15:00 vs 数据末端 2026-09-30 14:00——14 天边缘漂移实测实锤**（裁定 C 漂移上界条件的真实案例）；基线 33 文件（33 points+metrics），行内含 protocol_fingerprint 无锚定日元数据；`ensure_baselines` 为启动 pre-flight（非周期调用）
-- **步② C 拉取日重锚开工（2/5，进行中）**：设计定稿——① `_latest_data_dt()` 抽出（与派发闸门 `_confirm_data_ready` 共享 `_CONFIRM_DATA_CACHE` 30 分钟 TTL，pre-flight 查过主循环直接命中，原函数变薄壳行为不变）；② `_baseline_reanchor_reason()` 双条件重锚判定：(a) 确认窗覆盖缺口（预注册 confirm_from_ts ∈ (基线末端, 数据末端]——no_common_cutoff 直接死因，精确制导到 jd/sr 两预注册品种）+ (b) 漂移上界（落后 > `_BASELINE_STALENESS_MAX_H`=168h/7 天，捕获假期级漂移且避开 2-3 天重启节奏的误重生）；**fail-open**（数据/基线末端读不到不动作——与派发闸门 fail-closed 相反，重生昂贵缺证据不动，国庆缺口期重启安全：数据末端 09-30 < confirm_from_ts 10-03，条件 (a) 不触发）；③ `_guard_confirm_from_ts_after_regen()` 守卫断言（新档丢失旧档 ≥ confirm_from_ts 的 cutoff → 从归档恢复 + ERROR 留痕，保 v9 修订②；无预注册/无归档/旧档本无确认窗点 → 平凡通过，现状即此态）；④ 三重生点统一入口 `_regen_baseline_with_archive()`（归档→重生→守卫）。12 例红测已写（`tests/test_baseline_reanchor.py`）确认全红；实施进行中（_latest_data_dt 重构+三新函数已插入，ensure_baselines 主循环改造过半）
+- **步② C 拉取日重锚完成（2/5）**：设计定稿——① `_latest_data_dt()` 抽出（与派发闸门 `_confirm_data_ready` 共享 `_CONFIRM_DATA_CACHE` 30 分钟 TTL，pre-flight 查过主循环直接命中，原函数变薄壳行为不变）；② `_baseline_reanchor_reason()` 双条件重锚判定：(a) 确认窗覆盖缺口（预注册 confirm_from_ts ∈ (基线末端, 数据末端]——no_common_cutoff 直接死因，精确制导到 jd/sr 两预注册品种）+ (b) 漂移上界（落后 > `_BASELINE_STALENESS_MAX_H`=168h/7 天，捕获假期级漂移且避开 2-3 天重启节奏的误重生）；**fail-open**（数据/基线末端读不到不动作——与派发闸门 fail-closed 相反，重生昂贵缺证据不动，国庆缺口期重启安全：数据末端 09-30 < confirm_from_ts 10-03，条件 (a) 不触发）；③ `_guard_confirm_from_ts_after_regen()` 守卫断言（新档丢失旧档 ≥ confirm_from_ts 的 cutoff → 从归档恢复 + ERROR 留痕，保 v9 修订②；无预注册/无归档/旧档本无确认窗点 → 平凡通过，现状即此态）；④ 三重生点统一入口 `_regen_baseline_with_archive()`（归档→重生→守卫）。测试 `tests/test_baseline_reanchor.py` 12 例全绿。全量回归 18F/1816P（+12P，零新增失败）。提交 **`bd1cd16`**
 - **通道状态**：backup push 正常（01d593d..4ae5336）；origin TLS 仍不通（GnuTLS -110），恢复后补推
 
 ## 后续：事项一步③ B + 采集包完成（2026-10-07 晚，续）
@@ -100,3 +100,27 @@
   - 全量回归 18F/1830P，零新增失败
   - 提交 `3233a75`
 - **专家审核（步④）**：有条件通过（补盖符合裁定 A.6 规格、重核验满足要求、测试修复合理）；建议改进：五读取点过滤语义待收紧（当前 `is not None`，裁定要求"匹配"）、测试补正向断言
+
+## 事项一五步进度总结（2026-10-07 晚）
+
+| 步 | 状态 | 提交 | 专家审核 |
+|----|------|------|----------|
+| ① 基线快照版本化 | ✅ 完成 | `4ae5336` | — |
+| ② C 拉取日重锚 + 守卫 | ✅ 完成 | `bd1cd16` | — |
+| ③ B + 采集包 | ✅ 完成 | `e3cc1dd` + P1 修复 `71f8517` | ✅ 通过（P1/P2/R2 已修复） |
+| ④ 补盖两条预注册 | ✅ 完成 | `3233a75` | ✅ 有条件通过（已补正 `86c5902`） |
+| ⑤ 通电前置核查 #2/#3 | ⏳ blocked | — | 待数据恢复（~10-09）+ supervisor 重启 |
+
+**总测试状态**：基线 18F/1799P → 步①②③④后 **18F/1830P**（+31P，零新增失败）
+
+**提交清单**（worktree → backup）：
+```
+86c5902 docs: changelog 补步③④条目（含重核验留痕）
+3233a75 步④ 补盖两条预注册 admissibility_rule
+71f8517 fix(步③): P1 边缘连续块检查 + P2 补测 + R2 位置信息采集
+e3cc1dd 步③ B + 采集包：边缘连续块豁免 + admissibility_rule + 五读取点过滤
+bd1cd16 步② C 拉取日重锚 + confirm_from_ts 守卫
+4ae5336 步① 基线快照版本化：重生即归档
+```
+
+**步⑤ 前置条件**：数据恢复（1H 数据末端越过 confirm_from_ts 2026-10-03，预计 ~10-09）+ supervisor 重启加载步①②③④新代码

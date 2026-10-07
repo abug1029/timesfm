@@ -163,6 +163,8 @@ pevs worktree scripts/aligned_slow_loop.py:263 **硬编码 missingness_admissibl
 
 **裁定（2026-10-07，宿主，全文见附录 A）**：**B 批准**（边缘连续块 + k_max=30 双条件豁免，窗内缺失仍 False，只翻转 missingness_admissible、不动数值）；**C 批准**（基线快照版本化为前置，confirm_from_ts 守卫断言，unmatched 预期 ≈ 拉取滞后 1-3 点、B 不因 C 省略）；**A 缓发**（待真实窗内状态相关缺失案例带实测数据再裁）；**D、E 不采用**；**不 bump 全局协议指纹**（admissibility_rule 按行标记替代，关闭开放问题 #4）；第 1 步（dead families 改口径）等待（观察条件见附录 A 第六节）。
 
+**实施状态（2026-10-07 晚，事项一五步）**：步①基线快照版本化 ✅（`4ae5336`）→ 步②C 拉取日重锚 + 守卫 ✅（`bd1cd16`）→ 步③B + 采集包 ✅（`e3cc1dd` + P1 修复 `71f8517`）→ 步④补盖两条预注册 ✅（`3233a75`）→ 步⑤通电前置核查 ⏳ blocked（待数据恢复 ~10-09 + supervisor 重启）。总测试状态：基线 18F/1799P → 步①②③④后 18F/1830P（+31P，零新增失败）。详见 `changelogs/2026-10-07-tech-debt-closure-plan-and-rulings.md` 步①②③④条目 + `plans/2026-10-07-tech-debt-closure-plan.md` §6.4 实施记录。
+
 ## 7. 开放问题
 
 1. **§7.8 裁定本身** — **已关闭（2026-10-07 裁定）**：B+C 落定（附录 A）；A 的三要素（分桶/独立性检验/注册时冻结）随 A 缓发，待真实窗内状态相关缺失案例出现再裁
