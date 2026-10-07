@@ -33,7 +33,7 @@
 | [runtime_contract.md](./runtime_contract.md) | **三环运行合同**：goal DSL / 门判据 / 指纹 / family / 预注册 | 在用 |
 | [evaluation.md](./evaluation.md) | **评估口径唯一权威**：阈值 / n_eff / DM / FDR / fail-closed | 在用 |
 | [praxist.md](./praxist.md) | 架构概览：Praxist 本体 vs 本仓三环、方案 A 合同 | 在用 |
-| [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | **运维手册**：启停、429 failover、队列/checkpoint、方案 A 收割、故障速查 | 在用 |
+| [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | **运维手册**：启停、429 failover、队列/checkpoint、方案 A 收割、数据资产备份、故障速查 | 在用 |
 | [run_artifacts.md](./run_artifacts.md) | **运行产物生命周期**：run 目录分级、真相源隔离、清理流程与保留策略 | 在用 |
 | [../task_FM/AGENTS.md](../task_FM/AGENTS.md) | 任务包：手写合同 vs 运行产物、18 道提案门、evaluator 接口 | 在用 |
 
@@ -56,6 +56,10 @@
 | [superpowers/reports/2026-10-03-three-loop-autoresearch-paradigm-audit.md](./superpowers/reports/2026-10-03-three-loop-autoresearch-paradigm-audit.md) | 四维定位代码级核实。**顶部有勘误节**：P0 三项经 spec 裁定后在飞计划禁止，已作废——读它之前先读勘误 | 在用（含勘误） |
 | **2026-10-05 Peer 学习机制分析** | | |
 | [superpowers/reports/2026-10-05-peer-learning-gap-analysis.md](./superpowers/reports/2026-10-05-peer-learning-gap-analysis.md) | **Peer 学习断裂**：225 cycle 结果未回传，peer 每次提案 = 盲猜。Cross-run feedback channel 未实现 | 在用 |
+| **2026-10-07 技术债与备份** | | |
+| [superpowers/plans/2026-10-07-tech-debt-closure-plan.md](./superpowers/plans/2026-10-07-tech-debt-closure-plan.md) | 技术债收口计划。§2.2 顶部是现行备份裁定；同节下文的异机方案是当日历史 | 在用 |
+| [superpowers/changelogs/2026-10-07-tech-debt-closure-plan-and-rulings.md](./superpowers/changelogs/2026-10-07-tech-debt-closure-plan-and-rulings.md) | 裁定与实施记录。备份于当晚改回同仓：推 `origin`，不再异机 tar / cron / rclone | 在用 |
+| [../BACKUP_SYNC_GUIDE.md](../BACKUP_SYNC_GUIDE.md) | 独立 backup remote 已停用。备份=本仓推 GitHub | 已停用 |
 | **Praxist 三环合同** | | |
 | [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（提示词纪律以 2026-09-19 为准） | 在用 |
 | [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 | 在用 |

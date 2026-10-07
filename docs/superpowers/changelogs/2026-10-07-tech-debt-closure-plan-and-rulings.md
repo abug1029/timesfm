@@ -17,7 +17,7 @@
 | Q | 裁定 | 计划影响 |
 |---|---|---|
 | Q1 n_eff | 两步走：先溯源（默认假设非 bug）；确证 bug 才修且走 v4 指纹流程；移除作废（tier 依赖） | §4 M5 拆为溯源+处置两步，溯源即日启动 |
-| Q2 第二异地 | **要，且为默认层（宿主设计）**：每次同步默认含 rclone | §2.2 第三层从可选转默认；daily 保留 180 天；待端点+密钥 |
+| Q2 第二异地 | 当日上午裁定 rclone 为默认层、daily 保留 180 天。**当晚取代**：不设第二异地，备份=本仓推 `origin` | 原 §2.2 第三层保留为历史；现行见文末「备份改回同仓」 |
 | Q3 品种集 | **研究 24 个品种而非 9 个** | §3 L3 单源化 goal.yaml、删硬编码、缺键 fail loud |
 | Q4 M1 通道 | **方案 A**：读时聚合既有 jsonl | §4 M1 定案，零新状态存储；spec D1 补注记 |
 | Q5 串行 | **确认串行，pevs 先行** | 批次 2/3/D5 排 pevs 合入后；批次 0/1 并行不受限 |
@@ -127,8 +127,22 @@ bd1cd16 步② C 拉取日重锚 + confirm_from_ts 守卫
 
 ## 后续：备份改回同仓（2026-10-07 晚）
 
-- **宿主裁定**：备份与活仓同一个仓库，远端 GitHub 即备份。撤掉异机 tar、cron 02:15、rclone、180 天日快照和独立 backup remote。
-- **入库**：`aligned_verdicts.jsonl`、`baseline_points_*.jsonl`、`baseline_metrics.json`、`.omc/supervisor_decisions.jsonl`。`.gitignore` 已放开这四类。
-- **仍不入库**：`.env` / `.env.*`、`data/cache/`（检查点与运行状态）、`logs/`。
-- **删除** `scripts/backup_data_assets.sh`。`safe_clean.sh` 保留。当日已经落到备份机的 `/root/timesfm-data` 快照未从磁盘删除。
-- 活仓 `/home/abug/timesfm` 上的文件这次没有提交。那台机器上的 crontab 条目需要宿主自行去掉。
+- **宿主裁定**：备份与活仓同一个仓库。推 `origin`（GitHub）即可。撤掉异机 tar、cron `15 2 * * *`、rclone、180 天日快照，以及名为 backup 的第二 remote。Q2 的 rclone 默认层不再执行。
+- **入库**（`.gitignore` 已放开）：`task_FM/config/aligned_verdicts.jsonl`、`task_FM/config/baseline_points_*.jsonl`、`task_FM/config/baseline_metrics.json`、`.omc/supervisor_decisions.jsonl`。
+- **仍不入库**：`.env` / `.env.*`、`data/cache/`（含检查点与 `daily_pred/`）、`logs/`、`*.bak`。
+- **删除** `scripts/backup_data_assets.sh`。`safe_clean.sh` 保留，裸 `git clean -xdf` 仍禁止。
+- **提交** `bb139d0`（FlyBuddy）：上述忽略规则、AGENTS、runbook、计划 §2.2 现行条、`BACKUP_SYNC_GUIDE.md` 停用说明，以及本条目的第一版。
+- **这次没有做**：没有把 17:13 的 `/root/timesfm-data` 快照灌进仓库，该目录仍在备份机磁盘上（含明文 `.env`）。活仓 `/home/abug/timesfm` 上的裁决史和基线尚未 `git add`。活仓 crontab 与 `/home/abug/bin/backup_data_assets.sh` 未从这台机器删除，02:15 仍会跑旧脚本，直到宿主去掉。
+- **索引**：`docs/README.md`「2026-10-07 技术债与备份」节；`docs/AGENTS.md` 运维手册行补上备份指针。
+
+## 文档索引
+
+| 类型 | 路径 | 状态 |
+|---|---|---|
+| 文档索引 | `docs/README.md` | 现行入口，含 2026-10-07 备份节 |
+| 路由 | `docs/AGENTS.md` | 运维手册行指向同仓备份 |
+| 运维步骤 | `docs/runbook_praxist_three_loop.md`「数据资产备份与清理」 | 现行 |
+| 停用说明 | `BACKUP_SYNC_GUIDE.md` | 独立 backup remote 已停用 |
+| 计划 | `docs/superpowers/plans/2026-10-07-tech-debt-closure-plan.md` §2.2 | 顶部为现行裁定，下文为当日历史 |
+| Changelog（本文件） | `docs/superpowers/changelogs/2026-10-07-tech-debt-closure-plan-and-rulings.md` | 现行 |
+| 机制提交 | `bb139d0` | 已推 `origin/master` |
