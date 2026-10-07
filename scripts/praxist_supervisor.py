@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """三环监督环: goal 判定 + 两环调度, 纯 Python 0 token"""
-import argparse, atexit, fcntl, glob, json, logging, os, re, signal, subprocess, sys, threading, time, traceback, uuid
+import argparse, atexit, fcntl, glob, json, logging, os, re, shutil, signal, subprocess, sys, threading, time, traceback, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import yaml
@@ -23,13 +23,17 @@ _PERSISTABLE_DM = frozenset({"ok", "set_mismatch_ok"})
 
 
 def fdr_pass_persistable(verdict):
-    """W3.4：只有确认运行、缺失可接受、且 DM 状态可确认时，fdr_pass=True 才能落盘。"""
+    """W3.4：只有确认运行、缺失可接受、且 DM 状态可确认时，fdr_pass=True 才能落盘。
+
+    步③ B（2026-10-07 裁定 A.3）：旧行缺 admissibility_rule 不计入、不回溯解释。
+    """
     if not isinstance(verdict, dict):
         return False
     return (
         verdict.get("run_mode") == "confirmation"
         and verdict.get("missingness_admissible") is True
         and verdict.get("dm_status") in _PERSISTABLE_DM
+        and verdict.get("admissibility_rule") is not None
     )
 
 
@@ -441,6 +445,33 @@ _CONFIRM_DATA_TTL_S = 1800
 _CONFIRM_DATA_CACHE: dict[str, tuple] = {}   # symbol -> (queried_at, latest_dt | None)
 
 
+def _latest_data_dt(symbol):
+    """该品种 1H 数据末端（str，如 "2026-09-30 14:00:00"）；读不到返回 None。
+
+    步② C（2026-10-07 裁定）拉取日重锚的新鲜度数据源；与 _confirm_data_ready
+    共享 _CONFIRM_DATA_CACHE（30 分钟 TTL），pre-flight 查过的主循环闸门直接命中。
+    """
+    key = str(symbol).lower()
+    now = time.time()
+    hit = _CONFIRM_DATA_CACHE.get(key)
+    if hit is not None and now - hit[0] <= _CONFIRM_DATA_TTL_S:
+        return hit[1]
+    latest = None
+    try:
+        from data.data_store import DataStore
+        store = DataStore(key)
+        try:
+            h1 = store.get_main_contract_1h(limit=99999)
+        finally:
+            store.close()
+        if h1 is not None and not h1.empty:
+            latest = str(h1["dt"].astype(str).max())
+    except Exception:
+        latest = None
+    _CONFIRM_DATA_CACHE[key] = (now, latest)
+    return latest
+
+
 def _confirm_data_ready(symbol, confirm_from_ts):
     """该品种的 1H 数据是否已越过 confirm_from_ts。
 
@@ -449,26 +480,7 @@ def _confirm_data_ready(symbol, confirm_from_ts):
     （实测每 ~5.7 分钟一座）。这里做 fail-closed 的数据闸门：查不到数据也算未就绪。
     查询结果按 symbol 缓存 30 分钟，避免每轮打库。
     """
-    import time as _time
-    key = str(symbol).lower()
-    now = _time.time()
-    hit = _CONFIRM_DATA_CACHE.get(key)
-    if hit is not None and now - hit[0] <= _CONFIRM_DATA_TTL_S:
-        latest = hit[1]
-    else:
-        latest = None
-        try:
-            from data.data_store import DataStore
-            store = DataStore(key)
-            try:
-                h1 = store.get_main_contract_1h(limit=99999)
-            finally:
-                store.close()
-            if h1 is not None and not h1.empty:
-                latest = str(h1["dt"].astype(str).max())
-        except Exception:
-            latest = None
-        _CONFIRM_DATA_CACHE[key] = (now, latest)
+    latest = _latest_data_dt(symbol)
     if not latest:
         return False
     return latest > str(confirm_from_ts)
@@ -1764,7 +1776,10 @@ def _is_confirmable_failure(v):
 
 
 def _family_confirmatory_counts(rows):
-    """与 _dead_families 同一套行。返回 (fam_ok, fam_pass)。"""
+    """与 _dead_families 同一套行。返回 (fam_ok, fam_pass)。
+
+    步③ B（2026-10-07 裁定 A.3）：只计有 admissibility_rule 的行（旧行过滤）。
+    """
     fam_ok = {}
     fam_pass = {}
     for v in rows or []:
@@ -1772,6 +1787,8 @@ def _family_confirmatory_counts(rows):
             continue
         if v.get("dm_status") not in _CONFIRMATORY_DM:
             continue
+        if v.get("admissibility_rule") is None:
+            continue   # 步③ B: 旧行缺字段不计入
         fam = str(v.get("cov_family") or "").strip()
         if not fam:
             continue
@@ -3694,6 +3711,182 @@ def _current_protocol_fingerprint():
         return None
 
 
+def _archive_baseline_before_regen(points_path):
+    """步① 基线快照版本化（2026-10-07 裁定 A.8，事项一五步之第 1 步）。
+
+    重生即归档：gbp.generate() 以临时文件 rename 覆盖旧档，旧快照会直接
+    丢失。重生前先将旧档复制为带锚定日的归档副本：
+
+        baseline_points_jd_nocov.archive_20250930T1400.jsonl
+
+    锚定日 = 旧档最后一个可解析行的 cutoff（评估窗末端）；全坏/空档回退
+    文件 mtime。copy 语义（原档留给 generate 覆盖）。归档失败仅 WARN 不
+    阻塞重生；归档不清理（重生罕见，历史快照保留供审计）。
+
+    Returns:
+        归档文件路径；无旧档或归档失败时返回 None。
+    """
+    if not os.path.exists(points_path):
+        return None
+    anchor = None
+    try:
+        with open(points_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    anchor = json.loads(line).get("cutoff")
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        pass
+    ts = None
+    if anchor:
+        try:
+            ts = datetime.strptime(anchor, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%dT%H%M")
+        except (TypeError, ValueError):
+            ts = None
+    if ts is None:
+        try:
+            ts = datetime.fromtimestamp(os.path.getmtime(points_path)).strftime("%Y%m%dT%H%M")
+        except OSError:
+            return None
+    d, base = os.path.split(points_path)
+    stem, ext = os.path.splitext(base)
+    archive = os.path.join(d, f"{stem}.archive_{ts}{ext}")
+    n = 1
+    while os.path.exists(archive):
+        archive = os.path.join(d, f"{stem}.archive_{ts}_{n}{ext}")
+        n += 1
+    try:
+        shutil.copy2(points_path, archive)
+        print(f"[INFO] ensure_baselines: 基线快照已归档 → {archive}", file=sys.stderr)
+        return archive
+    except OSError as e:
+        print(f"[WARN] ensure_baselines: 基线快照归档失败 ({base}): {e}", file=sys.stderr)
+        return None
+
+
+# 步② C 漂移上界：基线末端落后数据末端超过此小时数 → 重锚重生。
+# 依据 2026-10-07 裁定 C 验收语义（unmatched 收敛到拉取滞后 1-3 点）+
+# 实测边缘漂移案例 14 天；7 天既捕获假期级漂移，又避免 2-3 天重启节奏下
+# 每次启动全品种重生（33 品种 × ~1.5 分钟回测 ≈ 50 分钟）。
+_BASELINE_STALENESS_MAX_H = 168
+
+
+def _prereg_confirm_from_ts(sym_lower, root):
+    """该品种全部预注册行的 confirm_from_ts 列表（读 root 相对 preregistry）。"""
+    path = os.path.join(root, "task_FM", "config", "preregistry.jsonl")
+    out = []
+    for row in load_preregistry(path):
+        if str(row.get("symbol", "")).lower() == str(sym_lower).lower():
+            ts = row.get("confirm_from_ts")
+            if ts:
+                out.append(str(ts))
+    return out
+
+
+def _baseline_reanchor_reason(sym_lower, last_cutoff, root):
+    """步② C：该品种基线是否需要拉取日重锚；需要则返回原因字符串，否则 None。
+
+    重锚条件（任一触发）：
+    (a) 确认窗覆盖缺口：存在预注册 confirm_from_ts ∈ (基线末端, 数据末端]——
+        数据已越过确认窗起点而冻结基线尚未覆盖，no_common_cutoff 的直接死因；
+    (b) 漂移上界：数据末端 - 基线末端 > _BASELINE_STALENESS_MAX_H。
+
+    fail-open：数据末端或基线末端读不到 → None（重生昂贵，缺证据不动作；
+    与派发闸门 _confirm_data_ready 的 fail-closed 语义相反，后者防墓碑）。
+    """
+    if not last_cutoff:
+        return None
+    data_dt = _latest_data_dt(sym_lower)
+    if not data_dt:
+        return None
+    for ts in _prereg_confirm_from_ts(sym_lower, root):
+        if last_cutoff < ts <= data_dt:
+            return (f"基线末端 {last_cutoff} 未覆盖确认窗起点 {ts}"
+                    f"（数据已到位 → 拉取日重锚）")
+    try:
+        lag_h = ((datetime.strptime(data_dt, "%Y-%m-%d %H:%M:%S")
+                  - datetime.strptime(last_cutoff, "%Y-%m-%d %H:%M:%S"))
+                 .total_seconds() / 3600.0)
+    except ValueError:
+        return None
+    if lag_h > _BASELINE_STALENESS_MAX_H:
+        return (f"基线末端落后数据末端 {lag_h:.0f}h "
+                f"> {_BASELINE_STALENESS_MAX_H}h → 拉取日重锚")
+    return None
+
+
+def _guard_confirm_from_ts_after_regen(sym_lower, points_path, archive_path, root):
+    """步② C 守卫断言：重锚不得删除 >= confirm_from_ts 的基线 cutoff（保 v9 修订②）。
+
+    新档若丢失旧档（归档副本）中 >= confirm_from_ts 的任一 cutoff → 从归档恢复
+    旧档并返回 False（ERROR 留痕人工介入）；通过返回 True。无预注册 / 无归档 /
+    旧档本无确认窗点 → 平凡通过 True（现状基线末端 < confirm_from_ts 即此态）。
+    """
+    confirm_set = _prereg_confirm_from_ts(sym_lower, root)
+    if not confirm_set:
+        return True
+    if not archive_path or not os.path.exists(archive_path):
+        return True
+    threshold = min(confirm_set)
+
+    def _cutoffs_at_or_after(path):
+        out = []
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        c = json.loads(line).get("cutoff")
+                    except json.JSONDecodeError:
+                        continue
+                    if c and str(c) >= threshold:
+                        out.append(str(c))
+        except OSError:
+            pass
+        return set(out)
+
+    old_kept = _cutoffs_at_or_after(archive_path)
+    if not old_kept:
+        return True
+    missing = old_kept - _cutoffs_at_or_after(points_path)
+    if not missing:
+        return True
+    try:
+        shutil.copy2(archive_path, points_path)
+        print(f"[ERROR] ensure_baselines: {sym_lower} 重锚删除了 >= {threshold} 的 "
+              f"基线 cutoff {sorted(missing)} → 已从归档恢复旧档（v9 修订②守卫）",
+              file=sys.stderr)
+    except OSError as e:
+        print(f"[ERROR] ensure_baselines: {sym_lower} 守卫恢复失败: {e}", file=sys.stderr)
+    return False
+
+
+def _regen_baseline_with_archive(sym_lower, points_path, root):
+    """步②统一重生入口：归档 → 重生 → 守卫断言（ensure_baselines 重生点共用）。
+
+    步①（版本化）：重生前归档旧档；步② C（守卫）：重生后校验新档未删除
+    >= confirm_from_ts 的基线 cutoff，删除则从归档恢复旧档（v9 修订②）。
+    """
+    try:
+        import generate_baseline_points as gbp
+    except ImportError:
+        return
+    archive = _archive_baseline_before_regen(points_path)   # 步①: 重生即归档
+    try:
+        gbp.generate(sym_lower, None, root)   # E7: 无协变量基线
+    except Exception as e:
+        print("[ERROR] ensure_baselines: generate failed for " + sym_lower
+              + ": " + str(e), file=sys.stderr)
+        return
+    _guard_confirm_from_ts_after_regen(sym_lower, points_path, archive, root)
+
+
 def ensure_baselines(symbols, root):
     """Check baseline_metrics.json + baseline_points_{symbol}.jsonl validity.
 
@@ -3729,29 +3922,25 @@ def ensure_baselines(symbols, root):
         points_path = os.path.join(config_dir, gbp.baseline_filename(sym_lower, None))
         met = metrics.get(sym_lower, {})
         if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
-            try:
-                gbp.generate(sym_lower, None, root)   # E7: 无协变量基线
-            except Exception as e:
-                print(f"[ERROR] ensure_baselines: generate failed for {sym_lower}: {e}", file=sys.stderr)
+            _regen_baseline_with_archive(sym_lower, points_path, root)
             continue
         n_lines = 0
+        last_cutoff = None
         if os.path.exists(points_path):
             try:
                 with open(points_path, encoding="utf-8") as f:
                     for line in f:
                         if line.strip():
                             try:
-                                json.loads(line)
+                                rec = json.loads(line)
                                 n_lines += 1
+                                last_cutoff = rec.get("cutoff") or last_cutoff
                             except json.JSONDecodeError:
                                 pass
             except OSError:
                 pass
         if n_lines < 100:
-            try:
-                gbp.generate(sym_lower, None, root)   # E7: 无协变量基线
-            except Exception as e:
-                print(f"[ERROR] ensure_baselines: generate failed for {sym_lower} (n_lines={n_lines}): {e}", file=sys.stderr)
+            _regen_baseline_with_archive(sym_lower, points_path, root)
             continue
 
         # ── 协议指纹校验（2026-09-28 新增）──
@@ -3771,13 +3960,13 @@ def ensure_baselines(symbols, root):
                 file=sys.stderr,
             )
         else:
-            continue          # 行数与指纹均合格
-        try:
-            gbp.generate(sym_lower, None, root)
-        except Exception as e:
-            print(f"[ERROR] ensure_baselines: generate failed for {sym_lower} "
-                  f"(fingerprint mismatch): {e}", file=sys.stderr)
-
+            # 行数与指纹均合格 → 步② C 拉取日重锚检查
+            reanchor = _baseline_reanchor_reason(sym_lower, last_cutoff, root)
+            if reanchor is None:
+                continue
+            print(f"[WARN] ensure_baselines: {sym_lower} {reanchor} → 重生",
+                  file=sys.stderr)
+        _regen_baseline_with_archive(sym_lower, points_path, root)
 
 
 def wait_for_batch(batch_id, batch_records, registry_path, timeout=7200):

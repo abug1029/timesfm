@@ -113,6 +113,9 @@ def test_first_preregistry_two_rows():
         ids.append(row["prereg_id"])
         disk = dict(row)
         disk.pop("prereg_id")
+        disk.pop("admissibility_rule", None)   # 步④: 裁定 A.6 补盖字段
+        disk.pop("admissibility_note", None)
+        fresh = dataclasses.asdict(rec)
         fresh.pop("prereg_id")
         assert disk == fresh
         assert row["n_confirm_required"] == pr.n_confirm_required_for_symbol(row["symbol"])

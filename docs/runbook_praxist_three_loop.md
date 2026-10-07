@@ -171,6 +171,27 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 
 ---
 
+## 数据资产备份与清理（2026-10-07）
+
+**备份**（技术债批次 0+1，宿主四项裁定：批次合并 / 备份机 / `.env` 明文 / 全量+cron）：
+
+- 脚本：`scripts/backup_data_assets.sh`（源）→ `/home/abug/bin/backup_data_assets.sh`（操作副本，**改版后须重新 `install -m 755` 部署**）
+- 自动化：cron `15 2 * * *`（日志 `logs/backup_assets_cron.log` + 脚本内 `logs/backup_data_assets.log`）
+- 目的地：备份机 `chong@100.96.19.116` → WSL Ubuntu-24.04 `/root/timesfm-data/{latest,daily/YYYY-MM-DD}/`（root-only，保留 180 天）
+- 通道：tar-over-ssh（远端无 rsync）。**远端调用一律单命令**——sshd→cmd→wsl→sh 多层链路会吃复合命令引号（2026-10-07 实测）；远端校验用绝对路径清单 `md5sums.remote.txt`
+- 范围：S1 裁决史(+.bak)+`.omc/` 全目录；S2 基线 `baseline_points_*`/`baseline_metrics.json`；S3 `supervisor_state/heartbeat/pid`+`aligned_pending*`+`aligned_checkpoints/`+`supervisor_events`+`session_unstick_state`；明文 `.env` 系列（600 权限随档）；git 现场留证（HEAD/status/未提交补丁/未跟踪 <2MB 快照）
+- **明示出备**：`data/cache/daily_pred/`（预测产出可再生，~170MB）、`.git/`（走 `sync_backup.sh` 另轨）、`logs/`
+- 校验：打包前全量 md5 → 远端 `md5sum -c --quiet` 全量校验，不过即报错退出
+- 第二异地（rclone）：脚本内置，未装/未配置时 WARN 跳过；待宿主 S3 端点+密钥后装 rclone 配 remote `timesfm-backup` 即自动生效
+- 恢复：从 `daily/<日期>/assets/` 对位拷回即可（含权限）；队列/检查点恢复后监督环幂等续跑
+
+**清理**（配套禁令，详见 AGENTS.md）：
+
+- **裸 `git clean -xdf` 禁止**；清理一律走 `/home/abug/bin/safe_clean.sh`：默认 dry-run（白名单自检，命中保护路径 FATAL），确认后 `--apply`
+- 保护白名单：`task_FM/config/`、`.omc/`、`data/cache/`、`logs/`、`.env*`
+
+---
+
 ## 故障速查
 
 | 现象 | 排查 |

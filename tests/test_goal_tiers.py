@@ -36,6 +36,7 @@ def _passing_row(**overrides):
         "dm_significant": True,
         "dm_status": "ok",
         "fdr_pass": True,
+        "admissibility_rule": "edge_continuous_block_30d",   # 步③ B
     }
     row.update(overrides)
     return row

@@ -298,7 +298,7 @@ def test_failure_delta_required_when_symbol_already_failed(tmproot):
     # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
     snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
                       "status": "ok", "gate_pass": False, "dir_acc": 0.45,
-                      "dm_status": "set_mismatch_ok"}}
+                      "dm_status": "set_mismatch_ok", "admissibility_rule": "edge_continuous_block_30d"}}
     _make_run(tmproot, _prop(symbol="m", cov="oi"))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 0
@@ -309,7 +309,7 @@ def test_failure_delta_required_when_cov_already_failed(tmproot):
     # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
     snap = {"rb_oi": {"variant_id": "rb_oi", "symbol": "rb", "cov_override": "oi",
                       "status": "ok", "gate_pass": False, "dir_acc": 0.40,
-                      "dm_status": "set_mismatch_ok"}}
+                      "dm_status": "set_mismatch_ok", "admissibility_rule": "edge_continuous_block_30d"}}
     _make_run(tmproot, _prop(symbol="m", cov="oi"))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 0
@@ -320,7 +320,7 @@ def test_failure_delta_short_rejected(tmproot):
     # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
     snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
                       "status": "ok", "gate_pass": False, "dir_acc": 0.45,
-                      "dm_status": "set_mismatch_ok"}}
+                      "dm_status": "set_mismatch_ok", "admissibility_rule": "edge_continuous_block_30d"}}
     _make_run(tmproot, _prop(symbol="m", cov="oi", failure_delta="太短"))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 0
@@ -331,7 +331,7 @@ def test_failure_delta_enqueued_when_present(tmproot):
     # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
     snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
                       "status": "ok", "gate_pass": False, "dir_acc": 0.45,
-                      "dm_status": "set_mismatch_ok"}}
+                      "dm_status": "set_mismatch_ok", "admissibility_rule": "edge_continuous_block_30d"}}
     _make_run(tmproot, _prop(symbol="m", cov="oi", failure_delta=DELTA))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 1
@@ -345,19 +345,19 @@ def test_dead_family_harvest_rejected(tmproot):
         "m_ccl_prev": {"variant_id": "m_ccl_prev", "symbol": "m",
                        "cov_override": "ccl_prev", "cov_family": "inventory",
                        "status": "ok", "gate_pass": False, "dir_acc": 0.45,
-                       "dm_status": "ok", "run_mode": "exploration"},
+                       "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
         "ss_ccl_prev": {"variant_id": "ss_ccl_prev", "symbol": "ss",
                         "cov_override": "ccl_prev2", "cov_family": "inventory",
                         "status": "ok", "gate_pass": False, "dir_acc": 0.44,
-                        "dm_status": "ok", "run_mode": "exploration"},
+                        "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
         "rb_ccl_prev": {"variant_id": "rb_ccl_prev", "symbol": "rb",
                         "cov_override": "ccl_prev3", "cov_family": "inventory",
                         "status": "ok", "gate_pass": False, "dir_acc": 0.43,
-                        "dm_status": "ok", "run_mode": "exploration"},
+                        "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
         "jd_ccl_prev": {"variant_id": "jd_ccl_prev", "symbol": "jd",
                         "cov_override": "ccl_prev4", "cov_family": "inventory",
                         "status": "ok", "gate_pass": False, "dir_acc": 0.42,
-                        "dm_status": "ok", "run_mode": "exploration"},
+                        "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
     }
     _make_run(tmproot, _prop(symbol="m", cov="ccl", family="inventory"))
     rows, stats = _harvest(tmproot, snap=snap)
