@@ -54,3 +54,16 @@
 
 - 新增 `reports/2026-10-07-confirmation-dispatch-liveness.md`：机制层（派发链全图 ：4210/:490/:354/:444/:477/:517-529 + 提案支线 :222 + 6h 双 TTL）+ 实证层（50 条 not_enqueued 留痕 ~6h 精确节奏持续到 10-07 09:56；4 存根 + 2 个 0 字节检查点 = 闸门前最后墓碑；队列 pending 空）+ 结构层（ensure_baselines :3697 三再生条件无新鲜度检查 → **B+C 为确认轨道结构性前置**；时间线推演表）+ 通电判定标准（三正例 + 四反例诊断，服务计划 §6.4 第 5 步 #2）
 - dm-status 报告 §7 #2 状态更新：「已调研（机制健康）」+ 指向派发活性报告；#3（十月探索行 no_common_cutoff×9）边界划清——正交，B 不豁免，待第 5 步单独验
+
+## 后续：批次 0+1 合并执行完成（2026-10-07 17:03）
+
+- **宿主四项裁定（事项二，question 工具落定）**：① 批次 0 并入批次 1 一次执行 ② 目的地=备份机 ③ `.env` 系列明文包含（远端 root-only，600 随档）④ 一次性全量+里程碑增量+cron 自动化
+- **首份全量备份落地**（16:57:03→16:57:37，34 秒）：458 文件/140M → 备份机 WSL `/root/timesfm-data/{latest,daily/2026-10-07}/`；范围=S1 裁决史+.bak 族+`.omc` 全目录+S2 基线+S3 状态类（含 aligned_checkpoints 135M）+明文 `.env`×5+git 现场留证+未跟踪脚本快照；明示出备 daily_pred/.git/logs
+- **通道定型（两次踩坑）**：① 远端 WSL 无 rsync（实测只有 tar/md5sum）→ tar-over-ssh；② 复合命令引号被 sshd→cmd→wsl→sh 链路吃掉（rsh_block 探针实证拆坏）→ **远端单命令铁律** + 绝对路径清单 `md5sums.remote.txt`（`md5sum -c --quiet` 单命令可跑）；tar `--owner=0 --group=0` 远端全档 root:root
+- **验证全绿**：远端 `md5sum -c` 全量通过；独立抽查本地↔远端 md5 一致（aligned_verdicts.jsonl）；`.env` 系列远端 `-rw------- root root`；MANIFEST 记录源 HEAD ca4a3b9
+- **部署与自动化**：`/home/abug/bin/{backup_data_assets.sh,safe_clean.sh}`（755）；cron `15 2 * * *` 已装（原 crontab 备份 `~/crontab.backup.20261007`，与既有 17:45/周六 02:35 拉取无时序冲突）；safe_clean 活仓 dry-run 零保护路径命中
+- **禁令入册**：AGENTS.md 新增「数据资产与清理禁令」节（裸 `git clean -xdf` 禁止）；runbook 新增「数据资产备份与清理」节（备份范围/恢复步骤/单命令铁律）
+- **rclone 第二异地层**：脚本内置，本机未装 → WARN 跳过（Q2 裁定默认层，待宿主 S3 端点+密钥，装 rclone 配 remote `timesfm-backup` 即自动生效）
+- **过程事故留痕（无害）**：一次经 PowerShell 向 wsl 传复杂 heredoc 时引号被拆坏，changelog 内容的反引号被 bash 当命令替换执行——触发一场计划外备份（幂等设计兜住，daily/2026-10-07 原位刷新）+ safe_clean dry-run（只读）；cat>> 因 heredoc 语法错误未写入任何内容。教训固化：**复杂内容一律 write/edit 工具 UNC 直写，禁走 PowerShell 命令行**（本会话工作规则第 2/4 条的实证补强）
+- **计划同步**：§2.2 按裁定+实测重写 / §2.4 验收勾选（3 项过、2 项观察期/待端点）/ §2.5 实施记录新增 / §9 §10 批次 0+1 行更新
+- **解锁**：事项一（§6.4 五步）实施开工条件达成——下一步 rebase tech-debt 分支到最新 master 后 TDD 实施

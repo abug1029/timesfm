@@ -67,16 +67,20 @@ Q1 溯源（0.5 天）       n_eff 计算路径溯源（§4 M5 第一步）─�
 
 ### 2.2 方案（三层防护）
 
-1. **异机每日快照**（批次 0 当天先手动跑一次，批次 1 脚本化）：
-   - `scripts/backup_data_assets.sh`：rsync S1+S2+S3 → backup 机 `chong@100.96.19.116` → WSL `/root/timesfm-data/`（复用 BACKUP_SYNC_GUIDE.md 的 ssh 通道与密钥）
-   - 双份布局：`latest/`（覆盖）+ `daily/`（日期快照，保留 180 天）+ `md5sums.txt` 核对清单
-   - md5 不一致 / rsync 失败 → 退出码非零 + 写日志
-   - crontab：每日 02:15（避开既有 17:45 数据拉取与周六 02:35 任务）
-2. **防误删**（批次 1）：
-   - `scripts/safe_clean.sh`：`git clean -xdf -e task_FM/config/ -e .omc/ -e data/cache/` 白名单包装，dry-run 先行
-   - AGENTS.md + runbook 加禁令注记：清理一律走 safe_clean，禁止裸 `git clean -xdf`
-   - **根治**（迁移 live 数据出 repo tree，使 git clean 永远够不着）：路径常量改为可配置（env 覆盖），迁移 + 改配置 + 重启原子完成——**搭正期望 P3 部署的重启窗口顺风车**，不单独重启
-3. **第二异地（Q2 已裁定：默认层，宿主设计）**：rclone → S3 兼容对象存储，**每次同步默认包含**（backup_data_assets.sh 内置 rclone 步，非可选开关）。S1+S2 总量 <10MB，成本可忽略。**前置**：宿主提供 S3 兼容端点 + 密钥（Backblaze B2 / Cloudflare R2 / 阿里云 OSS 或已有云盘均可，rclone 皆支持）。daily 快照保留 180 天（防勒索软件潜伏期）。
+> **2026-10-07 宿主四项裁定**（question 工具落定）：① 批次 0 并入批次 1 一次执行（不做单独手动应急备份）② 目的地=备份机 ③ `.env` 系列**明文包含**（远端 root-only，600 权限随档）④ 一次性全量+里程碑增量+cron 自动化。
+
+1. **异机每日快照**（批次 0+1 合并，2026-10-07 当日实施完成）：
+   - `scripts/backup_data_assets.sh`：**tar-over-ssh**（远端 WSL 无 rsync，2026-10-07 实测只有 tar/md5sum）→ backup 机 `chong@100.96.19.116` → WSL `/root/timesfm-data/`（复用 BACKUP_SYNC_GUIDE.md 的 ssh 通道与密钥）
+   - 双份布局：`latest/`（tmp 原子换名）+ `daily/`（日期快照，远端 cp，保留 180 天）+ `md5sums.txt`/`md5sums.remote.txt` 核对清单
+   - 远端调用一律**单命令**（sshd→cmd→wsl→sh 链路吃复合命令引号，实测）；校验用绝对路径清单 `md5sum -c --quiet`，不过即非零退出
+   - tar `--owner=0 --group=0`：远端全档 root:root（明文 .env 600，卫生）
+   - 明示出备：`data/cache/daily_pred/`（预测产出可再生，~170MB）、`.git/`（sync_backup.sh 另轨）、`logs/`
+   - crontab：每日 02:15（避开既有 17:45 数据拉取与周六 02:35 任务）；操作副本部署 `/home/abug/bin/`，改版后须重新 `install -m 755`
+2. **防误删**（批次 1，2026-10-07 实施完成）：
+   - `scripts/safe_clean.sh`：`git clean -xdf` 白名单包装，排除 `-e task_FM/config/ -e .omc/ -e data/cache/ -e logs/ -e .env -e .env.*`；默认 dry-run + 白名单自检（命中保护路径即 FATAL），`--apply` 才执行
+   - AGENTS.md「数据资产与清理禁令」节 + runbook「数据资产备份与清理」节已落（2026-10-07）：清理一律走 safe_clean，禁止裸 `git clean -xdf`
+   - **根治**（迁移 live 数据出 repo tree，使 git clean 永远够不着）：路径常量改为可配置（env 覆盖），迁移 + 改配置 + 重启原子完成——**搭事项一 B+C 合入的重启窗口顺风车**（与 A3 同窗），不单独重启
+3. **第二异地（Q2 已裁定：默认层，宿主设计）**：rclone → S3 兼容对象存储，**每次同步默认包含**（backup_data_assets.sh 内置 rclone 步；本机未装 rclone 时 WARN 跳过不报错——2026-10-07 当前状态）。S1+S2 总量 <10MB，成本可忽略。**前置**：宿主提供 S3 兼容端点 + 密钥（Backblaze B2 / Cloudflare R2 / 阿里云 OSS 或已有云盘均可，rclone 皆支持）。daily 快照保留 180 天（防勒索软件潜伏期）。
 
 ### 2.3 与在途工作的关系
 
@@ -84,11 +88,19 @@ sync_backup.sh（另一会话未提交）管 git 层，本方案管数据层，�
 
 ### 2.4 验收
 
-- [ ] backup 机存在当日快照，md5 与本地一致
-- [ ] 对象存储端存在当日快照（rclone 默认步）
-- [ ] 连续 3 天 cron 零失败（日志佐证）
-- [ ] `safe_clean.sh` dry-run 不命中任何 S1/S3 资产；裸 clean 禁令写入 AGENTS.md
-- [ ] （迁移后）`git clean -xdfn` 对数据零威胁；supervisor 重启后首轮裁决追加正常、指纹 f02b2a43 不变、baseline 零重生
+- [X] backup 机存在当日快照，md5 与本地一致（2026-10-07 首份全量：458 文件/140M，`latest/`+`daily/2026-10-07/` 双落位；远端 `md5sum -c` 全量通过 + 本地↔远端独立抽查一致；`.env` 系列远端 `-rw------- root root`）
+- [ ] 对象存储端存在当日快照（rclone 默认步）——**待宿主端点+密钥**（本机未装 rclone，脚本 WARN 跳过中）
+- [ ] 连续 3 天 cron 零失败（2026-10-07 02:15 首跑观察期，日志 `logs/backup_assets_cron.log`）
+- [X] `safe_clean.sh` dry-run 不命中任何 S1/S3 资产（2026-10-07 活仓实跑：零保护路径命中，自检 FATAL 未触发）；裸 clean 禁令写入 AGENTS.md（+runbook 节）
+- [ ] （迁移后）`git clean -xdfn` 对数据零威胁；supervisor 重启后首轮裁决追加正常、指纹 f02b2a43 不变、baseline 零重生——**A3 搭事项一 B+C 重启窗口，未到期**
+
+### 2.5 实施记录（2026-10-07，批次 0+1 合并执行）
+
+- 首份全量 34 秒完成（16:57:03→16:57:37）；458 资产/140M（含 aligned_checkpoints 135M、.omc 全目录、明文 .env×5、git 留证、未跟踪脚本×3）
+- 通道实测两次踩坑后定型：① 远端无 rsync → tar-over-ssh；② 复合命令引号被 sshd→cmd→wsl→sh 链路吃掉 → **单命令铁律** + 绝对路径 md5 清单
+- 部署：`/home/abug/bin/{backup_data_assets.sh,safe_clean.sh}`（755）；cron `15 2 * * *` 已装（原 crontab 备份 `~/crontab.backup.20261007`）
+- 文档：AGENTS.md 禁令节 + runbook「数据资产备份与清理」节
+- 探针/验证脚本留档：`/tmp/probe_backup_channel.sh`、`/tmp/verify_backup_remote.sh`（会话临时件，未入仓）
 
 ---
 
@@ -260,8 +272,8 @@ D4/D5 优先级最高（运维风险：supervisor 被回收无人拉起 / 父死
 |---|---|
 | 10-07（已批准） | 批次 0 应急备份（执行时点待确认）+ **Q6 调研启动** + **Q1 溯源启动**（两者只读并行） |
 | 10-07 晚（回写中） | Q6 修复裁定落定 → §6.4 五步；事项三立项并当日完成调研 → §6.5；dm-status 报告补附录 A/B/C（裁定要旨 + 106/106 逐行审计 + 21 行覆写勘误）；pevs 合入 master（b86ddba） |
-| 批次 0 落地后 | **事项一（§6.4 五步）实施**：先 rebase → 逐步 TDD；批次 0 执行时点/目的地/敏感文件处置待宿主裁（事项二修订提案已呈） |
-| 10-07 ~ 10-09 | 批次 1：工程化（脚本 + cron + 对象存储默认层 + safe_clean + 禁令），与 pevs 收尾并行；等端点密钥接入 rclone |
+| 批次 0+1 落地后 | **事项一（§6.4 五步）实施**：先 rebase → 逐步 TDD（批次 0+1 已于 10-07 16:57 完成，见 §2.5） |
+| 10-07 16:57（已完成） | 批次 0+1 合并执行：首份全量 458 文件/140M + md5 全过 + cron 02:15 装机 + safe_clean + AGENTS/runbook 禁令；rclone 层待宿主端点+密钥（WARN 跳过中） |
 | pevs 合入部署（已完成 10-07，重启待宿主窗口） | 重启窗口顺带完成 A3 根治迁移；P2.7 消费端接线待 B+C |
 | Q6 调研交付（0.5-1 天） | 根因报告 → 宿主裁定 dm_status 口径 → 反哺 pevs P2.7 与 N1 修复 |
 | pevs 后 +1 天 | 批次 2：P1 差距收口 |
@@ -275,8 +287,7 @@ D4/D5 优先级最高（运维风险：supervisor 被回收无人拉起 / 父死
 
 | 批次/项目 | 核心验收 |
 |---|---|
-| 0 | backup 机当日快照 md5 一致 |
-| 1 | 3 天 cron 零失败；对象存储端有当日快照（默认层）；safe_clean dry-run 零误伤；禁令入 AGENTS.md |
+| 0+1（合并执行，10-07 完成） | backup 机当日快照 md5 一致 ✅（458 文件/140M，latest+daily 双落位）；safe_clean dry-run 零误伤 ✅；禁令入 AGENTS.md ✅；cron 3 天观察期进行中；对象存储端待宿主端点（WARN 跳过） |
 | Q6 子项目 | 根因报告交付（四层问题全答 + 修复选项清单）；宿主据此裁定口径 |
 | Q1 溯源 | n_eff 来源结论明确（三种假设之一落定）；若需修复则指纹评估先行 |
 | 事项一（dm_status 口径修复 = Q6-续） | §6.4 五步顺序落地，每步独立提交 + TDD + 实施前指纹断言；五读取点旧口径行不计入；第 5 步通电核查 #2/#3 通过 |
