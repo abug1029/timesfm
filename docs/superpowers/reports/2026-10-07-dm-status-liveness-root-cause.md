@@ -2,6 +2,7 @@
 
 > **日期**: 2026-10-07
 > **性质**: 只读调研（零代码改动）；宿主裁定记录见 plans/2026-10-07-tech-debt-closure-plan.md §8 Q6
+> **裁定状态（2026-10-07）**: **已裁定——批准 B+C 为主菜，采集包同步落地，不 bump 全局协议指纹，第 1 步等待，A 缓发**。全文见附录 A；质询补证（195/195 逐行边缘连续审计 + 21 行基线覆写留痕）见附录 B/C；开放问题 #1/#4 已关闭、#2/#3 升格为通电前置检查（§7）。
 > **数据基线**: task_FM/config/aligned_verdicts.jsonl 396 行（快照于 2026-10-07 上午；调查期间监督环仍在追加，早间口径 393 行）
 > **代码基线**: live /home/abug/timesfm（master@5e7237a，监督环 PID 146369 运行中）+ pevs worktree（feat/positive-ev-factor-search@ad05fea，P2.6 增量判据核对）
 > **结论一句话**: dm_status 可确认分支（ok / set_mismatch_ok）在生产**结构不可达**，一手根因是 credibility spec §7.8 开放问题 #8（缺失-状态独立性判定方法）**至今未裁定**，missingness_admissible 按设计恒 False；生产的"mismatch"实测为基线快照 vs 滚动评估窗的**良性边缘漂移**（≤2.7%，47.6% 行为零不匹配），并非守卫所防的"状态相关缺失"。**这不是代码 bug——代码忠实实现了 spec 的保守默认；修复的本质是一次设计裁定，不是一次缺陷修复。**
@@ -160,13 +161,15 @@ pevs worktree scripts/aligned_slow_loop.py:263 **硬编码 missingness_admissibl
 
 **组合倾向（供参考，非决策）**：B（或 A）解锁生产 + C 作为卫生改进；但任何 dm_status 语义变更必须走 v5 协议指纹评估流程——与 M5 的指纹纪律同源。
 
+**裁定（2026-10-07，宿主，全文见附录 A）**：**B 批准**（边缘连续块 + k_max=30 双条件豁免，窗内缺失仍 False，只翻转 missingness_admissible、不动数值）；**C 批准**（基线快照版本化为前置，confirm_from_ts 守卫断言，unmatched 预期 ≈ 拉取滞后 1-3 点、B 不因 C 省略）；**A 缓发**（待真实窗内状态相关缺失案例带实测数据再裁）；**D、E 不采用**；**不 bump 全局协议指纹**（admissibility_rule 按行标记替代，关闭开放问题 #4）；第 1 步（dead families 改口径）等待（观察条件见附录 A 第六节）。
+
 ## 7. 开放问题
 
-1. **§7.8 裁定本身**（选项 A 前置）：分桶用什么？独立性检验方法与阈值？最小桶样本？注册时冻结机制？
-2. **确认轨道派发活性**：10-03 预注册后 4 天仅 4 行 no_data 存根——真实确认评估何时触发？（confirm_from_ts=2026-10-03 后每日 tick 应产生确认行；需查 supervisor 确认派发逻辑）建议并入批次 2 或单独立项小调研
-3. **10 月 no_common_cutoff×9** 成因（零共同 cutoff）
-4. **指纹流程确认**：若走选项 B，dm_status 枚举语义变化是否必须 bump 协议指纹 v5？（本报告倾向：是——verdict 语义字段）
-5. **边缘漂移与 DM 新鲜度**：共同窗右端停在 09-17（案例），DM 落后最新数据约 2 周；若近期表现对策略重要，选项 C 可消除
+1. **§7.8 裁定本身** — **已关闭（2026-10-07 裁定）**：B+C 落定（附录 A）；A 的三要素（分桶/独立性检验/注册时冻结）随 A 缓发，待真实窗内状态相关缺失案例出现再裁
+2. **确认轨道派发活性** — **升格为通电前置检查**（实施顺序第 5 步）：10-03 预注册后仅 4 行 no_data 存根，需查确认派发何时触发；B+C 让 dm_status 可确认，但不保证预注册确认能运转
+3. **10 月 no_common_cutoff×9** — **升格为通电前置检查**：可能是另一类漂移，不在 B 的"边缘连续块"覆盖范围内，B 不对其豁免
+4. **指纹流程确认** — **已关闭（有意决定）**：**不 bump**。理由（附录 A 第七节）：① 指纹 11 分量决定数值可比性，B 只改 dm_status 的解释资格（可确认性而非可比性变化）；② bump 会使 182 行 v4 活跃裁决失效并触发 9/9 基线重生；③ admissibility_rule 按行标记能精确保证新旧口径不混算。**限定**：本裁定只改 missingness_admissible 判定规则；将来若 d_t / DM 估计量 / 带宽 / 配对集合的计算本身变化则必须 bump；A 落地时重新评估；**实施前断言：B 上线前后同一行 protocol_fingerprint 不变**——若发现某分量实际哈希了 dm 层内容，本条作废，回到 bump 评估
+5. **边缘漂移与 DM 新鲜度** — 保留：共同窗右端滞后（案例 ~2 周）；C 落地后预期收敛到拉取滞后 1-3 点，验收以实测为准
 
 ## 8. Q1 附带结论：n_eff 溯源（M5 结案）
 
@@ -201,4 +204,294 @@ pevs worktree scripts/aligned_slow_loop.py:263 **硬编码 missingness_admissibl
 
 ---
 
-**交付边界**: 本报告只列选项不决策（计划 §6.3 约定）。修复方案讨论 → 宿主裁定 → 届时回写计划或另立实施计划。
+**交付边界**: 本报告只列选项不决策（计划 §6.3 约定）。修复方案讨论 → 宿主裁定 → 届时回写计划或另立实施计划。**（2026-10-07 已裁定，见附录 A；裁定回写见计划 §6.4。）**
+
+---
+
+## 附录 A：宿主裁定要旨（2026-10-07，事项一）
+
+> 整理说明：本附录为裁定要旨整理，保留全部裁定条件、数字与限定，据 2026-10-07 会话记录整理（非逐字照录；如需原文宿主可补录替换）。裁定性质 = **证据标准设计裁定，非缺陷修复**。附录证据读数：2026-10-07 15:09（live master@ca4a3b9，registry 404 行）。
+
+| 节 | 裁定内容 |
+|---|---|
+| A.1 对象与性质 | 本报告 §6 修复选项 A-E 的定夺；证据标准设计裁定 |
+| A.2 各选项 | **B 批准**：边缘连续块豁免——「变体侧最新连续块 / 基线侧最旧连续块」+ 有界性双条件，任一不满足落回 descriptive；窗内缺失仍 False；只翻转 missingness_admissible，不改 dir_acc/d_t/DM 统计量/p 值。**C 批准**：基线快照版本化为前置；守卫断言 = 重锚不得删除 ≥ confirm_from_ts 的基线 cutoff（保 v9 修订②）；unmatched 预期 ≈ 拉取滞后 1-3 点（非零），**B 不因 C 省略**。**A 缓发**：待真实窗内状态相关缺失案例带实测数据再裁。**D、E 不采用**。**第 1 步等待**（见 A.4）。**pevs P2.7 可恢复**：只决定何时通电、不决定线路怎么接；消费端接线待 B+C 合入 master |
+| A.3 采集包与 admissibility_rule | 采集包随 B+C 同步落地（不随 A）：① 基线版本化；② 行级 unmatched 位置（**每侧 ≤30 日期**）与连续性判定；③ 拉取日志保留；④ 21 行覆写留痕入报告（附录 C）。`admissibility_rule` 为行级可选字段，**唯一写入路径 = 裁决行产出**；5 个读取点（fdr_pass_persistable、_test_invalid、_passes_confirmation、classify_confirmation、_family_confirmatory_counts）只计匹配预注册钉定规则的行；旧行缺字段不计入、不回溯解释（今日零回归：0 行 ok/set_mismatch_ok，4 行 no_data 存根在更早检查处已失败） |
+| A.4 第 1 步等待 | 两次口径变更成本 > 收益（10-03 已裁非目标，避免回退）；gate_pass 是质量筛选器，未验证真死族不判死；**观察条件** = B+C 上线满一个完整慢环周期、可确认行仍为零 → 带实测数据重开第 1 步裁定；期间 min_ok=4 与 gate_pass 不改 |
+| A.5 不 bump 指纹 | 理由：① 指纹 11 分量决定数值可比性，B 只改 dm_status 的解释资格（可确认性而非可比性）；② bump 将废 182 行 v4 活跃裁决并触发 9/9 基线重生；③ 按行 admissibility_rule 精确隔离新旧口径。**限定**：本裁定只改 missingness_admissible 判定规则；将来 d_t/DM 估计量、带宽、配对集合计算本身变化必须 bump；A 落地时重评；**实施前断言：同一行 protocol_fingerprint 上线前后不变**——若任一分量实际哈希 dm 层内容则本条作废、回 bump 评估。开放问题 #4 由此关闭（有意决定） |
+| A.6 补盖预注册 | 现存 2 条预注册（jd daily_slope+vor、sr daily_slope+vwap_deviation）由本裁定显式补盖 admissibility_rule；标记文本：「admissibility_rule 系 2026-10-07 裁定补设，confirm_from_ts 与 n_confirm_required 不变」；**补盖前必须重核验各自可确认行数 = 0 并留痕（命令/时间/结果）**，非零则暂停另行裁定 |
+| A.7 通电前置检查 | 开放问题 #2（派发活性——仅 4 条 no_data 存根）与 #3（十月 no_common_cutoff×9，可能是 B 未覆盖的另一漂移类型，B 不对其豁免）升格为通电前置检查（落地顺序第 5 步） |
+| A.8 落地顺序（五步） | ① 基线快照版本化（锚定日入文件名或重生即归档；**前置：批次 0 数据备份先行**）→ ② C（拉取日重锚 + 守卫断言）→ ③ B + 采集包（admissibility_rule + 五读取点过滤）→ ④ 补盖两条预注册（先重核验为零）→ ⑤ 通电前置核查（#2/#3）确认通电 |
+| A.9 证据局限（宿主明示） | 105/105 逐行审计与指纹 11 分量清单系单方转述（未独立复核）——由补盖前重核验 + 实施前指纹断言两项覆盖 |
+
+---
+
+## 附录 B：逐行位置审计（非零 unmatched 行边缘连续性）
+
+> 质询 Q1 补证：原报告 §4.2 为机制推理 + 单案例（jd_ccl），本附录把证据升级为**逐行全量**。审计脚本全文内嵌（B.4/C.4），复现零依赖。
+
+### B.1 方法
+
+对每条 dm_unmatched 非零的 descriptive 行：读其 checkpoint 文件的 cutoff 集（变体侧），与「最大交集」基线文件（`task_FM/config/baseline_points_{symbol}*.jsonl` 中与该变体 cutoff 交集最大者——自动避开非本变体配对目标的 cov 版基线）的 cutoff 集做集合差；判定 **only_variant 是否恰为变体侧最新连续块（尾部）** 且 **only_baseline 是否恰为基线侧最旧连续块（头部）**——即 B 选项豁免的判定形态，**零内部散点**才算通过。同时比对当前重建值与行上记录值之差（delta）与 checkpoint 增量，验证重建有效性。
+
+### B.2 结果（两次读数）
+
+| 读数 | descriptive 总数 | 零不匹配行 | 非零受审行 | 边缘连续通过 | 未通过 |
+|---|---|---|---|---|---|
+| 2026-10-07 上午（质询答辩时） | 195 | 90 | 105 | **105（100%）** | 0 |
+| 2026-10-07 15:09（复跑确认） | 196 | 90 | 106 | **106（100%）** | 0 |
+
+- (kv, kb) 分布（复跑）：(14,13)×57、(11,10)×35、(17,16)×14——**每侧实测最大 17**（裁定采集包口径「每侧 ≤30 日期」内，余量 13）
+- 决定日期分布（复跑）：10-06×38、10-05×34、10-07×22、10-04×12
+- delta（当前重建 − 行上记录）106/106 恒 (+1, 0)；checkpoint 增量（当前容量 − 记录 n_avail_variant）106/106 恒 +1——评估后 checkpoint 追加 1 根 bar；**当前连续块扣除极尾 1 点 = 评估时点连续块**，重建成立
+- dm_common_count 分布（上午读数）：572×14、575×56、578×35、588×90——最小 572 对门槛 dm_min_common=50 / effective_min_n=50 余量 ≥11 倍（质询 Q2 的构造性保证：门槛检查先于 admissible 分支，statistical_tests.py :380/:387/:389）
+
+### B.3 判读
+
+- **105/105 → 106/106 全过、零内部散点、零异常行**：生产全部非零 mismatch 都是「变体侧尾部新数据 + 基线侧头部老化」的确定性边缘漂移，无一处状态相关缺失形态。B 的双条件豁免对现存数据 **100% 可判定**——质询 Q1 所问「边缘漂移 100% 可判定从何而来」由此从三层推理升级为逐行实证。
+- 复跑与上午读数仅差 live 追加的 1 行（同样通过）——审计结论对 registry 增长稳定。
+
+### B.4 审计脚本（内嵌全文）
+
+```python
+# item1_audit2.py — 2026-10-07；live 只读；python3 直跑
+import json, glob, collections, os, datetime
+
+os.chdir('/home/abug/timesfm')
+rows = [json.loads(l) for l in open('task_FM/config/aligned_verdicts.jsonl') if l.strip()]
+desc = [r for r in rows if r.get('dm_status') == 'set_mismatch_descriptive']
+
+def cutoffs_of(objs, mode='full'):
+    s = set()
+    for p in objs:
+        if isinstance(p, dict):
+            c = p.get('cutoff') or p.get('ts') or p.get('cutoff_ts')
+            if c is not None:
+                s.add(str(c) if mode == 'full' else str(c)[:10])
+    return s
+
+zero = [r for r in desc if not (r.get('dm_unmatched_variant') or 0) and not (r.get('dm_unmatched_baseline') or 0)]
+nz = [r for r in desc if (r.get('dm_unmatched_variant') or 0) > 0 or (r.get('dm_unmatched_baseline') or 0) > 0]
+print('descriptive:', len(desc), 'zero-unmatched:', len(zero), 'to audit:', len(nz))
+print('=== decided_at of non-zero rows ===')
+print(collections.Counter(str(r.get('decided_at'))[:10] for r in nz))
+
+def best_baseline(sym, vc):
+    best = None
+    best_inter = 0
+    for b in glob.glob('task_FM/config/baseline_points_%s*.jsonl' % sym):
+        try:
+            bp = [json.loads(l) for l in open(b) if l.strip()]
+        except Exception:
+            continue
+        bc = cutoffs_of(bp)
+        inter = len(vc & bc)
+        if inter > best_inter:
+            best_inter = inter
+            best = (b, bc)
+    return best
+
+res = collections.Counter()
+kv_pass = collections.Counter()
+delta_counter = collections.Counter()
+anomalies = []
+ck_delta = collections.Counter()
+
+for r in nz:
+    vid = r.get('variant_id')
+    sym = r.get('symbol')
+    ruv = r.get('dm_unmatched_variant') or 0
+    rub = r.get('dm_unmatched_baseline') or 0
+    cp = r.get('checkpoint_path')
+    if not cp:
+        res['no_checkpoint_path'] += 1
+        continue
+    try:
+        ckpt = [json.loads(l) for l in open(cp) if l.strip()]
+    except Exception:
+        res['checkpoint_unreadable'] += 1
+        continue
+    vc = cutoffs_of(ckpt)
+    if not vc:
+        res['checkpoint_no_cutoffs'] += 1
+        continue
+    bb = best_baseline(sym, vc)
+    if bb is None:
+        res['no_baseline_match'] += 1
+        continue
+    b, bc = bb
+    only_v = vc - bc
+    only_b = bc - vc
+    vsort = sorted(vc)
+    bsort = sorted(bc)
+    tail_ok = (only_v == set(vsort[len(vsort) - len(only_v):])) if only_v else True
+    head_ok = (only_b == set(bsort[:len(only_b)])) if only_b else True
+    contiguous = tail_ok and head_ok
+    dv = len(only_v) - ruv
+    db = len(only_b) - rub
+    delta_counter[(dv, db)] += 1
+    nav = r.get('n_avail_variant')
+    if nav is not None:
+        ck_delta[len(vc) - nav] += 1
+    if contiguous:
+        res['edge_contiguous_pass'] += 1
+        kv_pass[(len(only_v), len(only_b))] += 1
+    else:
+        res['NOT_contiguous'] += 1
+        if len(anomalies) < 8:
+            anomalies.append((vid, ruv, rub, len(only_v), len(only_b), tail_ok, head_ok,
+                              sorted(only_v)[:2], sorted(only_v)[-2:]))
+
+print('=== contiguity audit (current state, all non-zero rows) ===')
+for k in sorted(res):
+    print(' ', k, res[k])
+print('=== (kv, kb) among contiguous ===')
+for k in kv_pass.most_common(20):
+    print(' ', k, kv_pass[k])
+print('=== delta (current - recorded) ===')
+for k in delta_counter.most_common(10):
+    print(' ', k, delta_counter[k])
+print('=== checkpoint delta (current size - recorded n_avail_variant) ===')
+for k in ck_delta.most_common(10):
+    print(' ', k, ck_delta[k])
+print('anomalies:', anomalies)
+
+loss = collections.Counter()
+for r in desc:
+    sym = r.get('symbol')
+    da = str(r.get('decided_at') or '').replace('T', ' ')
+    cp = r.get('checkpoint_path')
+    if not cp or not da:
+        loss['no_ckpt_or_date'] += 1
+        continue
+    try:
+        ckpt = [json.loads(l) for l in open(cp) if l.strip()]
+    except Exception:
+        loss['ckpt_unreadable'] += 1
+        continue
+    vc = cutoffs_of(ckpt)
+    if not vc:
+        loss['ckpt_no_cutoffs'] += 1
+        continue
+    bb = best_baseline(sym, vc)
+    if bb is None:
+        loss['no_baseline'] += 1
+        continue
+    mt_s = datetime.datetime.fromtimestamp(os.path.getmtime(bb[0])).strftime('%Y-%m-%d %H:%M:%S')
+    if mt_s > da:
+        loss['baseline_modified_after_eval'] += 1
+    else:
+        loss['baseline_older_than_eval'] += 1
+print('=== baseline snapshot freshness vs decided_at (all descriptive) ===')
+for k in sorted(loss):
+    print(' ', k, loss[k])
+```
+
+---
+
+## 附录 C：21 行基线覆写留痕与勘误
+
+### C.1 勘误（必须留痕）
+
+本报告质询答辩阶段（2026-10-07 上午，口头推演未入正文）曾把「21 行 baseline_mtime > decided_at」**错误推断**为「今日行、今晨拉取所致」——**该推断被逐行核实证伪，纯属数字巧合**（当日行恰为 21 条）。实际：21 行全部是更早日期的决定行，其基线文件在**评估之后**被两个已知再生波覆写（10-01 v4 ensure_baselines 再生波、10-03 baseline_points_ma_nocov 再生）。此为「证据未齐即下全称结论」的同型错误（本会话第四次），记录以自警。
+
+### C.2 事实
+
+- 21 行 recorded_unmatched **全部 (0,0)**：评估时点零漂移，覆写发生在评估之后——**不推翻附录 B 审计结论**（B 审计的 106 非零行基线完好，mtime < decided_at）。
+- 全景（15:09 复跑）：descriptive 196 行中 baseline_modified_after_eval=21、baseline_older_than_eval=175；基线文件共 32 个、7 日内被修改 24 个。
+- 这 21 行正是裁定采集包「基线快照版本化」要消灭的对象：版本化落地后重生波归档旧版而非覆写，此类「事后无法精确重放评估时点配对」的留痕缺口不再产生。
+
+### C.3 逐行明细（21 行全量，按 decided_at 排序）
+
+| # | variant_id | symbol | decided_at | 基线文件 | 基线 mtime（覆写波） |
+|---|---|---|---|---|---|
+| 1 | rb_crack_spread_level_aligned_p6 | rb | 09-29 21:56:24 | rb_nocov | 10-01 12:43:57（波一） |
+| 2 | ss_vor_aligned_p6 | ss | 09-29 22:37:49 | ss_nocov | 10-01 13:17:32（波一） |
+| 3 | sr_vwap_deviation_aligned_p6 | sr | 09-29 22:57:45 | sr_nocov | 10-01 13:00:43（波一） |
+| 4 | ss_oi_aligned_p6 | ss | 09-29 23:11:59 | ss_nocov | 10-01 13:17:32（波一） |
+| 5 | rb_ccl_content_aligned_p6 | rb | 09-29 23:23:22 | rb_nocov | 10-01 12:43:57（波一） |
+| 6 | jd_calendar_cyclical_content_aligned_p6 | jd | 09-29 23:38:17 | jd_nocov | 10-01 11:55:52（波一） |
+| 7 | jd_calendar_cyclical_structural_aligned_p6 | jd | 09-29 23:49:54 | jd_nocov | 10-01 11:55:52（波一） |
+| 8 | jd_calendar_cyclical_baseline_aligned_p6 | jd | 09-30 00:01:27 | jd_nocov | 10-01 11:55:52（波一） |
+| 9 | jd_ccl_content_aligned_p6 | jd | 09-30 00:09:31 | jd_nocov | 10-01 11:55:52（波一） |
+| 10 | jd_ccl_structural_aligned_p6 | jd | 09-30 00:17:29 | jd_nocov | 10-01 11:55:52（波一） |
+| 11 | jd_ccl_baseline_aligned_p6 | jd | 09-30 00:25:34 | jd_nocov | 10-01 11:55:52（波一） |
+| 12 | jd_vwap_deviation | jd | 09-30 02:05:16 | jd_nocov | 10-01 11:55:52（波一） |
+| 13 | jd_crack_spread_level | jd | 09-30 02:13:18 | jd_nocov | 10-01 11:55:52（波一） |
+| 14 | m_vwap_deviation | m | 09-30 02:21:23 | ma_nocov | 10-03 19:27:52（波二） |
+| 15 | rb_crack_spread_slope | rb | 09-30 04:01:44 | rb_nocov | 10-01 12:43:57（波一） |
+| 16 | jd_vor | jd | 09-30 09:15:09 | jd_nocov | 10-01 11:55:52（波一） |
+| 17 | m_term_structure_ea1835408223 | m | 10-01 21:41:11 | ma_nocov | 10-03 19:27:52（波二） |
+| 18 | m_momentum_f271f3458d87 | m | 10-01 21:49:54 | ma_nocov | 10-03 19:27:52（波二） |
+| 19 | m_volatility_f92907d83bda | m | 10-01 21:58:29 | ma_nocov | 10-03 19:27:52（波二） |
+| 20 | m_momentum_b06ddbcd88e3 | m | 10-02 20:38:25 | ma_nocov | 10-03 19:27:52（波二） |
+| 21 | m_inventory_972440b990f6 | m | 10-03 03:24:54 | ma_nocov | 10-03 19:27:52（波二） |
+
+波一（10-01 v4 再生波）= 15 行（rb×3 / ss×2 / sr×1 / jd×9，决定于 09-29 21:56 ~ 09-30 09:15）；波二（10-03 再生）= 6 行（全 m 品种，决定于 09-30 02:21 ~ 10-03 03:24）。
+
+### C.4 审计脚本（内嵌全文）与复现命令
+
+```python
+# item1_overwrite_detail.py — 2026-10-07；live 只读；python3 直跑
+import json, glob, os, datetime
+
+os.chdir('/home/abug/timesfm')
+rows = [json.loads(l) for l in open('task_FM/config/aligned_verdicts.jsonl') if l.strip()]
+desc = [r for r in rows if r.get('dm_status') == 'set_mismatch_descriptive']
+
+def cutoffs_of(objs):
+    s = set()
+    for p in objs:
+        if isinstance(p, dict):
+            c = p.get('cutoff') or p.get('ts') or p.get('cutoff_ts')
+            if c is not None:
+                s.add(str(c))
+    return s
+
+out = []
+for r in desc:
+    sym = r.get('symbol')
+    da = str(r.get('decided_at') or '').replace('T', ' ')
+    cp = r.get('checkpoint_path')
+    if not cp or not da:
+        continue
+    try:
+        ckpt = [json.loads(l) for l in open(cp) if l.strip()]
+    except Exception:
+        continue
+    vc = cutoffs_of(ckpt)
+    if not vc:
+        continue
+    best = None
+    best_inter = 0
+    for b in glob.glob('task_FM/config/baseline_points_%s*.jsonl' % sym):
+        try:
+            bp = [json.loads(l) for l in open(b) if l.strip()]
+        except Exception:
+            continue
+        bc = cutoffs_of(bp)
+        inter = len(vc & bc)
+        if inter > best_inter:
+            best_inter = inter
+            best = b
+    if best is None:
+        continue
+    mt_s = datetime.datetime.fromtimestamp(os.path.getmtime(best)).strftime('%Y-%m-%d %H:%M:%S')
+    if mt_s > da:
+        out.append({
+            'variant_id': r.get('variant_id'),
+            'symbol': sym,
+            'decided_at': da,
+            'recorded_unmatched_v_b': [r.get('dm_unmatched_variant'), r.get('dm_unmatched_baseline')],
+            'baseline_file': os.path.basename(best),
+            'baseline_mtime': mt_s,
+        })
+
+print('audit_ts:', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+print('total_descriptive:', len(desc))
+print('baseline_modified_after_eval:', len(out))
+for o in out:
+    print(json.dumps(o, ensure_ascii=False))
+```
+
+复现：`cd /home/abug/timesfm && python3 item1_overwrite_detail.py`（首次留痕 2026-10-07 14:40:28，复跑确认 15:09:44，两次输出恒等 21 行）。
