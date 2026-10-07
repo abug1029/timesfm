@@ -83,7 +83,8 @@ def _vrow(vid, symbol="m", cov="vor", fam="volatility", dir_acc=0.495,
            "status": status, "gate_pass": gate_pass, "dir_acc": dir_acc,
            "baseline_dir_acc": baseline, "n": 588,
            "protocol_fingerprint": "current-protocol",
-           "decided_at": "2026-10-01T00:00:00"}
+           "decided_at": "2026-10-01T00:00:00",
+           "admissibility_rule": "edge_continuous_block_30d"}   # 步③ B
     if emin is not None:
         row["effective_min"] = emin
     if se is not None:

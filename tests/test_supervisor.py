@@ -146,7 +146,8 @@ def _v(vid, **kw):
             "max_points": 400, "n": 380, "pf": 1.2, "ev": 0.02, "maxdd": -0.1,
             "dir_acc": 0.55, "gate_pass": True, "ic": 0.1, "decided_at": "t",
             "checkpoint_path": "cp", "slow_loop_pid": 1, "git_rev": "-",
-            "schema": "fm.aligned_verdict.v1", "status": "ok"}
+            "schema": "fm.aligned_verdict.v1", "status": "ok",
+            "admissibility_rule": "edge_continuous_block_30d"}   # 步③ B
     base.update(kw); return base
 
 def test_build_snapshot_metrics(tmp_path, monkeypatch):
@@ -1143,7 +1144,7 @@ def test_build_snapshot_scalars_v2(tmp_path, monkeypatch):
            "n_roll_excluded": 0, "n_roll_ratio": 0.0,
            "n_dir_total": 400, "n_dir_active": 400,  # v4 2.6: 四分母入 A1
            "n_zero_move": 0, "n_zero_ratio": 0.0,
-           "dm_status": "ok", "dm_common_count": 50,
+           "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "dm_common_count": 50,
            "n_avail_variant": 50, "n_avail_baseline": 50,
            "missingness_admissible": False, "d_series_n_eff": 50,
            "pair_set_hash": "ph", "covariates_used": True,
@@ -1630,19 +1631,19 @@ def test_dead_families_identified():
     snap = {
         "m_ccl": {"variant_id": "m_ccl", "symbol": "m", "cov_override": "ccl",
                   "cov_family": "ccl", "status": "ok", "gate_pass": False,
-                  "dm_status": "ok", "run_mode": "exploration"},
+                  "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
         "ss_ccl": {"variant_id": "ss_ccl", "symbol": "ss", "cov_override": "ccl",
                    "cov_family": "ccl", "status": "ok", "gate_pass": False,
-                   "dm_status": "ok", "run_mode": "exploration"},
+                   "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
         "rb_ccl": {"variant_id": "rb_ccl", "symbol": "rb", "cov_override": "ccl",
                    "cov_family": "ccl", "status": "ok", "gate_pass": False,
-                   "dm_status": "ok", "run_mode": "exploration"},
+                   "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
         "jd_ccl": {"variant_id": "jd_ccl", "symbol": "jd", "cov_override": "ccl",
                    "cov_family": "ccl", "status": "ok", "gate_pass": False,
-                   "dm_status": "ok", "run_mode": "exploration"},
+                   "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
         "m_oi": {"variant_id": "m_oi", "symbol": "m", "cov_override": "oi",
                  "cov_family": "oi", "status": "ok", "gate_pass": True,
-                 "dm_status": "ok"},
+                 "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d"},
     }
     dead = sup._dead_families(snap)
     assert "ccl" in dead, "ccl should be DEAD (4 ok, 0 pass)"
@@ -1664,7 +1665,7 @@ def test_descriptive_failures_do_not_kill_a_family():
     confirmatory = {
         "r%s" % i: {
             "variant_id": "r%s" % i, "symbol": "m", "cov_family": "term_structure",
-            "status": "ok", "gate_pass": False, "dm_status": "ok",
+            "status": "ok", "gate_pass": False, "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
             "run_mode": "exploration",
         }
         for i in range(3)
@@ -1673,6 +1674,7 @@ def test_descriptive_failures_do_not_kill_a_family():
     confirmatory["r3"] = {
         "variant_id": "r3", "symbol": "ss", "cov_family": "term_structure",
         "status": "ok", "gate_pass": False, "dm_status": "set_mismatch_ok",
+        "admissibility_rule": "edge_continuous_block_30d",   # 步③ B
         "run_mode": "exploration",
     }
     assert "term_structure" in sup._dead_families(confirmatory)
@@ -1702,6 +1704,7 @@ def _promotable(run_mode, dm_status, missingness, p_value=0.01, gate_pass=True):
         "run_mode": run_mode,
         "dm_status": dm_status,
         "missingness_admissible": missingness,
+        "admissibility_rule": "edge_continuous_block_30d",   # 步③ B
     }
 
 

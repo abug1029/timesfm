@@ -61,9 +61,10 @@ def _passing_row(**overrides):
         "missingness_admissible": True,
         "protocol_compatible": True,
         "dm_significant": True,
-        "dm_status": "ok",
+        "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
         "fdr_pass": None,
         "variant_id": "jd_vor_abc",
+        "admissibility_rule": "edge_continuous_block_30d",   # 步③ B
     }
     row.update(overrides)
     return row
@@ -195,7 +196,7 @@ def _summary_factory(n, classify=False):
                 "missingness_admissible": True,
                 "protocol_compatible": True,
                 "dm_significant": True,
-                "dm_status": "ok",
+                "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
             })
         return verdict
 
@@ -264,7 +265,7 @@ def _build_summary_shaped(**extra):
             "fdr_pass": None,
             "run_mode": kwargs.get("run_mode", "exploration"),
             "run_label": None,
-            "dm_status": "ok",
+            "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
             "pairing_valid": True,
             "missingness_admissible": True,
             "covariates_used": True,

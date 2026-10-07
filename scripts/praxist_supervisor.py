@@ -23,13 +23,17 @@ _PERSISTABLE_DM = frozenset({"ok", "set_mismatch_ok"})
 
 
 def fdr_pass_persistable(verdict):
-    """W3.4：只有确认运行、缺失可接受、且 DM 状态可确认时，fdr_pass=True 才能落盘。"""
+    """W3.4：只有确认运行、缺失可接受、且 DM 状态可确认时，fdr_pass=True 才能落盘。
+
+    步③ B（2026-10-07 裁定 A.3）：旧行缺 admissibility_rule 不计入、不回溯解释。
+    """
     if not isinstance(verdict, dict):
         return False
     return (
         verdict.get("run_mode") == "confirmation"
         and verdict.get("missingness_admissible") is True
         and verdict.get("dm_status") in _PERSISTABLE_DM
+        and verdict.get("admissibility_rule") is not None
     )
 
 
@@ -1772,7 +1776,10 @@ def _is_confirmable_failure(v):
 
 
 def _family_confirmatory_counts(rows):
-    """与 _dead_families 同一套行。返回 (fam_ok, fam_pass)。"""
+    """与 _dead_families 同一套行。返回 (fam_ok, fam_pass)。
+
+    步③ B（2026-10-07 裁定 A.3）：只计有 admissibility_rule 的行（旧行过滤）。
+    """
     fam_ok = {}
     fam_pass = {}
     for v in rows or []:
@@ -1780,6 +1787,8 @@ def _family_confirmatory_counts(rows):
             continue
         if v.get("dm_status") not in _CONFIRMATORY_DM:
             continue
+        if v.get("admissibility_rule") is None:
+            continue   # 步③ B: 旧行缺字段不计入
         fam = str(v.get("cov_family") or "").strip()
         if not fam:
             continue

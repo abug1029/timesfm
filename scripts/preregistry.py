@@ -450,6 +450,9 @@ def early_seal(n_actual: object, n_required: object) -> Seal:
 
 
 def _test_invalid(row: Mapping) -> bool:
+    """步③ B（2026-10-07 裁定 A.3）：旧行缺 admissibility_rule 视为 invalid。"""
+    if row.get("admissibility_rule") is None:
+        return True   # 旧行过滤
     return (
         row.get("pairing_valid") is not True
         or row.get("missingness_admissible") is not True
@@ -459,6 +462,9 @@ def _test_invalid(row: Mapping) -> bool:
 
 
 def _passes_confirmation(row: Mapping) -> bool:
+    """步③ B（2026-10-07 裁定 A.3）：旧行缺 admissibility_rule 不通过。"""
+    if row.get("admissibility_rule") is None:
+        return False   # 旧行过滤
     return (
         row.get("gate_pass") is True
         and row.get("p_value") is not None
