@@ -2691,6 +2691,13 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             except Exception:
                 _reject("unparseable_json"); continue
             stats["seen"] += 1
+            # 批次 F (M4)：abandon 提案处理
+            # peer 输出 decision="abandon" 表示反对当前假设，不入队、不加分
+            if p.get("decision") == "abandon":
+                _log_decision(log, "proposal_abandoned",
+                             f"peer={p.get('peer_id', 'unknown')} reason={p.get('abandon_reason', 'N/A')}")
+                _reject("decision_abandon")
+                continue
             # 新协变量想法 → backlog（不要求 hypothesis_proposal schema）
             if p.get("new_covariate") or p.get("new_cov"):
                 if _append_backlog(p, sp):
