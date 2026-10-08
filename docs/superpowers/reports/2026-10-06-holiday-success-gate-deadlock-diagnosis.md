@@ -47,7 +47,7 @@
 
 ### 2.2 代码证据（P0 定位）
 
-**`praxist_supervisor.py:2300-2340 _success_delta_gate()`**:
+**`praxist_supervisor.py:2300-2340 _success_delta_gate()`**（行号基于 dfd1f43 之前的版本；dfd1f43 在函数内插入 `_symbol_data_stale` 检查后，相关行下移至 ~2400-2440）:
 
 ```python
 prior_ts = _row_eval_end_ts(prior, cache, root)   # -> "2026-09-30 15:00:00"
@@ -60,7 +60,7 @@ if len(delta) >= 20:
 return "no_success_delta", "no_success_delta"      # <- 100% 命中
 ```
 
-**锚计算逻辑**（`monthly_backtest.py:356-358`）:
+**锚计算逻辑**（`monthly_backtest.py:356-358`，dfd1f43 未改此文件，行号仍准确）:
 
 ```python
 _anchor = (str(eval_end_ts) if eval_end_ts is not None
@@ -129,6 +129,8 @@ success_gate: rb_basis_momentum 复跑缺 success_delta (len=0 < 20) -> 拒收
 | 报告 | 识别 | 本报告新发现 |
 |---|---|---|
 | 10-03 （46h 战果）| peer 学习机制断裂（225 cycle 结果未回传）| 断裂在假期数据冻结条件下**升级为死锁** |
+
+> **[2026-10-06 注]**：10-05 报告的「断裂」原始结论已被其自身 **T0 勘误**推翻——结果回传实际已由 `known_verdicts.inc.md` 注入每一代提示词（见 `2026-10-05-peer-learning-gap-analysis.md` 顶部 T0 块）。当前真实问题是**数据冻结期 payload 为零**，而非注入通路失效。
 | 10-05 Peer 学习反馈硬化 T0-T3 | T0-T3 已部署（8 commits）| 结构就位但 payload 为零（无成功提案可回传）|
 | 10-05 T2 success_delta 增量门 | commit `318daca` / `2089f1c` / `e007a6c` | 门本身正确，但与 v4 2.1 绝对锚叠加形成死锁 |
 
@@ -137,6 +139,8 @@ success_gate: rb_basis_momentum 复跑缺 success_delta (len=0 < 20) -> 拒收
 ---
 
 ## 5. 处置建议
+
+> **[2026-10-06 实施状态更新]**：下方 P0-1 与 P0-3 建议已由 commit `dfd1f43`（2026-10-06 14:18）实施。P0-1 实现为 `_symbol_data_stale()` 函数（上海日历年龄 >3 天放行）；P0-3 实现为 `_locked_success_rows()` 生成的 `## Locked this window` 段注入 prompt_base.jinja2 规则 9。详见 `docs/superpowers/changelogs/2026-10-06-holiday-success-gate-data-stale.md`。
 
 ### P0-1（立即）：`_anchor_is_stale()` 临时旁路
 

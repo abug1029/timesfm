@@ -1,0 +1,146 @@
+{
+  "cj": {
+    "dir_acc": 0.448,
+    "endpoint_mape": 10.75,
+    "n": 588,
+    "n_eff": 73
+  },
+  "eg": {
+    "dir_acc": 0.446,
+    "endpoint_mape": 10.44,
+    "n": 588,
+    "n_eff": 73
+  },
+  "jd": {
+    "dir_acc": 0.457,
+    "endpoint_mape": 13.78,
+    "n": 588,
+    "n_eff": 73
+  },
+  "lh": {
+    "dir_acc": 0.462,
+    "endpoint_mape": 8.97,
+    "n": 588,
+    "n_eff": 73
+  },
+  "m": {
+    "dir_acc": 0.444,
+    "endpoint_mape": 5.94,
+    "n": 588,
+    "n_eff": 73
+  },
+  "rb": {
+    "dir_acc": 0.471,
+    "endpoint_mape": 3.18,
+    "n": 588,
+    "n_eff": 73
+  },
+  "sr": {
+    "dir_acc": 0.544,
+    "endpoint_mape": 3.42,
+    "n": 588,
+    "n_eff": 73
+  },
+  "ss": {
+    "dir_acc": 0.513,
+    "endpoint_mape": 5.11,
+    "n": 588,
+    "n_eff": 73
+  },
+  "fu": {
+    "dir_acc": 0.448,
+    "endpoint_mape": 27.6,
+    "n": 588,
+    "n_eff": 73
+  },
+  "i": {
+    "dir_acc": 0.525,
+    "endpoint_mape": 1.73,
+    "n": 588,
+    "n_eff": 73
+  },
+  "p": {
+    "dir_acc": 0.509,
+    "endpoint_mape": 2.07,
+    "n": 588,
+    "n_eff": 73
+  },
+  "y": {
+    "dir_acc": 0.478,
+    "endpoint_mape": 1.42,
+    "n": 588,
+    "n_eff": 73
+  },
+  "cf": {
+    "dir_acc": 0.516,
+    "endpoint_mape": 1.57,
+    "n": 588,
+    "n_eff": 73
+  },
+  "bu": {
+    "dir_acc": 0.4,
+    "endpoint_mape": 4.9,
+    "n": 588,
+    "n_eff": 73
+  },
+  "ta": {
+    "dir_acc": 0.567,
+    "endpoint_mape": 4.0,
+    "n": 588,
+    "n_eff": 73
+  },
+  "ma": {
+    "dir_acc": 0.422,
+    "endpoint_mape": 6.51,
+    "n": 588,
+    "n_eff": 73
+  },
+  "fg": {
+    "dir_acc": 0.476,
+    "endpoint_mape": 2.71,
+    "n": 588,
+    "n_eff": 73
+  },
+  "ur": {
+    "dir_acc": 0.604,
+    "endpoint_mape": 1.99,
+    "n": 588,
+    "n_eff": 73
+  },
+  "px": {
+    "dir_acc": 0.526,
+    "endpoint_mape": 4.84,
+    "n": 588,
+    "n_eff": 73
+  },
+  "oi": {
+    "dir_acc": 0.479,
+    "endpoint_mape": 1.72,
+    "n": 588,
+    "n_eff": 73
+  },
+  "sh": {
+    "dir_acc": 0.532,
+    "endpoint_mape": 3.19,
+    "n": 588,
+    "n_eff": 73
+  },
+  "sp": {
+    "dir_acc": 0.561,
+    "endpoint_mape": 1.41,
+    "n": 588,
+    "n_eff": 73
+  },
+  "ao": {
+    "dir_acc": 0.493,
+    "endpoint_mape": 2.11,
+    "n": 588,
+    "n_eff": 73
+  },
+  "sc": {
+    "dir_acc": 0.362,
+    "endpoint_mape": 5.93,
+    "n": 588,
+    "n_eff": 73
+  }
+}

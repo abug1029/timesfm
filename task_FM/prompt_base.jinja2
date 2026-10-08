@@ -48,6 +48,13 @@ metrics JSON, extra={"symbol","covariate","mechanism","proposal_id"}).
 metrics/notes；如需在 mechanism 叙述中提及旧结果，只能带
 "v22线索(旧口径,未复测)" 标签出现，且不得作为证据引用。
 
+> **[2026-10-06 澄清]** peer 阶段被禁止运行回测（见 prompt 顶部 "You are a
+> HYPOTHESIS AUTHOR, not an evaluator"），因此 share_finding 的 metrics
+> 字段由 peer 留空或只填 schema 占位（predicted_direction / target_family /
+> dir_acc_threshold 等设计参数）。v23 口径数字（DirAcc/MAPE/DM/FDR/gate
+> 结果）由 supervisor harvest 后通过 walk-forward 回测产出，回写到
+> `task_FM/config/aligned_verdicts.jsonl`，不经过 peer 的 metrics 字段。
+
 ## Proposal quality rules (the supervisor enforces these; bad proposals are rejected)
 1. **Mechanism mandatory**: `mechanism` must be >=40 chars, concrete, and extend the
    covariate's menu hypothesis to THIS symbol. "momentum is good" is a reject.
