@@ -1,4 +1,5 @@
 # v4 收口阶段 2 完成 + 阶段 3 启动 Changelog
+> **代码基线**: `6e463ce`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
 **Date:** 2026-10-01
 **Plan:** `docs/superpowers/plans/2026-09-30-v4-convergence-implementation-plan.md`

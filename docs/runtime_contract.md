@@ -28,7 +28,7 @@
 | 节律 | tick `POLL_S = 300`（秒） | `run_budget_hours: 1.5` | 跑到队列空 |
 | 门 | goal DSL 求值 | 提案质量门 | v23 硬门 |
 
-**tick 不是 sleep**：`praxist_supervisor.py:144` 定义 `POLL_S = 300`，主循环由 `_sleep_interruptible()` 实现——每 1s 检查停止标志，所以 SIGTERM 最迟下个 tick 内生效，不必等满 300s。
+**tick 不是 sleep**：`scripts/praxist_supervisor.py` 的 `POLL_S = 300`，主循环由 `_sleep_interruptible()` 实现——每 1s 检查停止标志，所以 SIGTERM 最迟下个 tick 内生效，不必等满 300s。
 
 ---
 
@@ -93,7 +93,7 @@ PF/EV/MaxDD 已在 evaluator 契约中退役，且 `INCUMBENT_PF` 因 L1 经济�
 
 | 门 | 实现 |
 |----|------|
-| 硬门（n / n_eff / effective_min） | `evaluator.gate()` / `compute_effective_min()`（`evaluator.py:697`） |
+| 硬门（n / n_eff / effective_min） | `evaluator.gate()` / `compute_effective_min()`（`task_FM/evaluations/fm_eval/evaluator.py`） |
 | 统计检验（DM） | `cascade/statistical_tests.py::diebold_mariano_p` |
 | 多重比较（BH-FDR / Bonferroni） | 同上 `bh_fdr_promote()` |
 
@@ -122,8 +122,8 @@ PF/EV/MaxDD 已在 evaluator 契约中退役，且 `INCUMBENT_PF` 因 L1 经济�
 
 ### 当前版本
 
-**`protocol_v4`** —— 定义在 `task_FM/evaluations/fm_eval/evaluator.py:284`。
-`scripts/restart_readiness_check.py:70` 有 `assert` 守着，版本不符直接启动失败。
+**`protocol_v4`** —— 定义在 `task_FM/evaluations/fm_eval/evaluator.py` 的 `PROTOCOL_FINGERPRINT_VERSION`。
+`scripts/restart_readiness_check.py` 的就绪检查有 `assert` 守着，版本不符直接启动失败。
 
 ### bump 后的必做动作
 
@@ -152,7 +152,7 @@ PF/EV/MaxDD 已在 evaluator 契约中退役，且 `INCUMBENT_PF` 因 L1 经济�
 | **abandoned / timeout 计入 K** | — | **防「结果不好就丢掉」式 p-hacking** |
 | 封账 | **一次性**跑 BH-FDR | 防止封账时选择性汇报 |
 
-**DEAD 家族判据**（`praxist_supervisor.py:1752` `_dead_families(snapshot, min_ok=4)`）：
+**DEAD 家族判据**（`scripts/praxist_supervisor.py` 的 `_dead_families(snapshot, min_ok=4)`）：
 只数 `dm_status ∈ {ok, set_mismatch_ok}` 的 ok 行；`n_ok ≥ 4` 且 `gate_pass == 0` 才算死亡。
 `insufficient_common` / `no_common_cutoff` / `set_mismatch_descriptive` 等**描述性 DM 一律不计数**——它们不代表「试过且失败」。
 
@@ -199,7 +199,7 @@ PF/EV/MaxDD 已在 evaluator 契约中退役，且 `INCUMBENT_PF` 因 L1 经济�
 | `missing_predicted_direction` | 缺预测方向 |
 | `missing_kill_promote` | 缺 kill / promote 条件 |
 
-### 板块级 circuit-breaker：`_sector_filter_check()`（`praxist_supervisor.py:1912`）
+### 板块级 circuit-breaker：`scripts/praxist_supervisor.py` 的 `_sector_filter_check()`
 
 **只有板块成员全集失败才拦。** 这是防饿死设计：
 

@@ -57,6 +57,14 @@
 
 **新口径经济真相**: g005e 结果文件已不在仓内（原 `../reports/research/20260808_g005e_results.md`；Phase 11/12 后协变量已刷新）
 
+## 行号引用纪律（D1，2026-10-08）
+
+行号必然腐烂——实测现行契约文档行号引用仅 13% 正确（30 处 25 错），技术债清单自身写完 24 小时行号即失效（审计见 `superpowers/reports/2026-10-08-d1-line-reference-audit.md`）。规则：
+
+- **现行契约文档**（本目录顶层 `*.md`、根目录 `*.md`、`task_FM/` 提示词与 AGENTS、各目录 `AGENTS.md`）**禁止行号引用**：不得写 `xxx.py:NN`、裸 `` `:NN` ``、`xxx.md:NN`。只写符号（`_dead_families()`）、文件路径，或**章节锚点**。
+- **日期型文档**（`superpowers/**`、`research/`、`2026-MM-DD-*.md`）行号**不改**——那是写作当日的证据，改即篡改；但标题下必须有 `> **代码基线**: \`<short-sha>\`` 一行，复核用 `git show <sha>:<path> | sed -n 'NNp'`。
+- 闸门：`python3 scripts/check_line_refs.py`；常备测试 `tests/test_doc_line_refs.py`，违规即红。
+
 ## For AI Agents
 
 ### Working In This Directory

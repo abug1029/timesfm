@@ -1,4 +1,5 @@
 # 技术债收口：盘点核实 + 收口计划 + 宿主六项裁定
+> **代码基线**: `6b80f6d`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
 > **日期**: 2026-10-07
 > **分支**: feat/tech-debt-closure-2026-10-07（worktree /home/abug/timesfm-wt-techdebt）

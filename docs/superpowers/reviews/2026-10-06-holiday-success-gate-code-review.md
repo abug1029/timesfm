@@ -1,4 +1,5 @@
 # 国庆 success_gate data_stale 旁路 — 代码审核报告
+> **代码基线**: `dfd1f43`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
 **Date:** 2026-10-06
 **Reviewer:** oh-my-claudecode:code-reviewer (Opus)

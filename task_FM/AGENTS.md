@@ -96,7 +96,7 @@ FM_a 的 Praxist 任务包：把「找更好的协变量」这件事写成一份
 
 | 门 | 承载方 |
 |----|--------|
-| 硬门（n / n_eff / effective_min） | `evaluator.gate()` · `compute_effective_min()`（`evaluator.py:697`） |
+| 硬门（n / n_eff / effective_min） | `evaluator.gate()` · `compute_effective_min()`（`task_FM/evaluations/fm_eval/evaluator.py`） |
 | 统计裁决（DM + BH-FDR） | `cascade/statistical_tests.py` |
 | PF / EV / MaxDD / IC | **已退役出裁决链**，仅经济报表字段 |
 
@@ -107,7 +107,7 @@ FM_a 的 Praxist 任务包：把「找更好的协变量」这件事写成一份
 
 `CONTEXT_BARS/DAYS`(480/25) · `EVAL_WINDOW_BARS` · `STEP` · `HORIZON` · cutoff(`bar_close`) · cov_fill(`v2`) · adj_rule(`v1`)+roll_guard(`v1`)
 
-- 版本定义：`evaluator.py:284` `PROTOCOL_FINGERPRINT_VERSION = "protocol_v4"`
+- 版本定义：`task_FM/evaluations/fm_eval/evaluator.py` 的 `PROTOCOL_FINGERPRINT_VERSION = "protocol_v4"`
 - 当前值：**`f02b2a433fd572ea…`**
 - 组件映射表：[../docs/fingerprint_component_mapping.md](../docs/fingerprint_component_mapping.md)
 - **bump 后必须重生基线**：`ensure_baselines` 自动比对，不符即整品种重生（`scripts/fingerprint_lib.py` 的静默回退已退役，会抛异常）
@@ -131,11 +131,11 @@ DEAD 判据：只数 `dm_status ∈ {ok, set_mismatch_ok}` 的 ok 行，`n_ok �
 |------|------|
 | `validate_candidate(c) -> (bool, str)` | 校验候选 JSON（symbol / cov_override / pool 合法性） |
 | `load_baseline_points(symbol, root, cov) -> list[dict]` | 读 nocov / 协变量基线点 |
-| `compute_protocol_fingerprint(...) -> str` | 算七组件指纹（`:293`） |
-| **`build_summary(...) -> dict`** | **核心**：逐点聚合 + DM + gate + effective_min，产出 verdict（`:447`） |
-| `compute_effective_min(min_dir_acc=0.52, baseline_dir_acc=None) -> float` | 自适应门槛（`:697`） |
-| `gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, ...) -> dict` | 硬门判定（`:703`） |
-| `effective_sample_size(n, horizon, step, ...) -> float` | Bartlett n_eff（`:720`） |
+| `compute_protocol_fingerprint(...) -> str` | 算七组件指纹 |
+| **`build_summary(...) -> dict`** | **核心**：逐点聚合 + DM + gate + effective_min，产出 verdict |
+| `compute_effective_min(min_dir_acc=0.52, baseline_dir_acc=None) -> float` | 自适应门槛 |
+| `gate(s, min_n=350, min_n_eff=50, min_dir_acc=0.52, ...) -> dict` | 硬门判定 |
+| `effective_sample_size(n, horizon, step, ...) -> float` | Bartlett n_eff |
 | `active_mask_metrics(points) -> dict` | 零变动剔除后的方向样本量 |
 
 ---

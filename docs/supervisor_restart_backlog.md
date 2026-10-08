@@ -4,7 +4,7 @@
 
 ## 1. 菜单 track 行固定前缀「【旧口径线索·非证据】」
 
-- 位置: `scripts/praxist_supervisor.py:745` 附近，`materialize_covariate_menu` 渲染 track 行处：
+- 位置: `scripts/praxist_supervisor.py` 的 `materialize_covariate_menu` 渲染 track 行处：
   `tr = " [track: %s]" % v["track_record"] ...`
 - 做法: 给菜单 track 行加固定前缀「【旧口径线索·非证据】」（防御性，防止 pool 未来再写入裸数字时被当作证据）。
 - 背景: pool 源头已在 2026-09-17 去数字（covariate_pool 内 10 条 v22 旧口径 track_record 标注，见 git log）。
@@ -76,7 +76,7 @@ launcher 内部已做 `setsid nohup` 孤儿化；验证会话独立性看 `ps -o
 `SID` 应与调用方不同、`PPID` 应为 `/init`、`TTY` 为 `?`。
 
 **⚠ 已知缺陷：SIGTERM 停机不可靠（2026-10-02 首现，2026-10-03 修订为结构性根因）**
-> **勘误（2026-10-05，T0）**：下述结构根因分析保留为风险描述。2026-10-04 15:14:38 实测**单次 SIGTERM 即时退出**（exit_code 0；changelog `2026-10-03-confirmation-channel-and-failure-accounting-fixes.md:86`）。停机是否即时取决于信号落点（主循环顶 vs 阻塞调用中），10-04 为一次成功样本；操作口径以 10-04 实证为准，停机判据看 `data/cache/stop_report.json` 与 `data/cache/supervisor_events.jsonl` 的 `supervisor_stopped` 事件。
+> **勘误（2026-10-05，T0）**：下述结构根因分析保留为风险描述。2026-10-04 15:14:38 实测**单次 SIGTERM 即时退出**（exit_code 0；changelog `2026-10-03-confirmation-channel-and-failure-accounting-fixes.md`）。停机是否即时取决于信号落点（主循环顶 vs 阻塞调用中），10-04 为一次成功样本；操作口径以 10-04 实证为准，停机判据看 `data/cache/stop_report.json` 与 `data/cache/supervisor_events.jsonl` 的 `supervisor_stopped` 事件。
 
 症状：发送 `SIGTERM` 后 supervisor 长时间不退出，且期间继续收割、继续发起快环。
 
@@ -85,11 +85,11 @@ launcher 内部已做 `setsid nohup` 孤儿化；验证会话独立性看 `ps -o
   （14:16:05 还发起新 run），最终需 `SIGKILL` 强制停止；停机事件由 atexit 兜底补发，
   `stop_report.json` 未刷新（仍为 10-02 PID 418）。
 
-**根因（结构性，非「信号丢了一次」）**：`_signal_handler`（`praxist_supervisor.py:361`）按设计只置
+**根因（结构性，非「信号丢了一次」）**：`_signal_handler`（`scripts/praxist_supervisor.py`）按设计只置
 `_SHUTDOWN_REQUESTED = True`（无 I/O，做法正确）；但该标志**只在主循环顶被读**
-（`:2858`，紧跟 `_write_heartbeat()`）。主循环内存在多处**无超时阻塞调用**
+（主循环顶 `_shutdown_exit()`，紧跟 `_write_heartbeat()`）。主循环内存在多处**无超时阻塞调用**
 （如 `_maybe_finish_slow` 等慢环子进程退出、`rl.queue_*` / `_harvest_rows` 的文件锁与全量扫描），
-信号一旦落在这些调用中间，标志在阻塞解除前读不到。叠加 `POLL_S = 300`（`:117`），
+信号一旦落在这些调用中间，标志在阻塞解除前读不到。叠加 `POLL_S = 300`，
 最坏情况要再等一整轮 poll。
 
 **因此「发两次 SIGTERM」不是可靠口径**——2026-10-03 第二次同样无效，白等 120s。
@@ -111,7 +111,7 @@ kill -0 "$SUP" 2>/dev/null && kill -KILL "$SUP"      # 直接强杀，不再等�
 
 ## 处置记录
 
-- 2026-09-17: 显式重启时实施第 1 项 —— praxist_supervisor.py:749 track 行已加固定前缀「【旧口径线索·非证据】」（test_supervisor/test_covariate_pool 47 passed）。第 2 项维持登记：本次以启动前人工检查 IDLE_HOLD（不存在，放行）履行守卫职责。
+- 2026-09-17: 显式重启时实施第 1 项 —— `materialize_covariate_menu` 的 track 行已加固定前缀「【旧口径线索·非证据】」（test_supervisor/test_covariate_pool 47 passed）。第 2 项维持登记：本次以启动前人工检查 IDLE_HOLD（不存在，放行）履行守卫职责。
 - 2026-09-17: supervisor 已重启（PID 546，setsid 脱离进程树，日志 data/cache/supervisor_loop.out）。
 - 2026-09-29: 第 3 项完成（旧进程 22703 退出 → PID 670 加载新代码，v3 指纹端到端验证）；本节原有的
   `scripts/stop_supervisor.sh` / `logs/supervisor.log` 两个路径经核实**均不存在**，已按实测改写。

@@ -1,4 +1,5 @@
 # SPEC: KB PF all null (schemes_snapshot_no_L1) 修复方案
+> **代码基线**: `c814f11`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
 **日期**: 2026-09-20
 **状态**: PROPOSED

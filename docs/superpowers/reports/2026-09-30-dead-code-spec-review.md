@@ -1,4 +1,5 @@
 # 死代码清理 spec 专家审核报告
+> **代码基线**: `f0f33d4`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
 - 日期：2026-09-30
 - 审核对象：`docs/2026-09-30-dead-code-purge-spec.md`（未跟踪稿）；上游依据 `D:\FlyBuddy\fma-audit\2026-09-30-fma-overengineering-audit.md`（勿动区，只读）

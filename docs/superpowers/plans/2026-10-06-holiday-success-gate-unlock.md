@@ -1,4 +1,5 @@
 # 国庆 success_gate 死锁解锁 Implementation Plan
+> **代码基线**: `c814f11`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

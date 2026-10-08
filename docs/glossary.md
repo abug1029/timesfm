@@ -65,7 +65,7 @@
 | **`persistence`** | 按 spec 填 **context 末值**（**替代历史 zeros / decay**） | 同上 |
 | **`self_referential`** | 需自引用处理 | 同上 |
 | **`unknowable`** | 不可知 | 同上 |
-| **vocab 校验** | 缺 pool 条目或词表外 → **抛 `HorizonContractError`**，不静默兜底 | `horizon_fill.py:94` |
+| **vocab 校验** | 缺 pool 条目或词表外 → **抛 `HorizonContractError`**，不静默兜底 | `cascade/horizon_fill.py`（各 `raise` 分支） |
 | **cov_fill** | 协变量缺失填充策略 | `COV_FILL_VERSION` |
 | **roll_guard** | 换月守卫，防跨合约拼接 | `ROLL_GUARD_VERSION` |
 

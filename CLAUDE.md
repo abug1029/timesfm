@@ -65,7 +65,7 @@ spec v15 的 §8.3 八项出口条件已全部核验。**新增三个模块是�
 - `scripts/praxist_supervisor.py` 的 family 接线是**薄接线**，逻辑全在 `cascade/research_family.py`，别把状态机搬进监督环
 
 指纹与 fail-loud：
-- `PROTOCOL_FINGERPRINT_VERSION = "protocol_v4"`（定义在 `task_FM/evaluations/fm_eval/evaluator.py:284`；`scripts/restart_readiness_check.py:70` 有断言守着，不是 v4 会启动失败），七个 spec 组件（CONTEXT_BARS/DAYS、EVAL_WINDOW_BARS、STEP、HORIZON、cutoff、cov_fill、adj_rule+roll_guard）→ 映射表见 `docs/fingerprint_component_mapping.md`
+- `PROTOCOL_FINGERPRINT_VERSION = "protocol_v4"`（定义在 `task_FM/evaluations/fm_eval/evaluator.py` 的 `PROTOCOL_FINGERPRINT_VERSION`；`scripts/restart_readiness_check.py` 有断言守着，不是 v4 会启动失败），七个 spec 组件（CONTEXT_BARS/DAYS、EVAL_WINDOW_BARS、STEP、HORIZON、cutoff、cov_fill、adj_rule+roll_guard）→ 映射表见 `docs/fingerprint_component_mapping.md`
 - `scripts/fingerprint_lib.py` 的**静默回退已退役**（W6.4）：找不到 praxist 二进制会抛异常，不再假装成功
 - 新增统计公式（`detection_threshold_vs_random/_vs_baseline`、`n_required`）带输入守卫，`n_eff=0` / `delta<=0` 直接抛
 

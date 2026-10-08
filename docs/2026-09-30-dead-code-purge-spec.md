@@ -1,4 +1,5 @@
 # 死代码清理 Spec（v2 修订稿）
+> **代码基线**: `01ff643`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
 > 日期: 2026-09-30。v1 → v2：吸收专家审核报告（`reports/2026-09-30-dead-code-spec-review.md`，P0×6 / P1×6）+ 宿主裁定 (d)(e) + 审核方自勘误（oi_gated_momentum 实为活代码）。
 > 上游审计: `D:\FlyBuddy\fma-audit\2026-09-30-fma-overengineering-audit.md`（仅按 §1.2 勘误后引用）。

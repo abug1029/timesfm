@@ -1,4 +1,5 @@
 # Stage 3 设计文档符合性评估报告（FM_a 协变量可信度）
+> **代码基线**: `48ade27`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
 - 日期：2026-09-30
 - 评估对象：`docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（v15/v16，1586 行）及其 Stage 3 交付物（381f31e 及后续）

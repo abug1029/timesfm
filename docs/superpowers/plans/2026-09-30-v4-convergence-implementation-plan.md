@@ -1,4 +1,5 @@
 # v4 收口统一实施计划（Stage 3 评估 + 死代码审核合并处置）
+> **代码基线**: `1c6222a`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
 - 日期：2026-09-30
 - 来源：`reports/2026-09-30-stage3-compliance-evaluation.md`（发现 A–H）+ `reports/2026-09-30-dead-code-spec-review.md`（P0×6 / P1×6）

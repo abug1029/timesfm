@@ -122,7 +122,7 @@ L2 证据层   superpowers/{specs,reports,changelogs,plans} · archive/
 | 当前有哪些裁决？ | `wc -l task_FM/config/aligned_verdicts.jsonl` |
 | 哪些品种信用≥2★？ | `python -c "from config.prediction_scheme import list_by_stars; print(list_by_stars(2))"` |
 | 当前卡在什么门？ | `STATE.md` |
-| 协议指纹是多少？ | `evaluator.py:284` 定义 + 基线行内字段 |
+| 协议指纹是多少？ | `task_FM/evaluations/fm_eval/evaluator.py` 的 `PROTOCOL_FINGERPRINT_VERSION` 定义 + 基线行内字段 |
 
 > **状态类文档（`STATE.md`）与代码冲突时，以代码为准**——
 > `STATE.md` 自称「唯一事实所有者」，但它也会腐烂（历史上钉过假 PID 与假裁决数）。

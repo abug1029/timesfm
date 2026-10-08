@@ -163,7 +163,7 @@ run 的归档判据应当另立，本文档 §4 的分级 + §5.1 的保留窗�
 | 4 | 磁盘配额上限与告警阈值？ | 无监控 |
 | 5 | harvest 扫哪些 run 的历史范围？ | 已核实：supervisor 直接扫 `experiments/` 下的 run，无历史窗口限制 |
 | 6 | **异地备份落在哪？**（§2.1 三重同盘单点） | **阻塞级，待决策** |
-| 7 | 归档调用包在裸 `except` 里（`praxist_supervisor.py:2977`），supervisor 崩溃时该 cycle 静默失败 | 待修 |
+| 7 | 归档调用（`archive_fast_harvest`）包在 `except Exception` 里、仅记 `assets_archive_error` 决策日志，无 supervisor 级告警 | 待修 |
 | 8 | `git clean -xdf` 的危险是否需要在 `AGENTS.md` / `CLAUDE.md` 显著警告？ | 待定 |
 
 ### 已解决

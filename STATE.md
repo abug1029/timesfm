@@ -225,8 +225,8 @@ spec W5.5① 是**宿主裁定**，点名 `rsi_state` / `hourly_slope` 为
 
 | 协变量 | 代码位置 | horizon 实际构造 | 探针结果 |
 |--------|---------|-----------------|---------|
-| `rsi_state` | `features.py:1047-1048` | `_generate_rsi_state_horizon(last_ctx_state)` — context 末态衰减 | 把 `predicted_daily_closes` 扰动 ×1.5+30 **→ horizon 逐值不变**；末态=2.0 时 horizon=`[2,2,1,1,0,0,…]` |
-| `hourly_slope` | `features.py:1227` | `np.full(horizon, last_valid)`，`last_valid` 取自 **1H 收盘价** | 注释自述「短期动量延续假设」 |
+| `rsi_state` | `cascade/features.py` | `_generate_rsi_state_horizon(last_ctx_state)` — context 末态衰减 | 把 `predicted_daily_closes` 扰动 ×1.5+30 **→ horizon 逐值不变**；末态=2.0 时 horizon=`[2,2,1,1,0,0,…]` |
+| `hourly_slope` | `cascade/features.py` | `np.full(horizon, last_valid)`，`last_valid` 取自 **1H 收盘价** | 注释自述「短期动量延续假设」 |
 
 `_build_rsi_state_from_daily` 的 docstring 自述：
 > 「predicted_daily 参与全日 RSI 计算，**但不映射到 context**；horizon 从
@@ -252,7 +252,7 @@ spec 自身矛盾，两个条款指向相反结论：
 | W5.5② | 「**不可追溯补填**」「历史已注册条目缺证据 → 降级 `unknowable` + WARN」 |
 
 实测事实：
-- 构造源是 `detect_trading_hours`（`data_validator.py:562-581`）= **从历史 1H 数据统计每小时频率反推**，不是交易所公布日历
+- 构造源是 `detect_trading_hours`（`cascade/data_validator.py`）= **从历史 1H 数据统计每小时频率反推**，不是交易所公布日历
 - W5.5④ 要求的 `announced_at` 公告时间戳：全仓 **grep 零命中**，核验规则未实现
 - `calendar_cyclical` 的 `track_record: "v22线索"` 说明是历史注册条目，
   而 `add_horizon_known.py` 于 2026-09-28 一次性补填证据 → 与 W5.5②「不可追溯补填」冲突

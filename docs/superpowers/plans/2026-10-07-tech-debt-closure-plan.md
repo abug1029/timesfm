@@ -1,4 +1,5 @@
 # FM_a 技术债收口方案与实施计划
+> **代码基线**: `38df4ac`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
 > **日期**: 2026-10-07
 > **输入**: `docs/superpowers/reports/2026-10-07-tech-debt-inventory.md`（23 条：P0=4 / P1=5 / P2=5 / P3=9）
