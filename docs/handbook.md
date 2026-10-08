@@ -109,8 +109,31 @@ L2 证据层   superpowers/{specs,reports,changelogs,plans} · archive/
 | **peer 不加载 TimesFM、不跑评估** | 方案 A 的核心约束 |
 | **慢环是裁决唯一写入者** | 不要手改 `aligned_verdicts.jsonl` |
 | **不手改运行产物** | `known_verdicts.inc.md` / `covariate_menu.inc.md` 每轮重新物化 |
+| **协变量双池同步** | 见下方 §5.1 —— 改一份必须同次变更改另一份 |
 | **不跑 `git clean -xdf`** | ⚠️ 会同时删除裁决原件 + 全部归档备份 |
 | **不误判为过时** | 三类文档刻意留在原位：peer 提示词内嵌的 spec · 三环跟进合同 · changelog 证据链 |
+
+---
+
+
+### 5.1 协变量双池职责（M4）
+
+系统存在两份协变量池，**有意维持双池，不合并**：
+
+| 池 | 路径 | 格式 | 读取方 |
+|----|------|------|--------|
+| **根池** | `config/covariate_pool.json` | `[{name, family}]` 简单列表 | `cascade/cov_family.py`（级联预测的默认 family 解析） |
+| **任务池** | `task_FM/config/covariate_pool.json` | `{schema: v2, covariates: {name: {family, status, ...}}, families: [...]}` 带元数据 | 三环慢环/快环（peer 提案可选范围、evaluator 裁决） |
+
+**同步责任**：谁改了其中一份池（增/删/改协变量或 family），**必须在同一次变更中同步另一份**。
+一致性由 `tests/test_cov_family.py::test_root_pool_matches_task_fm_pool` 守护（断言任务池每个 active 协变量在根池有相同 family 的对应条目）。
+
+**报警范围**：该测试仅在本地 `pytest` 跑，**没有 CI 自动执行**。改完池后务必手动运行：
+```bash
+cd <FM_ROOT> && .venv/bin/python -m pytest tests/test_cov_family.py::test_root_pool_matches_task_fm_pool -v
+```
+
+**为什么不合并**：根池是级联预测的轻量查询表（只需 name→family），任务池带 status/archived/schema 等三环治理元数据。两者职责不同，合并会耦合两个独立的消费方。
 
 ---
 

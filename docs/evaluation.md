@@ -33,7 +33,7 @@
 |------|------|------|
 | 样本量 `n` | ≥ **350** | `gate(min_n=350)` |
 | 有效样本 `n_eff` | ≥ **50** | `gate(min_n_eff=50)` |
-| 方向准确率 `dir_acc` | ≥ `effective_min` | `compute_effective_min()`（`task_FM/evaluations/fm_eval/evaluator.py`） |
+| 方向准确率 `dir_acc` | ≥ `effective_min` | `compute_effective_min`（符号名，定义在 `task_FM/evaluations/fm_eval/evaluator.py`，行号不作合同） |
 
 ### 2.1 自适应门槛 `effective_min`
 
@@ -164,7 +164,7 @@ run_mode == "confirmation"
 
 映射表：[fingerprint_component_mapping.md](./fingerprint_component_mapping.md)
 
-**版本定义**：`task_FM/evaluations/fm_eval/evaluator.py` 的 `PROTOCOL_FINGERPRINT_VERSION`。`scripts/restart_readiness_check.py` 有 assert 守着。
+**版本定义**：符号 `PROTOCOL_FINGERPRINT_VERSION`（定义在 `task_FM/evaluations/fm_eval/evaluator.py`，行号不作合同）。`scripts/restart_readiness_check.py` 有 assert 守着。
 **bump 后必须重生基线**——`ensure_baselines` 自动比对。
 
 ### ⚠️ 指纹不覆盖数据窗口语义

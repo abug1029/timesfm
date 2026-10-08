@@ -8,3 +8,5 @@ torch>=2.0
 pandas>=2.0
 pyarrow
 numpy<3
+
+PyYAML>=6.0.3

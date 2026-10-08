@@ -12,8 +12,8 @@
     "n_eff": 73
   },
   "jd": {
-    "dir_acc": 0.457,
-    "endpoint_mape": 13.78,
+    "dir_acc": 0.458,
+    "endpoint_mape": 14.66,
     "n": 588,
     "n_eff": 73
   },
@@ -36,8 +36,8 @@
     "n_eff": 73
   },
   "sr": {
-    "dir_acc": 0.544,
-    "endpoint_mape": 3.42,
+    "dir_acc": 0.444,
+    "endpoint_mape": 2.77,
     "n": 588,
     "n_eff": 73
   },

@@ -1671,3 +1671,18 @@
 {"ts": "2026-10-08T17:15:36.122729", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
 {"ts": "2026-10-08T17:21:38.076620", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "not_ready"]}
 {"ts": "2026-10-08T17:21:38.077120", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "not_ready"]}
+{"ts": "2026-10-08T17:46:31.010628", "action": "confirmation_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr_momentum_95a9be7b1e48"]}
+{"ts": "2026-10-08T17:52:12.852573", "action": "batch_fdr_promote", "reason": "batch=batch_a16ae2f9 promoted=4", "refs": []}
+{"ts": "2026-10-08T17:52:23.579653", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-10-08T17:52:38.137042", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-08T18:20:14.591634", "action": "confirmation_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd_volatility_0d84012ab85f"]}
+{"ts": "2026-10-08T18:20:14.600636", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-10-08T18:25:58.925358", "action": "batch_fdr_promote", "reason": "batch=batch_ee19c9a7 promoted=1", "refs": []}
+{"ts": "2026-10-08T18:26:14.984216", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-10-08T19:29:22.134994", "action": "proposal_scan", "reason": "seen=5886 rejected=5858 backlog=0 reasons={'dedup': 4979, 'quality_below_threshold': 196, 'no_success_delta': 19, 'schema_mismatch': 620, 'cov_not_in_active_pool': 28, 'unparseable_json': 6, 'backlog_dup': 7, 'missing_symbol_or_cov': 3}", "refs": []}
+{"ts": "2026-10-08T19:29:22.145274", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 5216, 'search_tree_busy': 34}", "refs": []}
+{"ts": "2026-10-08T19:29:22.146159", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["i_momentum_a5fcdc0d819f", "ss_term_structure_c5fdc5553635", "ss_inventory_0c1eb038ddb8"]}
+{"ts": "2026-10-08T19:29:22.645659", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-10-08T20:12:25.913691", "action": "batch_fdr_promote", "reason": "batch=batch_9420540e promoted=3", "refs": []}
+{"ts": "2026-10-08T20:12:45.768938", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-10-08T20:13:05.986595", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}

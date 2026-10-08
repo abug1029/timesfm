@@ -362,11 +362,11 @@ data_store.py）。正确边界应为 `dt < cutoff_ts`。
 |----|-----|
 | 宿主 | WSL2 Ubuntu-22.04 `<FM_ROOT>`，`.venv` (Python 3.11) |
 | 合同 | 方案 A：peer 写假设，慢环唯一验证器 |
-| 目标 | 1 星集合过门 ≥4（且独立过门变体 ≥4）+ min dir_acc > 0.52 + ≥1 族；`goal.yaml` 预算已 999999 / deadline 2099-12-31 |
+| 目标 | 见 `scripts/praxist_goal.yaml` 的 `success_condition: all_symbols_pass_phase1`。预算与 deadline 同见该文件。 |
 | 监督环 | `phase=fast`，`cycles_done=36`，`paused_429=false`；PID 31638（commit `6035c8e`）；`last_run_id=run_2026-09-20_09-28-32_primary_task_FM`；`last_harvested_run_id=run_2026-09-20_06-34-49_primary_task_FM` |
 | 裁决统计 | 105 verdicts（v2 schema），22 gate_pass=true（21%），0 fdr_pass=true；品种分布：eg 24 / cj 19 / m 13 / rb 11 / ss 7 / sr 7 / lh 7 / jd 7 / p 5 / sh 4 / i 4 / ma 2 / jm 2 / cf 2 |
 | 硬门但亏钱（v22 历史） | v22 口径 `i_oi`/ev<0 等已退役；v23 硬门 = n≥350 + n_eff≥50 + dir_acc≥adaptive + DM + BH-FDR，不再引用 PF/EV |
-| 品种状态（9/19） | eg=DEAD（22 ok, 0 pass）；jd/lh=HOLD（hold_generations=5）；其余 17 品种 active |
+| 品种状态 | 见 `task_FM/config/symbol_status.json`（当前 `symbols` 为空）。 |
 | n 口径 | 磁盘 396×21 / 588×3 / 324 / 142。396=旧网格或 `max_points` 截断；588≈现行理论 589；600=goal 上限；350=硬门阈值 |
 
 重启命令见 `docs/praxist.md` §4 或 `docs/runbook_praxist_three_loop.md`。
