@@ -63,6 +63,86 @@ if [ -f "$D5_DISABLED_FLAG" ]; then
   log "D5 扫尾已禁用"
 fi
 
+# ---------- 批次 A2：孤儿 run 扫尾 ----------
+# 仅当 D5 未禁用且 supervisor 不在运行时执行
+ACTIVE_RUNS_FILE=data/cache/active_runs.json
+SLOW_LOOP_LOCK=data/cache/aligned_slow_loop.lock
+EXPERIMENTS_DIR="$(pwd)/task_FM/experiments"
+
+cleanup_orphan_runs() {
+  # D5 禁用时跳过
+  if [ "$D5_DISABLED" -eq 1 ]; then
+    return
+  fi
+
+  # supervisor 还在运行时不扫尾（它自己管理）
+  if [ "$SUPERVISOR_UP" -eq 1 ]; then
+    return
+  fi
+
+  # 检查 active_runs.json 是否存在
+  if [ ! -f "$ACTIVE_RUNS_FILE" ]; then
+    return
+  fi
+
+  # 读取 active_runs.json
+  local batch_id pid cmdline start_ts
+  batch_id=$(jq -r '.batch_id // empty' "$ACTIVE_RUNS_FILE" 2>/dev/null)
+  pid=$(jq -r '.pid // empty' "$ACTIVE_RUNS_FILE" 2>/dev/null)
+  cmdline=$(jq -r '.cmdline // empty' "$ACTIVE_RUNS_FILE" 2>/dev/null)
+
+  if [ -z "$batch_id" ]; then
+    return
+  fi
+
+  # 检查 flock（aligned_slow_loop.lock）
+  # 如果锁存在，说明进程还在跑（可能是孤儿）
+  if [ -f "$SLOW_LOOP_LOCK" ]; then
+    # 尝试获取锁（非阻塞）
+    if (set -C; 2>/dev/null > "$SLOW_LOOP_LOCK.test") 2>/dev/null; then
+      # 能获取锁，说明没有进程持有
+      rm -f "$SLOW_LOOP_LOCK.test"
+      log "无孤儿 run（锁可获取）"
+      return
+    fi
+    rm -f "$SLOW_LOOP_LOCK.test"
+
+    # 锁被持有，检查 pid 是否还活着
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      # 进程还活着，检查 cmdline 和 worktree
+      local proc_cmdline proc_cwd
+      proc_cmdline=$(cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ')
+      proc_cwd=$(readlink /proc/$pid/cwd 2>/dev/null)
+
+      # 校验：cmdline 包含 batch_id 且 cwd 在 experiments 目录下
+      if echo "$proc_cmdline" | grep -q "$batch_id" && echo "$proc_cwd" | grep -q "^$EXPERIMENTS_DIR"; then
+        log "发现孤儿 run：pid=$pid batch=$batch_id cwd=$proc_cwd"
+        log "终止孤儿 run..."
+        kill -TERM "$pid" 2>/dev/null
+        sleep 2
+        if kill -0 "$pid" 2>/dev/null; then
+          log "孤儿 run 未响应 SIGTERM，发送 SIGKILL"
+          kill -KILL "$pid" 2>/dev/null
+        fi
+        rm -f "$ACTIVE_RUNS_FILE"
+        log "孤儿 run 已清理"
+      else
+        log "active_runs.json 中的 pid=$pid 不匹配（cmdline 或 worktree 不符），跳过"
+      fi
+    else
+      # pid 不存在，清理 active_runs.json
+      log "active_runs.json 中的 pid=$pid 已不存在，清理记录"
+      rm -f "$ACTIVE_RUNS_FILE"
+    fi
+  else
+    # 锁不存在，清理 active_runs.json
+    rm -f "$ACTIVE_RUNS_FILE"
+  fi
+}
+
+# 执行扫尾（在自愈判定前，但需要 SUPERVISOR_UP 定义后）
+# cleanup_orphan_runs 将在后面调用
+
 # 告警函数（日志 + 桌面通知）
 alert() {
   local msg="$1"
@@ -118,6 +198,9 @@ RECENT_126=$( { tail -100 data/cache/supervisor.out 2>/dev/null; [ -n "$NEWEST_R
 
 SUPERVISOR_UP=0
 [ -n "$(echo "$SUP_PIDS" | tr -d ' ')" ] && SUPERVISOR_UP=1
+
+# 执行孤儿 run 扫尾（批次 A2）
+cleanup_orphan_runs
 
 # ---------- 判定状态 ----------
 STATE="HEALTHY"; ACTION=""

@@ -4133,10 +4133,43 @@ def _maybe_start_slow_loop(goal, log):
             batch_records = rl.queue_load(QUEUE) + rl.queue_load(INPROGRESS)
         except Exception:
             batch_records = []
-        subprocess.Popen(
+
+        # 批次 A2：两段式写入 active_runs.json（防硬杀孤儿）
+        # 第一步：Popen 前写意图记录（含 batch_id）
+        active_runs_path = os.path.join(FM_ROOT, "data", "cache", "active_runs.json")
+        intent_record = {
+            "batch_id": batch_id,
+            "status": "starting",
+            "start_intent_ts": int(time.time())
+        }
+        try:
+            import json
+            with open(active_runs_path, "w") as f:
+                json.dump(intent_record, f)
+        except Exception as e:
+            _log_decision(log, "active_runs_intent_write_failed", str(e))
+
+        proc = subprocess.Popen(
             [project_python, os.path.join(HERE, "aligned_slow_loop.py"),
              "--batch-id", batch_id],
             stdout=out_fp, stderr=subprocess.STDOUT, start_new_session=True)
+
+        # 第二步：Popen 后补 pid + 进程创建时刻
+        try:
+            import json
+            complete_record = {
+                "batch_id": batch_id,
+                "pid": proc.pid,
+                "status": "running",
+                "start_intent_ts": intent_record["start_intent_ts"],
+                "pid_assigned_ts": int(time.time()),
+                "cmdline": " ".join([project_python, os.path.join(HERE, "aligned_slow_loop.py"), "--batch-id", batch_id])
+            }
+            with open(active_runs_path, "w") as f:
+                json.dump(complete_record, f)
+        except Exception as e:
+            _log_decision(log, "active_runs_complete_write_failed", str(e))
+
         # Persist batch_id for FDR promotion on completion
         fresh = load_state()
         fresh["current_batch_id"] = batch_id
