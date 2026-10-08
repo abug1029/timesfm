@@ -1,5 +1,10 @@
 # Peer 记忆回路闭合 Spec
 
+> **状态**：部分实施（D2/D3 已完成，D1/D4 待 M3 窗口定义后实施）
+> **批准人**：宿主（2026-10-08 待解决问题 spec 批准时一并确认）
+> **批准范围**：D2/D3 已实施；D1 依赖 M3 窗口定义（Q10 裁定后实施）；D4 依赖 M4（abandon 提案）
+> **相关批次**：批次 F（M1/M3/M4 + D1）
+
 - **spec 日期**：2026-10-03
 - **对照代码**：WSL `/home/abug/timesfm` master `d026118`（收口计划已合入；本文件仍未提交）
 - **上位 spec**：`docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（v15）

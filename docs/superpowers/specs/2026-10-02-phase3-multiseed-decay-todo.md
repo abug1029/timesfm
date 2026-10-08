@@ -1,5 +1,9 @@
 # Phase 3 占位说明
 
+> **状态**：占位（非求值器，无需实施）
+> **说明**：phase2_pass 和 phase3_pass 不是成功条件，无需实施
+> **相关批次**：无（占位文档，不参与实施）
+
 这篇文档不是求值器。
 
 `scripts/praxist_goal.yaml` 的成功条件只有 `all_symbols_pass_phase1`。`phase2_pass` 和 `phase3_pass` 不是成功条件。
