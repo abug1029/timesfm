@@ -760,8 +760,6 @@ def main():
     parser = argparse.ArgumentParser(description="跨周期级联预测")
     parser.add_argument("symbols", nargs="*", help="品种代码")
     parser.add_argument("--all", action="store_true", help="所有品种")
-    parser.add_argument("--three-star", action="store_true",
-                        help="仅运行三星固化品种 (SS/UR/SR)")
     parser.add_argument("--horizon", type=int, default=24, help="预测时域 (小时, 默认 24)")
     parser.add_argument("--no-viz", action="store_true", help="跳过可视化")
     parser.add_argument("--collect", action="store_true",
@@ -799,10 +797,8 @@ def main():
         print("\n  [Vol Gating] OFF → static scheme only "
               "(enable: --vol-filter-neutral / FM_VOL_FILTER=1)")
 
-    if args.three_star:
-        # 历史名 --three-star：现映射信用≥2星（新口径无3星）
-        from config.prediction_scheme import list_by_stars
-        symbols = list_by_stars(2) or list_solidified()
+    if args.symbols:
+        symbols = [s.lower() for s in args.symbols]
     elif args.all:
         symbols = list(DEFAULT_SYMBOLS)
     elif args.symbols:
@@ -905,7 +901,7 @@ def main():
     for idx, symbol in enumerate(symbols):
         try:
             scheme = get_scheme(symbol)
-            tag = f"[{scheme.stars}星固化]" if scheme else ""
+            tag = "[固化]" if scheme else ""
             print(f"\n  [{idx+1}/{len(symbols)}] {symbol.upper()} {tag}")
             _log_progress(f"[{idx+1}/{len(symbols)}] {symbol.upper()} START")
             report, result_data = run_cascade(

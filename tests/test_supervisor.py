@@ -176,6 +176,8 @@ def test_dry_run_one_shot_no_sleep(tmp_path, monkeypatch):
         "goal:\n  success_condition: ['len(symbols_hit) >= 99']\n"
         "  budgets: {max_cycles: 10, cpu_hours: 60, token_budget_m: 80}\n"
         "  cadence: {survivors_per_cycle: 2, aligned_max_points: 400,\n"
+        # L3（2026-10-08）：target_symbols 是启动契约，缺失即启动失败。
+        "            target_symbols: [m, ss, sr],\n"
         "            run_budget_hours: 2.0, quota_window_hours: 5.0, quota_margin_min: 30,\n"
         "            slow_loop_window: '00:00-23:59'}\n",
         encoding="utf-8")
@@ -231,6 +233,8 @@ def test_goal_reached_marks_stop_emitted(tmp_path, monkeypatch):
         "                      'len(families_hit) >= 1']\n"
         "  budgets: {max_cycles: 10, cpu_hours: 60, token_budget_m: 80}\n"
         "  cadence: {survivors_per_cycle: 2, aligned_max_points: 400,\n"
+        # L3（2026-10-08）：target_symbols 是启动契约，缺失即启动失败。
+        "            target_symbols: [m, ss, sr],\n"
         "            run_budget_hours: 2.0, quota_window_hours: 5.0, quota_margin_min: 30}\n",
         encoding="utf-8")
     rc = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
@@ -251,6 +255,8 @@ def test_cycles_increment_only_after_harvest(tmp_path, monkeypatch):
         "goal:\n  success_condition: ['len(symbols_hit) >= 99']\n"
         "  budgets: {max_cycles: 1, cpu_hours: 60, token_budget_m: 80}\n"
         "  cadence: {survivors_per_cycle: 2, aligned_max_points: 400,\n"
+        # L3（2026-10-08）：target_symbols 是启动契约，缺失即启动失败。
+        "            target_symbols: [m, ss, sr],\n"
         "            run_budget_hours: 2.0, quota_window_hours: 5.0, quota_margin_min: 30}\n",
         encoding="utf-8")
     (tmp_path / "task_FM").mkdir()
@@ -293,6 +299,8 @@ def _goal_yaml(tmp_path, max_cycles=10):
         "goal:\n  success_condition: ['len(symbols_hit) >= 99']\n"
         "  budgets: {max_cycles: %s, cpu_hours: 60, token_budget_m: 80}\n"
         "  cadence: {survivors_per_cycle: 2, aligned_max_points: 400,\n"
+        # L3（2026-10-08）：target_symbols 是启动契约，缺失即启动失败。
+        "            target_symbols: [m, ss, sr],\n"
         "            run_budget_hours: 2.0, quota_window_hours: 5.0, quota_margin_min: 30}\n"
         % max_cycles,
         encoding="utf-8")
@@ -525,6 +533,8 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
         "goal:\n  success_condition: ['len(symbols_hit) >= 99']\n"
         "  budgets: {max_cycles: 10, cpu_hours: 60, token_budget_m: 10}\n"
         "  cadence: {survivors_per_cycle: 2, aligned_max_points: 400,\n"
+        # L3（2026-10-08）：target_symbols 是启动契约，缺失即启动失败。
+        "            target_symbols: [m, ss, sr],\n"
         "            run_budget_hours: 2.0, quota_window_hours: 5.0, quota_margin_min: 30}\n",
         encoding="utf-8")
     (tmp_path / "task_FM").mkdir()
@@ -569,6 +579,8 @@ def test_tok_unknown_skips_token_budget(tmp_path, monkeypatch):
         "goal:\n  success_condition: ['len(symbols_hit) >= 99']\n"
         "  budgets: {max_cycles: 10, cpu_hours: 60, token_budget_m: 0}\n"
         "  cadence: {survivors_per_cycle: 2, aligned_max_points: 400,\n"
+        # L3（2026-10-08）：target_symbols 是启动契约，缺失即启动失败。
+        "            target_symbols: [m, ss, sr],\n"
         "            run_budget_hours: 2.0, quota_window_hours: 5.0, quota_margin_min: 30}\n",
         encoding="utf-8")
     (tmp_path / "task_FM").mkdir()
@@ -984,15 +996,18 @@ def test_failover_env_auth_token_matches_api_key(monkeypatch):
     assert "dashscope" in env["ANTHROPIC_BASE_URL"]
 
 
-# ── n-不足型近失误自动复测 (cj_oi: PF1.133/ev19.46/ic0.08 全过, 仅 n=324<350) ──
+# ── n-不足型近失误自动复测 (v23 口径: dir_acc>=0.50, 仅 n<350) ──
+# 2026-10-08（债 2 裁定 C+a）：判据由 v1 legacy 的 ic/ev/pf-ratio 改为 v2 的
+# dir_acc。工厂默认 schema 随之改为 v2，legacy v1 行为由单独用例显式锁定。
 
 def _aligned_verdict(vid, symbol, cov, n, pf, ev, ic, gate, status="ok",
-                     max_points=600, protocol_fingerprint=None):
+                     max_points=600, protocol_fingerprint=None,
+                     schema="fm.aligned_verdict.v2"):
     row = {"variant_id": vid, "symbol": symbol, "cov_override": cov,
            "max_points": max_points, "n": n, "pf": pf, "ev": ev, "maxdd": -0.2,
            "dir_acc": 0.5 + ic / 2.0, "gate_pass": gate, "ic": ic,
            "decided_at": "2026-09-08T00:00:00", "checkpoint_path": "",
-           "slow_loop_pid": 1, "git_rev": "x", "schema": "fm.aligned_verdict.v1",
+           "slow_loop_pid": 1, "git_rev": "x", "schema": schema,
            "status": status}
     if protocol_fingerprint is not None:
         row["protocol_fingerprint"] = protocol_fingerprint
@@ -1000,19 +1015,43 @@ def _aligned_verdict(vid, symbol, cov, n, pf, ev, ic, gate, status="ok",
 
 def test_retest_candidates_only_n_near_miss():
     snap = {
-        # 近失误: n<350, ic/ev/pf-ratio 全过 → 入选
+        # 近失误: n<350 且 dir_acc>=0.50 → 入选
         "cj_oi": _aligned_verdict("cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False),
-        # n 已达标但 gate False (ic 不足) → 不入选
+        # n 已达标但 gate False (dir_acc 不足) → 不入选
         "ss_nvi": _aligned_verdict("ss_nvi", "ss", "nvi", 396, 1.068, 6.34, 0.036, False),
         # 已过门 → 不入选
         "ss_vor": _aligned_verdict("ss_vor", "ss", "vor", 396, 1.123, 11.06, 0.06, True),
         # no_data 不进 dead → 不入选
         "lh_x": _aligned_verdict("lh_x", "lh", "oi", 0, 0.0, 0.0, 0.0, False,
                                  status="no_data"),
-        # n<350 但 pf/ev 不过 → 不入选 (加样本也无意义)
-        "m_bad": _aligned_verdict("m_bad", "m", "oi", 300, 0.9, -1.0, 0.08, False),
+        # n<350 但 dir_acc 不足 → 不入选 (加样本也无意义)
+        "m_bad": _aligned_verdict("m_bad", "m", "oi", 300, 0.9, -1.0, -0.20, False),
     }
     assert [v["variant_id"] for v in sup._retest_candidates(snap)] == ["cj_oi"]
+
+def test_retest_candidates_rejects_v1_legacy_rows():
+    """债 2 裁定 C+a：v1 legacy 判据（ic/ev/pf）已退役，v1 行显式排除。
+
+    这行若按 dir_acc>=0.50 也会入选；若退回旧的 ic/ev/pf 判据同样会入选。
+    现在必须**一条都不入选** —— 证明删除的是判据本身，不是把阈值调高。
+    """
+    v1_ok = _aligned_verdict("v1_ok", "cj", "oi", 324, 1.133, 19.46, 0.08, False,
+                             schema="fm.aligned_verdict.v1")
+    v1_bad = _aligned_verdict("v1_bad", "m", "oi", 300, 0.9, -1.0, -0.20, False,
+                              schema="fm.aligned_verdict.v1")
+    assert sup._retest_candidates({"v1_ok": v1_ok, "v1_bad": v1_bad}) == []
+
+
+def test_retest_gate_constants_retired():
+    """债 2 裁定 C：RETEST_PF_RATIO / RETEST_GATE_IC / INCUMBENT_PF 已删除。
+
+    PF/EV/MaxDD 已在 evaluator 契约中退役，且 INCUMBENT_PF 因 L1 缺失恒空会让
+    `.get(sym, 1.0)` 把"相对 incumbent 超 105%"静默改写成"PF 绝对值 > 1.05"。
+    """
+    assert not hasattr(sup, "RETEST_PF_RATIO")
+    assert not hasattr(sup, "RETEST_GATE_IC")
+    assert not hasattr(sup, "INCUMBENT_PF")
+    assert sup.RETEST_GATE_N == 350   # 仍保留：这是"仅差样本"的样本量门槛
 
 def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
@@ -1153,7 +1192,7 @@ def test_build_snapshot_scalars_v2(tmp_path, monkeypatch):
     reg.write_text(json.dumps(rec) + "\n", encoding="utf-8")
     snap = sup.build_snapshot(str(reg), 0, 0, 0)
     assert snap["n_unique_pass_variants"] == 1
-    assert snap["n_one_star_symbols_hit"] >= 1
+    assert snap["n_goal_symbols_hit"] >= 1
     assert snap["n_families_hit"] == 1
     assert "unknown" not in snap["families_hit"]
     assert snap["min_pass_variant_dir_acc"] == 0.56
@@ -1819,8 +1858,10 @@ def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
     goal.write_text(
         "goal:\n  success_condition: ['all_symbols_pass_phase1']\n"
         "  budgets: {max_cycles: 2000, cpu_hours: 2000, token_budget_m: 80, deadline: '2028-10-02'}\n"
+        # L3（2026-10-08）：target_symbols 是启动契约，缺失即启动失败。
         "  cadence: {survivors_per_cycle: 3, aligned_max_points: 600,\n"
-        "            run_budget_hours: 1.5, quota_window_hours: 5.0, quota_margin_min: 30}\n",
+        "            run_budget_hours: 1.5, quota_window_hours: 5.0, quota_margin_min: 30,\n"
+        "            target_symbols: [m, ss, sr]}\n",
         encoding="utf-8")
     (tmp_path / "task_FM").mkdir()
     try:

@@ -1111,12 +1111,12 @@ def main():
         print(f"\n{'=' * 60}")
         print("  Baseline 对照 (prediction_scheme.py 固化方案)")
         print(f"{'=' * 60}")
-        print(f"{'品种':4s}  {'DirAcc':>6}  {'MAPE':>6}  {'Decay':>6}  {'星星':>4s}  协变量")
+        print(f"{'品种':4s}  {'DirAcc':>6}  {'MAPE':>6}  {'Decay':>6}  协变量")
         print("-" * 60)
         for sym in symbols:
             sc = _SCHEMES.get(sym.lower())
             if sc:
-                print(f"{sym.upper():4s}  {sc.dir_acc:>6.0%}  {sc.mape:>5.2f}%  {sc.decay:>5.2f}x  {sc.stars:>2d}★   {sc.covariate_type}")
+                print(f"{sym.upper():4s}  {sc.dir_acc:>6.0%}  {sc.mape:>5.2f}%  {sc.decay:>5.2f}x  {sc.covariate_type}")
             else:
                 print(f"{sym.upper():4s}  {'未固化':>6s}")
         print(f"\n  注: PF (Profit Factor) 需完整 walk-forward 回测获得,")

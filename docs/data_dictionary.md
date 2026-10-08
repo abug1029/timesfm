@@ -7,46 +7,85 @@
 
 ---
 
-## 1. 品种集合（三层，不等长）
+## 1. 品种集合（四层，两组已对齐）
 
-⚠️ **三个集合大小不同**，这是最容易踩的坑：
+⚠️ **集合大小不同**，这是最容易踩的坑：
 
 | 层 | 数量 | 权威 | 用途 |
 |----|-----:|------|------|
 | `DEFAULT_SYMBOLS` | **28** | `data/config.py` | 数据采集的全集 |
 | `SCHEMES` | **21** | `config/prediction_scheme.py` | 有生产预测方案的品种 |
-| `target_symbols` | **24** | `scripts/praxist_goal.yaml` | 三环要攻坚的目标 |
+| `target_symbols` | **24** | `scripts/praxist_goal.yaml` | 三环要攻坚的目标 —— **单一来源** |
+| `ALLOWED_SYMBOLS` | **24** | 从 `target_symbols` 派生 | 候选准入门（第一道硬检查） |
 
-**差集（2026-10-05 实测）**：
+**2026-10-08 对齐裁定**：`target_symbols` 与 `ALLOWED_SYMBOLS` 曾是两份独立硬编码，
+且准入门内容恰好等于 `SCHEMES`(21) 而非目标(24)，造成双向割裂 ——
+`oi`/`px`/`y` 是攻坚目标却被准入门挡死（无法为它们产出任何候选），
+`jm` 能过门但不被 goal 统计（孤儿）。现已归一：yaml 为唯一来源，evaluator 从它派生。
+同期裁定：删 `sc`（原油，不再作为攻坚目标）、增 `jm`。
 
-- `SCHEMES` 有但 goal 无：**`jm`（焦煤）** —— 有生产方案但不在三环目标内，**不是三环失败**
-- goal 有但 `SCHEMES` 无：`oi` · `px` · `sc` · `y` —— 攻坚目标但还没有生产方案
-- `DEFAULT_SYMBOLS` 有但 goal 无：`bz` · `eb` · `jm` · `pp` —— 只采数据，不参与预测/攻坚
+**当前差集（2026-10-08 实测）**：
+
+- `target_symbols` == `ALLOWED_SYMBOLS`：**已恒等，均为同一 24 个品种**
+- `SCHEMES` 有但 goal 无：**无**（原 `jm` 已补进目标）
+- goal 有但 `SCHEMES` 无：`oi` · `px` · `y` —— 攻坚目标但还没有生产方案
+- `DEFAULT_SYMBOLS` 有但 goal 无：`bz` · `eb` · `pp` —— 只采数据，不参与预测/攻坚
+  （原清单里的 `jm` 已进入目标，故不再出现在此差集）
+- `sc` 已退出攻坚目标，**但仍作为 `fu`/`bu` 裂解价差的原料输入保留**在
+  `config/crack_spread_pairs.py` —— 那是数据依赖，不是研究目标，不要连带删除
 
 > 「三环有 target 但没 SCHEMES」不代表失败——那是**尚未固化方案**的攻坚对象。
+
+> 守卫：`tests/test_symbol_universe_20261008.py` 断言 `target_symbols` ==
+> `ALLOWED_SYMBOLS`，并禁止 `ALLOWED_SYMBOLS` 退回内联字面量。漂移会直接测试失败。
 
 ### 品种代码
 
 `ao` 氧化铝 · `bu` 沥青 · `bz` · `cf` 棉花 · `cj` 红枣 · `eb` · `eg` 乙二醇
 `fg` 玻璃 · `fu` 燃料油 · `i` 铁矿石 · `jd` 鸡蛋 · `jm` 焦煤 · `lh` 生猪
-`m` 豆粕 · `ma` 甲醇 · `oi` · `p` 棕榈油 · `pp` · `px` · `rb` 螺纹钢 · `sc` ·
+`m` 豆粕 · `ma` 甲醇 · `oi` · `p` 棕榈油 · `pp` · `px` · `rb` 螺纹钢 ·
 `sh` 烧碱 · `sp` 纸浆 · `sr` 白糖 · `ss` 不锈钢 · `ta` PTA · `ur` 尿素 · `y`
 
 中文名以 `config/backtest_config.py::SYMBOL_NAMES` 为准（部分品种无映射）。
 
-### 信用档
+### 品种信心分级（信用档已退役）
 
-**无真实 3 星**。清单以代码为唯一事实源：
+**2026-10-08 信用档（`scheme.stars`）整体退役。** 原 1★/2★/3★ 体系不再存在。
 
-```python
-from config.prediction_scheme import list_by_stars
-list_by_stars(2)   # 可辩护档；CLI --three-star 映射到此
-```
+**为什么退役**（四条证据，任一独立成立）：
 
-⚠️ **不要在任何文档里硬编码品种清单**——SS 已于 2026-09-17 降级（commit `9c7fc2a`），
-写死的清单随降级动作腐烂。
+1. **零决策参与** —— `praxist_supervisor.py` / `aligned_slow_loop.py` 从不读取它；
+2. **自我声明脱钩** —— 模块 docstring 写明数值冻结在 2026-08 v2 月度回测口径，
+   「不得作为 v23 证据引用」；
+3. **服务目标不可达** —— 2026-08-03 结论「3 星不可达（DirAcc 天花板 ~58%）」；
+4. **被"唯一事实源"固化成陈旧值** —— CF-10 A 把 `credit_stars` 唯一源钉成
+   `scheme.stars`，于是 L1 证据 0/21 全缺失时仍输出 1~3 星，用冻结值冒充信心。
 
----
+**取代方案（方案 A）**：信心分级改由 **L1 经济证据派生** ——
+`build_knowledge_base.evidence_grade(historical_pf, historical_ev)`：
+
+| 档位 | 判据 |
+|------|------|
+| `no_evidence` | L1 经济判决缺失或该品种无 PF（**证据缺失，显式暴露**） |
+| `solid` | PF ≥ 1.20 且 EV > 0 |
+| `positive` | PF ≥ 1.05 且 EV > 0（边际正） |
+| `negative` | 有 PF 但不达门槛 |
+
+**当前实测**：L1 `ECONOMIC_VERDICT.json` 不存在 → 21 个品种**全部** `no_evidence`。
+这是事实陈述而非缺陷：产出 L1 经济判决后自动转为真实档位。
+
+**保留部分**：`config/prediction_scheme.py` 的**固化预测参数全部保留**
+（`covariate_type` / `dir_acc` / `mape` / `decay` / `scheme_type` /
+`short_horizon_only` / `confidence_multiplier` / `signal_weight()` /
+`confidence_band()` 等）—— 那是生产预测参数，不是评级。
+
+**归档**：`two_star_critic.py` / `two_star_candidate_runner.py` → 
+`scripts/archive/2026-10-08-credit-star-retired/`（服务 2★→3★ 晋级，
+目标已判定不可达，自 2026-09-03 初始提交后从未更新）。
+
+**CLI 变更**：`copilot.py --three-star` → `--evidence {solid|positive|negative|no_evidence}`；
+`three_star_predict.run_all_three_star()` → `run_all_schemes()`（改跑全部固化品种，
+文件名 `*_three_star.md` / `three_star_progress.log` 保持不变以兼容既有产物路径）。
 
 ## 2. 协变量 6 族受控词表
 

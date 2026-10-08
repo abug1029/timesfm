@@ -67,9 +67,7 @@ for sym in VARIETIES:
     if scheme:
         pf = g005_pf_from_scheme[sym]
         da = dir_acc_values[sym]
-        stars = scheme.stars
         cov = scheme.covariate_type
-        print(f"{sym.upper():4s}  {pf:>8.2f}  {da:>6.3f}  {stars:>2d}★   {cov}")
     else:
         print(f"{sym.upper():4s}  {'未固化':>8s}")
 

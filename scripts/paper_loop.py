@@ -20,12 +20,11 @@ from cascade.live_ledger import (  # noqa: E402
     export_candidates,
     health_stats,
 )
-from config.prediction_scheme import list_by_stars  # noqa: E402
 
 # G005-E 可辩护弱正（n 较足）。观察仓经济尚可但 n<350。
 CORE = ("sr", "m", "jd")  # ss 2026-09-17 降级 1★ 移出（9c7fc2a）
 WATCH = ("cj", "lh")
-# --three-star 还会带上边界 EG/RB，纸面主盘不要用那条 CLI。
+# 主盘只用下列 CORE/WATCH；跑全量固化品种会带上边界 EG/RB，纸面不要全跑。
 
 
 def _led(db: str | None) -> LiveLedger:
@@ -35,7 +34,7 @@ def _led(db: str | None) -> LiveLedger:
 def cmd_next() -> int:
     core = " ".join(CORE)
     watch = " ".join(WATCH)
-    print("# 下一步（盘中记一笔，不要用 --three-star）")
+    print("# 下一步（盘中记一笔，勿跑全量品种）")
     print(f"python scripts/copilot.py {core}")
     print(f"# 观察仓（可选）: python scripts/copilot.py {watch} --no-refresh")
     print("python scripts/paper_loop.py backfill")
@@ -58,12 +57,10 @@ def cmd_status(led: LiveLedger) -> int:
         if asof > slot["last_asof"]:
             slot["last_asof"] = asof
 
-    two_star = list_by_stars(2)
     print("# paper_loop status")
     print(f"ledger={led.path}")
     print(f"rows={len(rows)} filled_t24={len(filled)} unfilled={len(unfilled)}")
     print(f"core={','.join(CORE)}  watch={','.join(WATCH)}")
-    print(f"list_by_stars(2)={','.join(two_star)}  # 含边界 EG/RB，主盘勿全跑")
     print("| symbol/source | n | filled | last_asof |")
     print("|---------------|--:|-------:|-----------|")
     for k in sorted(by):

@@ -1,11 +1,14 @@
 """
-信用档预测（历史名 three_star）— 一键运行 scheme.stars≥2 品种
+固化品种一键预测（历史名 three_star）— 运行全部已固化品种
+
+2026-10-08：信用档（scheme.stars / list_by_stars）已退役，本脚本改为跑
+全部已固化品种。文件名与进度日志仍保留 three_star 字样以兼容既有产物路径。
 
 2026-08-08 新口径 rebaseline 后系统内无 3 星；本脚本跑 **≥2 星信用档**
 （见 reports/research/20260808_g005e_results.md）。
 
 用法:
-  python scripts/three_star_predict.py                # stars≥2
+  python scripts/three_star_predict.py                # 全部固化品种
   python scripts/three_star_predict.py --collect
   python scripts/three_star_predict.py --horizon 48
   python scripts/three_star_predict.py --show-schemes
@@ -27,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
 from config.prediction_scheme import (
-    SCHEMES, list_solidified, list_by_stars, get_scheme, is_solidified,
+    SCHEMES, list_solidified, get_scheme, is_solidified,
     signal_weight, trend_direction, scheme_summary,
 )
 from data.config import DEFAULT_SYMBOLS
@@ -141,16 +144,22 @@ def _ensure_data_impl(symbol: str):
         _extract_xreg_from_store(store, symbol)
 
 
-def run_all_three_star(horizon: int = 24, collect: bool = False, auto_collect: bool = True):
-    """运行信用≥2星品种级联预测，返回各品种结果和汇总报告"""
+def run_all_schemes(horizon: int = 24, collect: bool = False, auto_collect: bool = True):
+    """运行全部已固化品种的级联预测，返回各品种结果和汇总报告。
+
+    2026-10-08：原 `run_all_three_star` 按信用档 `list_by_stars(2)` 取子集，
+    信用档退役后改跑全部固化品种（`list_solidified()`）。函数更名以免残留
+    「三星」语义；文件名 `*_three_star.md` / `three_star_progress.log` 保持
+    不变以兼容既有监控与产物路径。
+    """
     from scripts.cascade_predict import run_cascade
     from cascade.data_validator import ensure_fresh_data
     from data.data_store import DataStore
 
-    symbols = list_by_stars(2)
+    symbols = list_solidified()
     if not symbols:
-        print("  [WARN] 无 stars≥2 品种，回退全部固化列表")
-        symbols = list_solidified()
+        print("  [WARN] 无已固化品种，SCHEMES 为空")
+        return {}, {}
     results = {}
     reports = {}
 
@@ -292,7 +301,7 @@ def _build_summary_report(results: dict, timestamp: str) -> str:
     lines.append("")
     for symbol, r in results.items():
         scheme = get_scheme(symbol)
-        lines.append(f"### {r['name']} ({symbol.upper()}) — {'⭐' * scheme.stars}")
+        lines.append(f"### {r['name']} ({symbol.upper()})")
         lines.append("")
         lines.append(f"- 类型: {r['scheme_type']}")
         lines.append(f"- DirAcc: {r['dir_acc']:.0%} | MAPE: {r['mape']:.2f}% | 衰减: {r['decay']:.2f}x")
@@ -348,7 +357,7 @@ def _build_summary_report(results: dict, timestamp: str) -> str:
             advice = "较强信号，配合其他指标使用"
         else:
             advice = "中等信号，建议结合基本面判断"
-        lines.append(f"| {r['name']} {symbol.upper()} | {'⭐' * scheme.stars} | {advice} |")
+        lines.append(f"| {r['name']} {symbol.upper()} | {advice} |")
     lines.append("")
 
     lines.extend([
@@ -366,7 +375,7 @@ def show_schemes():
     print("\n  三星品种固化预测方案 (2026-06)")
     print("  " + "=" * 50)
     for symbol, scheme in SCHEMES.items():
-        print(f"\n  {scheme.name} ({symbol.upper()}) — {'⭐' * scheme.stars}")
+        print(f"\n  {scheme.name} ({symbol.upper()})")
         print(f"    类型: {scheme.scheme_type}")
         print(f"    DirAcc: {scheme.dir_acc:.0%} | MAPE: {scheme.mape:.2f}% | 衰减: {scheme.decay:.2f}x")
         print(f"    Context: {scheme.context_bars} bars (1H) / {scheme.context_days} days (日线)")
@@ -396,7 +405,7 @@ def main():
     print("=" * 60)
 
     auto_collect = not args.no_auto_collect
-    run_all_three_star(horizon=args.horizon, collect=args.collect, auto_collect=auto_collect)
+    run_all_schemes(horizon=args.horizon, collect=args.collect, auto_collect=auto_collect)
 
     print(f"\n{'='*60}")
     print("  三星品种预测完成")

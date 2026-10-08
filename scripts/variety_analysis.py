@@ -38,7 +38,8 @@ from config.prediction_scheme import SCHEMES, get_scheme, list_solidified
 from cascade.ccl_monitor import detect_anomalies
 from cascade.data_validator import ensure_fresh_data
 from scripts import copilot as copilot_mod
-from scripts.copilot import load_knowledge_base, stars_label
+from scripts.copilot import load_knowledge_base
+from scripts.build_knowledge_base import evidence_grade_label
 
 
 def analyze_symbol(symbol: str, shared_model=None, kb: dict = None) -> dict:
@@ -215,12 +216,11 @@ def analyze_symbol(symbol: str, shared_model=None, kb: dict = None) -> dict:
     # 固化方案信息
     scheme = get_scheme(symbol)
     if scheme:
-        result["stars"] = scheme.stars
         result["dir_acc"] = scheme.dir_acc
         result["mape"] = scheme.mape
         result["scheme_type"] = scheme.scheme_type
     else:
-        result["stars"] = 0
+        result["evidence_grade"] = "no_evidence"
         result["dir_acc"] = 0
         result["mape"] = 0
         result["scheme_type"] = "未固化"
@@ -230,7 +230,7 @@ def analyze_symbol(symbol: str, shared_model=None, kb: dict = None) -> dict:
         try:
             card = copilot_mod.run_one(symbol, shared_model=shared_model, kb=kb)
             result["copilot"] = {
-                "credit_stars": int(card.kb.get("credit_stars", 0)),
+                "evidence_grade": card.kb.get("evidence_grade"),
                 "historical_pf": card.kb.get("historical_pf"),
                 "historical_diracc": card.kb.get("historical_diracc"),
                 "vol_sensitivity": card.kb.get("vol_sensitivity", "UNKNOWN"),
@@ -339,15 +339,14 @@ def format_report(r: dict) -> str:
     # ── Copilot 模型预测（如有） ──────────────────────────────
     cp = r.get("copilot")
     if cp:
-        # 信用背书
-        lines.append("## 六、信用背书 (Copilot)")
+        # 经济证据背书（2026-10-08：取代「信用背书」，信用星已退役）
+        lines.append("## 六、经济证据 (Copilot)")
         lines.append("")
-        stars = cp["credit_stars"]
         pf = cp.get("historical_pf")
         da = cp.get("historical_diracc")
         vs = cp.get("vol_sensitivity", "UNKNOWN")
         hold = cp.get("best_hold_period", "—")
-        lines.append(f"- **综合评级**: {stars_label(stars)}")
+        lines.append(f"- **证据分级**: {evidence_grade_label(cp.get('evidence_grade') or 'no_evidence')}")
         if pf is not None and da is not None:
             lines.append(f"- **历史信用**: 胜率 {da:.0%}，盈亏比(PF) {pf:.2f}")
         lines.append(f"- **Vol 敏感度 (L1)**: {vs}")
@@ -425,10 +424,8 @@ def format_report(r: dict) -> str:
     lines.append(f"")
 
     # 固化方案
-    if r["stars"] > 0:
-        lines.append(f"### 预测方案")
-        lines.append(f"- {'⭐' * r['stars']} {r['scheme_type']} | DirAcc={r['dir_acc']:.0%} MAPE={r['mape']:.2f}%")
-        lines.append(f"")
+    lines.append(f"### 预测方案")
+    lines.append(f"")
 
     lines.append(f"---")
     lines.append(f"> 本报告基于技术指标自动生成，不构成投资建议。")

@@ -3,7 +3,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 from goal_dsl import evaluate_goal
 
 SNAP = {"symbols_hit": {"m", "rb"}, "families_hit": {"momentum"},
-        "n_one_star_symbols_hit": 2, "n_unique_pass_variants": 2,
+        "n_goal_symbols_hit": 2, "n_unique_pass_variants": 2,
         "n_families_hit": 1,
         "variants": {"a": {"dir_acc": 0.56}},
         "cycles_done": 1, "cpu_hours_used": 4.0, "tokens_used_m": 12.0}

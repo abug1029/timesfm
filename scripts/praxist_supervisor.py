@@ -151,22 +151,21 @@ _START_TIME = time.time()
 _STOP_EMITTED = False
 POLL_S = 300
 PHASES = ("fast", "slow", "wait_quota")
-# v1 遗留复测触发判据 (RETEST_GATE_N=350, RETEST_GATE_IC=0.05)；非 v23 gate 镜像
-# （v23 口径见 docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md）。
+# 复测触发判据：只保留"仅差样本量"的近失误筛选 (RETEST_GATE_N)。
+# 非 v23 gate 镜像（v23 口径见
+# docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md）。
 # 宿主侧仅用于识别"仅差样本"的近失误裁决并安排复测，不改变慢环硬门本身。
+#
+# 2026-10-08（技术债债 2 裁定 C+a）：删除 v1 遗留的 ic/ev/pf 判据
+#   （RETEST_GATE_IC / RETEST_PF_RATIO / INCUMBENT_PF）。
+#   理由二条，任一独立成立：
+#   1) 指标已退役 —— evaluator 契约明写"主指标 dir_acc/endpoint_mape/path_corr,
+#      PF/EV/MaxDD 已退役"，门却仍用 ic/ev/pf；
+#   2) 分母已损坏 —— L1 经济判决缺失使 knowledge_base.json 全表 historical_pf
+#      为 null，INCUMBENT_PF 恒空，`.get(sym, 1.0)` 静默把"PF 相对 incumbent
+#      超过 105%"改写成"PF 绝对值 > 1.05"，导致退化裁决被过度复测。
+#   现只认 v2 schema 的 dir_acc 口径；非 v2 行显式排除而非静默改判。
 RETEST_GATE_N = 350
-RETEST_GATE_IC = 0.05
-RETEST_PF_RATIO = 1.05
-
-with open(os.path.join(FM_ROOT, "config", "knowledge_base.json"), encoding="utf-8") as _f:
-    _kb = json.load(_f)
-INCUMBENT_PF = {sym: float(rec["historical_pf"])
-                for sym, rec in _kb["symbols"].items()
-                if rec.get("historical_pf") is not None}
-if not INCUMBENT_PF:
-    print("[degraded] KB PF all null (schemes_snapshot_no_L1): "
-          "retest PF ratio gate denominator falls back to 1.0",
-          file=sys.stderr)
 
 
 
@@ -782,6 +781,28 @@ def load_goal(path):
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)["goal"]
 
+
+# ── cadence 默认值单一来源（技术债 L4，2026-10-08）────────────────────
+# 与 scripts/praxist_goal.yaml 的 goal.cadence 保持一致。此前默认值散落三处且
+# 互相矛盾：survivors_per_cycle 默认 2（yaml=3）、aligned_max_points 在
+# 3493 默认为 400 而 2958 与函数签名为 600（yaml=600）。
+# 键缺失时的静默回退正是漂移的成因 → 回退必留痕，且有测试锁死与 yaml 一致。
+_CADENCE_DEFAULTS = {
+    "survivors_per_cycle": 3,
+    "aligned_max_points": 600,
+}
+
+
+def _cad_int(cad, key):
+    """读 cadence 整数键；缺键回退 _CADENCE_DEFAULTS 并打 WARN 留痕。"""
+    val = (cad or {}).get(key)
+    if val is None:
+        print("[WARN] goal.cadence.%s 缺失，回退默认 %d（应与 praxist_goal.yaml 一致）"
+              % (key, _CADENCE_DEFAULTS[key]), file=sys.stderr)
+        return _CADENCE_DEFAULTS[key]
+    return int(val)
+
+
 def _norm_search_policy(goal):
     """spec 2026-10-05 §6.1：search_policy ∈ {off, shadow, enforce}，缺省 off。
 
@@ -816,6 +837,50 @@ def _goal_target_symbols(goal):
         seen.add(sym)
         out.append(sym)
     return out
+
+
+# ── 目标品种集单源化（技术债 L3，2026-10-08）─────────────────────────
+# 修复前同一语义有三份副本且互相矛盾：
+#   1) praxist_goal.yaml goal.cadence.target_symbols —— 24 个（契约本身）
+#   2) GOAL_SYMBOLS_SET 硬编码 9 个 —— 1★ 信用品种，10-02 goal 重写后已陈旧
+#   3) build_snapshot 内 TARGET_SYMBOLS 硬编码 24 个 —— 与 yaml 恰好重复
+# 三份副本必然漂移。本组函数把 yaml 立为唯一来源；缺失即启动失败
+# （见 _assert_goal_symbols_contract），禁止静默回退硬编码。
+_GOAL_YAML_DEFAULT = os.path.join(FM_ROOT, "scripts", "praxist_goal.yaml")
+_GOAL_SYMBOLS_CACHE = None
+
+
+def _assert_goal_symbols_contract(goal, path=None):
+    """启动期目标品种集契约校验。缺键/空列表 → 抛错（fail loud）。
+
+    静默回退到陈旧硬编码正是 "9 vs 24" 语义分裂能长期存活的成因：
+    契约缺失必须让启动失败，而不是悄悄按旧口径跑。
+    """
+    syms = _goal_target_symbols(goal)
+    if not syms:
+        raise ValueError(
+            "目标品种集契约缺失：%s 的 goal.cadence.target_symbols 为空。"
+            "该字段是目标品种的唯一来源，禁止回退任何硬编码集合。"
+            % (path or _GOAL_YAML_DEFAULT))
+    return syms
+
+
+def _load_goal_symbols(path=None):
+    """读目标品种集并缓存。传 path 时绕过缓存（测试用）。"""
+    global _GOAL_SYMBOLS_CACHE
+    if path is None and _GOAL_SYMBOLS_CACHE is not None:
+        return _GOAL_SYMBOLS_CACHE
+    p = path or _GOAL_YAML_DEFAULT
+    syms = frozenset(_assert_goal_symbols_contract(load_goal(p), p))
+    if path is None:
+        _GOAL_SYMBOLS_CACHE = syms
+    return syms
+
+
+def _reset_goal_symbols_cache():
+    """测试钩子：清缓存，使 _load_goal_symbols 重新读 yaml。"""
+    global _GOAL_SYMBOLS_CACHE
+    _GOAL_SYMBOLS_CACHE = None
 
 def _env_first(*names):
     """First non-empty env value among names (never log/echo secrets)."""
@@ -1063,7 +1128,7 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
         if v.get("cov_family")
         and v.get("cov_family") != "unknown"
     } & ALLOWED_FAMILIES
-    n_one_star_symbols_hit = len(symbols_hit & GOAL_SYMBOLS_SET)
+    n_goal_symbols_hit = len(symbols_hit & GOAL_SYMBOLS_SET)
     n_unique_pass_variants = len({v["variant_id"] for v in passing})
     n_families_hit = len(families_hit)
     # v23: v2 过门变体的 min dir_acc (pass_variants = gate_pass 且 fdr_pass;
@@ -1087,9 +1152,9 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     n_validated_multi_seed = 0  # TODO: implement multi-seed validation tracking
     decay_below_threshold = 0  # TODO: implement decay tracking
     
-    # 定义目标品种集
-    TARGET_SYMBOLS = {"m", "ss", "sr", "cj", "jd", "lh", "eg", "rb", "i", "p", "y", "cf", 
-                      "bu", "fu", "ta", "ma", "fg", "ur", "px", "oi", "sh", "sp", "ao", "sc"}
+    # 目标品种集：与 GOAL_SYMBOLS_SET 同源（L3：原为第二份硬编码 24 个，
+    # 与 yaml 恰好重复 —— 两份副本必然漂移）
+    TARGET_SYMBOLS = set(GOAL_SYMBOLS_SET)
     
     # 按品种统计指标
     symbol_stats = {}
@@ -1150,7 +1215,7 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
         "cpu_hours_used": cpu_hours_used,
         "tokens_used_m": tokens_used_m,
         # Legacy metrics (keep for backward compatibility)
-        "n_one_star_symbols_hit": n_one_star_symbols_hit,
+        "n_goal_symbols_hit": n_goal_symbols_hit,
         "n_unique_pass_variants": n_unique_pass_variants,
         "n_families_hit": n_families_hit,
         "min_pass_variant_dir_acc": min_pass_variant_dir_acc,
@@ -1465,21 +1530,28 @@ def _finite_dir_acc(v):
 
 
 def _has_prior_failure(snapshot, symbol, cov):
-    """True if snapshot has an ok+unpassed+confirmable verdict on this symbol or this cov.
+    """True if snapshot has an ok+unpassed+confirmable verdict on this (symbol, cov) PAIR.
 
     2026-10-03：只认可确认 DM 的失败（见 _is_confirmable_failure）。描述性行不是
     检验结论，不能用来否决新提案——否则确认产出前几乎每份提案都会被
     no_failure_delta 拒收（实测单轮拒 1,922 份、可用候选 7 轮内 123→47）。
+
+    2026-10-08（技术债 L2）：由 symbol OR cov 单键命中改为 (symbol, cov) 配对 AND。
+    旧语义下"豆粕的 vor 已确认失败"会连"豆粕换 oi"和"菜粕换 vor"一起否决，
+    污染半径远大于文档描述。配对后只有**同一品种的同一协变量**已确认失败才要求
+    增量论证；跨维度重复探索由 dedup 门、Do-not-re-propose 段与 locked-window 兜底。
     """
+    sym_key = str(symbol or "").lower()
     for v in (snapshot or {}).values():
         if not isinstance(v, dict):
             continue
         if not _is_confirmable_failure(v):
             continue
-        if str(v.get("symbol") or "").lower() == str(symbol).lower():
-            return True
-        if str(v.get("cov_override") or "") == cov:
-            return True
+        if str(v.get("symbol") or "").lower() != sym_key:
+            continue
+        if str(v.get("cov_override") or "") != cov:
+            continue
+        return True
     return False
 
 
@@ -1711,8 +1783,10 @@ def _load_evaluator():
 
 # ── v2 预注册宇宙 (evaluator 预注册品种) ──────────────────────────
 _ev_mod_for_goal = _load_evaluator()
-# 9 个信用品种 (1★ 过门目标); 不跟随 evaluator.ALLOWED_SYMBOLS 膨胀
-GOAL_SYMBOLS_SET = frozenset({"m", "ss", "sr", "cj", "jd", "lh", "eg", "rb", "fu"})
+# 目标品种集：唯一来源 = praxist_goal.yaml goal.cadence.target_symbols。
+# 2026-10-08（L3）删除 9 个 1★ 信用品种的硬编码——它与 yaml 的 24 个早已分裂，
+# 且已退役的信用档（scheme.stars / list_by_stars）与"目标品种"本就是两个概念，不可互代。
+GOAL_SYMBOLS_SET = _load_goal_symbols()
 del _ev_mod_for_goal
 
 
@@ -2894,8 +2968,10 @@ def _symbol_n_table():
 def _retest_candidates(snapshot):
     """gate 仅因 n 不足而失败的近失误最新裁决。
 
-    v1 (schema != v2): ic>=0.05, ev>0, pf/incumbent>1.05 (遗留判据)
-    v2 (schema == fm.aligned_verdict.v2): dir_acc>=0.50 (v23 口径)
+    只认 v2 schema：dir_acc >= 0.50（v23 口径）。
+    v1 legacy 的 ic/ev/pf 判据已于 2026-10-08 移除（债 2 裁定 C+a）：PF/EV/IC
+    已退役，且 INCUMBENT_PF 因 L1 经济判决缺失恒空，`.get(sym, 1.0)` 会把
+    "相对 incumbent 超 105%"静默改写成"PF 绝对值 > 1.05"造成过度复测。
 
     本函数仅用于 gate 仅差 n (n < RETEST_GATE_N) 的复测扫描。
     语义即 'inconclusive, retest when more data'。snapshot 按 variant_id 保留
@@ -2915,20 +2991,14 @@ def _retest_candidates(snapshot):
         n = int(v.get("n") or 0)
         if n <= 0 or n >= RETEST_GATE_N:
             continue
-        # Dispatch by schema version
-        is_v2 = v.get("schema") == "fm.aligned_verdict.v2"
-        if is_v2:
-            # v2: use dir_acc as quality signal
-            dir_acc = float(v.get("dir_acc") or 0.0)
-            if dir_acc >= 0.50:
-                out.append(v)
-        else:
-            # v1 legacy: use ic/ev/pf
-            ic = float(v.get("ic") or 0.0)
-            ev = float(v.get("ev") or 0.0)
-            ratio = float(v.get("pf") or 0.0) / INCUMBENT_PF.get(v.get("symbol"), 1.0)
-            if ic >= RETEST_GATE_IC and ev > 0 and ratio > RETEST_PF_RATIO:
-                out.append(v)
+        # 2026-10-08（债 2 裁定 C+a）：只认 v2 schema 的 dir_acc 口径。
+        # 非 v2 行（v1 legacy 判据用 ic/ev/pf，指标已退役且分母被空 KB 损坏）
+        # 显式排除，不再 fallback 到任何默认分母。
+        if v.get("schema") != "fm.aligned_verdict.v2":
+            continue
+        dir_acc = float(v.get("dir_acc") or 0.0)
+        if dir_acc >= 0.50:
+            out.append(v)
     return out
 
 def _active_protocol_snapshot(path):
@@ -2955,7 +3025,7 @@ def plan_sample_retests(goal):
         # v2 verdicts don't have max_points; use cadence default
         row = {"variant_id": vid, "symbol": v["symbol"],
                "cov_override": v["cov_override"],
-               "max_points": int(cad.get("aligned_max_points", 600)),
+               "max_points": _cad_int(cad, "aligned_max_points"),
                "stage": "aligned", "checkpoint_path": "",
                "enqueued_at": _now_iso(), "src_run": "supervisor_retest",
                "source": "sample_retest"}
@@ -3434,6 +3504,9 @@ def main(argv=None):
     ap.add_argument("--root", default=FM_ROOT)
     ap.add_argument("--max-cycles", type=int, default=None)
     args = ap.parse_args(argv)
+    # 目标品种集契约校验（L3）：goal.cadence.target_symbols 缺失即启动失败。
+    # 放在 env 检查之前 —— 契约错误不该被"仅告警"的 env 分支吞掉。
+    _assert_goal_symbols_contract(load_goal(args.goal), args.goal)
     # Self-healing: load .env.praxist so startup doesn't depend on shell source.
     # Uses args.root so tests with --root tmp_path don't FATAL-exit.
     env_loaded = _load_dotenv(root=getattr(args, "root", None))
@@ -3489,8 +3562,8 @@ def _harvest_rows(goal):
     pool = load_covariate_pool()
     rows, pstats = harvest_proposals(
         FM_ROOT, snap_now, dead, existing, pool,
-        top_k=cad.get("survivors_per_cycle", 2),
-        aligned_max_points=cad.get("aligned_max_points", 400),
+        top_k=_cad_int(cad, "survivors_per_cycle"),
+        aligned_max_points=_cad_int(cad, "aligned_max_points"),
         priority_symbols=cad.get("priority_symbols"),
         search_policy=_norm_search_policy(goal))
     return rows, dead, existing, pstats

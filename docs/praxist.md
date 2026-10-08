@@ -111,7 +111,8 @@ Stage 3 契约（2026-09-28/29 结案）：评估带 horizon 填充标记（`cas
 - 目标与预算：`scripts/praxist_goal.yaml`
 
 成功条件（goal.yaml 现行，**2026-10-02 重写**）：**唯一成功条件 `all_symbols_pass_phase1`**
-——24 个目标品种（`m/ss/sr/cj/jd/lh/eg/rb/i/p/y/cf/bu/fu/ta/ma/fg/ur/px/oi/sh/sp/ao/sc`）
+——24 个目标品种（`m/ss/sr/cj/jd/lh/eg/rb/i/p/y/cf/bu/fu/ta/ma/fg/ur/px/oi/sh/sp/ao/jm`；
+2026-10-08 删 `sc`、增 `jm`，与候选准入门 `ALLOWED_SYMBOLS` 归一）
 **每品种至少 1 个经 family 封账的确认变体**（`run_label == confirmed` 且 `fdr_pass is True`）。
 
 - **原三阶段门槛全部退役**：`n_gate_pass_variants >= 10`、`avg_dir_acc_gate_pass >= 0.51`

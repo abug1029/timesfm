@@ -218,7 +218,7 @@ def test_e2e_main_chain(tmp_path):
     assert passing == {"m_rsi_state"}  # gate_pass AND fdr_pass
 
     full = sup.build_snapshot(reg, 3, 1.5, 2.7)
-    assert full["n_one_star_symbols_hit"] == 1   # m is in the 1-star set
+    assert full["n_goal_symbols_hit"] == 1   # m ∈ goal.yaml target_symbols（D2 改名后）
     assert full["n_unique_pass_variants"] == 1
     assert full["n_families_hit"] == 1           # momentum in ALLOWED_FAMILIES
     assert full["min_pass_variant_dir_acc"] == 0.56
@@ -301,7 +301,7 @@ def test_e2e_snapshot_goal_combo(tmp_path):
 
     snap = sup.build_snapshot(reg, 1, 0.5, 1.0)
     assert snap["min_pass_variant_dir_acc"] == 0.56
-    assert snap["n_one_star_symbols_hit"] == 1  # ss is in the 1-star set
+    assert snap["n_goal_symbols_hit"] == 1  # ss ∈ goal.yaml target_symbols（D2 改名后）
     assert snap["n_unique_pass_variants"] == 1
     assert snap["n_families_hit"] == 1
 

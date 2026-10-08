@@ -230,17 +230,23 @@ class TestSPEC013DriftClipping:
 
 
 class TestSPEC006SchemeRetirement:
-    """SPEC-006: Composite key retirement + star override (real function calls)"""
+    """SPEC-006: Composite key retirement + evidence-grade override (real function calls)
+
+    2026-10-08：夹具由 credit_stars 改为 L1 派生的 evidence_grade。
+    ss (pf 1.10/ev 正) = positive；rb (pf 1.05/ev 缺省) = negative。
+    """
 
     def _make_kb(self):
         return {
             "symbols": {
                 "ss": {
-                    "credit_stars": 2, "historical_pf": 1.10,
+                    "evidence_grade": "positive", "historical_pf": 1.10,
+                    "historical_ev": 0.05,
                     "production_covariate": "vor", "slow_loop_status": "ok",
                 },
                 "rb": {
-                    "credit_stars": 1, "historical_pf": 1.05,
+                    "evidence_grade": "negative", "historical_pf": 1.05,
+                    "historical_ev": -0.02,
                     "production_covariate": "rsi_state", "slow_loop_status": "ok",
                 },
             }
@@ -281,13 +287,29 @@ class TestSPEC006SchemeRetirement:
         lines = craft_advisory_v2("ss", kb, "看多 ↑", 0.5, 0.3, "vor")
         assert any("冻结" in line for line in lines)
 
-    def test_craft_advisory_degraded_downgrades_stars(self):
+    def test_craft_advisory_degraded_overrides_evidence(self):
+        """慢环退化必须压过 L1 证据档位（degraded 一律不给标准仓位）。"""
         from scripts.copilot import craft_advisory_v2
         kb = self._make_kb()
         kb["symbols"]["ss"]["slow_loop_status"] = "degraded"
-        kb["symbols"]["ss"]["credit_stars"] = 3
+        kb["symbols"]["ss"]["evidence_grade"] = "solid"   # 即便证据最强
         lines = craft_advisory_v2("ss", kb, "看多 ↑", 0.5, 0.3, "vor")
         assert any("弱信号" in line for line in lines)
+        assert not any("标准仓位" in line for line in lines)
+
+    def test_legacy_kb_without_grade_is_treated_as_no_evidence(self):
+        """旧版 KB（无 evidence_grade、PF 为 null）不得被当成可辩护品种。
+
+        这正是信用档退役前的问题：L1 证据 0/21 全缺失时，credit_stars 仍输出
+        1~3 星，用 2026-08 冻结值冒充信心。退役后必须显式暴露为证据缺失。
+        """
+        from scripts.copilot import craft_advisory_v2
+        legacy = {"symbols": {"ss": {
+            "historical_pf": None, "historical_ev": None,
+            "production_covariate": "vor", "slow_loop_status": "ok",
+        }}}
+        lines = craft_advisory_v2("ss", legacy, "看多 ↑", 0.5, 0.3, "vor")
+        assert any("证据缺失" in line for line in lines)
         assert not any("标准仓位" in line for line in lines)
 
     def test_build_includes_new_fields(self):

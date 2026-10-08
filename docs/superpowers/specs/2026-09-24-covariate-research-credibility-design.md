@@ -1457,7 +1457,7 @@ verdict 落 `context_hash`：该 cutoff 的 context 窗口（480 bar 的收盘�
    在裁定前，PR-A1 与 PR-D2 **均不得实施**（阶段 1 其余项可并行）。
 2. **历史 143 条 verdict 的处置 — 已裁定：重算 + 标记**（详见 §4.7 W6.5）：从 checkpoint **离线重算** `dir_acc_v2` 等字段（不重跑模型、不覆盖原值），使历史数值在**新口径下**可比；但历史 verdict 仍标 `legacy_untrusted`，**仅作探索记录，不得用于选型或成功判定**——因为窗口漂移（X7/E9）**未**被重算解决。若要恢复"可参与选型"，需按新协议**重跑慢环**，属另一量级预算，**需单独批准**。
 3. **`praxist_goal.yaml` 的 24 品种目标集**：若阶段二判定多数品种"当前不可验证"，是否把目标集收缩到"可预测"品种？本 spec 不预设。
-4. **文档漂移**：`docs/runbook_praxist_three_loop.md:147` 仍写着旧的 `n_one_star_symbols_hit >= 4` 成功条件，与 live `praxist_goal.yaml`（per-symbol 三阶段）不一致。建议随本 spec 一并修正。
+4. **文档漂移 — ✅ 已解决（2026-10-08 核实）**：`docs/runbook_praxist_three_loop.md` 此前写着旧的 `n_one_star_symbols_hit >= 4` 成功条件，与 live `praxist_goal.yaml`（per-symbol 三阶段）不一致。现状：该 runbook「当前 goal」节已改为「成功条件（以 `scripts/praxist_goal.yaml` 为准）：只有 `all_symbols_pass_phase1`」，并已列明 24 个目标品种与 cadence（survivors=3 / aligned_max_points=600）；旧符号 `n_one_star_symbols_hit` 在代码中已于 2026-10-08 改名为 `n_goal_symbols_hit`。历史设计文档（`2026-09-14-prediction-quality-redesign-design.md` §5）保留原文作记录，其头部已加勘误注记指向现行口径。
 5. **W5 的四类归属**：`covariate_pool.json` 的 `horizon_known` 初版分类由谁定？建议由宿主/研究侧逐协变量确认（尤其 `known_ahead` 的准入——它直接决定是否引入未来信息，宁可保守）。本 spec 只定词表与不变量，不代填分类。
 6. **`sector_map.py` 扩充的影响检查结果**：扩充会让原先落入 `"other"` 的品种（y/px/oi/sc）获得板块归属，可能改变 Regime / VolRisk R1 / Neutral A/B Domain-Shift 的既有判定。W6.1b 要求出影响证据；若证据显示判定发生**实质变化**（而非仅新增归属），需宿主裁定是否接受该变化，或改为仅对 W6.1 生效的独立词表（后者违反"唯一板块表"约定，不推荐）。
 7. **目标效应与目标功效（最关键的一项）**：§4.3 W3.5 的**规划情景示例**（**明确为示例，非普遍结论**）显示——0.02 增量约需 **31,000** 个评估点、0.05 约需 5,000、0.10 约需 1,240，而当前只有 **588**。必须裁定走哪条路：

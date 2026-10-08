@@ -33,4 +33,8 @@ goal:
     quota_margin_min: 30
     retest_min_new_points: 1
     # 目标品种集：所有品种都需达标
-    target_symbols: [m, ss, sr, cj, jd, lh, eg, rb, i, p, y, cf, bu, fu, ta, ma, fg, ur, px, oi, sh, sp, ao, sc]
+    # 2026-10-08：与 evaluator.ALLOWED_SYMBOLS（候选准入门）对齐 —— 双向补齐：
+    #   删 sc（原油，见 docs/data_dictionary.md 口径裁定：不再作为攻坚目标）
+    #   增 jm（焦煤：原只在 ALLOWED_SYMBOLS/SCHEMES、缺攻坚目标 = 孤儿品种）
+    # 两套集合现由本文件单源定义，evaluator 从此文件派生，杜绝再次漂移。
+    target_symbols: [m, ss, sr, cj, jd, lh, eg, rb, i, p, y, cf, bu, fu, ta, ma, fg, ur, px, oi, sh, sp, ao, jm]

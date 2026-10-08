@@ -108,23 +108,49 @@ sync_backup.sh（另一会话未提交）管 git 层，本方案管数据层，�
 
 ## 3. 批次 2：P1 差距收口（1 天，pevs 合入后）
 
-### L2 `_has_prior_failure` 单键 OR → 配对键（0.5 天，本批次唯一的真开门修复）
+### L2 `_has_prior_failure` 单键 OR → 配对键 ✅ **已实施（2026-10-08）**
 
-- **现状**（:1426-1442）：10-03 已收窄到可确认失败（`_is_confirmable_failure`），但仍是 symbol **OR** cov 单键命中即拦——同 symbol 异 cov、异 symbol 同 cov 都被误拦，污染半径大于文档描述。
-- **方案**：改 (symbol, cov_override) **配对 AND** 匹配；docstring 同步；测试三例：同对拦截 / 同 symbol 异 cov 放行 / 异 symbol 同 cov 放行。
-- **影响**：拦截面收窄 → 探索提案增加；dedup 门与 Do-not-re-propose 段兜底。
-- **注意**：属准入语义，verdict 行 schema 不变，协议指纹不动。
+- **核实现状**（`scripts/praxist_supervisor.py::_has_prior_failure`）：10-03 已收窄到可确认失败（`_is_confirmable_failure`），但仍是 symbol **OR** cov 单键命中即拦——同 symbol 异 cov、异 symbol 同 cov 都被误拦，污染半径大于文档描述。
+- **已实施**：改为 (symbol, cov_override) **配对 AND** 匹配；docstring 记录前因与兜底责任；symbol 归一化小写，cov 保持原比较语义（不引入 `str(None)`→`""` 的意外匹配）。
+- **测试**：`tests/test_tech_debt_20261008.py` 三例（同对拦 / 同 symbol 异 cov 放行 / 异 symbol 同 cov 放行）+ 大小写归一 + 非失败行（过门 / descriptive / no_common_cutoff）不拦 + 空快照。
+- **连带修正（重要）**：`tests/test_fixes_20261003.py` 与 `tests/test_harvest_proposals.py` 中 **6 个测试原本刻意锁死了旧 OR 语义**（含注释「同 symbol 不同协变量也仍算」），必须随语义变更重写，否则等于用测试把缺陷钉死。收割侧改为：同对失败仍要 delta 论证（不足 20 字照拒），同 symbol 异 cov / 异 symbol 同 cov 放行。
+- **影响**：拦截面收窄 → 探索提案增加、`no_failure_delta` 拒收率下降；dedup 门、Do-not-re-propose 段与 locked-window 段兜底。
+- **注意**：属准入语义，verdict 行 schema 不变，协议指纹不动。**建议重启后观察一轮拒收分布再确认**（这是本批次唯一实质放宽准入门的一条）。
 
-### L3 GOAL_SYMBOLS_SET 单源化（0.5 天，Q3 已裁定：研究 24 个品种而非 9 个）
+### L3 GOAL_SYMBOLS_SET 单源化 ✅ **已实施（2026-10-08）**
 
-- **现状**：:1673 硬编码 9 品种 vs goal.yaml `target_symbols` 24（10-02 goal 重写后遗留）；:1303 prompt "## Symbol status" 只报 9 个；:1028 变量名 `n_one_star_symbols_hit` 还是 star 时代（随 D2 改名）。
-- **方案（按裁定）**：启动时从 goal.yaml 读 target_symbols 构建 GOAL_SYMBOLS_SET，**删除硬编码**；goal.yaml 缺 target_symbols → 启动失败（fail loud，禁止静默回退——静默回退正是 9 vs 24 分裂的成因）；新增测试断言 goal.yaml 增删品种 → 集合跟随。
-- **影响**：goal 完成度统计范围 9→24，属 goal 语义**对齐**（yaml 是契约），非 gate 语义；随重启生效。
+- **核实现状（比原记录多一处漂移）**：目标品种集原有**三份**副本，不止两份 ——
+  ① `praxist_goal.yaml goal.cadence.target_symbols` 24 个（契约）；
+  ② `GOAL_SYMBOLS_SET` 硬编码 9 个（自称「1★ 信用品种」，与 yaml 分裂）；
+  ③ `build_snapshot` 内 `TARGET_SYMBOLS` 硬编码 24 个（与 yaml 恰好重复）。
+  附带发现：旧 9 个集合与任何一档信用星都对不上（实测 1★ 恰 14 个、≥2★ 7 个），
+  它是**第三套独立口径**，并非 yaml 的子集漂移。
+- **已实施**：`_load_goal_symbols()` 从 yaml 读并缓存（传 path 绕过缓存）+
+  `_assert_goal_symbols_contract()` fail loud；`main()` 在 argparse 之后、env 检查之前
+  调用契约校验（契约错误不得被「仅告警」的 env 分支吞掉）；两份硬编码全部删除。
+  运行时 `GOAL_SYMBOLS_SET` = 24，与 yaml 恒等。
+- **测试**：`tests/test_tech_debt_20261008.py` — 集合==yaml / yaml 增删品种跟随 /
+  缺键与空列表 fail loud / 大小写去重归一 / 源码无硬编码集合字面量。
+- **影响**：goal 完成度统计范围 9→24（yaml 是契约，属语义**对齐**），非 gate 语义；
+  prompt「## Symbol status」段同样从 9 个扩到 24 个。随 supervisor 重启生效。
+- **连带修正**：7 处 `tests/test_supervisor.py` 的 goal yaml 夹具补上 `target_symbols`
+  （启动契约变严后，缺该键的 goal 文件按定义非法）。
 
-### L4 cadence 默认值对齐（0.25 天，含 N2）
+### L4 cadence 默认值对齐 ✅ **已实施（2026-10-08，含 N2）**
 
-- **现状**：:3398 `survivors_per_cycle` 默认 2 vs yaml 3；:3399 `aligned_max_points` 默认 400 vs yaml 600。
-- **方案**：两处默认改与 yaml 一致；缺键回退时打 WARN 日志；**新增一致性回归测试**（加载 goal.yaml，断言代码全部 cadence 默认值 = yaml 值，防再漂移）；runtime_contract.md 记录。
+- **核实现状（范围比原记录大）**：默认值漂移不止 `survivors_per_cycle` ——
+  `aligned_max_points` 在**同一文件内三处互相矛盾**：函数签名 600 / 复测计划处 600 /
+  收割处 **400**，而 yaml 是 600。另发现 `run_budget_hours` 代码默认 2.0 vs yaml 1.5
+  （同类漂移，未纳入 `_CADENCE_DEFAULTS`，仍为裸 `cad.get`，如需一并收口见下）。
+- **已实施**：新增 `_CADENCE_DEFAULTS = {survivors_per_cycle: 3, aligned_max_points: 600}`
+  作为默认值唯一来源 + `_cad_int(cad, key)`（缺键回退并打 WARN 留痕，静默回退正是漂移成因）；
+  三处调用点全部改走 `_cad_int`。
+- **测试**：`test_cadence_defaults_match_goal_yaml`（锁死默认 == yaml）、
+  `test_cad_int_reads_yaml_and_falls_back_with_warning`、`test_no_hardcoded_cadence_fallbacks_remain`
+  （正则守卫收割路径不得再有裸 `cad.get(key, <数字>)`）。
+- **口径佐证**：`docs/runbook_praxist_three_loop.md`「当前 goal」节早已写明
+  survivors=3 / aligned_max_points=600 —— 本次修复是让**代码回到已记录的契约**，
+  不是引入新数字。
 
 ### L1 / L5 收口（0.25 天）
 
@@ -183,7 +209,7 @@ M2 已接线无需实施；D1 锚点随本批次 prompt 组装重写顺带完成
 
 | # | 方案 | 工作量 |
 |---|---|---|
-| D2 | star→tier 清扫：文档多处改口径 + :1028 `n_one_star_symbols_hit` 改名 + tier_classifier.py 注「评级唯一承载字段」 | 0.5 天 |
+| D2 | star 残留清扫 — **2026-10-08 已实施**：见下方专项结论 | 0.5 天 |
 | D4 | 看门狗：Windows Task Scheduler 每 15 分钟 `wsl -d Ubuntu-22.04 -- pgrep -f praxist_supervisor \|\| 重启脚本`；带维护窗口旗标守卫（`data/cache/` 已有 supervisor.pid / supervisor_heartbeat 可复用）；日志入 data/cache/ | 0.5 天 |
 | D5 | 孤儿 run 治理：:3665 spawn 前把子进程 PID + 提案上下文写 `data/cache/active_runs.json`；supervisor 退出钩子 kill + 重启脚本按文件扫尾（现状：start_new_session=True 派发，父死子孤烧 token） | 1 天 |
 | D6 | `docs/superpowers/specs/praxist_control_plane.md` 与 runtime_contract.md 同名不同物 → specs 版改名 + 双向交叉引用 | 0.25 天 |
@@ -191,6 +217,29 @@ M2 已接线无需实施；D1 锚点随本批次 prompt 组装重写顺带完成
 | D3/D8/D9 | 已完成（归档/挂账）；剩 stale .pyc 清理 + changelog 一行 + 勘误回写 | 0.1 天 |
 
 D4/D5 优先级最高（运维风险：supervisor 被回收无人拉起 / 父死子孤烧 token）。
+
+#### D2 专项核实与结论（2026-10-08 已实施）
+
+**核实前必须先分清两套同名不同物的机制**，否则会把活跃子系统当债删掉：
+
+| 机制 | 载体 | 性质 |
+|---|---|---|
+| **品种信用星（信用档）** | `config/prediction_scheme.py::SCHEMES[].stars` → `credit_stars`（CF-10 A 锁定唯一源）；`list_by_stars()`；CLI 历史名 `--three-star` / `three_star_predict.py`；`two_star_critic.py` | **活跃子系统，不是债**。文档里 `list_by_stars(2)` / `1★` / `2★` 全是正确术语 |
+| **verdict 评级 `star` 字段** | 裁决 schema | **自始不存在**。评级唯一承载字段是 `tier`（`cascade/tier_classifier.py`） |
+| `delta_star` | `scripts/preregistry.py`（=0.08） | 效应量阈值，仅共享子串，**与星无关，勿动** |
+
+**已实施**：
+1. `n_one_star_symbols_hit` → **`n_goal_symbols_hit`**（代码 + 4 处测试断言同步）。
+2. `cascade/tier_classifier.py` 模块 docstring 加口径注：评级唯一承载字段 = `tier`；
+   历史 `star` 字段自始不存在；**勿与 `list_by_stars()` 信用档混淆**。
+3. 历史设计文档保留正文作记录，头部加勘误注记指向现行口径：
+   `specs/2026-09-14-prediction-quality-redesign-design.md`（§5 的 `ONE_STAR_SYMBOLS_SET` /
+   `n_one_star_symbols_hit >= 4` 均为历史命名与非现行成功条件）。
+4. `specs/2026-09-24-covariate-research-credibility-design.md` 开放问题 #4
+   （runbook 成功条件漂移）标记 ✅ 已解决 —— runbook 早已改写为 `all_symbols_pass_phase1`。
+
+**结论**：活跃代码里已无 star 命名残留（词边界全扫确认）；剩余提及全部落在
+`docs/archive/`（冻结）与上述已加勘误的历史 spec 中，属应保留的审计痕迹。
 
 ---
 

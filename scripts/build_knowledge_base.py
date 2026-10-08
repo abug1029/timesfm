@@ -40,27 +40,44 @@ def _best_hold(sym: str, scheme) -> str:
     return "T+4 ~ T+16"
 
 
-def _stars_from_metrics(dir_acc: float, pf: float, scheme_stars: int | None) -> int:
-    """信用星级（CF-10 A）：唯一源 = scheme.stars。
+# 品种信心分级的证据门槛（2026-10-08 信用档退役，方案 A：改用 L1 PF/EV）
+# 取值与已退役的 RETEST_PF_RATIO=1.05 语义对齐："PF 站上 1 才有边际正收益"。
+EV_PF_POSITIVE = 1.05
+EV_PF_SOLID = 1.20
 
-    DirAcc/PF 公式仅作 ``formula_stars`` 诊断字段，不再覆盖 scheme。
-    无 scheme 时才回退公式（兼容仅有 L1 行的符号）。
-    pf 传入 0.0 表示无 PF 数据（L1 降级态），公式路径下既不加分也不罚分。
+
+def evidence_grade(pf: float | None, ev: float | None) -> str:
+    """由 L1 经济证据派生品种信心分级（信用档退役后的唯一分级来源）。
+
+    2026-10-08 取代 `_stars_from_metrics`。原实现的唯一源是
+    `scheme.stars`（2026-08 v2 回测冻结值，CF-10 A 把它钉成"唯一事实源"），
+    于是在 L1 证据全部缺失时仍输出 1~3 星——用陈旧数值冒充信心。
+    现改为：证据缺失就明说缺失，不回退任何冻结表。
+
+    - ``no_evidence``：L1 经济判决缺失或该品种无 PF（**最常见**，显式暴露）
+    - ``solid``      ：PF >= 1.20 且 EV > 0
+    - ``positive``   ：PF >= 1.05 且 EV > 0（边际正）
+    - ``negative``   ：有 PF 但不达门槛
     """
-    if scheme_stars is not None:
-        return max(0, min(3, int(scheme_stars)))
-    score = 0.0
-    if dir_acc >= 0.65:
-        score += 2
-    elif dir_acc >= 0.55:
-        score += 1
-    if pf >= 1.4:
-        score += 1
-    elif pf >= 1.15:
-        score += 0.5
-    if pf > 0 and pf < 0.95:
-        score = max(0.0, score - 1)
-    return max(0, min(3, int(round(min(3, score)))))
+    if pf is None:
+        return "no_evidence"
+    pf = float(pf)
+    evv = float(ev) if ev is not None else 0.0
+    if pf >= EV_PF_SOLID and evv > 0:
+        return "solid"
+    if pf >= EV_PF_POSITIVE and evv > 0:
+        return "positive"
+    return "negative"
+
+
+def evidence_grade_label(grade: str) -> str:
+    """分级的人类可读标签（替代原 ★ 展示）。"""
+    return {
+        "no_evidence": "证据缺失",
+        "solid": "有实据",
+        "positive": "边际正",
+        "negative": "负向",
+    }.get(grade, "未知")
 
 
 def _get_production_covariate(sym: str) -> str:
@@ -118,7 +135,9 @@ def build(l1_path: Path) -> dict:
             "version": 1,
             "built_at": datetime.now().isoformat(timespec="seconds"),
             "note": (
-                "信用星级 credit_stars = scheme.stars（唯一源 CF-10 A）。"
+                "品种信心分级 evidence_grade = evidence_grade(historical_pf, historical_ev)，"
+                "唯一来源为 L1 经济证据（2026-10-08 信用档退役，取代 credit_stars=scheme.stars）。"
+                "证据缺失显式记为 no_evidence，不回退任何冻结表。"
                 "DirAcc/MAPE/decay 来自 SCHEMES；PF/EV 来自 L1 OFF 基线。"
                 "Vol 仅预警不压平。产品=主观辅助非自动下单。"
                 "展示优先 PF/EV/MaxDD，DirAcc 仅附录（CF-23 A）。"
@@ -147,14 +166,13 @@ def build(l1_path: Path) -> dict:
         vol_tag = r.get("tag") or "UNKNOWN"  # HELPS/HURTS/MIXED/NEUTRAL from vol overlay A/B
         # 注意：L1 tag 是「开 vol-filter 后相对 OFF 的经济标签」，不是品种本身波动属性。
         # 作为高波应对指南：HELPS=高波时过滤有利→观望；HURTS=过滤有害→高波可能是趋势机会
-        stars = _stars_from_metrics(dir_acc, pf if pf is not None else 0.0, scheme.stars if scheme else None)
+        grade = evidence_grade(pf, ev)
         entry = {
             "name": scheme.name if scheme else sym.upper(),
             "sector": r.get("sector") or sector_of(sym),
             "covariate": cov,
             "scheme_type": scheme.scheme_type if scheme else None,
-            "scheme_stars": scheme.stars if scheme else None,
-            "credit_stars": stars,
+            "evidence_grade": grade,
             "historical_diracc": round(dir_acc, 4),
             "historical_mape": mape,
             "historical_decay": decay,
@@ -241,10 +259,11 @@ def main():
     print(f"Wrote {args.out} ({n} symbols)")
     for sym, e in sorted(kb["symbols"].items()):
         print(
-            f"  {sym:3} ★{e['credit_stars']} PF={e['historical_pf']} "
-            f"DirAcc={e['historical_diracc']} vol={e['vol_sensitivity']} "
-            f"hold={e['best_hold_period']}"
-        )
+                f"  {sym:3} {evidence_grade_label(e['evidence_grade']):6} "
+                f"PF={e['historical_pf']} EV={e['historical_ev']} "
+                f"DirAcc={e['historical_diracc']} vol={e['vol_sensitivity']} "
+                f"hold={e['best_hold_period']}"
+            )
 
 
 if __name__ == "__main__":

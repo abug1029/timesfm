@@ -4,14 +4,16 @@ FM_a 主观交易领航员 (Copilot)
 
 定位：领航员而非自动驾驶。
   - 永不压平预测（Vol Gating 仅输出风险标签与建议）
-  - 展示历史信用背书（PF / DirAcc / 星级）
+  - 展示 L1 经济证据背书（PF / DirAcc / evidence_grade）
+    （2026-10-08 起：信用档「星级」已退役，见 config/prediction_scheme.py 口径声明）
   - 盘中可即时补 1H 截面
   - CLI 仪表盘 + Markdown 深度研报
 
 用法:
   python scripts/copilot.py ss fu
   python scripts/copilot.py ss i --no-refresh
-  python scripts/copilot.py --three-star   # 信用≥2星（历史名，非真实3星）
+  python scripts/copilot.py --evidence positive   # 只列 L1 证据边际为正的品种
+  python scripts/copilot.py --all-solidified      # 全部固化品种
   python scripts/copilot.py ss --no-vol-radar
 """
 from __future__ import annotations
@@ -26,7 +28,27 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from scripts.cascade_predict import TICK_SIZE
+from scripts.build_knowledge_base import evidence_grade, evidence_grade_label
+
+# 最小变动价位表：与 cascade_predict.TICK_SIZE 同一份数据，但**不**走它的
+# import 链 —— 那条链会拉进 sklearn（vol_risk_filter），而领航员的纯逻辑函数
+# （建议措辞、证据分级、Markdown 渲染）不该因缺可选 ML 依赖而不可用/不可测。
+# 单一真相源仍在 cascade_predict；此处为惰性回退，仅在需要取 tick 时才导入。
+_TICK_SIZE_CACHE = None
+
+
+def _tick_sizes() -> dict:
+    global _TICK_SIZE_CACHE
+    if _TICK_SIZE_CACHE is not None:
+        return _TICK_SIZE_CACHE
+    try:
+        from scripts.cascade_predict import TICK_SIZE
+        _TICK_SIZE_CACHE = TICK_SIZE
+    except Exception:
+        # 可选 ML 依赖（sklearn）缺失时退化为默认 tick=1.0，
+        # 不影响建议措辞与证据分级这类纯逻辑的正确性。
+        _TICK_SIZE_CACHE = {}
+    return _TICK_SIZE_CACHE
 
 # ── 屏蔽刷屏 ──────────────────────────────────────────────
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
@@ -73,11 +95,24 @@ def kb_entry(kb: dict, symbol: str) -> dict:
     return (kb.get("symbols") or {}).get(symbol.lower(), {})
 
 
-def stars_label(n: int) -> str:
-    n = max(0, min(3, int(n or 0)))
-    if n <= 0:
-        return "  边缘弱信号"
-    return "*" * n + f" ({n}星)"
+def grade_label(kb_entry: dict) -> str:
+    """品种信心分级的展示标签（2026-10-08 信用档退役，方案 A）。
+
+    原实现读 `credit_stars`（唯一源 scheme.stars —— 2026-08 v2 回测冻结值），
+    在 L1 经济证据全部缺失时仍输出 1~3 星，等于用陈旧数值冒充信心。
+    现改为读 L1 派生的 `evidence_grade`；证据缺失时显式显示"证据缺失"。
+    """
+    g = str(kb_entry.get("evidence_grade") or "")
+    if not g:
+        # 旧版 KB（尚未重建）无该字段：按 PF 现场判定，缺失即证据缺失
+        g = evidence_grade(kb_entry.get("historical_pf"),
+                           kb_entry.get("historical_ev"))
+    return evidence_grade_label(g)
+
+
+def _defensible(grade: str) -> bool:
+    """是否够格给"标准仓位"建议 —— 只认有实据的档位。"""
+    return grade in ("solid", "positive")
 
 
 # ─────────────────────────────────────────────────────────
@@ -255,24 +290,32 @@ def craft_advisory(
     """生成领航员建议（多行）。"""
     e = kb_entry(kb, symbol)
     lines: list[str] = []
-    stars = int(e.get("credit_stars") or 0)
+    grade = str(e.get("evidence_grade") or "")
+    if not grade:
+        grade = evidence_grade(e.get("historical_pf"), e.get("historical_ev"))
     pf = e.get("historical_pf")
     dir_acc = e.get("historical_diracc")
     hold = e.get("best_hold_period") or "T+1 ~ T+24"
     vol_sens = e.get("vol_sensitivity") or "UNKNOWN"
     high_vol = bool(vol.get("high_vol"))
 
-    # 底气
-    if pf is not None and dir_acc is not None:
-        if stars >= 3:
+    # 底气 —— 2026-10-08：改由 L1 经济证据分级（方案 A），不再读信用星。
+    # 证据缺失时明说缺失，不给"中等信用/核心优势"这类无据措辞。
+    if pf is None or dir_acc is None:
+        lines.append(
+            "模型底气: **经济证据缺失**（L1 经济判决未产出 PF），"
+            "无法给出盈亏比判断，请轻仓试探或观望。"
+        )
+    else:
+        if grade == "solid":
             lines.append(
                 f"模型底气: 历史胜率 {dir_acc:.0%}，盈亏比(PF) {pf:.2f}。"
-                f"属于本系统核心优势品种。"
+                f"L1 证据充分，属于本系统有实据的品种。"
             )
-        elif stars >= 2:
+        elif grade == "positive":
             lines.append(
                 f"模型底气: 历史胜率 {dir_acc:.0%}，盈亏比(PF) {pf:.2f}。"
-                f"中等信用，仓位适中。"
+                f"L1 证据边际为正，仓位适中。"
             )
         else:
             lines.append(
@@ -308,7 +351,7 @@ def craft_advisory(
                 "⚠️ 极高波动风险 — 建议观望或轻仓。历史 vol 敏感度标签不足，优先防守。"
             )
     else:
-        if stars >= 3 and bias != "震荡/中性":
+        if _defensible(grade) and bias != "震荡/中性":
             lines.append(f"副驾建议: {bias}结构相对清晰，可在日内回撤处分批参与，持有参考 {hold}。")
         elif bias == "震荡/中性":
             lines.append("副驾建议: 方向不鲜明，观望或极小仓试探即可。")
@@ -320,20 +363,28 @@ def craft_advisory(
 
 
 def craft_advisory_v2(symbol, kb, direction, delta_pct, vol, scheme_type):
-    """Advisory with effective_stars override for degraded/revoked status."""
+    """Advisory with evidence-grade override for degraded/revoked status."""
     entry = kb_entry(kb, symbol)
     status = entry.get("slow_loop_status", "ok")
 
-    raw_stars = int(entry.get("credit_stars") or 0)
-    effective_stars = 1 if status in ("degraded", "revoked") else raw_stars
+    raw_grade = str(entry.get("evidence_grade") or "")
+    if not raw_grade:
+        raw_grade = evidence_grade(entry.get("historical_pf"),
+                                   entry.get("historical_ev"))
+    grade = "no_evidence" if status in ("degraded", "revoked") else raw_grade
 
     lines = []
     if status == "revoked":
         lines.append("🔒 慢环实证已完全退化冻结，禁止建立新仓，仅供观望监控。")
         return lines
 
-    if effective_stars >= 2:
-        lines.append(f"模型底气: 盈亏比(PF) {(entry.get('historical_pf') or 0):.2f}，中等信用，建议标准仓位。")
+    if grade == "no_evidence":
+        reason = "（慢环实证退化）" if status == "degraded" else "（L1 经济证据缺失）"
+        lines.append(f"模型底气: 弱信号品种{reason}，建议轻仓试探或观望。")
+    elif _defensible(grade):
+        lines.append(
+            f"模型底气: 盈亏比(PF) {(entry.get('historical_pf') or 0):.2f}，"
+            f"L1 证据{'充分' if grade == 'solid' else '边际为正'}，建议标准仓位。")
     else:
         reason = "（慢环实证退化）" if status == "degraded" else ""
         lines.append(f"模型底气: 弱信号品种{reason}，建议轻仓试探或观望。")
@@ -544,11 +595,10 @@ def render_cli(cards: list[CopilotCard], asof: str) -> None:
     console.print(Panel(header, expand=True, box=box.DOUBLE))
 
     for i, c in enumerate(cards, 1):
-        stars = int(c.kb.get("credit_stars") or 0)
         pf = c.kb.get("historical_pf")
         da = c.kb.get("historical_diracc")
         hold = c.kb.get("best_hold_period") or "—"
-        title = f"[{i}/{len(cards)}]  {c.symbol.upper()} ({c.name}) | 综合评级: {stars_label(stars)}"
+        title = f"[{i}/{len(cards)}]  {c.symbol.upper()} ({c.name}) | 证据分级: {grade_label(c.kb)}"
 
         body = Table.grid(padding=(0, 1))
         body.add_column(style="bold cyan", justify="right")
@@ -615,8 +665,7 @@ def _render_cli_plain(cards: list[CopilotCard], asof: str) -> None:
     print(f" FM_a 主观交易领航员 (截面: {asof})")
     print(bar)
     for i, c in enumerate(cards, 1):
-        stars = int(c.kb.get("credit_stars") or 0)
-        print(f"\n[{i}/{len(cards)}]  {c.symbol.upper()} ({c.name}) | 综合评级: {stars_label(stars)}")
+        print(f"\n[{i}/{len(cards)}]  {c.symbol.upper()} ({c.name}) | 证据分级: {grade_label(c.kb)}")
         print("-" * 80)
         print(f"▶ 当前价: {c.current_price:,.2f}  →  预测终点: {c.t24:,.2f} (加权: {c.delta_pct:+.2f}%)")
         print(f"▶ 可交易方向: {c.direction}")
@@ -656,14 +705,13 @@ def write_markdown(cards: list[CopilotCard], asof: str, path: Path) -> Path:
     lines.append("| 品种 | 评级 | 现价 | T+24 | 加权涨跌 | 可交易方向 | 日线状态 | Vol_Prob | 风险 | 历史PF | 胜率 |")
     lines.append("|------|:----:|-----:|-----:|--------:|:----------:|:--------:|---------:|:----:|-------:|-----:|")
     for c in cards:
-        stars = int(c.kb.get("credit_stars") or 0)
         vp = c.vol.get("vol_prob")
         vp_s = f"{vp:.2f}" if isinstance(vp, float) else "—"
         risk = "高波" if c.vol.get("high_vol") else "正常"
         pf = c.kb.get("historical_pf")
         da = c.kb.get("historical_diracc")
         lines.append(
-            f"| {c.symbol.upper()} | {'⭐'*stars if stars else '☆'} | {c.current_price:,.1f} "
+            f"| {c.symbol.upper()} | {grade_label(c.kb)} | {c.current_price:,.1f} "
             f"| {c.t24:,.1f} | {c.delta_pct:+.2f}% | {c.direction} | {c.regime_direction or '—'} | {vp_s} | {risk} "
             f"| {pf if pf is not None else '—'} | {f'{da:.0%}' if da is not None else '—'} |"
         )
@@ -720,7 +768,7 @@ def write_markdown(cards: list[CopilotCard], asof: str, path: Path) -> Path:
             # ★ 安全提取 P10/P90 (避免 numpy 数组真值歧义 ValueError)
             p10_val = float(np.min(c.p10)) if (c.p10 is not None and len(c.p10) > 0) else 0.0
             p90_val = float(np.max(c.p90)) if (c.p90 is not None and len(c.p90) > 0) else 0.0
-            tick_size = TICK_SIZE.get(c.symbol, 1.0)
+            tick_size = _tick_sizes().get(c.symbol, 1.0)
             risk_lines = generate_risk_bounds(c.direction, p10_val, p90_val, tick_size)
             for rl in risk_lines:
                 lines.append(f"- {rl}  \n")
@@ -770,8 +818,8 @@ def main() -> int:
     )
     parser.add_argument("symbols", nargs="*", help="品种代码，如 ss fu")
     parser.add_argument(
-        "--three-star", action="store_true",
-        help="信用≥2星品种（历史 CLI 名；2026-08 后无真实3星）",
+        "--evidence", choices=["solid", "positive", "negative", "no_evidence"],
+        help="只列 L1 证据达该档位的品种（2026-10-08 取代历史名 --three-star）",
     )
     parser.add_argument("--all-solidified", action="store_true", help="全部固化品种")
     parser.add_argument("--horizon", type=int, default=DEFAULT_HORIZON)
@@ -785,9 +833,21 @@ def main() -> int:
     from config.prediction_scheme import list_solidified
     from cascade.data_validator import ensure_fresh_data
 
-    if args.three_star:
-        from config.prediction_scheme import list_by_stars
-        symbols = list_by_stars(2) or ["ss", "sr", "m"]
+    if args.evidence:
+        # 2026-10-08：原 --three-star 走 list_by_stars(2)（信用档已退役）。
+        # 现按 L1 派生的 evidence_grade 筛选；无证据的品种不会被误列为"可辩护"。
+        want = str(args.evidence)
+        selected = []
+        for s in list_solidified():
+            e = kb_entry(load_knowledge_base(), s) or {}
+            g = str(e.get("evidence_grade") or "") or evidence_grade(
+                e.get("historical_pf"), e.get("historical_ev"))
+            if g == want:
+                selected.append(s)
+        symbols = selected
+        if not symbols:
+            print(f"[WARN] 无 L1 证据档位为 {want} 的品种"
+                  f"（证据缺失的品种不会被当作可辩护，请先产出 L1 经济判决）")
     elif args.all_solidified:
         symbols = list_solidified()
     elif args.symbols:

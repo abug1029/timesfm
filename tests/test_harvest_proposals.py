@@ -294,48 +294,63 @@ DELTA = ("相对 m_vor（dir_acc 未过门），本次改用持仓量 oi："
          "豆粕有主力换月与套保盘，持仓方向比波动率压缩更贴机制。")
 
 
-def test_failure_delta_required_when_symbol_already_failed(tmproot):
-    # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
+def test_failure_delta_required_when_same_pair_already_failed(tmproot):
+    # L2（2026-10-08）：_has_prior_failure 改为 (symbol, cov) 配对 AND。
+    # 同一品种的同一协变量已确认失败 → 仍要求增量论证。
     snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
                       "status": "ok", "gate_pass": False, "dir_acc": 0.45,
                       "dm_status": "set_mismatch_ok", "admissibility_rule": "edge_continuous_block_30d"}}
-    _make_run(tmproot, _prop(symbol="m", cov="oi"))
+    _make_run(tmproot, _prop(symbol="m", cov="vor"))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 0
     assert "no_failure_delta" in stats["reject_reasons"]
 
 
-def test_failure_delta_required_when_cov_already_failed(tmproot):
-    # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
+def test_failure_delta_not_required_for_same_symbol_other_cov(tmproot):
+    # L2（2026-10-08）：配对语义放行"同品种异协变量"。
+    # 修复前 (symbol OR cov) 会让 m_vor 的确认失败否决 m_oi —— 污染半径
+    # 比文档描述大，跨维度的重复探索由 dedup 门兜底而非本门。
+    snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
+                      "status": "ok", "gate_pass": False, "dir_acc": 0.45,
+                      "dm_status": "set_mismatch_ok", "admissibility_rule": "edge_continuous_block_30d"}}
+    _make_run(tmproot, _prop(symbol="m", cov="oi"))
+    rows, stats = _harvest(tmproot, snap=snap)
+    assert stats["selected"] == 1
+    assert rows[0]["variant_id"] == _vid("m", "oi")
+    assert "no_failure_delta" not in stats["reject_reasons"]
+
+
+def test_failure_delta_not_required_for_other_symbol_same_cov(tmproot):
+    # L2（2026-10-08）：配对语义放行"异品种同协变量"（单键 OR 的另一方向误拦）。
     snap = {"rb_oi": {"variant_id": "rb_oi", "symbol": "rb", "cov_override": "oi",
                       "status": "ok", "gate_pass": False, "dir_acc": 0.40,
                       "dm_status": "set_mismatch_ok", "admissibility_rule": "edge_continuous_block_30d"}}
     _make_run(tmproot, _prop(symbol="m", cov="oi"))
     rows, stats = _harvest(tmproot, snap=snap)
-    assert stats["selected"] == 0
-    assert "no_failure_delta" in stats["reject_reasons"]
+    assert stats["selected"] == 1
+    assert "no_failure_delta" not in stats["reject_reasons"]
 
 
 def test_failure_delta_short_rejected(tmproot):
-    # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
+    # L2（2026-10-08）：配对命中但增量论证不足 20 字仍拒收。
     snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
                       "status": "ok", "gate_pass": False, "dir_acc": 0.45,
                       "dm_status": "set_mismatch_ok", "admissibility_rule": "edge_continuous_block_30d"}}
-    _make_run(tmproot, _prop(symbol="m", cov="oi", failure_delta="太短"))
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta="太短"))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 0
     assert "no_failure_delta" in stats["reject_reasons"]
 
 
 def test_failure_delta_enqueued_when_present(tmproot):
-    # 2026-10-03：_has_prior_failure 只认可确认的失败，夹具须带可确认 dm_status
+    # L2（2026-10-08）：配对命中 + 增量论证充分 → 照常入队（门未被取消，只收窄）。
     snap = {"m_vor": {"variant_id": "m_vor", "symbol": "m", "cov_override": "vor",
                       "status": "ok", "gate_pass": False, "dir_acc": 0.45,
                       "dm_status": "set_mismatch_ok", "admissibility_rule": "edge_continuous_block_30d"}}
-    _make_run(tmproot, _prop(symbol="m", cov="oi", failure_delta=DELTA))
+    _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=DELTA))
     rows, stats = _harvest(tmproot, snap=snap)
     assert stats["selected"] == 1
-    assert rows[0]["variant_id"] == _vid("m", "oi")
+    assert rows[0]["variant_id"] == _vid("m", "vor")
 
 
 def test_dead_family_harvest_rejected(tmproot):

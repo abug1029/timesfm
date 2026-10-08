@@ -4,6 +4,8 @@ KB-SCHEMES 一致性测试 (2026-08-03)
 验证 knowledge_base.json 与 config/prediction_scheme.py 的 SCHEMES 字典保持一致。
 
 防止 KB 重建后与 SCHEMES 不同步,或 SCHEMES 修改后 KB 未更新。
+注: 2026-10-08 信用档退役后 KB 不再承载评级，KB 与 SCHEMES 的一致性只覆盖
+协变量/类型/数值字段；信心分级改为 L1 证据派生（evidence_grade），不与 SCHEMES 挂钩。
 数据来源: build_knowledge_base.py 生成的 KB,SCHEMES 是唯一真值源。
 """
 
@@ -67,16 +69,6 @@ class TestKBSchemesConsistency:
             f"{symbol}: KB covariate={kb_cov!r} != 期望 {expected!r} "
             f"(covariate_type={scheme.covariate_type!r}, "
             f"covariate_types={scheme.covariate_types})"
-        )
-
-    @pytest.mark.parametrize("symbol", list(SCHEMES.keys()))
-    def test_scheme_stars_matches(self, kb_symbols, symbol):
-        """KB scheme_stars 字段与 SCHEMES stars 一致"""
-        scheme = get_scheme(symbol)
-        kb_stars = kb_symbols[symbol].get("scheme_stars")
-        assert kb_stars == scheme.stars, (
-            f"{symbol}: KB scheme_stars={kb_stars} "
-            f"!= SCHEMES stars={scheme.stars}"
         )
 
     @pytest.mark.parametrize("symbol", list(SCHEMES.keys()))

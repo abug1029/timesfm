@@ -59,8 +59,39 @@ def test_has_prior_failure_ignores_descriptive_dm():
          "dm_status": "set_mismatch_ok", "symbol": "jd", "cov_override": "vor"},
     ])
     assert sup._has_prior_failure(confirmable, "jd", "vor") is True
-    # 同 symbol 不同协变量也仍算（原有的「同 symbol 或同 cov」语义保留，只是限定为确认失败）
-    assert sup._has_prior_failure(confirmable, "jd", "other") is True
+    # L2（2026-10-08）：改为 (symbol, cov) 配对 AND —— 同 symbol 异 cov 放行。
+    # 旧单键 OR 语义会把"jd 的 vor 已确认失败"扩散到 jd 的全部协变量。
+    assert sup._has_prior_failure(confirmable, "jd", "other") is False
+    # 异 symbol 同 cov 同样放行（另一个方向的单键误拦）。
+    assert sup._has_prior_failure(confirmable, "rb", "vor") is False
+
+
+def test_has_prior_failure_is_paired_on_symbol_and_cov():
+    """L2（2026-10-08）：配对键语义——只有同一品种的同一协变量已确认失败才拦。
+
+    修复前：symbol OR cov 单键命中即判失败。同 symbol 异 cov、异 symbol 同 cov
+    都被误拦，污染半径比文档描述大；跨维度重复探索应由 dedup 门兜底。
+    """
+    snap = _snap([
+        {"variant_id": "jd_vor", "status": "ok", "gate_pass": False,
+         "dm_status": "set_mismatch_ok", "symbol": "jd", "cov_override": "vor"},
+    ])
+    # 同对 → 拦
+    assert sup._has_prior_failure(snap, "jd", "vor") is True
+    # 同 symbol 异 cov → 放行
+    assert sup._has_prior_failure(snap, "jd", "oi") is False
+    # 异 symbol 同 cov → 放行
+    assert sup._has_prior_failure(snap, "rb", "vor") is False
+    # 两者都异 → 放行
+    assert sup._has_prior_failure(snap, "rb", "oi") is False
+    # 大小写不敏感（symbol 归一化）
+    assert sup._has_prior_failure(snap, "JD", "vor") is True
+    # 过门行不是失败
+    passing = _snap([
+        {"variant_id": "jd_oi", "status": "ok", "gate_pass": True,
+         "dm_status": "set_mismatch_ok", "symbol": "jd", "cov_override": "oi"},
+    ])
+    assert sup._has_prior_failure(passing, "jd", "oi") is False
 
 
 # ── #5 ────────────────────────────────────────────────────────────

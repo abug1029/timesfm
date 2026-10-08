@@ -3,6 +3,25 @@
 > **日期**: 2026-09-14
 > **状态**: 设计已批准，待实施
 > **作者**: 用户 + Claude (architectural brainstorming)
+>
+> **⚠️ 命名与口径勘误（2026-10-08，技术债 D2/L3 收口时补注；正文保持原样作历史记录）**
+>
+> 1. 本文 §5 的 `n_one_star_symbols_hit` 与 `ONE_STAR_SYMBOLS_SET` **已是历史命名**，代码中已不存在：
+>    - `n_one_star_symbols_hit` → **`n_goal_symbols_hit`**（`scripts/praxist_supervisor.py::build_snapshot`）。
+>      改名理由：它度量的是「目标品种命中数」，与「信用星」无关；旧名把两个概念混为一谈。
+>    - `ONE_STAR_SYMBOLS_SET` → **`GOAL_SYMBOLS_SET`**，且**不再硬编码**：唯一来源 =
+>      `scripts/praxist_goal.yaml` 的 `goal.cadence.target_symbols`（当前 **24** 个品种）。
+>      缺失该键 → supervisor 启动直接失败（禁止静默回退硬编码）。
+>    - 旧硬编码声称是「9 个 1★ 信用品种」，实测与任何一档信用星都对不上
+>      （1★ 恰 14 个、≥2★ 7 个），是第三套独立口径，已删除。
+> 2. 本文 §5 的 `success_condition: n_one_star_symbols_hit >= 4` **不是现行成功条件**。
+>    现行 = `all_symbols_pass_phase1`（单一种族封账确认制），见 `praxist_goal.yaml`
+>    与 `docs/runbook_praxist_three_loop.md`「当前 goal」节。数量式成功条件已退役。
+> 3. **「信用星」不是遗留概念**：品种信用档是 `config/prediction_scheme.py::SCHEMES[].stars`
+>    → `credit_stars` 的**活跃子系统**（CF-10 A 锁定唯一源），CLI 历史名 `--three-star`
+>    现映射 `list_by_stars(2)`。清理 `star` 命名时**勿删这一套**。
+>    真正退役的只有 verdict 上的 `star` 字段——该字段在裁决 schema 中自始不存在，
+>    评级唯一承载字段是 `tier`（`cascade/tier_classifier.py`）。
 
 ---
 

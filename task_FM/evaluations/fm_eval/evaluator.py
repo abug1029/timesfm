@@ -223,7 +223,34 @@ def active_mask_metrics(points):
     }
 
 
-ALLOWED_SYMBOLS = {"ao", "bu", "cf", "fg", "fu", "i", "jm", "ma", "p", "sh", "sp", "ta", "ur", "m", "ss", "sr", "cj", "jd", "lh", "eg", "rb"}
+_GOAL_YAML_PATH = os.path.join(FM_ROOT, "scripts", "praxist_goal.yaml")
+
+
+def _load_allowed_symbols(path=None):
+    """候选准入门 = praxist_goal.yaml 的 goal.cadence.target_symbols（唯一来源）。
+
+    2026-10-08：此前此处是一份独立硬编码，且内容恰好等于 config/prediction_scheme.py
+    的 SCHEMES（21 个，信用档表），而非攻坚目标（24 个）。后果是双向割裂：
+      - 只在目标里的 oi/px/y 任何候选都在第一道 validate_candidate 检查被拒，
+        即 goal 要求它们达标、却无法为它们产生任何候选；
+      - 只在准入门里的 jm 能过门、但不被 goal 统计（孤儿）。
+    两套集合归一后，本函数与 praxist_supervisor._load_goal_symbols 读同一字段。
+    缺失即抛错（fail loud）：静默回退到任何内置副本都会让割裂重新出现。
+    """
+    import yaml  # 局部导入：仅本函数需要，不给 evaluator 其余部分增加依赖
+    p = path or _GOAL_YAML_PATH
+    with open(p, encoding="utf-8") as f:
+        goal = (yaml.safe_load(f) or {}).get("goal") or {}
+    raw = ((goal.get("cadence") or {}).get("target_symbols")) or []
+    syms = frozenset(str(s).strip().lower() for s in raw if str(s).strip())
+    if not syms:
+        raise ValueError(
+            "目标品种集契约缺失：%s 的 goal.cadence.target_symbols 为空。"
+            "候选准入门不得回退内置副本。" % p)
+    return syms
+
+
+ALLOWED_SYMBOLS = _load_allowed_symbols()
 
 STAGE_POINTS = {
     "diagnostic": (1, 6),

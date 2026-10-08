@@ -62,11 +62,24 @@ cadence:
   quota_window_hours: 5.0
   quota_margin_min: 30
   retest_min_new_points: 1
-  target_symbols: [m ss sr cj jd lh eg rb i p y cf bu fu ta ma fg ur px oi sh sp ao sc]   # 24 个
+  # 2026-10-08：删 sc、增 jm，与候选准入门 ALLOWED_SYMBOLS 归一（evaluator 从本文件派生）
+  target_symbols: [m ss sr cj jd lh eg rb i p y cf bu fu ta ma fg ur px oi sh sp ao jm]   # 24 个
 ```
 
 目标语义：**每品种至少 1 个经 family 封账的确认变体**。
 「原方向准确率绝对门槛」与「tier>=8」**已退役**，不再是成功条件；Phase 3 的 `multi_seed` / `decay` **仍未实现，不在目标里发明通过线**。
+
+**复测触发判据（2026-10-08 裁定 C+a）**：`_retest_candidates` 只认 v2 schema 的
+`dir_acc >= 0.50`。v1 legacy 的 `ic>=0.05 / ev>0 / pf_ratio>1.05` 已删除 ——
+PF/EV/MaxDD 已在 evaluator 契约中退役，且 `INCUMBENT_PF` 因 L1 经济判决缺失恒空，
+`.get(sym, 1.0)` 会把「相对 incumbent 超 105%」**静默改写**为「PF 绝对值 > 1.05」，
+导致退化裁决被过度复测。`RETEST_PF_RATIO` / `RETEST_GATE_IC` / `INCUMBENT_PF`
+三个符号一并删除；`RETEST_GATE_N=350`（样本量门槛）保留。
+守卫：`tests/test_supervisor.py::test_retest_gate_constants_retired` +
+`::test_retest_candidates_rejects_v1_legacy_rows`。
+
+**品种集单一来源**：`target_symbols` 是目标品种与候选准入门（`evaluator.ALLOWED_SYMBOLS`）
+的唯一来源，两处恒等。守卫见 `tests/test_symbol_universe_20261008.py`。
 
 ---
 

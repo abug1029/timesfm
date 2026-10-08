@@ -36,7 +36,8 @@ CLI 入口与实验编排：预测、月度回测、Vol/Neutral 全链路、A2 L
 | `a2_p1_runtime.py` | **已归档**（2026-09-30 → `archive/2026-09-30-a2-retired/`） |
 | `a2_p1_worker.py` / `a2_p1_lgbm_baseline.py` | **已归档**（2026-09-30 → `archive/2026-09-30-a2-retired/`） |
 | `backtest_vol_gating_fullchain.py` | Neutral OFF vs ON |
-| `two_star_candidate_runner.py` / `toxic_variety_runner.py` | 星级/有毒品种实验 |
+| `two_star_critic.py` / `two_star_candidate_runner.py` | **已归档**（2026-10-08 → `archive/2026-10-08-credit-star-retired/`）：服务「2★→3★ 信用晋级」，该目标 2026-08-03 已判定不可达（DirAcc 天花板 ~58%），且自 2026-09-03 初始提交后从未更新 |
+| `toxic_variety_runner.py` | 有毒品种实验 |
 | `covariate_scan_new.py` | scan（**不得单独指导固化**） |
 
 ## Process Management (2026-08-18 加固)

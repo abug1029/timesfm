@@ -46,7 +46,8 @@
   2026-07-29 Phase 5 影线门控:
     CJ: reversal_shadow → reversal_shadow_gated_05 (scan MAE 5.49%→4.87%, -11%)
 
-口径声明（2026-09-17）：本表 stars/dir_acc/mape 等数值来自 2026-08 v2 月度回测口径
+口径声明（2026-10-08 更新）：信用档 stars 已退役并从本表移除（原 2026-09-17 声明：
+  stars 与本表 dir_acc/mape 同出 2026-08 v2 月度回测口径）。
   (G003/G004/G005 396pt rebaseline)，独立于 v23 螺旋裁决链
   (DirAcc/MAPE + DM + BH-FDR + 自适应门)。v23 复测数据由慢环（Praxist 慢环）产出后
   按品种滚动更新；更新前本表数值不得作为 v23 证据引用，仅供经济侧展示与回测参考。
@@ -57,27 +58,6 @@ from typing import Literal, Optional
 import numpy as np
 
 # ─────────────────────────────────────────────────────────
-# v23 复测待完成清单（仅登记，不改动本表任何数值）
-# 来源: task_FM/config/covariate_pool.json 中 track_record 标
-#   "v22线索(旧PF口径,未v23复测,非证据)" 的 10 个条目，品种/协变量组合取自
-#   各条目 v22 经济口径文本（ss/jd/sr/sp/m/ta/sh/cf 品种侧映射）。
-# 维护规则: 慢环 aligned verdict 产出后按品种从该列表移除并同步更新 SCHEMES。
-# 注: pool 中 rsi_state 条目另提及 eg_rsi_state "近门" 二级线索，同属该条目待 v23 复测，
-#     未在此单列。
-# ─────────────────────────────────────────────────────────
-V23_RETEST_PENDING = [
-    ("ss", "rsi_state"),
-    ("jd", "oi"),
-    ("ss", "ccl"),
-    ("ss", "ha_body"),
-    ("sr", "calendar_cyclical"),
-    ("sp", "pca_momentum"),
-    ("m", "vor"),
-    ("ta", "bb_squeeze"),
-    ("sh", "nvi"),
-    ("cf", "sar_dist"),
-]
-
 
 # ─────────────────────────────────────────────────────────
 # 方案类型
@@ -106,7 +86,6 @@ class VarietyScheme:
     symbol: str
     name: str
     scheme_type: SchemeType
-    stars: int = 3
 
     # ── 模型参数 (固化，不可调) ──
     context_bars: int = 480         # 1H context 长度
@@ -145,7 +124,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="ss",
         name="不锈钢",
         scheme_type="trend",
-        stars=1,  # 2026-09-17 降级 2→1: ss_vor v23 复测未过门（ss_vor_aligned_p600 gate_pass=False dir_acc=0.502 n=588）；2026-09-09 v22 口径 2星作废
         dir_acc=0.530,  # v2 月度回测口径测量值（历史，v23 复测实测 0.502）
         mape=1.46,  # 保留原值
         decay=1.30,  # G005-E
@@ -161,7 +139,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="ur",
         name="尿素",
         scheme_type="stable",
-        stars=1,  # G005-E: PF=0.84 n=303 underpowered 维持1星
         dir_acc=0.500,  # G005-E 303pt
         mape=2.71,  # G005-E
         decay=1.41,  # G005-E
@@ -176,7 +153,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="sr",
         name="白糖",
         scheme_type="stable",
-        stars=2,  # 2026-08-08 CF-02 A + G005: PF1.10 维持2星
         dir_acc=0.550,  # G005 2026-08-08 新口径 396pt (was 0.570)
         mape=1.15,  # G005
         decay=1.43,  # G005
@@ -194,7 +170,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="sp",
         name="纸浆",
         scheme_type="trend",
-        stars=1,  # G005-B 2026-08-08: PF=0.95 EV_r<0 MaxDD深 → 降1星
         dir_acc=0.510,  # G005-B 396pt (was 0.570)
         mape=1.97,  # G005-B
         decay=1.37,  # G005-B
@@ -210,7 +185,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="fu",
         name="燃料油",
         scheme_type="stable",
-        stars=1,  # G005 2026-08-08: 新口径 PF=0.95 EV_r<0 → 降1星
         dir_acc=0.500,  # G005 396pt (was 0.550 Phase9 旧口径)
         mape=3.38,  # G005
         decay=1.27,  # G005
@@ -226,7 +200,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="m",
         name="豆粕",
         scheme_type="stable",
-        stars=2,  # G005-B: PF=1.08 弱正维持2星
         dir_acc=0.530,  # G005-B 396pt (was 0.581)
         mape=1.94,  # G005-B
         decay=1.37,  # G005-B
@@ -242,7 +215,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="jm",
         name="焦煤",
         scheme_type="stable",
-        stars=1,  # G005-D: PF=0.85 → 降1星
         dir_acc=0.470,  # G005-D 396pt (was 0.533)
         mape=4.19,  # G005-D
         decay=1.28,  # G005-D
@@ -257,7 +229,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="i",
         name="铁矿石",
         scheme_type="stable",
-        stars=1,  # G005-D: PF=0.70 EV_r=-0.18 → 降1星
         dir_acc=0.510,  # G005-D 396pt (was 0.523)
         mape=3.21,  # G005-D
         decay=1.30,  # G005-D
@@ -275,7 +246,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="rb",
         name="螺纹钢",
         scheme_type="stable",
-        stars=2,  # G005-C: PF=1.00 边界维持2星
         dir_acc=0.510,  # G005-C 396pt (was 0.550)
         mape=1.90,  # G005-C
         decay=1.27,  # G005-C
@@ -291,7 +261,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="fg",
         name="玻璃",
         scheme_type="stable",
-        stars=1,  # G005-D: PF=0.91 → 降1星
         dir_acc=0.480,  # G005-D 396pt (was 0.553)
         mape=3.18,  # G005-D
         decay=1.35,  # G005-D
@@ -306,7 +275,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="bu",
         name="沥青",
         scheme_type="short_range",
-        stars=1,  # G005 2026-08-08: short加权后 PF=0.84 MaxDD深 → 降1星
         dir_acc=0.510,  # G005 396pt (was 0.540)
         mape=2.33,  # G005
         decay=1.27,  # G005
@@ -322,7 +290,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="sh",
         name="烧碱",
         scheme_type="oscillation",
-        stars=1,  # 2026-08-21 初始: PF=0.74 DirAcc=43% 震荡型
         dir_acc=0.430,
         mape=2.68,  # 2026-08-21 refresh
         decay=1.35,  # 2026-08-21 refresh
@@ -338,7 +305,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="p",
         name="棕榈油",
         scheme_type="short_range",
-        stars=1,  # G004: PF=1.014 刚过线、EV 微正，不足以升 2★
         dir_acc=0.540,  # G003 396pt (was 0.470 G005-B)
         mape=2.61,  # G003
         decay=1.32,  # G003
@@ -354,7 +320,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="cf",
         name="棉花",
         scheme_type="short_range",
-        stars=1,  # G005-C: short PF=0.80 EV_r=-0.11 → 降1星
         dir_acc=0.510,  # G005-C 396pt (was 0.560)
         mape=1.56,  # G005-C
         decay=1.41,  # G005-C
@@ -370,7 +335,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="ao",
         name="氧化铝",
         scheme_type="short_range",
-        stars=1,  # G005-E: PF=0.86 n=193 维持1星
         dir_acc=0.450,  # G005-E 193pt
         mape=2.38,  # G005-E
         decay=1.40,  # G005-E
@@ -384,7 +348,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         # ha_body 对 AO 有毒 (EV 转负 -0.054, MaxDD 翻倍 -57.92%)
         # 10 候选 walk-forward 回测, hourly_slope+calendar 唯一 v2 PASS
         # DirAcc 56%->52% (-3.7pp 代价), 但 EV +0.014->+0.090 (+543%), PF 1.03->1.20, MaxDD -35%->-29% (改善17.3%)
-        # ⚠️ n=193 < 350 underpowered → stars=1 provisional (CF-21 A)
         # ── 历史归档 ──
         # Phase 9 (2026-08-03): hourly_slope 新鲜 baseline 56.0%, ha_body 有毒
     ),
@@ -395,7 +358,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="eg",
         name="乙二醇",
         scheme_type="stable",
-        stars=2,  # G005-C: PF=1.00 边界维持2星
         dir_acc=0.510,  # G005-C 396pt (was 0.55)
         mape=2.46,  # G005-C
         decay=1.27,  # G005-C
@@ -414,7 +376,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="lh",
         name="生猪",
         scheme_type="stable",
-        stars=2,  # G005-E: PF=1.05 n=231 underpowered 维持2星
         dir_acc=0.500,  # G005-E 231pt
         mape=2.82,  # G005-E
         decay=1.46,  # G005-E
@@ -433,7 +394,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="cj",
         name="红枣",
         scheme_type="short_range",
-        stars=2,  # G005-E: PF=1.26 n=317 维持2星（underpowered 但 PF 全场最高）
         dir_acc=0.520,  # G005-E 317pt
         mape=2.38,  # G005-E
         decay=1.47,  # G005-E
@@ -452,7 +412,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="jd",
         name="鸡蛋",
         scheme_type="stable",
-        stars=2,  # G005-B: PF=1.06 弱正维持2星
         dir_acc=0.470,  # G005-B 396pt (was 0.52)
         mape=2.48,  # G005-B
         decay=1.42,  # G005-B
@@ -476,7 +435,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="ma",
         name="甲醇",
         scheme_type="stable",
-        stars=1,  # G005-E: PF=0.71 维持1星
         dir_acc=0.490,  # G005-E 396pt
         mape=2.67,  # G005-E
         decay=1.29,  # G005-E
@@ -492,7 +450,6 @@ SCHEMES: dict[str, VarietyScheme] = {
         symbol="ta",
         name="PTA",
         scheme_type="stable",
-        stars=1,  # G005-B: PF=0.99 EV_r≈0 → 降1星（Phase9 PF1.43 旧口径虚高）
         dir_acc=0.530,  # G005-B 397pt (was 0.58)
         mape=2.33,  # G005-B
         decay=1.30,  # G005-B
@@ -532,19 +489,6 @@ def is_solidified(symbol: str) -> bool:
 def list_solidified() -> list[str]:
     """所有已固化品种代码"""
     return list(SCHEMES.keys())
-
-
-def list_by_stars(min_stars: int = 2) -> list[str]:
-    """按 scheme.stars 筛选（信用档，2026-08-08 新口径 rebaseline 后无 3 星）。
-
-    默认 min_stars=2 → 可辩护信用档。
-    返回值以 SCHEMES 的 stars 字段为准；**不要在本 docstring 里硬编码品种清单**——
-    SS 已于 2026-09-17 降级（commit 9c7fc2a），任何写死的清单都会随降级动作腐烂。
-    CLI 历史名 --three-star 现映射到此列表。
-    """
-    return sorted(
-        sym for sym, sc in SCHEMES.items() if int(sc.stars) >= int(min_stars)
-    )
 
 
 def signal_weight(horizon: int, scheme: VarietyScheme) -> np.ndarray:
@@ -645,7 +589,7 @@ def confidence_band(
 def scheme_summary(scheme: VarietyScheme) -> str:
     """生成品种方案摘要 (用于报告头部)"""
     lines = [
-        f"**{scheme.name} ({scheme.symbol.upper()})** — {'⭐' * scheme.stars}",
+        f"**{scheme.name} ({scheme.symbol.upper()})**",
         f"- 方案类型: {scheme.scheme_type}",
         f"- 回测 DirAcc: {scheme.dir_acc:.0%} | MAPE: {scheme.mape:.2f}% | 衰减: {scheme.decay:.2f}x",
         f"- 信号策略: {'全段 T+1~T+24' if scheme.use_full_signal else '短段 T+1~T+12'}",
