@@ -26,7 +26,7 @@ done
 "$FM_ROOT/.venv/bin/python" << 'PYEOF'
 import os
 
-fm_root = os.environ.get('FM_ROOT', '/home/abug/timesfm')
+fm_root = os.environ.get('FM_ROOT', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 files = [
     os.path.join(fm_root, '.venv/lib/python3.11/site-packages/praxist/plugins/workflow_stages/research_loop/backend/agent.py'),
     os.path.join(fm_root, '.venv/lib/python3.11/site-packages/praxist/plugins/workflow_stages/research_loop/provider_env.py'),

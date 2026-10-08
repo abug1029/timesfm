@@ -1,16 +1,18 @@
 # FM_a 运维手册 (Runbook)
 
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
+
 ## 环境
 
 | 项 | 值 |
 |----|-----|
-| 项目根 | `/home/abug/timesfm`（WSL2 Ubuntu-22.04；须在此目录启动，或保证 import 路径含根） |
+| 项目根 | `<FM_ROOT>`（WSL2 Ubuntu-22.04；须在此目录启动，或保证 import 路径含根） |
 | Python | `.venv/bin/python`（本仓 venv，Python 3.11） |
 | TqSdk | `.env` 中 `TQSDK_ACCOUNT` / `TQSDK_PASSWORD` |
 | 数据库 | `db/futures_<symbol>.db` |
 
 ```bash
-cd /home/abug/timesfm
+cd <FM_ROOT>
 source .venv/bin/activate
 ```
 

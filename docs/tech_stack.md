@@ -5,6 +5,8 @@
 >
 > 最后核实：2026-10-05，commit `ee01b56`。
 
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
+
 ---
 
 ## 1. 运行环境
@@ -12,14 +14,14 @@
 | 项 | 值 |
 |----|---|
 | 宿主 | **WSL2 Ubuntu-22.04** |
-| 仓库 | `/home/abug/timesfm`（**唯一权威源**，Windows 侧无副本） |
+| 仓库 | `<FM_ROOT>`（**唯一权威源**，Windows 侧无副本） |
 | Python | **3.11.15**（仓内 `.venv`） |
 | 内存 | 约 7.7 GiB（Swap 以 `free -h` 为准） |
 | CPU | 8 vCPU |
 | remote | `github.com/abug1029/timesfm` |
 
 ```bash
-cd /home/abug/timesfm
+cd <FM_ROOT>
 source .venv/bin/activate
 ```
 

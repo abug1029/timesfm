@@ -1,6 +1,11 @@
 import sys, os
-sys.path.insert(0, '/home/abug/timesfm')
-os.chdir('/home/abug/timesfm')
+from pathlib import Path
+
+# 仓库根由本文件位置推导（不硬编码绝对路径：换机器/换用户仍可用）
+FM_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(FM_ROOT))
+sys.path.insert(0, str(FM_ROOT / "scripts"))
+os.chdir(FM_ROOT)
 
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel

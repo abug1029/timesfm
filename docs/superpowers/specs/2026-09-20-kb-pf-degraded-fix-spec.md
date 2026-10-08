@@ -107,7 +107,7 @@ commit `5951611` message:
 
 **步骤**：
 ```bash
-cd /home/abug/timesfm
+cd <FM_ROOT>
 
 # S0: 准入扫描（~5 min）
 python scripts/universe_eligibility.py

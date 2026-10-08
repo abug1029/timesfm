@@ -94,7 +94,9 @@ def test_ok_when_no_unmatched():
 def test_protocol_fingerprint_unchanged():
     """B 只改 missingness_admissible 判定规则，不碰指纹计算。"""
     # 用活仓基线文件验证指纹不变（f02b2a43...）
-    baseline_path = "/home/abug/timesfm/task_FM/config/baseline_points_jd_nocov.jsonl"
+    baseline_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "task_FM", "config", "baseline_points_jd_nocov.jsonl")
     if not os.path.exists(baseline_path):
         return  # 跳过（worktree 无数据资产）
     with open(baseline_path, encoding="utf-8") as f:

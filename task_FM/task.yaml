@@ -97,6 +97,8 @@ runtime_environment:
   require_paths: true
   env:
     CUDA_VISIBLE_DEVICES: ''
+    # 受信根目录（沙箱放行清单）。绝对路径与部署位置耦合，换机器需改；
+    # 保持与本仓同级最省事：见 docs/README.md「部署路径」一节。
     PRAXIST_TRUSTED_PROJECT_EXTRA_ROOTS: /home/abug/timesfm
     TYPESAFE_API_KEY: '${TYPESAFE_API_KEY}'
   protected_child_paths:

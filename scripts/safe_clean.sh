@@ -10,10 +10,10 @@
 #   safe_clean.sh            dry-run（默认；自带白名单自检——命中保护路径即 FATAL 退出）
 #   safe_clean.sh --apply    实际执行（信任排除项；执行前务必先跑一次 dry-run 目检）
 #
-# 部署：仓内 scripts/ 为源；操作副本 /home/abug/bin/safe_clean.sh（合入新版后重新 install）
+# 部署：仓内 scripts/ 为源；操作副本 <FM_ROOT>/bin/safe_clean.sh（合入新版后重新 install）
 set -euo pipefail
 
-REPO_ROOT="${REPO_ROOT:-/home/abug/timesfm}"
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 MODE="${1:-}"
 PROTECT_RE='task_FM/config/|\.omc/|data/cache/|(^|/)\.env|(^|/)logs/'
 EXCLUDES=(-e 'task_FM/config/' -e '.omc/' -e 'data/cache/' -e 'logs/' -e '.env' -e '.env.*')

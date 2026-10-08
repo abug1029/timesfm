@@ -1,6 +1,6 @@
 #!/bin/bash
 # T1a 监控脚本: 等待 8 个 nocov 基线就绪，或 supervisor 退出
-cd /home/abug/timesfm
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
 TARGET=8
 MIN_LINES=100

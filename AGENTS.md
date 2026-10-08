@@ -1,5 +1,7 @@
 # AGENTS.md
 
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
+
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 # FM — 期货数据管理与 TimesFM 预测系统
@@ -29,8 +31,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 | 用途 | 仓库 / 进程 | 权重路径 |
 |------|-------------|----------|
-| 预测岗 | **其他仓库** `timesFM_fu`（非本 WSL 树） | 其自身路径或该进程的 HF cache；**勿与本仓 `/home/abug/timesfm` 共用权重** |
-| PRAXIST / FM_a cascade 慢路径 | `timesfm`（本仓，WSL `/home/abug/timesfm`） | **本地目录** `/home/abug/timesfm/models/timesfm-3.0-pytorch` |
+| 预测岗 | **其他仓库** `timesFM_fu`（非本 WSL 树） | 其自身路径或该进程的 HF cache；**勿与本仓 `<FM_ROOT>` 共用权重** |
+| PRAXIST / FM_a cascade 慢路径 | `timesfm`（本仓，WSL `<FM_ROOT>`） | **本地目录** `<FM_ROOT>/models/timesfm-3.0-pytorch` |
 
 - 环境变量（优先）：`FM_TIMESFM_MODEL_PATH`（兼容 `TIMESFM_MODEL_PATH` / `TIMESFM_WEIGHTS_DIR`）
 - 解析入口：`data.config.get_timesfm_model_path()`；cascade `DailyModel`/`HourlyModel` 经此加载
@@ -39,7 +41,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## PRAXIST 运行环境（WSL2）
 
-- 宿主：WSL2 Ubuntu-22.04，项目根 `/home/abug/timesfm`，8 vCPU / 7.7 GiB / 无 GPU（旧 Grok 盒 `/workspace` 路径已废弃）
+- 宿主：WSL2 Ubuntu-22.04，项目根 `<FM_ROOT>`，8 vCPU / 7.7 GiB / 无 GPU（旧 Grok 盒 `/workspace` 路径已废弃）
 - praxist venv：本仓 `.venv`（Python 3.11，FM_a 与 PRAXIST 共用）；监督环自动解析本仓 `bin/praxist`，可用 `PRAXIST_BIN` 覆盖
 - 规范启动：`set -a; source .env.praxist; set +a` 后 setsid 拉起 supervisor（见 `docs/runbook_praxist_three_loop.md`）。`task_FM/task.yaml` 内 **不要** 放明文 API key
 - 所需环境变量见 `docs/praxist_llm_env.md`
@@ -72,7 +74,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 - 入库：`task_FM/config/aligned_verdicts.jsonl`、`baseline_points_*.jsonl`、`baseline_metrics.json`、`.omc/supervisor_decisions.jsonl`。活仓上若尚未提交，在活仓 `git add` 这些路径后推 `origin`。不要用别的机器上的旧快照覆盖活文件。
 - 不入库：`.env` / `.env.*`（密钥）、`data/cache/`（检查点与运行状态）、`logs/`。
 - **裸 `git clean -xdf` 一律禁止**——仍会删掉未入库的 `data/cache/`、`.env`、`logs/`、`.omc/` 里除决策留痕以外的文件。
-- 清理必须走 `safe_clean.sh`（仓内 `scripts/safe_clean.sh`；操作副本 `/home/abug/bin/safe_clean.sh`）：默认 dry-run + 白名单自检（命中保护路径即 FATAL），`--apply` 才执行。改版合入后重新 `install -m 755` 到 `/home/abug/bin/`。
+- 清理必须走 `safe_clean.sh`（仓内 `scripts/safe_clean.sh`；操作副本 `<FM_ROOT>/bin/safe_clean.sh`）：默认 dry-run + 白名单自检（命中保护路径即 FATAL），`--apply` 才执行。改版合入后重新 `install -m 755` 到 `<FM_ROOT>/bin/`。
 - 现行规则 → `docs/runbook_praxist_three_loop.md`「数据资产备份与清理」节
 
 ## 分层文档 (deepinit 2026-08-08)
@@ -122,7 +124,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 ## 目录结构
 
 ```
-/home/abug/timesfm/
+<FM_ROOT>/
 ├── data/             # 期货数据管理系统
 │   ├── config.py               # 品种/交易所 + FM_ROOT/resolve_under_root
 │   ├── trading_calendar.py     # 会话感知交易日标签（夜盘/周末）
@@ -199,7 +201,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 
 **必需：**
 ```bash
-cd /home/abug/timesfm
+cd <FM_ROOT>
 source .venv/bin/activate
 # TqSdk 凭证在 .env（真实文件，勿把密钥写入可提交文件）
 ```
@@ -212,7 +214,7 @@ source .venv/bin/activate
 
 ```bash
 # 激活环境
-cd /home/abug/timesfm && source .venv/bin/activate
+cd <FM_ROOT> && source .venv/bin/activate
 
 # 采集数据
 python -m data.cli collect cf          # 棉花

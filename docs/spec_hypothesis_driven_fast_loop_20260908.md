@@ -211,7 +211,7 @@ free -h            # 确认 TimesFM 内存释放
 ## 7. 验证
 
 ```bash
-cd /home/abug/timesfm && source .venv/bin/activate
+cd <FM_ROOT> && source .venv/bin/activate
 python -m pytest tests/test_covariate_pool.py tests/test_harvest_proposals.py tests/test_combo_parity.py -v
 python -m py_compile scripts/praxist_supervisor.py cascade/features.py task_FM/evaluations/fm_eval/evaluator.py
 # 干跑：造 2 提案（1 好 1 空机制），harvest_proposals dry-run

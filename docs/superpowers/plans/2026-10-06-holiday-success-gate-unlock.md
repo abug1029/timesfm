@@ -393,7 +393,7 @@ cd /root/timesfm && git diff --stat -- scripts/monthly_backtest.py scripts/align
 这台 WSL 的 `/root/timesfm` 不是诊断里那个正在跑的进程。活路径是 `/home/abug/timesfm`（`supervisor_state.json` 的 `last_run_dir`）。代码合并过去之后，按 `docs/three_loop_restart_protocol.md` 的快速重启：
 
 ```bash
-cd /home/abug/timesfm
+cd <FM_ROOT>
 bash scripts/restart_three_loop_clean.sh
 ```
 

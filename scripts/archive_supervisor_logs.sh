@@ -1,7 +1,7 @@
 #!/bin/bash
 # 归档 supervisor 历史日志
 set -euo pipefail
-cd /home/abug/timesfm
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
 ARCH="data/archive/logs_2026-09-28T1210"
 mkdir -p "$ARCH"

@@ -389,7 +389,8 @@ class TestSPEC009HalfLifeRefactor:
         import subprocess
         result = subprocess.run(
             ["grep", "-n", "12\\.0", "cascade/features.py"],
-            capture_output=True, text=True, cwd="/home/abug/timesfm"
+            capture_output=True, text=True,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         )
         lines = [l for l in result.stdout.strip().split("\n")
                  if l and "#" not in l.split(":", 2)[-1]]

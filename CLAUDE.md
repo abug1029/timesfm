@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 # FM — 期货数据管理与 TimesFM 预测系统
@@ -75,12 +77,12 @@ spec v15 的 §8.3 八项出口条件已全部核验。**新增三个模块是�
 
 ## 目录结构
 
-> **运行环境（2026-09-09 起）**：WSL2 Ubuntu-22.04，仓库根 `/home/abug/timesfm`（GitHub `abug1029/timesfm`），venv `.venv`（Python 3.11）。下文 Windows `D:\FlyBuddy\...` 路径为历史遗留，已不适用；宿主事实见 `docs/host_environment_assessment.md` 顶部迁移表，PRAXIST 运维见 `docs/runbook_praxist_three_loop.md`。
+> **运行环境（2026-09-09 起）**：WSL2 Ubuntu-22.04，仓库根 `<FM_ROOT>`（GitHub `abug1029/timesfm`），venv `.venv`（Python 3.11）。下文 Windows `D:\FlyBuddy\...` 路径为历史遗留，已不适用；宿主事实见 `docs/host_environment_assessment.md` 顶部迁移表，PRAXIST 运维见 `docs/runbook_praxist_three_loop.md`。
 
-**代码图谱（CodeGraph，2026-09-16）**：本仓已建索引（`.codegraph/`，224 文件；`task_FM/experiments/` 按 .gitignore 排除）。查询：`codegraph explore -p . "<英文查询>"`（中文 FTS 不命中）。大改（git pull / 批量编辑）后先 `codegraph sync .` 再查询。二进制在 `/home/abug/.npm-global/bin/`（已入 PATH）。
+**代码图谱（CodeGraph，2026-09-16）**：本仓已建索引（`.codegraph/`，224 文件；`task_FM/experiments/` 按 .gitignore 排除）。查询：`codegraph explore -p . "<英文查询>"`（中文 FTS 不命中）。大改（git pull / 批量编辑）后先 `codegraph sync .` 再查询。二进制在 `$HOME/.npm-global/bin/`（已入 PATH）。
 
 ```
-/home/abug/timesfm/
+<FM_ROOT>/
 ├── data/             # 期货数据管理系统
 │   ├── config.py               # 品种/交易所 + FM_ROOT/resolve_under_root
 │   ├── trading_calendar.py     # 会话感知交易日标签（夜盘/周末）
@@ -158,7 +160,7 @@ TQSDK_PASSWORD=your_password
 
 # 激活环境 (WSL2, 本仓 .venv, Python 3.11)
 source .venv/bin/activate
-cd /home/abug/timesfm
+cd <FM_ROOT>
 ```
 
 
@@ -173,7 +175,7 @@ bash scripts/patch_praxist_qwen.sh .venv
 ```bash
 # 激活环境
 source .venv/bin/activate
-cd /home/abug/timesfm
+cd <FM_ROOT>
 
 # 采集数据
 python -m data.cli collect cf          # 棉花

@@ -98,7 +98,7 @@ C:/Users/Puchon~1/AppData/Roaming/npm          ← 2026-09-17 追加
 case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH";; esac
 ```
 
-WSL 侧已装工具:`/home/abug/.npm-global/bin/codegraph`(npm 用户级前缀,因系统 npm 目录无写权限且无免密 sudo)。
+WSL 侧已装工具:`$HOME/.npm-global/bin/codegraph`(npm 用户级前缀,因系统 npm 目录无写权限且无免密 sudo)。
 
 interop 说明:WSL PATH 尾部自动追加 Windows 目录(`/mnt/c/...`),其中含带空格路径(`Pu Chong`)——排在查找顺序末尾,对 Linux 工具解析无实际影响;但**任何未加引号的 `export PATH=$PATH:...` 拼接都会被这些空格拆坏**,这是 §5 陷阱 ③ 的温床。
 
@@ -119,10 +119,10 @@ env PATH="$POSIXPATH" "$GS_BASH" -c 'echo "{}" | codegraph.cmd prompt-hook; echo
 
 ```bash
 # ✓ 命令字符串以 cd 开头(不以 / 开头,防 MSYS 转换)
-wsl -d Ubuntu-22.04 -- bash -lc "cd /home/abug/timesfm && codegraph status ."
+wsl -d Ubuntu-22.04 -- bash -lc "cd <FM_ROOT> && codegraph status ."
 
 # ✓ 或直接全路径(不依赖任何 shell 初始化)
-wsl -d Ubuntu-22.04 -- bash -c "/home/abug/.npm-global/bin/codegraph version"
+wsl -d Ubuntu-22.04 -- bash -c "$HOME/.npm-global/bin/codegraph version"
 ```
 
 ---

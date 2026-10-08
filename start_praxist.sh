@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /home/abug/timesfm
+cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 set -a
 source .env.praxist
 set +a

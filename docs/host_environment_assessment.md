@@ -5,11 +5,13 @@
 > | 项 | 当前值（2026-09-13 核对，WSL） |
 > |----|-----|
 > | 主机 | **WSL2**（Windows 10，发行版 Ubuntu-22.04.5，kernel 6.18 microsoft-standard） |
-> | 项目根 | **`/home/abug/timesfm`**（GitHub `abug1029/timesfm`，分支 **`master`** HEAD `9653264`） |
+> | 项目根 | **`<FM_ROOT>`**（GitHub `abug1029/timesfm`，分支 **`master`** HEAD `9653264`） |
 > | Python | 本仓 **`.venv`（Python 3.11.15）**，FM_a 与 PRAXIST 共用 |
 > | CPU / 内存 | 8 vCPU / **7.7 GiB total**；Swap 以现场 `free -h` 为准（2026-09-11 测得 2.0Gi，**不要写死 0**） |
 > | GPU | 无 |
 > | 磁盘 | `/` 约 1TB，用量 2% |
+
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
 > | 行情库 | **本仓 `db/` 为真实目录**（29 个 `futures_<sym>.db`），不再是 `/workspace` symlink；`.env` 为真实文件 |
 > | 权重 | 本仓 `models/timesfm-2.5-200m-pytorch/` |
 > | Praxist CLI | 本仓 `.venv/bin/praxist` |
@@ -31,7 +33,7 @@
 | GPU | **无**（无 nvidia 设备 / 无 `nvidia-smi`） |
 | 磁盘 | overlay ≈ 126G，评估当日 Used ≈ 17G / Avail ≈ 104G |
 | 项目根 | `/workspace/repos/timesfm-abug1029`（GitHub `abug1029/timesfm`） |
-| Python（FM_a） | `/home/abug/timesfm/.venv`（CPython 3.13） |
+| Python（FM_a） | `<FM_ROOT>/.venv`（CPython 3.13） |
 | 行情 SSOT | `db` → symlink → `/workspace/repos/timesFM_fu/db`（由「行情」岗维护） |
 | TQSDK / `.env` | `.env` → symlink → `timesFM_fu/.env`（gitignore，不复制密钥） |
 | Praxist CLI | 本仓 `.venv`（2026-09-13 环境统一后唯一 venv；`PRAXIST_BIN` 可覆盖） |

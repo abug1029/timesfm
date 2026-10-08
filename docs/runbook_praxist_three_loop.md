@@ -1,6 +1,8 @@
 # PRAXIST 三环运维手册
 
-> 宿主硬件与容量结论见 [`host_environment_assessment.md`](./host_environment_assessment.md)。**当前宿主 = WSL2 Ubuntu-22.04，项目根 `/home/abug/timesfm`**；勿沿用旧 Grok 盒 `/workspace/repos/...`、`/home/box/...`、Windows `D:/FlyBuddy` 或 1.9GB/15GB RAM 假设。
+> 宿主硬件与容量结论见 [`host_environment_assessment.md`](./host_environment_assessment.md)。**当前宿主 = WSL2 Ubuntu-22.04，项目根 `<FM_ROOT>`**；勿沿用旧 Grok 盒 `/workspace/repos/...`、`/home/box/...`、Windows `D:/FlyBuddy` 或 1.9GB/15GB RAM 假设。
+
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
 
 新人先读架构概览 [`praxist.md`](./praxist.md)。本文是运维手册：启停、429、队列、收割、复测、故障速查。
 
@@ -8,7 +10,7 @@
 
 | 项 | 值 |
 |----|-----|
-| 项目根 | `/home/abug/timesfm`（WSL2 Ubuntu-22.04；FM_a / PRAXIST 同仓） |
+| 项目根 | `<FM_ROOT>`（WSL2 Ubuntu-22.04；FM_a / PRAXIST 同仓） |
 | Python | `.venv/bin/python`（Python 3.11） |
 | praxist | 本仓 `.venv/bin/praxist`（`PRAXIST_BIN` 可覆盖；supervisor 自动解析） |
 | Goal | `scripts/praxist_goal.yaml` |
@@ -32,7 +34,7 @@
 ## 启动 / 停止
 
 ```bash
-cd /home/abug/timesfm
+cd <FM_ROOT>
 
 # 启动监督环（规范方式 = scripts/start_supervisor.sh，canonical launcher，2026-09-21 起）
 # launcher 做三件事：
@@ -183,7 +185,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 
 **清理**（配套禁令，详见 AGENTS.md）：
 
-- **裸 `git clean -xdf` 禁止**；清理一律走 `/home/abug/bin/safe_clean.sh`：默认 dry-run（白名单自检，命中保护路径 FATAL），确认后 `--apply`
+- **裸 `git clean -xdf` 禁止**；清理一律走 `<FM_ROOT>/bin/safe_clean.sh`：默认 dry-run（白名单自检，命中保护路径 FATAL），确认后 `--apply`
 - 保护白名单：`task_FM/config/`、`.omc/`、`data/cache/`、`logs/`、`.env*`
 
 ---

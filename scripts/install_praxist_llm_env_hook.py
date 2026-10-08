@@ -8,8 +8,8 @@ from pathlib import Path
 FM_ROOT = Path(__file__).resolve().parents[1]
 HOOK_PATH = FM_ROOT / "scripts" / "praxist_llm_env_hook.py"
 
+# 站点目录由仓库位置推导（原先第一项是绝对路径硬编码，与第二项同义）
 CANDIDATE_SITE = [
-    Path("/home/abug/timesfm/.venv/lib/python3.11/site-packages"),
     FM_ROOT / ".venv" / "lib" / "python3.11" / "site-packages",
 ]
 

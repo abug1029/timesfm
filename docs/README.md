@@ -4,6 +4,8 @@
 
 > **不知道从哪读起？→ [handbook.md](./handbook.md)（手册入口 + 按需阅读路径）**
 
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
+
 ## 分层结构
 
 | 层 | 定位 | 规则 |
@@ -105,7 +107,7 @@ Goal / 运行口径：`scripts/praxist_goal.yaml`（2026-09-23 起目标=24 品�
 ## 30 秒上手
 
 ```bash
-cd /home/abug/timesfm
+cd <FM_ROOT>
 source .venv/bin/activate
 
 # 盘中主观（推荐）
@@ -167,7 +169,7 @@ python "$A2" --restore       # 从备份恢复缺失文件
 
 ## 维护协议
 
-- **唯一权威源**：WSL `/home/abug/timesfm/`（git repo `abug1029/timesfm`）
+- **唯一权威源**：WSL `<FM_ROOT>/`（git repo `abug1029/timesfm`）
 - **Windows 副本**：无 —— 2026-09-29 核实 `D:\FlyBuddy\FM_a\` 与 `D:\FlyBuddy\timesfm\` 在 Windows 侧均已不存在，旧指引作废；一切读写走 WSL 仓
 - **新增文档流程**：在 WSL 侧创建 → 更新 `docs/README.md` 索引 → `docs/AGENTS.md` 路由 → git commit/push
 - **system_design.md 更新触发**：架构变更 / 新模块上线 / 评估口径切换 / 品种状态变更 / 星级调整

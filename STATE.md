@@ -9,6 +9,8 @@
 > `reports/` 全部为 derived_view（可从 `predictions.json` / 回测 JSONL / db 产物重建），
 > 冲突时以 **STATE.md + 磁盘回测产物**为准。此规则用于终结"滞后文档事故"（如 SH 状态那次）。
 
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
+
 **最后更新**: 2026-10-01（v4 收口阶段 2 完成并重启：窗口锚 / checkpoint 身份 / 协议 v4 / vid 生产接线全部落地，v4 重生波 9/9 闭环。见下方「三环状态」与「Stage 3 交付状态」小节）
 
 > **三环状态**：**运行中**（是否真在跑：`pgrep -f praxist_supervisor`，无输出即已停）。
@@ -358,7 +360,7 @@ data_store.py）。正确边界应为 `dt < cutoff_ts`。
 
 | 项 | 值 |
 |----|-----|
-| 宿主 | WSL2 Ubuntu-22.04 `/home/abug/timesfm`，`.venv` (Python 3.11) |
+| 宿主 | WSL2 Ubuntu-22.04 `<FM_ROOT>`，`.venv` (Python 3.11) |
 | 合同 | 方案 A：peer 写假设，慢环唯一验证器 |
 | 目标 | 1 星集合过门 ≥4（且独立过门变体 ≥4）+ min dir_acc > 0.52 + ≥1 族；`goal.yaml` 预算已 999999 / deadline 2099-12-31 |
 | 监督环 | `phase=fast`，`cycles_done=36`，`paused_429=false`；PID 31638（commit `6035c8e`）；`last_run_id=run_2026-09-20_09-28-32_primary_task_FM`；`last_harvested_run_id=run_2026-09-20_06-34-49_primary_task_FM` |
@@ -963,16 +965,16 @@ Phase 11 已穷举 7 协变量: 0 GREEN (best PF=0.90)。不纳入 SCHEMES，待
 
 ## Supervisor goal_reached (20260909_035816)
 
-See /home/abug/timesfm/docs/superpowers/reports/supervisor_goal_reached_20260909_035816.md
+See <FM_ROOT>/docs/superpowers/reports/supervisor_goal_reached_20260909_035816.md
 
 ## Supervisor goal_reached (20260909_041328)
 
-See /home/abug/timesfm/docs/superpowers/reports/supervisor_goal_reached_20260909_041328.md
+See <FM_ROOT>/docs/superpowers/reports/supervisor_goal_reached_20260909_041328.md
 
 ## Supervisor goal_reached (20260909_041429)
 
-See /home/abug/timesfm/docs/superpowers/reports/supervisor_goal_reached_20260909_041429.md
+See <FM_ROOT>/docs/superpowers/reports/supervisor_goal_reached_20260909_041429.md
 
 ## Supervisor budget_exhausted (20260909_232042)
 
-See /home/abug/timesfm/docs/superpowers/reports/supervisor_budget_exhausted_20260909_232042.md
+See <FM_ROOT>/docs/superpowers/reports/supervisor_budget_exhausted_20260909_232042.md

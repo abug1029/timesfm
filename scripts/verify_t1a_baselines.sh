@@ -1,7 +1,7 @@
 #!/bin/bash
 # T1a 基线验收
 set -euo pipefail
-cd /home/abug/timesfm
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
 echo "=== 1. 基线文件计数 ==="
 COUNT=$(ls -1 task_FM/config/baseline_points_*_nocov.jsonl 2>/dev/null | wc -l)

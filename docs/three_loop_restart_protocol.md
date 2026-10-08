@@ -2,6 +2,8 @@
 
 > 目标：确保三环系统重启后，模型（peer agents）不会被历史状态残留误导。
 
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
+
 ## 问题清单
 
 重启时以下状态标识可能导致模型误解：
@@ -28,7 +30,7 @@
 ## 快速重启（推荐）
 
 ```bash
-cd /home/abug/timesfm
+cd <FM_ROOT>
 bash scripts/restart_three_loop_clean.sh
 ```
 

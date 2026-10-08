@@ -1,10 +1,12 @@
 # Timesfm Git 同步备份指南
 
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
+
 ## 架构
 
 ```
 本机 WSL Ubuntu-22.04          目标机 Windows (100.96.19.116)
-/home/abug/timesfm              ┌─ SSH Server (OpenSSH, chong 用户)
+<FM_ROOT>              ┌─ SSH Server (OpenSSH, chong 用户)
 git remote "backup" ──────────► │  └─ WSL Ubuntu-24.04
                                  │     /root/timesfm (root 用户)
                                  └─ administrators_authorized_keys 认证
@@ -13,7 +15,7 @@ git remote "backup" ──────────► │  └─ WSL Ubuntu-24.
 ## 快速命令
 
 ```bash
-cd /home/abug/timesfm
+cd <FM_ROOT>
 
 # 检查同步状态
 git fetch backup && git log --oneline HEAD..backup/master
@@ -65,7 +67,7 @@ git config --get remote.backup.uploadpack
 当需要检查远程更新并与本地比对时：
 
 ```bash
-cd /home/abug/timesfm && ./pull_and_compare.sh
+cd <FM_ROOT> && ./pull_and_compare.sh
 ```
 
 该脚本会：

@@ -41,7 +41,7 @@
 
 set -euo pipefail
 
-EXPROOT=/home/abug/timesfm/task_FM/experiments
+EXPROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/task_FM/experiments"
 TRASH="$EXPROOT/_trash"
 KEEP_LATEST=3
 

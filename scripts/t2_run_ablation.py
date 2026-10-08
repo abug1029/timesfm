@@ -14,7 +14,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-FM_ROOT = Path("/home/abug/timesfm")
+# 仓库根由本文件位置推导
+FM_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FM_ROOT))
 sys.path.insert(0, str(FM_ROOT / "scripts"))
 

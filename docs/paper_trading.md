@@ -1,5 +1,7 @@
 # Copilot 纸面使用流程
 
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
+
 **定位**：把弱正品种的盘中预测记下来，满 24 根 1H 后对账。  
 **不是**：自动下单、Vol 压平、用账本改 `prediction_scheme`。
 
@@ -42,7 +44,7 @@
 环境：
 
 ```bash
-cd /home/abug/timesfm          # WSL2 Ubuntu-22.04（FM_a / PRAXIST 同仓）
+cd <FM_ROOT>          # WSL2 Ubuntu-22.04（FM_a / PRAXIST 同仓）
 source .venv/bin/activate      # 本仓 venv（Python 3.11）
 ```
 

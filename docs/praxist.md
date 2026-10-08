@@ -1,5 +1,7 @@
 # Praxist 在 FM_a 里做什么
 
+> **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
+
 面向第一次接触本仓 Praxist 的人：五分钟搞清**它是什么、怎么转、读哪份文档**。运维命令、故障表、启停细节见 [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md)。
 
 | 你想… | 去哪 |
@@ -143,7 +145,7 @@ Stage 3 契约（2026-09-28/29 结案）：评估带 horizon 填充标记（`cas
 重启（规范方式 = `scripts/start_supervisor.sh`，2026-09-21 起；PATH / `.env.praxist` / setsid 孤儿化由 launcher 处理并打印 PID）：
 
 ```bash
-cd /home/abug/timesfm
+cd <FM_ROOT>
 scripts/start_supervisor.sh
 ```
 

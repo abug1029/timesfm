@@ -1,7 +1,7 @@
 """生成基线 dir_ok 序列用于 DM 配对检验
 
 用法:
-    python scripts/generate_baseline_points.py --symbol ss --cov ccl --root /home/abug/timesfm
+    python scripts/generate_baseline_points.py --symbol ss --cov ccl --root .
 
 输出:
     task_FM/config/baseline_points_{symbol}.jsonl  每行 {cutoff, dir_ok, delta_pred, delta_real}
