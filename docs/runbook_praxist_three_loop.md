@@ -173,6 +173,123 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 
 ---
 
+## 无人值守运维（2026-10-08 实施计划批次 A/A2）
+
+> **背景**：待解决问题 spec（`docs/superpowers/specs/2026-10-08-open-issues-closure-spec.md`）批次 A/A2 实施了四类运维守护机制，提升三环系统的无人值守安全性。
+
+### 维护窗口旗标（maintenance.flag）
+
+**用途**：临时暂停自愈，进行人工维护（如升级代码、修改配置）。
+
+```bash
+# 启用维护窗口（7 天自动过期）
+touch data/cache/maintenance.flag
+
+# 检查维护窗口状态
+ls -lh data/cache/maintenance.flag
+
+# 提前结束维护窗口
+rm data/cache/maintenance.flag
+```
+
+**行为**：
+- 旗标存在且未过期（< 7 天）：`diagnose_three_loop.sh` 检测到后跳过自愈，仅报告状态
+- 旗标过期（≥ 7 天）：自动删除旗标，恢复自愈
+- 诊断输出：`MAINTENANCE [维护窗口中，暂停自愈]`
+
+**注意**：维护窗口不会停止正在运行的 supervisor/slow loop，只阻止自动重启。
+
+### 熔断机制（heal_fail.count）
+
+**用途**：防止自愈死循环（如配置错误导致反复重启失败）。
+
+**触发条件**：连续 3 次自愈失败（`heal_fail.count >= 3`）。
+
+**行为**：
+- 触发熔断：停止自愈，发送告警（日志 + 桌面通知），创建 `d5_disabled.flag` 禁用孤儿回收
+- 诊断输出：`CIRCUIT_BROKEN [熔断中，需人工清除 heal_fail.count]`
+
+**恢复步骤**：
+```bash
+# 1. 排查问题（查看 data/cache/supervisor.out 日志）
+# 2. 同时清除两个文件
+rm data/cache/heal_fail.count data/cache/d5_disabled.flag
+# 3. 手动重启 supervisor
+bash scripts/start_supervisor.sh
+```
+
+**自动清零**：每次自愈成功后，`heal_fail.count` 自动清零。
+
+### 孤儿 run 回收（active_runs.json + flock）
+
+**用途**：防止 supervisor 被硬杀后，慢环进程成为孤儿继续消耗资源。
+
+**机制**：
+1. supervisor 启动慢环时，两段式写入 `data/cache/active_runs.json`：
+   - Popen 前：写意图记录（含 batch_id）
+   - Popen 后：补 pid + cmdline
+2. `diagnose_three_loop.sh` 检测到 supervisor 不在运行时：
+   - 读取 `active_runs.json`
+   - 检查 `aligned_slow_loop.lock`（flock）
+   - 若锁被持有但 pid 不存在/不匹配：kill 孤儿进程
+   - 校验 worktree 路径（防误杀其他会话）
+
+**诊断输出**：
+- `发现孤儿 run：pid=XXX batch=XXX cwd=XXX`
+- `孤儿 run 已清理`
+- `无孤儿 run（锁可获取）`
+
+**禁用孤儿回收**：
+```bash
+# 临时禁用（熔断时自动创建）
+touch data/cache/d5_disabled.flag
+
+# 恢复
+rm data/cache/d5_disabled.flag
+```
+
+### 诊断脚本（diagnose_three_loop.sh）
+
+**用途**：统一的三环健康检查与自愈入口。
+
+```bash
+# 手动运行诊断
+bash scripts/diagnose_three_loop.sh
+```
+
+**输出状态**：
+- `HEALTHY`：三环正常
+- `HEALED`：检测到问题并已自愈
+- `MAINTENANCE`：维护窗口中，暂停自愈
+- `CIRCUIT_BROKEN`：熔断触发，需人工干预
+- `NEEDS_HUMAN`：检测到问题但无法自动修复
+
+**自动调度**：需配置 Windows Task Scheduler（每 15 分钟运行一次），见 `docs/superpowers/runbooks/task_scheduler_setup.md`（待补）。
+
+### 四类停用路径（回滚预案）
+
+| 停用对象 | 操作 | 恢复 |
+|---------|------|------|
+| 调度任务 | Task Scheduler 禁用 | 启用任务 |
+| 维护窗口 | `touch maintenance.flag` | `rm maintenance.flag` 或等待 7 天过期 |
+| 孤儿回收 | `touch d5_disabled.flag` | `rm d5_disabled.flag` |
+| 熔断 | `heal_fail.count` 达到 3 | `rm heal_fail.count d5_disabled.flag` |
+
+**原则**：每项停用都可通过删一个文件 / 禁一个任务实现，无需回滚代码提交。
+
+### 演练验证（2026-10-08 完成）
+
+5 次演练全部通过：
+1. ✅ 自愈恢复：supervisor 被杀后 11 分钟内恢复
+2. ✅ 维护窗口：旗标存在时阻止自愈，移除后恢复
+3. ✅ 熔断触发：3 次失败后触发，清除后恢复
+4. ✅ 孤儿回收：清理 stale active_runs.json
+5. ✅ D5 禁用：旗标存在时不回收，移除后回收
+
+**发现并修复**：孤儿清理逻辑在锁可获取时未清理 stale active_runs.json，已修复（commit `b232e14`）。
+
+---
+
 ## 数据资产备份与清理（2026-10-07）
 
 **备份**（2026-10-07 晚裁定：与活仓同一个仓库，远端 GitHub 即备份）：

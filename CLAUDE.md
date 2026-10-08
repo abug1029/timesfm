@@ -36,6 +36,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 - 品种状态：`task_FM/config/symbol_status.json`。选题读 `known_verdicts.inc.md` 的 Effective clues，不要优先波动率。有失败史必须 `failure_delta`。跟进合同：`docs/2026-09-19-three-loop-followup-spec.md`
 - 目标：`scripts/praxist_goal.yaml`；机器状态：`data/cache/supervisor_state.json`
 - 密钥只进 `.env.praxist`，不要写进 `task_FM/task.yaml`
+- **无人值守运维（2026-10-08）**：维护窗口旗标（`data/cache/maintenance.flag`，7天过期）、熔断机制（`data/cache/heal_fail.count` ≥3 触发）、孤儿 run 回收（`data/cache/active_runs.json` + flock）、D5 禁用旗标（`data/cache/d5_disabled.flag`）。诊断入口：`scripts/diagnose_three_loop.sh`。详见 runbook "无人值守运维" 章节。
 
 ## TypeSafe Jev 协变量预筛（软建议模式，2026-09-22）
 
