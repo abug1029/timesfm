@@ -102,7 +102,8 @@ cleanup_orphan_runs() {
     if (set -C; 2>/dev/null > "$SLOW_LOOP_LOCK.test") 2>/dev/null; then
       # 能获取锁，说明没有进程持有
       rm -f "$SLOW_LOOP_LOCK.test"
-      log "无孤儿 run（锁可获取）"
+      log "无孤儿 run（锁可获取），清理 stale active_runs.json"
+      rm -f "$ACTIVE_RUNS_FILE"
       return
     fi
     rm -f "$SLOW_LOOP_LOCK.test"
