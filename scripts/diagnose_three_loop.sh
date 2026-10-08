@@ -25,6 +25,85 @@ esac
 NOW=$(date +%s)
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 
+# ---------- 批次 A 新增：维护窗口与熔断 ----------
+MAINT_FLAG=data/cache/maintenance.flag
+HEAL_FAIL_COUNT=data/cache/heal_fail.count
+D5_DISABLED_FLAG=data/cache/d5_disabled.flag
+CIRCUIT_BREAKER_THRESHOLD=3
+MAINT_FLAG_EXPIRE_DAYS=7
+
+# 检查维护窗口旗标（存在且未过期则暂停自愈）
+MAINT_WINDOW_ACTIVE=0
+if [ -f "$MAINT_FLAG" ]; then
+  MAINT_MTIME=$(stat -c %Y "$MAINT_FLAG")
+  MAINT_AGE_DAYS=$(( (NOW - MAINT_MTIME) / 86400 ))
+  if [ "$MAINT_AGE_DAYS" -lt "$MAINT_FLAG_EXPIRE_DAYS" ]; then
+    MAINT_WINDOW_ACTIVE=1
+    log "维护窗口激活（${MAINT_AGE_DAYS}天/${MAINT_FLAG_EXPIRE_DAYS}天）"
+  else
+    log "维护窗口已过期（${MAINT_AGE_DAYS}天），自动失效"
+    rm -f "$MAINT_FLAG"
+  fi
+fi
+
+# 检查熔断状态
+CIRCUIT_BROKEN=0
+if [ -f "$HEAL_FAIL_COUNT" ]; then
+  FAIL_COUNT=$(cat "$HEAL_FAIL_COUNT")
+  if [ "$FAIL_COUNT" -ge "$CIRCUIT_BREAKER_THRESHOLD" ]; then
+    CIRCUIT_BROKEN=1
+    log "熔断已触发（失败${FAIL_COUNT}次≥${CIRCUIT_BREAKER_THRESHOLD}），自愈停用"
+  fi
+fi
+
+# 检查 D5 禁用旗标
+D5_DISABLED=0
+if [ -f "$D5_DISABLED_FLAG" ]; then
+  D5_DISABLED=1
+  log "D5 扫尾已禁用"
+fi
+
+# 告警函数（日志 + 桌面通知）
+alert() {
+  local msg="$1"
+  log "ALERT: $msg"
+  # 桌面通知（WSL 下通过 wsl-notify-send 或 PowerShell）
+  if command -v wsl-notify-send >/dev/null 2>&1; then
+    wsl-notify-send "三环告警" "$msg" 2>/dev/null || true
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('$msg', '三环告警', 'OK', 'Warning')" 2>/dev/null || true
+  fi
+}
+
+# 记录自愈失败
+record_heal_failure() {
+  if [ -f "$HEAL_FAIL_COUNT" ]; then
+    FAIL_COUNT=$(cat "$HEAL_FAIL_COUNT")
+    echo $((FAIL_COUNT + 1)) > "$HEAL_FAIL_COUNT"
+  else
+    echo 1 > "$HEAL_FAIL_COUNT"
+  fi
+  FAIL_COUNT=$(cat "$HEAL_FAIL_COUNT")
+  log "自愈失败计数：${FAIL_COUNT}/${CIRCUIT_BREAKER_THRESHOLD}"
+  if [ "$FAIL_COUNT" -ge "$CIRCUIT_BREAKER_THRESHOLD" ]; then
+    alert "熔断触发：连续${FAIL_COUNT}次自愈失败，停用自愈与D5扫尾"
+    touch "$D5_DISABLED_FLAG"
+  fi
+}
+
+# 记录自愈成功（清零计数）
+record_heal_success() {
+  if [ -f "$HEAL_FAIL_COUNT" ]; then
+    rm -f "$HEAL_FAIL_COUNT"
+    log "自愈成功，失败计数清零"
+  fi
+  # 同时清除 D5 禁用旗标
+  if [ -f "$D5_DISABLED_FLAG" ]; then
+    rm -f "$D5_DISABLED_FLAG"
+    log "D5 禁用旗标已清除"
+  fi
+}
+
 # ---------- 收集 ----------
 SUP_PIDS=$(pgrep -f "scripts/praxist_supervisor.py" | tr '\n' ' ')
 HB_FILE=data/cache/supervisor_heartbeat
@@ -66,20 +145,38 @@ fi
 
 # ---------- 自愈 ----------
 if [ "$STATE" = "AUTO_HEAL" ]; then
-  # 先尝试停掉残留 supervisor（SIGTERM 优雅），再 canonical 重启
-  if [ "$SUPERVISOR_UP" -eq 1 ]; then
-    kill -TERM $SUP_PIDS 2>/dev/null
-    sleep 3
-  fi
-  if O=$(bash scripts/start_supervisor.sh 2>&1); then
-    STATE="HEALED"
+  # 检查维护窗口
+  if [ "$MAINT_WINDOW_ACTIVE" -eq 1 ]; then
+    log "维护窗口激活，跳过自愈"
+    STATE="MAINTENANCE"
+    ACTION="维护窗口中，暂停自愈"
+  # 检查熔断
+  elif [ "$CIRCUIT_BROKEN" -eq 1 ]; then
+    log "熔断已触发，跳过自愈（仅告警）"
+    alert "自愈请求被熔断阻止（$ACTION）"
+    STATE="CIRCUIT_BROKEN"
+    ACTION="熔断中，需人工清除 heal_fail.count"
   else
-    STATE="NEEDS_HUMAN"; ACTION="heal restart FAILED: $O"
+    # 先尝试停掉残留 supervisor（SIGTERM 优雅），再 canonical 重启
+    if [ "$SUPERVISOR_UP" -eq 1 ]; then
+      kill -TERM $SUP_PIDS 2>/dev/null
+      sleep 3
+    fi
+    if O=$(bash scripts/start_supervisor.sh 2>&1); then
+      STATE="HEALED"
+      record_heal_success
+    else
+      STATE="NEEDS_HUMAN"
+      ACTION="heal restart FAILED: $O"
+      record_heal_failure
+    fi
   fi
 fi
 
 case "$STATE" in
   HEALTHY)  echo "HEALTHY pids=[${SUP_PIDS% }] hb=${HB_AGE}min run=${RUN_MINS}min claude=$SUPCMD" ;;
   HEALED)   echo "HEALED [$ACTION] pids=[${SUP_PIDS% }] claude=$SUPCMD" ;;
+  MAINTENANCE) echo "MAINTENANCE [$ACTION] pids=[${SUP_PIDS% }] hb=${HB_AGE}min run=${RUN_MINS}min" ;;
+  CIRCUIT_BROKEN) echo "CIRCUIT_BROKEN [$ACTION] pids=[${SUP_PIDS% }] hb=${HB_AGE}min run=${RUN_MINS}min" ;;
   *)        echo "NEEDS_HUMAN [$ACTION] pids=[${SUP_PIDS% }] hb=${HB_AGE}min run=${RUN_MINS}min claude=$SUPCMD" ;;
 esac
