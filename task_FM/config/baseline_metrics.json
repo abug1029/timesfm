@@ -142,5 +142,11 @@
     "endpoint_mape": 5.93,
     "n": 588,
     "n_eff": 73
+  },
+  "jm": {
+    "dir_acc": 0.563,
+    "endpoint_mape": 9.09,
+    "n": 588,
+    "n_eff": 73
   }
 }
