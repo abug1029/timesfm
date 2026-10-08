@@ -21,6 +21,9 @@ except ImportError:
 
 _PERSISTABLE_DM = frozenset({"ok", "set_mismatch_ok"})
 
+# 批次 B：tier 值域守卫（Q2=b，N10 语义消歧）
+VALID_TIER_VALUES = frozenset({"S", "A", "B", "C", "D"})
+
 
 def fdr_pass_persistable(verdict):
     """W3.4：只有确认运行、缺失可接受、且 DM 状态可确认时，fdr_pass=True 才能落盘。
@@ -1139,13 +1142,24 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     min_pass_variant_dir_acc = min(pass_dir_accs) if pass_dir_accs else None
     # Phase 1: 基础质量门槛
     n_gate_pass_variants = len([v for v in snap.get("variants", {}).values() if v.get("gate_pass")])
-    gate_pass_dir_accs = [float(v["dir_acc"]) for v in snap.get("variants", {}).values() 
+    gate_pass_dir_accs = [float(v["dir_acc"]) for v in snap.get("variants", {}).values()
                           if v.get("gate_pass") and isinstance(v.get("dir_acc"), (int, float))]
     avg_dir_acc_gate_pass = sum(gate_pass_dir_accs) / len(gate_pass_dir_accs) if gate_pass_dir_accs else 0.0
-    
+
+    # 批次 B：tier 值域守卫（Q2=b，键名为现有 tier）
+    def is_valid_tier(v):
+        """校验 tier 值域，防止第三套语义混入（N10）"""
+        tier = v.get("tier")
+        if tier is None:
+            return False
+        if tier not in VALID_TIER_VALUES:
+            _log_decision(log, "tier_domain_violation", f"variant={v.get('variant_id', 'unknown')} tier={tier}")
+            return False
+        return True
+
     # Phase 2: 高质量变体
-    n_tier_a_or_b = len([v for v in snap.get("variants", {}).values() 
-                         if v.get("tier") in ["A", "B"]])
+    n_tier_a_or_b = len([v for v in snap.get("variants", {}).values()
+                         if is_valid_tier(v) and v.get("tier") in ["A", "B"]])
     n_symbols_represented = len(symbols_hit)
     
     # Phase 3: 稳定性验证 (placeholder - need actual multi-seed validation data)
@@ -1164,7 +1178,7 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
             if isinstance(v, dict) and v.get("symbol") == symbol
         ]
         symbol_gate_pass = [v for v in symbol_variants if v.get("gate_pass")]
-        symbol_tier_a_b = [v for v in symbol_variants if v.get("tier") in ["A", "B"]]
+        symbol_tier_a_b = [v for v in symbol_variants if is_valid_tier(v) and v.get("tier") in ["A", "B"]]
         
         # Phase 1: 基础质量门槛
         n_gate_pass = len(symbol_gate_pass)
