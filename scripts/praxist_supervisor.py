@@ -1148,7 +1148,11 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
 
     # 批次 B：tier 值域守卫（Q2=b，键名为现有 tier）
     def is_valid_tier(v):
-        """校验 tier 值域，防止第三套语义混入（N10）"""
+        """校验 tier 值域，防止非法值（第二套中文语义、None、数字等）混入。
+
+        注意：第三套语义（"A"/"B"/"C" 字面值）与第一套值域重叠，值域守卫无法区分；
+        第三套语义的实际防线是写入方唯一性 + two_star_critic 已退役（N10）。
+        """
         tier = v.get("tier")
         if tier is None:
             return False

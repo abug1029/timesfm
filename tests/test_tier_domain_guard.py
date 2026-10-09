@@ -36,9 +36,9 @@ def test_invalid_tier_values_rejected():
         "A/B",         # 混合值
         "可预测",       # 中文（第二套语义）
         "当前不可验证",  # 中文（第二套语义）
-        "1",           # 数字（第三套语义）
-        "2",           # 数字（第三套语义）
-        "3",           # 数字（第三套语义）
+        "1",           # 数字字符串（非法值）
+        "2",           # 数字字符串（非法值）
+        "3",           # 数字字符串（非法值）
         "",            # 空字符串
         "a",           # 小写
         "S/A",         # 多个值
@@ -58,17 +58,21 @@ def test_missing_tier_field():
 
 
 def test_tier_domain_guard_prevents_semantic_mixin():
-    """值域守卫应防止第三套语义混入（N10 核心风险）"""
+    """值域守卫应防止非法值混入（第二套中文语义、None、数字等）。
+
+    注意：第三套语义（"A"/"B"/"C"）与第一套值域重叠，守卫无法区分；
+    第三套语义的实际防线是写入方唯一性 + two_star_critic 已退役。
+    """
     from praxist_supervisor import VALID_TIER_VALUES
 
-    # 模拟第三套语义（硬编码 "A"/"B"/"C" 表示优先级）
-    # 这些值与第一套语义（变体级质量评级 S/A/B/C/D）字面重叠
-    # 但如果有人误写为 "1"/"2"/"3"，守卫应拦住
+    # 值域守卫拦住的是非法值（如 "1"/"2"/"3"、中文、空字符串等）
+    # 第三套语义的 "A"/"B"/"C" 与第一套值域 {S,A,B,C,D} 重叠，守卫无法区分
+    # 第三套语义的实际防线是写入方唯一性 + two_star_critic 已退役
 
     third_semantic_values = ["1", "2", "3"]
     for val in third_semantic_values:
         assert val not in VALID_TIER_VALUES, \
-            f"第三套语义值 {val!r} 应被值域守卫拦住"
+            f"非法值 {val!r} 应被值域守卫拦住"
 
     # 第二套语义（中文）也应被拦住
     second_semantic_values = ["可预测", "当前不可验证", "需更多样本"]
