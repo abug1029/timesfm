@@ -15,10 +15,10 @@
 | **D4** | 运维风险 | 有自愈脚本 `diagnose_three_loop.sh`，缺定时调度 | 收编现有脚本 + 配调度 + 维护窗口旗标 + 熔断 | Q7（脚本定位）、Q3（调度频率）、Q4（告警通道） |
 | **D5** | 运维风险 | `start_new_session=True` 导致 supervisor 被杀后孤儿 run 持续烧算力 | 两段式写入 `active_runs.json` + flock 优先判据 + 重启前扫尾 | Q7、Q8（退出合同）、Q6（清理力度） |
 | **N10** | 语义/机制欠账 | `tier` 一词承载三套语义（变体质量评级 / 品种目标判定 / 作业优先级） | 只做值域守卫，不改名 | Q2（是否改名） |
-| **E1** | 证据链断裂 | 上游 `universe_eligibility.json` 不存在，KB 21/21 品种 `no_evidence` | 若活仓也没有，放弃 E1 | Q1（上游是否还在） |
+| **E1** | 证据链断裂 | 上游 `universe_eligibility.json` 不存在，KB 23/23 品种 `no_evidence` | 若活仓也没有，放弃 E1 | Q1（上游是否还在） |
 
 **关键约束**：
-- D4/D5 所有逻辑必须在 **WSL 环境内闭环**（不依赖 Windows Task Scheduler 以外的外部服务）
+- D4/D5 所有逻辑必须在 **WSL 环境内闭环**（不依赖外部服务（Windows 侧工具仅在调度落点选择时使用，且为可选项））
 - Q4 告警通道：裁定为 **(b) 日志 + 桌面通知**
 - T2（证据链闭合）已标「**未通过（被 Q1 阻塞）**」，不阻塞 T1/T3
 
@@ -212,7 +212,7 @@ Q2=(b) → 批次 D 取消 → Q9 不适用。`tier_classifier.py:13` 的表述�
 | 证据 | 内容 |
 |------|------|
 | `reports/phase1/full_universe_neutral_r1_ops/ECONOMIC_VERDICT.json` | **不存在** |
-| `config/knowledge_base.json` | 21/21 品种 `evidence_grade = no_evidence` |
+| `config/knowledge_base.json` | 23/23 品种 `evidence_grade = no_evidence` |
 | `scripts/l1_economic_verdict.py` | 生成器存在；`:46` `--out` 默认 `ECONOMIC_VERDICT.md` |
 | `scripts/build_knowledge_base.py:23` | `DEFAULT_L1` 默认读 `ECONOMIC_VERDICT.json` |
 | **默认参数不一致** | 生成器写 `.md`、KB 读 `.json`——与「文件缺失」相互独立的第二个缺陷 |
@@ -225,7 +225,7 @@ universe_eligibility.json                          ← 本工作区不存在
    ↓ l1_economic_verdict.py --eligibility
 ECONOMIC_VERDICT.{json,md}                        ← 两者均不存在
    ↓ build_knowledge_base --l1
-knowledge_base.json                                ← 在，但 21/21 no_evidence
+knowledge_base.json                                ← 在，但 23/23 no_evidence
 ```
 
 ### 5.2 建议方案
