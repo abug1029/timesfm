@@ -30,18 +30,19 @@ MAINT_FLAG=data/cache/maintenance.flag
 HEAL_FAIL_COUNT=data/cache/heal_fail.count
 D5_DISABLED_FLAG=data/cache/d5_disabled.flag
 CIRCUIT_BREAKER_THRESHOLD=3
-MAINT_FLAG_EXPIRE_DAYS=7
+# 覆盖一次常规部署；更长维护须续期 touch（closure spec §4.1.3: T_expire = 4h）
+MAINT_FLAG_EXPIRE_HOURS=4
 
 # 检查维护窗口旗标（存在且未过期则暂停自愈）
 MAINT_WINDOW_ACTIVE=0
 if [ -f "$MAINT_FLAG" ]; then
   MAINT_MTIME=$(stat -c %Y "$MAINT_FLAG")
-  MAINT_AGE_DAYS=$(( (NOW - MAINT_MTIME) / 86400 ))
-  if [ "$MAINT_AGE_DAYS" -lt "$MAINT_FLAG_EXPIRE_DAYS" ]; then
+  MAINT_AGE_HOURS=$(( (NOW - MAINT_MTIME) / 3600 ))
+  if [ "$MAINT_AGE_HOURS" -lt "$MAINT_FLAG_EXPIRE_HOURS" ]; then
     MAINT_WINDOW_ACTIVE=1
-    log "维护窗口激活（${MAINT_AGE_DAYS}天/${MAINT_FLAG_EXPIRE_DAYS}天）"
+    log "维护窗口激活（${MAINT_AGE_HOURS}h/${MAINT_FLAG_EXPIRE_HOURS}h）"
   else
-    log "维护窗口已过期（${MAINT_AGE_DAYS}天），自动失效"
+    log "维护窗口已过期（${MAINT_AGE_HOURS}h），自动失效"
     rm -f "$MAINT_FLAG"
   fi
 fi
