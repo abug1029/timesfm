@@ -4,7 +4,7 @@
 |------|-----|
 | **ID** | S1（新 S 系列：结构性重构；与已关闭的 **M5「n_eff 常数函数」** 完全不同——M5 已于 2026-10-07 溯源结案，见 `docs/superpowers/reports/2026-10-07-tech-debt-inventory.md:47`） |
 | **日期** | 2026-10-09 |
-| **版本** | v3.0（经二次 AST 全量复审；N1-N7 全部修正） |
+| **版本** | v3.1（经三次 AST 全量复审；N1-N7 + F1-F8 全部修正） |
 | **作者** | Architect Agent |
 | **状态** | Draft → 待实施 |
 | **前置依赖** | D4/D5（已完成） |
@@ -77,7 +77,7 @@ main() 调用 _main_locked()，后者协调以下功能域：
 
 ### 2.1 设计原则
 
-1. 向后兼容第一：import praxist_supervisor as sup 后所有 36 个 public 函数可用
+1. 向后兼容第一：import praxist_supervisor as sup 后所有 32 个 public 函数可用
 2. 零运行时依赖变更：不引入新包，不改变启动顺序
 3. 可回滚：每次迁移一个域，单 commit 可 git revert
 4. 内聚 > 行数均衡：按职责边界拆，不追求文件大小均匀
@@ -110,7 +110,7 @@ _load_dotenv(), _check_required_env(), _resolve_praxist_bin(), _praxist_bin(), _
 依赖：sup_paths | 被依赖：sup_loops, sup_provider
 
 #### sup_state.py (~200 行)
-load_state(), save_state(), load_goal(), _goal_target_symbols(), _assert_goal_symbols_contract(), _merge_save(), _cad_int(), _norm_search_policy(), **_ensure_tokens_baseline()**, **_read_token_m()**, **_token_spend_m()**, _load_goal_symbols(), _reset_goal_symbols_cache()
+load_state(), save_state(), load_goal(), _goal_target_symbols(), _assert_goal_symbols_contract(), _cad_int(), _norm_search_policy(), **_ensure_tokens_baseline()**, **_read_token_m()**, **_token_spend_m()**, _load_goal_symbols(), _reset_goal_symbols_cache(), **load_preregistry()**, **_latest_data_dt()**
 依赖：sup_paths, yaml, json | 被依赖：几乎所有模块
 
 > **N1 环 B 修正**：`_ensure_tokens_baseline` + `_read_token_m` + `_token_spend_m` 从 sup_loops 移至 sup_state（load_state:774 直接调用 _ensure_tokens_baseline，属于状态初始化语义，与 state 域内聚）。
@@ -128,13 +128,13 @@ _failover_configured(), _llm_provider(), _llm_route(), _praxist_env(), _failover
 > **N1 边 H 修正**：`parse_429_reset` 移至 sup_provider（_latest_429_reset:1049 是其唯一调用方，provider 自洽）。
 
 #### sup_harvest.py (~500 行)
-harvest_proposals(), **harvest_survivors()**, _proposal_priority_score(), _proposal_quality_gate(), **_sector_filter_check()**, _covariate_filter_check(), _success_delta_gate(), _prescreen_async(), _cross_run_repeat_counts(), _append_backlog(), collect_proposed_variant_ids(), materialize_covariate_menu(), _apply_prescreen_score(), _prescreen_plausibility(), _verdict_sort_key(), _latest_verdict_per_symbol(), _recent_ok_verdicts()
+harvest_proposals(), **harvest_survivors()**, _proposal_priority_score(), _proposal_quality_gate(), **_sector_filter_check()**, _covariate_filter_check(), _prescreen_async(), _cross_run_repeat_counts(), _append_backlog(), materialize_covariate_menu(), _apply_prescreen_score(), _prescreen_plausibility(), _latest_verdict_per_symbol(), _recent_ok_verdicts()
 依赖：sup_paths, sup_state, sup_evidence, sup_lifecycle, search_trees, search_promote, registry_lib | 被依赖：sup_loops
 
 > **N7 修正**：`harvest_survivors`(:1254) 与 `_sector_filter_check`(:2208) 等 gap 段函数归入 sup_harvest（收割职责内聚）。
 
 #### sup_evidence.py (~700 行)
-build_snapshot(), materialize_known_verdicts(), load_covariate_pool(), load_symbol_status(), ensure_baselines()（跨域移动：原域 O → 此处）, _baseline_protocol_fingerprint(), _current_protocol_fingerprint(), _archive_baseline_before_regen(), _valid_n_for_symbol()（跨域移动：原域 M → 此处）, _experiment_fp_for(), symbol_goal_tier(), _row_eval_end_ts(), _current_window_anchor(), _today_shanghai(), _kline_1h_max_dt(), _symbol_data_stale(), _prior_success_class(), _prior_success_row(), _success_delta_gate(), _locked_success_rows(), _locked_window_lines(), _symbol_n_table(), _load_evaluator(), _symbol_has_current_nocov_baseline(), _protocol_section_line(), _verdict_family(), _finite_dir_acc(), _has_prior_failure(), _effective_clue_lines(), _cross_matrix_lines(), _prior_class(), _old_protocol_prior_lines(), **_is_confirmable_failure()**, **_dead_families()**, **_dead_family_lines()**, **_family_confirmatory_counts()**, **_active_protocol_snapshot()**, **_regen_baseline_with_archive()**, **_baseline_reanchor_reason()**, **_guard_confirm_from_ts_after_regen()**, **_prereg_confirm_from_ts()**, **_cutoffs_at_or_after()**（嵌套，随宿主迁移）, **_da_key()**（嵌套，随宿主迁移）,
+build_snapshot(), materialize_known_verdicts(), load_covariate_pool(), load_symbol_status(), ensure_baselines(), **_verdict_sort_key()**, **collect_proposed_variant_ids()**, **_success_delta_gate()**（跨域移动：原域 O → 此处）, _baseline_protocol_fingerprint(), _current_protocol_fingerprint(), _archive_baseline_before_regen(), _valid_n_for_symbol()（跨域移动：原域 M → 此处）, _experiment_fp_for(), symbol_goal_tier(), _row_eval_end_ts(), _current_window_anchor(), _today_shanghai(), _kline_1h_max_dt(), _symbol_data_stale(), _prior_success_class(), _prior_success_row(), _success_delta_gate(), _locked_success_rows(), _locked_window_lines(), _symbol_n_table(), _load_evaluator(), _symbol_has_current_nocov_baseline(), _protocol_section_line(), _verdict_family(), _finite_dir_acc(), _has_prior_failure(), _effective_clue_lines(), _cross_matrix_lines(), _prior_class(), _old_protocol_prior_lines(), **_is_confirmable_failure()**, **_dead_families()**, **_dead_family_lines()**, **_family_confirmatory_counts()**, **_active_protocol_snapshot()**, **_regen_baseline_with_archive()**, **_baseline_reanchor_reason()**, **_guard_confirm_from_ts_after_regen()**, **_prereg_confirm_from_ts()**, **_cutoffs_at_or_after()**（嵌套，随宿主迁移）, **_da_key()**（嵌套，随宿主迁移）,
 **VALID_TIER_VALUES**（从域 A 移入此处，见 C3 修正）,
 **is_valid_tier()**（从 build_snapshot 嵌套函数提升为模块级，见 C4 + N5 修正）
 依赖：sup_paths, sup_state, sup_lifecycle, registry_lib, goal_dsl, cascade.* | 被依赖：sup_harvest, sup_loops, sup_family
@@ -147,13 +147,13 @@ build_snapshot(), materialize_known_verdicts(), load_covariate_pool(), load_symb
 > - 边 I：`_load_evaluator`(:1790) → sup_evidence（被 harvest_proposals:2631 与 _symbol_n_table:2987 双向调用，不可落 sup_harvest）
 
 #### sup_family.py (~300 行)
-family_key_for(), register_family_member(), seal_research_family(), dispatch_confirmation(), finalize_confirmation(), load_family_members(), save_family_members(), due_confirmations(), confirmation_queue_row(), load_preregistry(), fdr_pass_persistable(), promote_batch_for_persistence(), _maybe_enqueue_confirmations(), _finalize_confirmation_verdict(), _requested_covariate(), _confirmation_is_final(), _confirm_data_ready(), _merge_family_members(), _stamp_member(), _seal_if_all_terminal(), _PERSISTABLE_DM, _BASE_COVARIATE, _CONFIRM_DATA_TTL_S, _CONFIRM_DATA_CACHE, _CONFIRMATION_NOTICE, _CONFIRMATION_NOTICE_TTL_S, _CONFIRM_REDISPATCH, _CONFIRM_REDISPATCH_TTL_S, _CONFIRMATORY_DM, _prereg_field(), _find_prereg(), _latest_data_dt()
+family_key_for(), register_family_member(), seal_research_family(), dispatch_confirmation(), finalize_confirmation(), load_family_members(), save_family_members(), due_confirmations(), confirmation_queue_row(), fdr_pass_persistable(), promote_batch_for_persistence(), _maybe_enqueue_confirmations(), _finalize_confirmation_verdict(), _requested_covariate(), _confirmation_is_final(), _confirm_data_ready(), _merge_family_members(), _stamp_member(), _seal_if_all_terminal(), _PERSISTABLE_DM, _BASE_COVARIATE, _CONFIRM_DATA_TTL_S, _CONFIRM_DATA_CACHE, _CONFIRMATION_NOTICE, _CONFIRMATION_NOTICE_TTL_S, _CONFIRM_REDISPATCH, _CONFIRM_REDISPATCH_TTL_S, _CONFIRMATORY_DM, _prereg_field(), _find_prereg()
 依赖：sup_paths, sup_state, sup_lifecycle, **sup_evidence**（N1 边 G：_maybe_enqueue_confirmations:521 → load_covariate_pool）, registry_lib, cascade.cov_family, cascade.experiment_fingerprint | 被依赖：sup_loops
 
 > **WARNING: 删除 `family_for`**（N2 修正）：:522 实测为 `_maybe_enqueue_confirmations` 内的**嵌套闭包**（4 空格缩进，捕获 `pool`），与 is_valid_tier 同类问题但步骤 0 未覆盖。闭包随宿主函数整体迁移，不在模块级 import 列表中。
 
 #### sup_loops.py (~680 行)
-main(), _main_locked(), decide_fast_loop(), write_stop_report(), _maybe_harvest(), _harvest_rows(), _maybe_start_slow_loop(), _maybe_finish_slow(), wait_for_batch(), cleanup_batch_workers(), ensure_phase(), plan_sample_retests(), _maybe_enqueue_retests(), quota_gate(), _commit_search_accepts(), _sweep_search_stops(), _sweep_search_promotions(), _read_cpu_hours(), _in_slow_window(), _deadline_passed(), _slow_loop_alive(), _queue_busy(), _slow_drain_complete(), _append_jsonl(), _retest_candidates()
+main(), _main_locked(), decide_fast_loop(), write_stop_report(), _maybe_harvest(), _harvest_rows(), _maybe_start_slow_loop(), _maybe_finish_slow(), wait_for_batch(), cleanup_batch_workers(), ensure_phase(), plan_sample_retests(), _maybe_enqueue_retests(), quota_gate(), _token_budget_hit(), _commit_search_accepts(), _sweep_search_stops(), _sweep_search_promotions(), _read_cpu_hours(), _in_slow_window(), _deadline_passed(), _slow_loop_alive(), _queue_busy(), _slow_drain_complete(), _append_jsonl(), _retest_candidates()
 依赖：所有其他 sup_* 模块 + search_promote, registry_lib, goal_dsl | 被依赖：无（顶层入口）
 
 ### 2.4 向后兼容层
@@ -162,15 +162,21 @@ praxist_supervisor.py 缩减为 re-export shim（约 120-180 行）。**§4.2 pa
 
 ```python
 #!/usr/bin/env python3
-from sup_paths import FM_ROOT, HERE, QUEUE, INPROGRESS, REGISTRY, STATE_PATH, LOCK_PATH, VERDICTS_INC, POOL_PATH, BACKLOG_PATH, SYMBOL_STATUS_PATH, MENU_INC, REPORT_DIR, SEARCH_COMMITMENTS_PATH, STATE_MD, EVENTS_PATH, HEARTBEAT_PATH, STOP_REPORT_JSON, RETEST_GATE_N, FAMILY_REGISTRY, PREREGISTRY_PATH
+from sup_paths import FM_ROOT, HERE, QUEUE, INPROGRESS, REGISTRY, STATE_PATH, LOCK_PATH, VERDICTS_INC, POOL_PATH, BACKLOG_PATH, SYMBOL_STATUS_PATH, MENU_INC, REPORT_DIR, SEARCH_COMMITMENTS_PATH, STATE_MD, EVENTS_PATH, HEARTBEAT_PATH, STOP_REPORT_JSON, RETEST_GATE_N, FAMILY_REGISTRY, PREREGISTRY_PATH, PHASES, POLL_S
 from sup_env import _load_dotenv, _check_required_env, _praxist, _PRAXIST
-from sup_state import load_state, save_state, load_goal, _merge_save, _goal_target_symbols, _assert_goal_symbols_contract, _cad_int, _norm_search_policy, _load_goal_symbols, _reset_goal_symbols_cache, _ensure_tokens_baseline, _read_token_m, _token_spend_m
+from sup_state import load_state, save_state, load_goal, _merge_save, _goal_target_symbols, _assert_goal_symbols_contract, _cad_int, _norm_search_policy, _load_goal_symbols, _reset_goal_symbols_cache, _ensure_tokens_baseline, _read_token_m, _token_spend_m, load_preregistry, _latest_data_dt, _CADENCE_DEFAULTS, _GOAL_YAML_DEFAULT, _GOAL_SYMBOLS_CACHE, _ev_mod_for_goal, GOAL_SYMBOLS_SET
 from sup_lifecycle import _emit_event, _write_heartbeat, _signal_handler, _shutdown_exit, _sleep_interruptible, _atexit_handler, _arm_handlers, _mark_stop_emitted, _write_stop_json, _log_decision, _now_iso, _SHUTDOWN_REQUESTED, _START_TIME, _STOP_EMITTED, _RUN_ID, _EVENT_LOCK, _HANDLERS_ARMED
-from sup_provider import _failover_configured, _llm_provider, _llm_route, _praxist_env, _failover_model_name, _failover_can_resume_same_run, _model_argv, _provider_state, _run_active, _active_run_meta, _latest_429_reset, _recorded_run_model, _status_rows, _env_first
-from sup_harvest import harvest_proposals, harvest_survivors, _proposal_priority_score, _proposal_quality_gate, _sector_filter_check, _covariate_filter_check, _success_delta_gate, _prescreen_async, _cross_run_repeat_counts, _append_backlog, collect_proposed_variant_ids, materialize_covariate_menu, _apply_prescreen_score, _prescreen_plausibility, _verdict_sort_key, _latest_verdict_per_symbol, _recent_ok_verdicts
-from sup_evidence import build_snapshot, materialize_known_verdicts, load_covariate_pool, load_symbol_status, ensure_baselines, symbol_goal_tier, _valid_n_for_symbol, _experiment_fp_for, _symbol_n_table, _baseline_protocol_fingerprint, _current_protocol_fingerprint, _archive_baseline_before_regen, _row_eval_end_ts, _current_window_anchor, _today_shanghai, _kline_1h_max_dt, _symbol_data_stale, _prior_success_class, _prior_success_row, _locked_success_rows, _locked_window_lines, VALID_TIER_VALUES, is_valid_tier, _protocol_section_line, _verdict_family, _finite_dir_acc, _has_prior_failure, _effective_clue_lines, _cross_matrix_lines, _prior_class, _old_protocol_prior_lines, _symbol_has_current_nocov_baseline, _load_evaluator, _is_confirmable_failure, _dead_families, _dead_family_lines, _family_confirmatory_counts, _active_protocol_snapshot, _regen_baseline_with_archive, _baseline_reanchor_reason, _guard_confirm_from_ts_after_regen, _prereg_confirm_from_ts
-from sup_family import family_key_for, register_family_member, seal_research_family, dispatch_confirmation, finalize_confirmation, load_family_members, save_family_members, due_confirmations, confirmation_queue_row, load_preregistry, fdr_pass_persistable, promote_batch_for_persistence, _maybe_enqueue_confirmations, _finalize_confirmation_verdict, _requested_covariate, _confirmation_is_final, _confirm_data_ready, _merge_family_members, _stamp_member, _seal_if_all_terminal, _PERSISTABLE_DM, _BASE_COVARIATE, _CONFIRM_DATA_TTL_S, _CONFIRM_DATA_CACHE, _CONFIRMATION_NOTICE, _CONFIRMATION_NOTICE_TTL_S, _CONFIRM_REDISPATCH, _CONFIRM_REDISPATCH_TTL_S, _CONFIRMATORY_DM, _prereg_field, _find_prereg, _latest_data_dt
-from sup_loops import main, decide_fast_loop, write_stop_report, ensure_phase, quota_gate, _main_locked, _maybe_harvest, _harvest_rows, _maybe_start_slow_loop, _maybe_finish_slow, wait_for_batch, cleanup_batch_workers, plan_sample_retests, _maybe_enqueue_retests, _append_jsonl, _read_cpu_hours, _in_slow_window, _deadline_passed, _slow_loop_alive, _queue_busy, _slow_drain_complete, _retest_candidates
+from sup_provider import _failover_configured, _llm_provider, _llm_route, _praxist_env, _failover_model_name, _failover_can_resume_same_run, _model_argv, _provider_state, _run_active, _active_run_meta, _latest_429_reset, _recorded_run_model, _status_rows, _env_first, parse_429_reset
+from sup_harvest import harvest_proposals, harvest_survivors, _proposal_priority_score, _proposal_quality_gate, _sector_filter_check, _covariate_filter_check, _prescreen_async, _cross_run_repeat_counts, _append_backlog, materialize_covariate_menu, _apply_prescreen_score, _prescreen_plausibility, _latest_verdict_per_symbol, _recent_ok_verdicts, CROSS_MATRIX_MAX_ROWS, OLD_PRIORS_MAX_ROWS, MIN_QUALITY_SCORE, COV_CROSS_FAIL_MIN, COV_FAIL_WINDOW, SYMBOL_FAIL_WINDOW
+from sup_evidence import build_snapshot, materialize_known_verdicts, load_covariate_pool, load_symbol_status, ensure_baselines, symbol_goal_tier, _valid_n_for_symbol, _experiment_fp_for, _symbol_n_table, _baseline_protocol_fingerprint, _current_protocol_fingerprint, _archive_baseline_before_regen, _row_eval_end_ts, _current_window_anchor, _today_shanghai, _kline_1h_max_dt, _symbol_data_stale, _prior_success_class, _prior_success_row, _success_delta_gate, _locked_success_rows, _locked_window_lines, VALID_TIER_VALUES, is_valid_tier, _protocol_section_line, _verdict_family, _finite_dir_acc, _has_prior_failure, _effective_clue_lines, _cross_matrix_lines, _prior_class, _old_protocol_prior_lines, _symbol_has_current_nocov_baseline, _load_evaluator, _is_confirmable_failure, _dead_families, _dead_family_lines, _family_confirmatory_counts, _active_protocol_snapshot, _regen_baseline_with_archive, _baseline_reanchor_reason, _guard_confirm_from_ts_after_regen, _prereg_confirm_from_ts, _verdict_sort_key, collect_proposed_variant_ids, LOCKED_WINDOW_MAX_ROWS, STALE_DATA_DAYS, SUCCESS_DELTA_MIN_CHARS, _BASELINE_STALENESS_MAX_H, _FP_TARGET_CACHE, _FP_WEIGHTS_CACHE
+from sup_family import family_key_for, register_family_member, seal_research_family, dispatch_confirmation, finalize_confirmation, load_family_members, save_family_members, due_confirmations, confirmation_queue_row, fdr_pass_persistable, promote_batch_for_persistence, _maybe_enqueue_confirmations, _finalize_confirmation_verdict, _requested_covariate, _confirmation_is_final, _confirm_data_ready, _merge_family_members, _stamp_member, _seal_if_all_terminal, _PERSISTABLE_DM, _BASE_COVARIATE, _CONFIRM_DATA_TTL_S, _CONFIRM_DATA_CACHE, _CONFIRMATION_NOTICE, _CONFIRMATION_NOTICE_TTL_S, _CONFIRM_REDISPATCH, _CONFIRM_REDISPATCH_TTL_S, _CONFIRMATORY_DM, _prereg_field, _find_prereg
+from sup_loops import main, decide_fast_loop, write_stop_report, ensure_phase, quota_gate, _main_locked, _maybe_harvest, _harvest_rows, _maybe_start_slow_loop, _maybe_finish_slow, wait_for_batch, cleanup_batch_workers, plan_sample_retests, _maybe_enqueue_retests, _append_jsonl, _read_cpu_hours, _in_slow_window, _deadline_passed, _slow_loop_alive, _queue_busy, _slow_drain_complete, _retest_candidates, _token_budget_hit, _commit_search_accepts, _sweep_search_stops, _sweep_search_promotions
+
+# stdlib re-exports for test monkeypatch (sup.time, sup.subprocess)
+import time
+import subprocess
+# goal_dsl re-export for test_supervisor.py direct calls (sup.evaluate_goal)
+from goal_dsl import evaluate_goal
 
 __all__ = [
     "main", "decide_fast_loop", "write_stop_report", "ensure_phase",
@@ -271,6 +277,8 @@ build_snapshot 内调用点更新为 `is_valid_tier(v, log)`。
 |------|------|------|
 | 单 commit：提升 is_valid_tier 到模块级 + 参数化 log + 全量测试 | pytest tests/ -x -q | git revert |
 
+> **惰性导入说明**：函数级惰性导入（如 `from data.data_store import DataStore` 在 :463/:2925/:2969 内 `import`）随宿主函数自动迁移，不占附录 A 条目——实施者无需为惰性导入单独创建模块。
+
 ### 3.1 迁移步骤（10 步 + 步骤 0）
 
 | 步骤 | 操作 | 验证 | 回滚 |
@@ -325,8 +333,10 @@ build_snapshot 内调用点更新为 `is_valid_tier(v, log)`。
 | 边 G | family deps 补 evidence | family → evidence 单向 |
 | 边 H | `parse_429_reset` → sup_provider | provider 内聚 |
 | 边 I | `_load_evaluator` → sup_evidence | evidence 内聚 |
+| **环 E** (evidence <-> harvest) | `_verdict_sort_key` + `collect_proposed_variant_ids` -> sup_evidence | harvest -> evidence 单向（v3.1 修正） |
+| **环 F** (evidence <-> family) | `load_preregistry` + `_latest_data_dt` -> sup_state | family -> state 单向，evidence -> state 单向（v3.1 修正） |
 
-**§3.2 声明：基于附录 A 的完整调用图，此 DAG 无循环依赖。**
+**§3.2 声明：基于附录 A 的完整调用图，此 DAG 无循环依赖（v3.1 修正后：环 E/F 消解）。**
 
 ### 3.3 全局变量归属（v3.0 修正版）
 
@@ -382,12 +392,25 @@ v1.0 的「零测试修改」原则已被评审证实不可行：
 
 **映射源（N2 修正）**：§4.2 脚本使用附录 A 的完整符号→模块映射表（而非 §2.4 的 import 清单），覆盖所有 ~245 个可测试引用符号（150 顶层函数 + 57 赋值 + 9 别名 + ~29 模块级常量/缓存）。
 
-**别名 patch 策略（N3 修正）**：对导入别名（`rl`, `subprocess`, `time`, `lock` 等），单点 `monkeypatch.setattr(sup, "rl", ...)` 只影响 shim 命名空间，拆分后 `rl.` 绑定存在于多个 sup_* 模块。修正策略二选一：
+**附录 A 之外的特判符号**（10 个无法经附录 A 映射，须在迁移脚本中特殊处理）：
+| 符号 | 来源 | 处置 |
+|------|------|------|
+| `time` | stdlib 模块属性（`sup.time.sleep`） | shim 已 `import time`，测试直接 `setattr(sup.time, ...)` 全局生效 |
+| `subprocess` | stdlib 模块属性（`sup.subprocess.Popen`） | shim 已 `import subprocess`，同上 |
+| `logging` | stdlib 模块属性（`s.logging = ...`） | 测试中通过 `as s` 别名替换，不属附录 A 符号 |
+| `evaluate_goal` | `goal_dsl.evaluate_goal` 直接调用 | shim 已 `from goal_dsl import evaluate_goal` 重新导出 |
+| `__file__` | 源码自省（`open(S.__file__)`） | 迁移后 S.__file__ 指向 shim（<200 行），不含原调用文本——改指 `sup_loops.__file__`（见 F7） |
+
+**迁移脚本强制要求**：必须使用 AST import 追踪（识别每个文件中 `import praxist_supervisor as <alias>` 的别名绑定），禁止裸正则 `(?:sup|S|sv|s)\.(\w+)` 匹配——后者会将局部变量 `s.update(over)`、`s.short_horizon_only` 及字符串字面量 `"%s_%s.json"`/`"sup.lock"` 误判为 supervisor 引用并改坏测试。
+
+**别名 patch 策略（N3 修正）**：对导入别名（`rl`, `subprocess`, `time`, `logging` 等），单点 `monkeypatch.setattr(sup, "rl", ...)` 只影响 shim 命名空间，拆分后 `rl.` 绑定存在于多个 sup_* 模块。修正策略二选一：
 
 1. **patch 源模块**（推荐）：`monkeypatch.setattr(rl, "read_rows", mock_read_rows)` 直接 patch 源模块 `registry_lib` 的属性。这样所有 import `rl` 的 sup_* 模块共享同一 mock。
 2. **循环 patch 全部 sup_* 模块**：在测试夹具中遍历 `[sup_paths, sup_env, sup_state, sup_lifecycle, sup_provider, sup_harvest, sup_evidence, sup_family, sup_loops]`，对每个模块 `monkeypatch.setattr(mod, "rl", mock_rl)`。
 
-对 `subprocess`/`time`/`lock` 等 stdlib 别名同理处理。
+对 `subprocess`/`time`/`logging` 等 stdlib 别名同理处理。
+
+**源码自省测试处置（F7）**：部分测试通过 `open(S.__file__)` 读取源码文本并断言特定调用存在（如 `test_search_tree_stop_rules_20261006.py:479` 断言 `'_sweep_search_stops(goal, log, snap["variants"])' in src`）。拆分后 `S.__file__` 指向 shim（不含该调用原文），此类测试须迁移为指向实际模块的 `__file__`（如 `sup_loops.__file__`）。迁移脚本须识别 `open(.*\_\_file\_\_).*read()` 模式并替换目标模块。
 
 ### 4.3 死代码闸门适配（m4 补充）
 
@@ -397,7 +420,7 @@ v1.0 的「零测试修改」原则已被评审证实不可行：
 
 1. pytest tests/test_supervisor.py -x -q
 2. pytest tests/ -x -q --tb=short（全部 32 个引用文件 + 其他测试）
-3. 验证 36+ 个 public 符号可通过 hasattr(sup, name) 访问
+3. 验证 32 个 public 函数可通过 hasattr(sup, name) 访问
 4. 验证路径常量可被 monkeypatch
 5. 验证 patch 迁移后 238+7 处全部指向实际模块
 6. **N5 新增**：验证 `tier_domain_violation` 日志路径仍有测试覆盖
@@ -432,8 +455,8 @@ tests/test_sup_modules.py：
 拆分过程须遵守以下协议，防止 cron 看门狗（diagnose_three_loop.sh, 每 15 分钟）在代码半拆分状态下触发 supervisor 重启：
 
 1. **拆分前**：
-   - 确认 supervisor 未运行（`pgrep -f praxist_supervisor` → 0 进程）——当前实测即如此
-   - 创建 `maintenance.flag` 或临时注释 crontab 中的 diagnose 行（`crontab -e` 注释 1 条）
+   - 若 supervisor 在运行：`kill -TERM <pid>` 优雅停止 → `sleep 5` 等待退出 → `pgrep -f praxist_supervisor` 确认 0 进程
+   - 暂停 cron 自动重启：`crontab -e` 注释 diagnose_three_loop.sh 行（或创建 maintenance.flag）——迁移窗口内禁止看门狗触发重启
    - 若使用 flag：每 3 小时 `touch /home/abug/timesfm/maintenance.flag` 续期（flag 过期 = 4 小时，P1 修正产物）
 
 2. **拆分中**：
@@ -458,7 +481,7 @@ tests/test_sup_modules.py：
 | 最大子模块行数 | ≤ 700 行 |
 | --dry-run --once 输出 | 与拆分前一致 |
 | 无循环导入 | 验证通过 |
-| 36+ 个 public 符号 | hasattr 全 True |
+| 32 个 public 函数 | hasattr 全 True |
 | 全局符号 re-export | `_SHUTDOWN_REQUESTED`, `_START_TIME`, `_PRAXIST`, `_PERSISTABLE_DM`, `VALID_TIER_VALUES` 均可 import |
 | **附录 A 覆盖** | 150 顶层函数 + 57 赋值 + 9 别名 + 10 嵌套，全部有目标模块 |
 | **§4.2 别名扫描** | 4 种别名形态（sup/S/sv/s）全部覆盖 |
@@ -576,11 +599,11 @@ git revert <具体步骤commit> --no-edit
 | _requested_covariate | 332 | sup_family | |
 | confirmation_queue_row | 340 | sup_family | → _now_iso, _requested_covariate |
 | due_confirmations | 360 | sup_family | → _requested_covariate, confirmation_queue_row |
-| load_preregistry | 390 | sup_family | |
+| load_preregistry | 390 | **sup_state**（v3.1 环 F） | 调用方 _maybe_enqueue_confirmations/_sweep_search_promotions/_prereg_confirm_from_ts 均 -> state |
 | load_family_members | 401 | sup_family | |
 | save_family_members | 418 | sup_family | |
 | _merge_family_members | 429 | sup_family | |
-| _latest_data_dt | 450 | sup_family | |
+| _latest_data_dt | 450 | **sup_state**（v3.1 环 F） | 调用方 _confirm_data_ready/_baseline_reanchor_reason 均 -> state |
 | _confirm_data_ready | 477 | sup_family | → _latest_data_dt |
 | _confirmation_is_final | 491 | sup_family | |
 | _maybe_enqueue_confirmations | 504 | sup_family | → load_covariate_pool（N1 边 G） |
@@ -623,7 +646,7 @@ git revert <具体步骤commit> --no-edit
 | symbol_goal_tier | 1087 | sup_evidence | |
 | build_snapshot | 1121 | sup_evidence | → _current_protocol_fingerprint, _log_decision, symbol_goal_tier |
 | harvest_survivors | 1254 | **sup_harvest**（N7） | → _experiment_fp_for, _now_iso |
-| collect_proposed_variant_ids | 1320 | sup_harvest | |
+| collect_proposed_variant_ids | 1320 | **sup_evidence**（v3.1 环 E） | 调用方 materialize_known_verdicts/_maybe_finish_slow/_main_locked 均 -> evidence |
 | _protocol_section_line | 1341 | sup_evidence | |
 | materialize_known_verdicts | 1348 | sup_evidence | → _dead_family_lines 等 |
 | _verdict_family | 1536 | sup_evidence | |
@@ -645,7 +668,7 @@ git revert <具体步骤commit> --no-edit
 | _prescreen_async | 1967 | sup_harvest | |
 | _proposal_priority_score | 2021 | sup_harvest | → _apply_prescreen_score, load_symbol_status |
 | _append_backlog | 2102 | sup_harvest | → _now_iso |
-| _verdict_sort_key | 2151 | sup_harvest | |
+| _verdict_sort_key | 2151 | **sup_evidence**（v3.1 环 E） | 调用方 _latest_verdict_per_symbol/_prior_success_row 均在 evidence 域内 |
 | _latest_verdict_per_symbol | 2157 | sup_harvest | → _verdict_sort_key |
 | _recent_ok_verdicts | 2177 | sup_harvest | |
 | _prescreen_plausibility | 2185 | sup_harvest | |
@@ -685,7 +708,7 @@ git revert <具体步骤commit> --no-edit
 | _slow_drain_complete | 3202 | sup_loops | → _queue_busy, _slow_loop_alive |
 | ensure_phase | 3205 | sup_loops | → _failover_configured, _llm_provider, _queue_busy, _run_active, _slow_loop_alive |
 | write_stop_report | 3224 | sup_loops | → _now_iso |
-| _merge_save | 3247 | sup_loops | → load_state, save_state |
+| _merge_save | 3247 | **sup_state**（v3.1 语义内聚） | 调 load_state + save_state，13 个调用点均在 loops 域但语义属 state |
 | decide_fast_loop | 3253 | sup_loops | → 17 个函数调用 |
 | main | 3524 | sup_loops | → _arm_handlers, _main_locked 等 |
 | _harvest_rows | 3579 | sup_loops | → harvest_proposals, load_covariate_pool |
@@ -790,35 +813,37 @@ git revert <具体步骤commit> --no-edit
 | 别名 | 原始模块 | 行号 | 被哪些 sup_* 模块引用 |
 |------|----------|------|---------------------|
 | rl | registry_lib | 11 | sup_family, sup_evidence, sup_harvest, sup_loops |
-| ef | cascade.experiment_fingerprint | 14 | sup_evidence |
-| st | search_trees | 15 | sup_harvest, sup_loops |
+| ef | cascade.experiment_fingerprint | 14 | sup_evidence, sup_family, sup_harvest |
+| st | search_trees | 15 | sup_evidence, sup_harvest, sup_loops, sup_provider, sup_state |
 | _fam_all_terminal | cascade.research_family | 179 | sup_family |
 | _fam_default_key | cascade.research_family | 179 | sup_family |
-| _fam_report_scope | cascade.research_family | 179 | sup_family |
+| _fam_report_scope | cascade.research_family | 179 | ~~sup_family~~（死导入，零函数引用，拆分可丢弃） |
 | _fam_make_member | cascade.research_family | 179 | sup_family |
 | _fam_register_member | cascade.research_family | 179 | sup_family |
 | _fam_seal_family | cascade.research_family | 179 | sup_family |
 
-### A.5 映射统计
+> **v3.1 补充**：以下 4 个非 stdlib 模块级 `from X import Y` 导入（非别名形态）也随宿主函数迁移，无需单独 shim 行：`evaluate_goal`（goal_dsl）、`ALLOWED_FAMILIES`（cascade.cov_family）、`resolve_cov_family`（cascade.cov_family）、`search_promote`（search_promote）。
+
+### A.5 映射统计（v3.1 重生成，基于 A.1/A.3 实际计数 + F1/F2 修正）
 
 | 目标模块 | 顶层函数数 | 赋值数 | 嵌套函数 | 合计符号数 |
 |----------|-----------|--------|----------|-----------|
-| sup_paths | 0 | 21 | 0 | 21 |
+| sup_paths | 0 | 23 | 0 | 23 |
 | sup_env | 5 | 1 | 0 | 6 |
-| sup_state | 10 | 5 | 0 | 15 |
-| sup_lifecycle | 11 | 7 | 0 | 18 |
-| sup_provider | 14 | 0 | 0 | 14 |
+| sup_state | 15 | 5 | 0 | 20 |
+| sup_lifecycle | 11 | 6 | 0 | 17 |
+| sup_provider | 15 | 0 | 0 | 15 |
 | sup_harvest | 14 | 6 | 2 | 22 |
-| sup_evidence | 34 | 7 | 3 | 44 |
-| sup_family | 20 | 10 | 1 | 31 |
-| sup_loops | 42 | 0 | 4 | 46 |
+| sup_evidence | 43 | 7 | 3 | 53 |
+| sup_family | 21 | 9 | 1 | 31 |
+| sup_loops | 26 | 0 | 4 | 30 |
 | **顶层函数总计** | **150** | | | |
 | **赋值总计** | | **57** | | |
 | **嵌套函数总计** | | | **10** | |
 | **全部符号** | **217**（150+57+10） | | | |
 
-> sup_loops 的 42 个顶层函数包含：quota_gate, _read_cpu_hours, _token_budget_hit, _in_slow_window, _deadline_passed, _slow_loop_alive, _queue_busy, _slow_drain_complete, ensure_phase, write_stop_report, _merge_save, decide_fast_loop, main, _harvest_rows, _commit_search_accepts, _sweep_search_stops, _append_jsonl, _sweep_search_promotions, _maybe_harvest, wait_for_batch, cleanup_batch_workers, _maybe_start_slow_loop, _maybe_finish_slow, _main_locked, _retest_candidates 等（见 A.1 完整列表）。
+> sup_loops 的 26 个顶层函数包含：quota_gate, _read_cpu_hours, _token_budget_hit, _in_slow_window, _deadline_passed, _slow_loop_alive, _queue_busy, _slow_drain_complete, ensure_phase, write_stop_report, decide_fast_loop, main, _harvest_rows, _commit_search_accepts, _sweep_search_stops, _append_jsonl, _sweep_search_promotions, _maybe_harvest, wait_for_batch, cleanup_batch_workers, _maybe_start_slow_loop, _maybe_finish_slow, _main_locked, _retest_candidates 等（见 A.1 完整列表；_merge_save 已迁至 sup_state）。
 
 ---
 
-*SPEC v3.0, 2026-10-10, S1 Supervisor Split（v2.0 经二次 AST 全量复审修订，N1-N7 全部修正）*
+*SPEC v3.1, 2026-10-10, S1 Supervisor Split（经三次 AST 全量复审，N1-N7 + F1-F8 全部修正；机械级修订，无架构变更）*
