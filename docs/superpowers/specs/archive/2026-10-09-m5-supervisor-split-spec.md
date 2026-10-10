@@ -1,3 +1,5 @@
+> **Superseded by S1 v3.0, do not implement**
+
 # M5: praxist_supervisor.py 模块拆分 SPEC
 
 | 字段 | 值 |
