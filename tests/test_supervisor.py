@@ -8,6 +8,7 @@ import sup_lifecycle
 import sup_provider
 import sup_evidence
 import sup_harvest
+import sup_loops
 import praxist_supervisor as sup
 
 def _patch_paths(monkeypatch, tmp_path):
@@ -175,7 +176,7 @@ def test_dry_run_one_shot_no_sleep(tmp_path, monkeypatch):
     slept = {"n": 0}
     monkeypatch.setattr(sup.time, "sleep", lambda s: slept.__setitem__("n", slept["n"] + 1))
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True})
     _patch_paths(monkeypatch, tmp_path)
     goal = tmp_path / "goal.yaml"
@@ -227,7 +228,7 @@ def test_goal_reached_marks_stop_emitted(tmp_path, monkeypatch):
     # 隔离生产 IO (MENU_INC/VERDICTS/报告/事件未被 _patch_paths 重定向)
     monkeypatch.setattr(sup_evidence, "materialize_known_verdicts", lambda *a, **k: None)
     monkeypatch.setattr(sup_harvest, "materialize_covariate_menu", lambda *a, **k: None)
-    monkeypatch.setattr(sup, "write_stop_report", lambda *a, **k: None)
+    monkeypatch.setattr(sup_loops, "write_stop_report", lambda *a, **k: None)
     monkeypatch.setattr(sup_lifecycle, "_emit_event", lambda *a, **k: None)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(json.dumps({
@@ -253,7 +254,7 @@ def test_cycles_increment_only_after_harvest(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_provider, "_run_active", lambda: True)  # run 仍在
     monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True})
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text('{"cycles_done": 0}', encoding="utf-8")
@@ -282,7 +283,7 @@ def test_429_stop_then_resume(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
     monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     tz = timezone(timedelta(hours=8))
     reset = datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz)
@@ -323,8 +324,8 @@ def test_429_stop_via_main_once_then_resume(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
     monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (False, 90))
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (False, 90))
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(json.dumps({
         "cycles_done": 0, "last_run_id": "runX", "last_run_dir": "/tmp/runX",
@@ -341,7 +342,7 @@ def test_429_stop_via_main_once_then_resume(tmp_path, monkeypatch):
     assert ["stop", "runX"] in calls
     calls.clear()
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
     rc2 = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc2 == 0
     st2 = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
@@ -360,8 +361,8 @@ def test_harvest_survivors_enter_slow_no_start_no_cycle(tmp_path, monkeypatch):
         return {"ok": True, "stdout": json.dumps({"run_id": "runY", "run_dir": "/tmp/runY"})}
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     monkeypatch.setattr(sup.subprocess, "Popen",
                         lambda *a, **k: pops.append(a) or type("P", (), {"pid": 1})())
     _patch_paths(monkeypatch, tmp_path)
@@ -408,8 +409,8 @@ def test_harvest_empty_counts_cycle_and_allows_start(tmp_path, monkeypatch):
         return {"ok": True, "stdout": json.dumps({"run_id": "runY", "run_dir": "/tmp/runY"})}
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(json.dumps({
         "cycles_done": 0, "last_run_id": "runX", "last_run_dir": "/tmp/runX",
@@ -432,8 +433,8 @@ def test_slow_drain_counts_cycle_then_start(tmp_path, monkeypatch):
         return {"ok": True, "stdout": json.dumps({"run_id": "runY", "run_dir": "/tmp/runY"})}
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "pending.jsonl").write_text("", encoding="utf-8")
     (tmp_path / "inprogress.jsonl").write_text("", encoding="utf-8")
@@ -456,8 +457,8 @@ def test_phase_slow_blocks_start_even_in_window(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_env, "_praxist",
                         lambda args, **k: calls.append(list(args)) or {"ok": True, "stdout": "{}"})
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: True)
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: True)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "pending.jsonl").write_text(
         json.dumps({"variant_id": "m_ccl", "symbol": "m", "cov_override": "ccl",
@@ -481,9 +482,9 @@ def test_slow_starts_outside_clock_window(tmp_path, monkeypatch):
     pops = []
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True, "stdout": "{}"})
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
-    monkeypatch.setattr(sup, "_in_slow_window", lambda goal, now=None: False)
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_in_slow_window", lambda goal, now=None: False)
     monkeypatch.setattr(sup.subprocess, "Popen",
                         lambda *a, **k: pops.append(a) or type("P", (), {"pid": 1})())
     _patch_paths(monkeypatch, tmp_path)
@@ -505,7 +506,7 @@ def test_slow_starts_outside_clock_window(tmp_path, monkeypatch):
 def test_ensure_phase_migrates_legacy_state(tmp_path, monkeypatch):
     _clear_failover_env(monkeypatch)
     _patch_paths(monkeypatch, tmp_path)
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     (tmp_path / "pending.jsonl").write_text(
         json.dumps({"variant_id": "m_ccl", "symbol": "m", "cov_override": "ccl",
@@ -524,11 +525,11 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
     monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True})
     # 无慢环在排空: budget_hit 当 tick 必须写 stop 报告。
     # alive=True 会让 _slow_drain_complete() 为 False → 走 drain-defer 分支不退出。
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(sup_state, "_read_token_m", lambda: (21.0, False))
     (tmp_path / "state.json").write_text(json.dumps({
@@ -572,9 +573,9 @@ def test_tok_unknown_skips_token_budget(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
     monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True})
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: True)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: True)
     _patch_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(sup_state, "_read_token_m", lambda: (0.0, True))
     (tmp_path / "state.json").write_text(json.dumps({
@@ -679,7 +680,7 @@ def test_429_failover_resume_not_wait_quota(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(
         __import__("json").dumps({
@@ -712,7 +713,7 @@ def test_active_429_plans_failover_llm(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
     monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(
         __import__("json").dumps({
@@ -759,8 +760,8 @@ def test_new_run_started_reverts_to_primary(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "quota_gate", lambda goal, now=None: (True, 0))
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(
         __import__("json").dumps({
@@ -826,7 +827,7 @@ def test_429_triggers_failover_not_wait_quota(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
     monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     monkeypatch.setenv("FAILOVER_ANTHROPIC_BASE_URL", "https://coding.dashscope.aliyuncs.com/apps/anthropic")
     monkeypatch.setenv("FAILOVER_ANTHROPIC_API_KEY", "ds-key")
     monkeypatch.setenv("FAILOVER_MODEL", "qwen3.7-plus")
@@ -893,7 +894,7 @@ def test_active_429_resumes_when_run_already_failover_model(tmp_path, monkeypatc
         sup_provider, "_active_run_meta",
         lambda: {"run_id": "runQ", "run_dir": str(run), "state": "running"},
     )
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(json.dumps({
         "cycles_done": 0, "last_run_id": "runQ", "last_run_dir": str(run),
@@ -924,7 +925,7 @@ def test_paused_429_fresh_start_on_identity_wall(tmp_path, monkeypatch):
     }), encoding="utf-8")
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True, "stdout": ""})
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(json.dumps({
         "cycles_done": 0, "last_run_id": "runC", "last_run_dir": str(run),
@@ -961,7 +962,7 @@ def test_active_failover_run_not_stopped_by_ark_quota(tmp_path, monkeypatch):
         sup_provider, "_active_run_meta",
         lambda: {"run_id": "runF", "run_dir": "/tmp/runF", "state": "running"},
     )
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(json.dumps({
         "cycles_done": 0, "last_run_id": "runF", "last_run_dir": "/tmp/runF",
@@ -1841,24 +1842,24 @@ def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
     monkeypatch.setattr(sup_evidence, "build_snapshot", lambda *a, **k: {
         "variants": {}, "symbols_hit": set(), "families_hit": set(),
     })
-    monkeypatch.setattr(sup, "evaluate_goal", lambda *a, **k: (False, ["not yet"]))
-    monkeypatch.setattr(sup, "_read_cpu_hours", lambda: 0.0)
+    monkeypatch.setattr(sup_loops, "evaluate_goal", lambda *a, **k: (False, ["not yet"]))
+    monkeypatch.setattr(sup_loops, "_read_cpu_hours", lambda: 0.0)
     monkeypatch.setattr(sup_state, "_read_token_m", lambda: (0.0, False))
     monkeypatch.setattr(sup_evidence, "materialize_known_verdicts", lambda *a, **k: None)
     monkeypatch.setattr(sup_harvest, "materialize_covariate_menu", lambda *a, **k: None)
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "_queue_busy", lambda: False)
-    monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
+    monkeypatch.setattr(sup_loops, "_queue_busy", lambda: False)
+    monkeypatch.setattr(sup_loops, "_slow_loop_alive", lambda: False)
 
     def _ensure_phase(st):
         sup_lifecycle._SHUTDOWN_REQUESTED = True
         return st
 
-    monkeypatch.setattr(sup, "ensure_phase", _ensure_phase)
-    monkeypatch.setattr(sup, "_maybe_harvest", lambda *a, **k: harvested.append("harvest") or False)
-    monkeypatch.setattr(sup, "_maybe_enqueue_retests", lambda *a, **k: harvested.append("retest"))
+    monkeypatch.setattr(sup_loops, "ensure_phase", _ensure_phase)
+    monkeypatch.setattr(sup_loops, "_maybe_harvest", lambda *a, **k: harvested.append("harvest") or False)
+    monkeypatch.setattr(sup_loops, "_maybe_enqueue_retests", lambda *a, **k: harvested.append("retest"))
     monkeypatch.setattr(
-        sup, "decide_fast_loop",
+        sup_loops, "decide_fast_loop",
         lambda *a, **k: started.append("start") or [{"action": "run_started"}])
     monkeypatch.setattr(sup.time, "sleep", lambda *_a, **_k: None)
     goal = tmp_path / "goal.yaml"

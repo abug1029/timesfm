@@ -44,6 +44,7 @@ sys.path.insert(0, ROOT)
 import sup_paths
 import sup_lifecycle
 import sup_evidence
+import sup_loops
 import praxist_supervisor as S  # noqa: E402
 import registry_lib as rl  # noqa: E402
 import search_trees as ST  # noqa: E402
@@ -479,6 +480,6 @@ def test_sweep_write_failure_propagates(tmproot, monkeypatch):
 
 def test_sweep_called_every_cycle_in_main_loop():
     """主循环每轮巡检插桩存在性（materialize 之后、收割之前）。"""
-    with open(S.__file__, encoding="utf-8") as f:
+    with open(sup_loops.__file__, encoding="utf-8") as f:
         src = f.read()
     assert '_sweep_search_stops(goal, log, snap["variants"])' in src
