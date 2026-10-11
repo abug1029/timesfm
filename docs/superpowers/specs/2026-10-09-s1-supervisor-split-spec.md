@@ -4,7 +4,7 @@
 |------|-----|
 | **ID** | S1（新 S 系列：结构性重构；与已关闭的 **M5「n_eff 常数函数」** 完全不同——M5 已于 2026-10-07 溯源结案，见 `docs/superpowers/reports/2026-10-07-tech-debt-inventory.md:47`） |
 | **日期** | 2026-10-09 |
-| **版本** | v3.1（经三次 AST 全量复审；N1-N7 + F1-F8 全部修正） |
+| **版本** | v3.2（经四次 AST 全量复审，含 2026-10-11 审核修正；N1-N7 + F1-F8 全部修正） |
 | **作者** | Architect Agent |
 | **状态** | Draft → 待实施 |
 | **前置依赖** | D4/D5（已完成） |
@@ -20,11 +20,11 @@
 | 指标 | 值 |
 |------|-----|
 | 总行数 | 4574 |
-| 顶层函数数 | 150（118 private + 32 public） |
+| 顶层函数数 | 150（116 private + 34 public） |
 | 嵌套函数数 | 10（随宿主函数迁移） |
 | 模块级赋值 | 57（常量/缓存/路径） |
 | 导入别名 | 9（`rl`, `ef`, `st`, 5 个 `_fam_*`） |
-| 测试引用 | **32 个测试文件**引用 `praxist_supervisor`（其中 test_supervisor.py 独占 1873 行 / 155 次 sup. 调用） |
+| 测试引用 | **32 个测试文件**引用 `praxist_supervisor`（其中 test_supervisor.py 独占 1873 行 / 157 次 sup. 调用） |
 | 外部导入 | registry_lib, goal_dsl, cascade.cov_family, cascade.experiment_fingerprint, search_trees, search_promote, cascade.statistical_tests |
 
 ### 1.2 功能分区扫描
@@ -67,7 +67,7 @@ main() 调用 _main_locked()，后者协调以下功能域：
 ### 1.4 痛点
 
 1. 4574 行单文件，定位功能需扫描全文件
-2. 测试 monkeypatch 负担重：1873 行 test_supervisor.py 中 155 次 sup.X 调用
+2. 测试 monkeypatch 负担重：1873 行 test_supervisor.py 中 157 次 sup.X 调用
 3. 全局路径变量集中定义（QUEUE, INPROGRESS, REGISTRY, STATE_PATH 等）
 4. 交叉引用密集：decide_fast_loop 调用 provider 和 quota 域；_main_locked 调用几乎所有域
 
@@ -77,7 +77,7 @@ main() 调用 _main_locked()，后者协调以下功能域：
 
 ### 2.1 设计原则
 
-1. 向后兼容第一：import praxist_supervisor as sup 后所有 32 个 public 函数可用
+1. 向后兼容第一：import praxist_supervisor as sup 后所有 34 个 public 函数可用
 2. 零运行时依赖变更：不引入新包，不改变启动顺序
 3. 可回滚：每次迁移一个域，单 commit 可 git revert
 4. 内聚 > 行数均衡：按职责边界拆，不追求文件大小均匀
@@ -372,18 +372,18 @@ build_snapshot 内调用点更新为 `is_valid_tier(v, log)`。
 ### 4.1 新原则：Patch 目标机械迁移，测试语义零改动
 
 v1.0 的「零测试修改」原则已被评审证实不可行：
-- 7 个测试文件共 **238 处** `monkeypatch.setattr(sup, ...)` + **7 处** `sup._SHUTDOWN_REQUESTED = True/False`
+- 7 个测试文件共 **357 处** `monkeypatch.setattr(sup, ...)` + **7 处** `sup._SHUTDOWN_REQUESTED = True/False`
 - Shim `from sup_X import Y` 是值拷贝，`setattr(sup, "Y", mock)` 只改 shim 命名空间，拆分后真实调用方在 sup_X 命名空间解析 → **patch 静默失效**
 - 模块属性赋值无 `__setattr__` 钩子（PEP 562），shim 设计无法拦截 `_SHUTDOWN_REQUESTED` 直接赋值
 
-**新原则**：238+7 处 patch 点脚本化改写为 `setattr(<Y 实际所属模块>, "Y", mock)`，测试逻辑本身零改动。
+**新原则**：357+7 处 patch 点脚本化改写为 `setattr(<Y 实际所属模块>, "Y", mock)`，测试逻辑本身零改动。
 
 ### 4.2 Patch 迁移脚本规范（N2/N3/N4 修正）
 
 **别名扫描（N4 修正）**：脚本必须识别全部 4 种 import 别名形态：
 | 别名 | 文件数 | 示例 |
 |------|--------|------|
-| `as sup` | 14 | `import praxist_supervisor as sup` |
+| `as sup` | 13 | `import praxist_supervisor as sup` |
 | `as S` | 13 | `import praxist_supervisor as S` |
 | `as sv` | 1 | `import praxist_supervisor as sv` |
 | `as s` | 1 | 内联 `import praxist_supervisor as s` |
@@ -420,9 +420,9 @@ v1.0 的「零测试修改」原则已被评审证实不可行：
 
 1. pytest tests/test_supervisor.py -x -q
 2. pytest tests/ -x -q --tb=short（全部 32 个引用文件 + 其他测试）
-3. 验证 32 个 public 函数可通过 hasattr(sup, name) 访问
+3. 验证 34 个 public 函数可通过 hasattr(sup, name) 访问
 4. 验证路径常量可被 monkeypatch
-5. 验证 patch 迁移后 238+7 处全部指向实际模块
+5. 验证 patch 迁移后 357+7 处全部指向实际模块
 6. **N5 新增**：验证 `tier_domain_violation` 日志路径仍有测试覆盖
 
 ### 4.5 新增测试
@@ -481,7 +481,7 @@ tests/test_sup_modules.py：
 | 最大子模块行数 | ≤ 700 行 |
 | --dry-run --once 输出 | 与拆分前一致 |
 | 无循环导入 | 验证通过 |
-| 32 个 public 函数 | hasattr 全 True |
+| 34 个 public 函数 | hasattr 全 True |
 | 全局符号 re-export | `_SHUTDOWN_REQUESTED`, `_START_TIME`, `_PRAXIST`, `_PERSISTABLE_DM`, `VALID_TIER_VALUES` 均可 import |
 | **附录 A 覆盖** | 150 顶层函数 + 57 赋值 + 9 别名 + 10 嵌套，全部有目标模块 |
 | **§4.2 别名扫描** | 4 种别名形态（sup/S/sv/s）全部覆盖 |
@@ -540,10 +540,10 @@ git revert <具体步骤commit> --no-edit
 | sup_harvest（含 harvest_survivors + _sector_filter_check） | 45 min |
 | sup_family | 30 min |
 | sup_loops + shim | 60 min |
-| **238+7 处 patch 脚本化迁移**（含附录 A 映射 + 4 别名扫描 + N3 别名策略） | 120 min |
+| **357+7 处 patch 脚本化迁移**（含附录 A 映射 + 4 别名扫描 + N3 别名策略） | 180 min |
 | 全量测试 + 修补 | 60 min |
 | 迁移窗口协议执行 + 冒烟 | 30 min |
-| **总计** | **~11 小时 / 2 个工作日** |
+| **总计** | **~12 小时 / 2 个工作日** |
 
 ---
 
