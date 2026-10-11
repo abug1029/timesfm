@@ -30,7 +30,21 @@ def collect_1h_for_symbol(symbol: str, fetcher: UnifiedFetcher,
     """
     # 采集 TqSdk 主力连续 1H 数据, 存为 {SYMBOL}_MAIN
     main_code = f"{symbol.upper()}_MAIN"
-    df = fetcher.get_main_continuous_kline(symbol, dur_sec=3600, data_length=10000)
+    
+    # P1 优化：按需拉取（而非固定 10000 bars）
+    # 每日 ~10 根 1H bar，留 50 根余量（防边界情况）
+    from datetime import datetime
+    latest_dt = store.get_latest_date(main_code)
+    if latest_dt:
+        try:
+            gap_days = (datetime.now() - datetime.strptime(latest_dt[:10], "%Y-%m-%d")).days
+            data_length = max(100, gap_days * 10 + 50)
+        except (ValueError, TypeError):
+            data_length = 10000  # 日期解析失败，回退到全量
+    else:
+        data_length = 10000  # 首次建仓
+    
+    df = fetcher.get_main_continuous_kline(symbol, dur_sec=3600, data_length=data_length)
     if df.empty:
         return 0
 

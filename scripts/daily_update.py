@@ -163,7 +163,19 @@ def collect_1h_main_only(symbol, fetcher, calculator, store):
     """
     # 使用 _MAIN 标记存储主力连续 1H
     main_code = f"{symbol.upper()}_MAIN"
-    df = fetcher.get_main_continuous_kline(symbol, dur_sec=3600, data_length=10000)
+    # P1 优化：按需拉取（而非固定 10000 bars）
+    from datetime import datetime
+    latest_dt = store.get_latest_date(main_code)
+    if latest_dt:
+        try:
+            gap_days = (datetime.now() - datetime.strptime(latest_dt[:10], "%Y-%m-%d")).days
+            data_length = max(100, gap_days * 10 + 50)
+        except (ValueError, TypeError):
+            data_length = 10000
+    else:
+        data_length = 10000
+    
+    df = fetcher.get_main_continuous_kline(symbol, dur_sec=3600, data_length=data_length)
     if df.empty:
         return 0
 
