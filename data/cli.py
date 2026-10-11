@@ -157,26 +157,6 @@ def cmd_status(args):
                 )
 
 
-def cmd_contracts(args):
-    """查看合约信息"""
-    from data.contract_manager import ContractManager
-
-    for symbol in args.symbols:
-        symbol = symbol.lower()
-        with ContractManager(symbol) as cm:
-            info = cm.get_all_info()
-        print(f"\n{'='*50}")
-        print(f"  {symbol.upper()} 合约列表")
-        print(f"{'='*50}")
-        print(f"  主力: {info['main_contract'].upper() if info['main_contract'] else '未识别'}")
-        print(f"  次主力: {info['secondary_contract'].upper() if info['secondary_contract'] else '无'}")
-        print(f"  活跃合约: {len(info['contracts'])} 个\n")
-        for c in info["contracts"]:
-            marker = "★ 主力" if c.get("is_main") else ""
-            print(f"    {c['contract_code']:<12} {c.get('exchange',''):<8} "
-                  f"月:{c.get('contract_month','?')}  {marker}")
-
-
 def cmd_query(args):
     """查询主链数据"""
     from data.data_store import DataStore
@@ -235,11 +215,6 @@ def main():
     p_status = subparsers.add_parser("status", help="查看状态")
     p_status.add_argument("symbols", nargs="*", help="品种代码 (不填则全部)")
     p_status.set_defaults(func=cmd_status)
-
-    # contracts
-    p_contracts = subparsers.add_parser("contracts", help="合约列表")
-    p_contracts.add_argument("symbols", nargs="+", help="品种代码")
-    p_contracts.set_defaults(func=cmd_contracts)
 
     # query
     p_query = subparsers.add_parser("query", help="查询主链数据")

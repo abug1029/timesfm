@@ -73,38 +73,3 @@ class ContractManager:
 
         return codes
 
-    def sync_contracts(self) -> List[dict]:
-        """同步合约信息到 contracts 表 (适配 _CONT)"""
-        main_contract = self.identify_main_contract()
-        known = self.discover_contracts_from_kline()
-
-        records = []
-        for code in known:
-            info = parse_contract_info(code)
-            is_main = 1 if code.lower() == main_contract.lower() else 0
-            records.append({
-                "contract_code": code.upper(),
-                "product": self.symbol,
-                "exchange": get_exchange(self.symbol),
-                "contract_month": info.get("month"),
-                "delivery_year": info.get("year"),
-                "is_active": 1,
-                "is_main": is_main,
-            })
-
-        if records:
-            self.store.store_contracts(records)
-        return records
-
-    def get_all_info(self) -> Dict:
-        """获取合约完整信息"""
-        self.sync_contracts()
-        contracts_df = self.store.get_contracts()
-        main = self.identify_main_contract()
-
-        return {
-            "symbol": self.symbol,
-            "main_contract": main if main else None,
-            "secondary_contract": None,
-            "contracts": contracts_df.to_dict("records") if not contracts_df.empty else [],
-        }

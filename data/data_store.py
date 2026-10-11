@@ -340,28 +340,6 @@ class DataStore:
         self._update_meta("main_continuous_updated", datetime.now().strftime("%Y-%m-%d %H:%M"))
         return stored
 
-    def store_contracts(self, contracts: List[dict]) -> int:
-        """写入合约信息"""
-        stored = 0
-        for c in contracts:
-            try:
-                self.conn.execute(
-                    """INSERT OR REPLACE INTO contracts
-                       (contract_code, product, exchange, contract_month, delivery_year,
-                        is_active, is_main, main_since, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
-                    (c.get("contract_code", "").upper(),
-                     c.get("product", self.symbol),
-                     c.get("exchange", get_exchange(self.symbol)),
-                     c.get("contract_month"), c.get("delivery_year"),
-                     c.get("is_active", 1), c.get("is_main", 0), c.get("main_since"))
-                )
-                stored += 1
-            except Exception as e:
-                logger.warning(f"store_contracts failed for {c.get('contract_code')}: {e}")
-        self.conn.commit()
-        return stored
-
     def store_xreg_factor(self, factor_name: str, df: pd.DataFrame) -> int:
         """[DEAD TABLE - 预测路径不读取] 写入 XReg 因子"""
         if df.empty:
@@ -484,15 +462,6 @@ class DataStore:
         if start_date:
             sql += " AND dt >= ?"; params.append(start_date)
         sql += " ORDER BY dt, factor_name"
-        return pd.read_sql_query(sql, self.conn, params=params)
-
-    def get_contracts(self, active_only=True) -> pd.DataFrame:
-        """读取合约列表"""
-        sql = "SELECT * FROM contracts WHERE product = ?"
-        params = [self.symbol]
-        if active_only:
-            sql += " AND is_active = 1"
-        sql += " ORDER BY contract_code"
         return pd.read_sql_query(sql, self.conn, params=params)
 
     def discover_contracts_from_kline(self) -> List[str]:
