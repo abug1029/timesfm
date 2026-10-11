@@ -463,6 +463,29 @@ python -m data.cli collect --all          # 全品种日线
 - 禁止自动修改：`config/prediction_scheme.py`, `cascade/*.py`, `data/config.py`
 - 允许操作：`scripts/`, `reports/`, `db/` (只增不删)
 
+### 数据采集设计原则（不可退化）
+
+2026-10-11 数据更新系统修复后确立的设计原则（参考：`docs/superpowers/plans/2026-10-11-data-update-incremental-fix-plan-audit.md`）：
+
+1. **1H 数据必须增量更新**：`store_klines_1h()` 内部用 `INSERT OR REPLACE`，
+   外层禁止 `DELETE FROM kline_1h WHERE contract_code = ?`（无 dt 限定）。
+   参考：`collect_1h.py` 的 `collect_1h_for_symbol()`（2026-07-15 Lesson #11 修复）。
+
+2. **全量拉取仅限初始化**：`pull_history_1h.py` 仅用于首次建仓或灾难恢复，
+   不应被日常流程（`data_management.py` 的 `collect_1h()` / `daily_update.py`）调度。
+   如需全量重建，手动运行：`python scripts/pull_history_1h.py`。
+   `backfill_gaps()` 中的数据不足场景是合法例外（已显式标注 `# ALLOWED`）。
+
+3. **数据量保护阈值**：任何 1H 采集函数必须有 `MIN_1H_ROWS` 保护（默认 500），
+   低于阈值跳过写入（防 TqSdk 网络异常返回部分数据）。
+
+4. **单一采集路径**：同一数据关切（1H 采集）只能有一个实现。
+   不得在 `collect_1h.py` / `daily_update.py` / `pull_history_1h.py` 各自实现。
+   当前权威实现：`collect_1h.py`（增量模式，INSERT OR REPLACE）。
+
+5. **测试防护**：`tests/test_no_full_wipe.py` AST 闸门检测裸 DELETE 模式，
+   CI 门禁必须通过。任何退化必须显式标注 `# ALLOWED: <原因>`。
+
 ## MindMemOS 记忆配置
 
 本项目使用 MindMemOS 进行跨会话记忆管理。

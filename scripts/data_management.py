@@ -208,6 +208,8 @@ def backfill_gaps() -> list[dict]:
 
     if short_1h:
         print(f"  1H (MAIN) 不足 {MIN_1H_ROWS}: {', '.join(short_1h)}")
+        # ALLOWED: backfill_gaps 仅在数据不足（< MIN_1H_ROWS）时调用 pull_history_1h.py
+        # 用于灾难恢复/首次建仓，不属于日常采集流程
         r = run_script("pull_history_1h.py", short_1h, timeout=300)
         results.append(r)
 
