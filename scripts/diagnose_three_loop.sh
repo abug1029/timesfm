@@ -205,6 +205,18 @@ SUPERVISOR_UP=0
 cleanup_orphan_runs
 
 # ---------- 判定状态 ----------
+# P0-B: 计算 supervisor 最小启动时长（取所有 PID 中最年轻的）
+# 用于 S2/S4 宽限期：启动 <30min 内不判 stale，避免基线重生期被误杀
+SUP_START_MINS=999
+for _spb_pid in $SUP_PIDS; do
+  _spb_etime=$(ps -p $_spb_pid -o etimes= 2>/dev/null | tr -d ' ')
+  if [ -n "$_spb_etime" ]; then
+    _spb_mins=$(( _spb_etime / 60 ))
+    [ $_spb_mins -lt $SUP_START_MINS ] && SUP_START_MINS=$_spb_mins
+  fi
+done
+unset _spb_pid _spb_etime _spb_mins
+
 STATE="HEALTHY"; ACTION=""
 if ! command -v claude >/dev/null 2>&1; then
   STATE="NEEDS_HUMAN"; ACTION="H1 claude not on PATH"
@@ -212,8 +224,8 @@ elif [[ "$SUPCMD" == /mnt/c/* ]]; then
   STATE="NEEDS_HUMAN"; ACTION="H1 claude -> $SUPCMD (Windows shim)"
 elif [ "$SUPERVISOR_UP" -eq 0 ]; then
   STATE="AUTO_HEAL"; ACTION="S1 supervisor down"
-elif [ "$HB_AGE" -gt 12 ]; then
-  STATE="AUTO_HEAL"; ACTION="S2 heartbeat stale ${HB_AGE}min"
+elif [ "$SUP_START_MINS" -ge 30 ] && [ "$HB_AGE" -gt 12 ]; then
+  STATE="AUTO_HEAL"; ACTION="S2 heartbeat stale ${HB_AGE}min (uptime ${SUP_START_MINS}m)"
 elif [ "$RECENT_126" -gt 0 ]; then
   STATE="AUTO_HEAL"; ACTION="S3 recent exit-126 (n=$RECENT_126)"
 elif [ -n "$NEWEST_RUN" ] && [ "$RUN_MINS" -gt 20 ]; then
@@ -242,18 +254,63 @@ if [ "$STATE" = "AUTO_HEAL" ]; then
     STATE="CIRCUIT_BROKEN"
     ACTION="熔断中，需人工清除 heal_fail.count"
   else
-    # 先尝试停掉残留 supervisor（SIGTERM 优雅），再 canonical 重启
+    # P1-A v2: 先尝试停掉残留 supervisor（SIGTERM 优雅），再 canonical 重启
+    # 若 supervisor 启动 <30min，跳过 kill + 跳过 start（宽限期内让基线重生跑完）
+    # 修复 reviewer finding: skip-kill 后调 start_supervisor.sh 会撞 Python flock，
+    # 新进程秒退，bash 侧不知，日志噪音 "heartbeat not advancing"
+    WAS_SUPERVISOR_UP=$SUPERVISOR_UP
     if [ "$SUPERVISOR_UP" -eq 1 ]; then
-      kill -TERM $SUP_PIDS 2>/dev/null
-      sleep 3
+      if [ "$SUP_START_MINS" -lt 30 ]; then
+        log "supervisor 启动仅 ${SUP_START_MINS}min，跳过 kill + start（宽限期）"
+        STATE="HEALTHY"
+        ACTION="grace period active (${SUP_START_MINS}m < 30m)"
+        # 不调 start_supervisor.sh，直接退出 AUTO_HEAL 块
+      else
+        kill -TERM $SUP_PIDS 2>/dev/null
+        sleep 3
+        # 进入下面的 start_supervisor.sh 流程
+        WAS_SUPERVISOR_UP=0   # 标记：我们刚杀了旧进程，下面走 S1 冷启动路径
+      fi
     fi
-    if O=$(bash scripts/start_supervisor.sh 2>&1); then
-      STATE="HEALED"
-      record_heal_success
-    else
-      STATE="NEEDS_HUMAN"
-      ACTION="heal restart FAILED: $O"
-      record_heal_failure
+
+    # 仅在需要启动新 supervisor 时跑（skip-kill 路径已 STATE=HEALTHY 退出）
+    if [ "$STATE" = "AUTO_HEAL" ]; then
+      if O=$(bash scripts/start_supervisor.sh 2>&1); then
+        # P1-B v2: 区分冷启动 vs 热重启
+        # - 冷启动（S1 或刚 kill 旧进程）：模型加载 >10s，5s 内心跳不会写
+        #   -> 用 pgrep 弱验活（进程活着即 HEALED）
+        # - 热重启（原进程还在写心跳）：5s 足够心跳推进
+        #   -> 用 stat mtime 强验活（防误报 HEALED）
+        if [ "$WAS_SUPERVISOR_UP" -eq 0 ]; then
+          # 冷启动路径：S1 原本 down 或刚 kill 旧进程
+          sleep 5
+          if pgrep -f "scripts/praxist_supervisor.py" >/dev/null 2>&1; then
+            STATE="HEALED"
+            record_heal_success
+          else
+            STATE="NEEDS_HUMAN"
+            ACTION="heal started but process not running after 5s"
+            record_heal_failure
+          fi
+        else
+          # 热重启路径：理论上不会到这里（WAS_SUPERVISOR_UP=1 时上面要么 skip 要么 kill）
+          # 保险起见保留心跳 mtime 检查
+          sleep 5
+          NEW_HB_MTIME=$(stat -c %Y "$HB_FILE" 2>/dev/null || echo 0)
+          if [ "$NEW_HB_MTIME" -gt "$HB_MTIME" ]; then
+            STATE="HEALED"
+            record_heal_success
+          else
+            STATE="NEEDS_HUMAN"
+            ACTION="heal started but heartbeat not advancing"
+            record_heal_failure
+          fi
+        fi
+      else
+        STATE="NEEDS_HUMAN"
+        ACTION="heal restart FAILED: $O"
+        record_heal_failure
+      fi
     fi
   fi
 fi
