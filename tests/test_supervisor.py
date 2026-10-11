@@ -7,6 +7,7 @@ import sup_state
 import sup_lifecycle
 import sup_provider
 import sup_evidence
+import sup_harvest
 import praxist_supervisor as sup
 
 def _patch_paths(monkeypatch, tmp_path):
@@ -225,7 +226,7 @@ def test_goal_reached_marks_stop_emitted(tmp_path, monkeypatch):
         "pass_variant_pf_ratios": [1.123], "variants": {}})
     # 隔离生产 IO (MENU_INC/VERDICTS/报告/事件未被 _patch_paths 重定向)
     monkeypatch.setattr(sup_evidence, "materialize_known_verdicts", lambda *a, **k: None)
-    monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
+    monkeypatch.setattr(sup_harvest, "materialize_covariate_menu", lambda *a, **k: None)
     monkeypatch.setattr(sup, "write_stop_report", lambda *a, **k: None)
     monkeypatch.setattr(sup_lifecycle, "_emit_event", lambda *a, **k: None)
     _patch_paths(monkeypatch, tmp_path)
@@ -1844,7 +1845,7 @@ def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
     monkeypatch.setattr(sup, "_read_cpu_hours", lambda: 0.0)
     monkeypatch.setattr(sup_state, "_read_token_m", lambda: (0.0, False))
     monkeypatch.setattr(sup_evidence, "materialize_known_verdicts", lambda *a, **k: None)
-    monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
+    monkeypatch.setattr(sup_harvest, "materialize_covariate_menu", lambda *a, **k: None)
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "_queue_busy", lambda: False)
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)

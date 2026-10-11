@@ -37,6 +37,7 @@ sys.path.insert(0, ROOT)
 
 import sup_paths
 import sup_evidence
+import sup_harvest
 import praxist_supervisor as S  # noqa: E402
 
 LONGM = ("波动率范围(VOR)压缩后突破：该品种在低波区积蓄动能后常随放量突破，"
@@ -264,7 +265,7 @@ def test_retest_bypasses_success_gate_structurally(tmp_path, monkeypatch):
 
     def _poison(*a, **k):
         raise AssertionError("复测路径不得调用 harvest_proposals / success 门")
-    monkeypatch.setattr(S, "harvest_proposals", _poison)
+    monkeypatch.setattr(sup_harvest, "harvest_proposals", _poison)
 
     goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 1}}
     added = S._maybe_enqueue_retests(goal, str(tmp_path / "decisions.jsonl"))

@@ -19,6 +19,7 @@ sys.path.insert(0, ROOT)
 
 import sup_paths
 import sup_evidence
+import sup_harvest
 import praxist_supervisor as S  # noqa: E402
 
 LONGM = ("波动率范围(VOR)压缩后突破：该品种在低波区积蓄动能后常随放量突破，"
@@ -628,7 +629,7 @@ def test_harvest_snapshot_ignores_other_protocols(tmp_path, monkeypatch):
         captured["existing"] = existing
         return [], {"seen": 0}
 
-    monkeypatch.setattr(S, "harvest_proposals", fake_harvest)
+    monkeypatch.setattr(sup_harvest, "harvest_proposals", fake_harvest)
     S._harvest_rows({"cadence": {}})
     assert set(captured["snapshot"]) == {"current_jd"}
     assert "legacy_m" not in captured["existing"]

@@ -94,3 +94,19 @@ def test_fingerprint_bodies_match_baseline():
     for name in wanted:
         got = ast.parse(inspect.getsource(getattr(sup_evidence, name)))
         assert ast.dump(got.body[0], include_attributes=False) == old_src[name]
+
+
+def test_prescreen_import_failure_logs_on_harvest_module(monkeypatch):
+    import sys
+    import sup_harvest
+    seen = []
+
+    class FakeLog:
+        def warning(self, *args, **kwargs):
+            seen.append(args)
+
+    monkeypatch.setattr(sup_harvest, "logging", FakeLog())
+    monkeypatch.setitem(sys.modules, "cascade.typesafe_prescreen", None)
+    sup_harvest._prescreen_async({}, "/tmp/no-such.json", "rb")
+    assert seen
+    assert "TypeSafe" in seen[0][0]
