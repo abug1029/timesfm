@@ -90,7 +90,6 @@ python -m unittest tests.test_future_bar_guard tests.test_basis_oi_filter -v
 - 2026-07-15 Lesson #11："DELETE 全表 + INSERT 模式在数据采集场景都是定时炸弹"
 - 2026-10-11 修复：`daily_update.py` 和 `data_management.py` 同步对齐增量模式
 
-## Dependencies
 
 ## Dependencies
 

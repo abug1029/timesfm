@@ -685,6 +685,8 @@ def _write_heartbeat():
 
     Throttled to at most once per second to avoid I/O spam when called
     from tight loops (e.g. ensure_baselines per-symbol regen).
+    
+    MINOR fix: 失败时也更新时间戳，防止持续失败时 stderr spam at 1Hz。
     """
     global _LAST_HB_WRITE
     now = time.monotonic()
@@ -695,9 +697,10 @@ def _write_heartbeat():
         with open(HEARTBEAT_PATH, "w") as f:
             f.write(json.dumps({"ts": _now_iso(), "run_id": _RUN_ID,
                                 "pid": os.getpid()}))
-        _LAST_HB_WRITE = now
     except OSError as e:
         print(f"[WARN] Failed to write heartbeat: {e}", file=sys.stderr)
+    finally:
+        _LAST_HB_WRITE = now  # 无论成功失败都更新，防止 spam
 
 
 def _signal_handler(signum, frame):

@@ -7,6 +7,7 @@
   python scripts/daily_update.py --full       # 强制全量 (回退到旧行为)
 """
 
+from datetime import datetime
 import sys
 import argparse
 import warnings
@@ -164,7 +165,6 @@ def collect_1h_main_only(symbol, fetcher, calculator, store):
     # 使用 _MAIN 标记存储主力连续 1H
     main_code = f"{symbol.upper()}_MAIN"
     # P1 优化：按需拉取（而非固定 10000 bars）
-    from datetime import datetime
     latest_dt = store.get_latest_date(main_code)
     if latest_dt:
         try:

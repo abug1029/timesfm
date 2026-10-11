@@ -207,6 +207,7 @@ cleanup_orphan_runs
 # ---------- 判定状态 ----------
 # P0-B: 计算 supervisor 最小启动时长（取所有 PID 中最年轻的）
 # 用于 S2/S4 宽限期：启动 <30min 内不判 stale，避免基线重生期被误杀
+if [ -n "$SUP_PIDS" ]; then
 SUP_START_MINS=999
 for _spb_pid in $SUP_PIDS; do
   _spb_etime=$(ps -p $_spb_pid -o etimes= 2>/dev/null | tr -d ' ')
@@ -215,6 +216,7 @@ for _spb_pid in $SUP_PIDS; do
     [ $_spb_mins -lt $SUP_START_MINS ] && SUP_START_MINS=$_spb_mins
   fi
 done
+fi  # end of SUP_PIDS empty guard
 unset _spb_pid _spb_etime _spb_mins
 
 STATE="HEALTHY"; ACTION=""
@@ -258,7 +260,9 @@ if [ "$STATE" = "AUTO_HEAL" ]; then
     # 若 supervisor 启动 <30min，跳过 kill + 跳过 start（宽限期内让基线重生跑完）
     # 修复 reviewer finding: skip-kill 后调 start_supervisor.sh 会撞 Python flock，
     # 新进程秒退，bash 侧不知，日志噪音 "heartbeat not advancing"
-    WAS_SUPERVISOR_UP=$SUPERVISOR_UP
+    # NEEDS_COLD_START: 0 = cold start (use pgrep), 1 = hot restart (use stat mtime)
+    # Inverted from SUPERVISOR_UP: if supervisor was down (0), we need cold start (0)
+    NEEDS_COLD_START=$SUPERVISOR_UP
     if [ "$SUPERVISOR_UP" -eq 1 ]; then
       if [ "$SUP_START_MINS" -lt 30 ]; then
         log "supervisor 启动仅 ${SUP_START_MINS}min，跳过 kill + start（宽限期）"
@@ -269,7 +273,7 @@ if [ "$STATE" = "AUTO_HEAL" ]; then
         kill -TERM $SUP_PIDS 2>/dev/null
         sleep 3
         # 进入下面的 start_supervisor.sh 流程
-        WAS_SUPERVISOR_UP=0   # 标记：我们刚杀了旧进程，下面走 S1 冷启动路径
+        NEEDS_COLD_START=0   # 刚杀了旧进程，走冷启动路径（pgrep 验活）
       fi
     fi
 
@@ -281,7 +285,7 @@ if [ "$STATE" = "AUTO_HEAL" ]; then
         #   -> 用 pgrep 弱验活（进程活着即 HEALED）
         # - 热重启（原进程还在写心跳）：5s 足够心跳推进
         #   -> 用 stat mtime 强验活（防误报 HEALED）
-        if [ "$WAS_SUPERVISOR_UP" -eq 0 ]; then
+        if [ "$NEEDS_COLD_START" -eq 0 ]; then
           # 冷启动路径：S1 原本 down 或刚 kill 旧进程
           sleep 5
           if pgrep -f "scripts/praxist_supervisor.py" >/dev/null 2>&1; then
@@ -293,7 +297,7 @@ if [ "$STATE" = "AUTO_HEAL" ]; then
             record_heal_failure
           fi
         else
-          # 热重启路径：理论上不会到这里（WAS_SUPERVISOR_UP=1 时上面要么 skip 要么 kill）
+          # 热重启路径：理论上不会到这里（NEEDS_COLD_START=1 时上面要么 skip 要么 kill）
           # 保险起见保留心跳 mtime 检查
           sleep 5
           NEW_HB_MTIME=$(stat -c %Y "$HB_FILE" 2>/dev/null || echo 0)

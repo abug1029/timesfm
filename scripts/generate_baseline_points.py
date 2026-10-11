@@ -21,15 +21,16 @@ import json
 import argparse
 import fcntl
 from pathlib import Path
+from datetime import datetime
+
+# MAJOR fix: sys.path.setup 必须在 praxist_supervisor import 之前，否则 standalone CLI 运行时 import 失败
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # P0-A 补丁：单 symbol 重生期间也写心跳，防看门狗 S2 误杀
 try:
     from praxist_supervisor import _write_heartbeat as _hb
 except ImportError:
     def _hb(): pass  # 测试或独立运行时忽略
-from datetime import datetime
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 from cascade.baseline_paths import baseline_filename
