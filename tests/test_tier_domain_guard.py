@@ -83,3 +83,37 @@ def test_tier_domain_guard_prevents_semantic_mixin():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+def test_is_valid_tier_invalid_calls_log_and_returns_false():
+    import praxist_supervisor as sup
+    seen = []
+    ok = sup.is_valid_tier(
+        {"variant_id": "v1", "tier": "可预测"},
+        log=lambda event, msg: seen.append((event, msg)),
+    )
+    assert ok is False
+    assert seen == [("tier_domain_violation", "variant=v1 tier=可预测")]
+
+
+def test_is_valid_tier_without_log_does_not_raise():
+    import praxist_supervisor as sup
+    assert sup.is_valid_tier({"tier": "1"}) is False
+    assert sup.is_valid_tier({"variant_id": "v2"}) is False
+    assert sup.is_valid_tier({"tier": "A"}) is True
+
+
+def test_build_snapshot_invalid_tier_does_not_raise(monkeypatch):
+    import praxist_supervisor as sup
+    row = {"variant_id": "v", "tier": "1", "symbol": "rb",
+           "gate_pass": False, "dir_acc": 0.5}
+    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp")
+    monkeypatch.setattr(sup, "symbol_goal_tier", lambda variants, symbol: {
+        "tier": "不可预测", "n_confirmed_variants": 0})
+    monkeypatch.setattr(sup, "GOAL_SYMBOLS_SET", frozenset({"rb"}))
+    # registry_lib.load_snapshot 返回 {variant_id: row}，没有 "variants" 键。
+    # 1165 行的 snap.get("variants") 在真实快照上是空的，而且 n_tier_a_or_b 不在返回值里。
+    # 按品种计数走 1181 行的 snap.values()，写入 1208 行的 n_tier_a_b。
+    monkeypatch.setattr(sup.rl, "load_snapshot", lambda *a, **k: {"v": row})
+    monkeypatch.setattr(sup.rl, "pass_variants", lambda snap: [])
+    out = sup.build_snapshot("unused", 0, 0, 0)
+    assert out["symbol_stats"]["rb"]["n_tier_a_b"] == 0

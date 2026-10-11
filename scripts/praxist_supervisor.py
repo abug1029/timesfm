@@ -25,6 +25,24 @@ _PERSISTABLE_DM = frozenset({"ok", "set_mismatch_ok"})
 VALID_TIER_VALUES = frozenset({"S", "A", "B", "C", "D"})
 
 
+def is_valid_tier(v, log=None):
+    """校验 tier 值域，防止非法值混入。
+
+    Args:
+        v: variant dict（调用方保证非 None）。
+        log: 可选日志函数。模块级调用时提供，
+             build_snapshot 内不传（该作用域没有 log 路径）。
+    """
+    tier = v.get("tier")
+    if tier is None:
+        return False
+    if tier not in VALID_TIER_VALUES:
+        if log is not None:
+            log("tier_domain_violation", f"variant={v.get('variant_id', 'unknown')} tier={tier}")
+        return False
+    return True
+
+
 def fdr_pass_persistable(verdict):
     """W3.4：只有确认运行、缺失可接受、且 DM 状态可确认时，fdr_pass=True 才能落盘。
 
@@ -1147,19 +1165,6 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     avg_dir_acc_gate_pass = sum(gate_pass_dir_accs) / len(gate_pass_dir_accs) if gate_pass_dir_accs else 0.0
 
     # 批次 B：tier 值域守卫（Q2=b，键名为现有 tier）
-    def is_valid_tier(v):
-        """校验 tier 值域，防止非法值（第二套中文语义、None、数字等）混入。
-
-        注意：第三套语义（"A"/"B"/"C" 字面值）与第一套值域重叠，值域守卫无法区分；
-        第三套语义的实际防线是写入方唯一性 + two_star_critic 已退役（N10）。
-        """
-        tier = v.get("tier")
-        if tier is None:
-            return False
-        if tier not in VALID_TIER_VALUES:
-            _log_decision(log, "tier_domain_violation", f"variant={v.get('variant_id', 'unknown')} tier={tier}")
-            return False
-        return True
 
     # Phase 2: 高质量变体
     n_tier_a_or_b = len([v for v in snap.get("variants", {}).values()
