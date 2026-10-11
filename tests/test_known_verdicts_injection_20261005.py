@@ -19,6 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 import sup_paths
+import sup_evidence
 import praxist_supervisor as sup  # noqa: E402
 
 FP = "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"
@@ -116,7 +117,7 @@ def test_cross_matrix_only_nonempty_cells_and_budget(tmp_path, monkeypatch):
     # 只列非空格：无裁决的品种不出行
     assert not any(ln.startswith("- sr:") for ln in sec.splitlines())
     # 行数预算：超出行截断注明
-    monkeypatch.setattr(sup, "CROSS_MATRIX_MAX_ROWS", 1, raising=False)
+    monkeypatch.setattr(sup_evidence, "CROSS_MATRIX_MAX_ROWS", 1, raising=False)
     text2 = _write(tmp_path, snap)
     sec2 = text2.split("## Symbol x family", 1)[1].split("\n## ", 1)[0]
     assert sum(1 for ln in sec2.splitlines() if ln.startswith("- ")) == 1
@@ -222,8 +223,8 @@ def test_idempotent_rewrite_except_generated_at(tmp_path):
 
 
 def test_locked_section_lists_same_window_combo(tmp_path, monkeypatch):
-    monkeypatch.setattr(sup, "_today_shanghai", lambda: date(2026, 10, 8))
-    monkeypatch.setattr(sup, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 8))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
     row = _v("rb_basis_1", "rb", "basis_momentum", "basis", gate_pass=True)
     row["eval_end_ts"] = "2026-09-30 15:00:00"
     text = _write(tmp_path, {"rb_basis_1": row})
@@ -233,8 +234,8 @@ def test_locked_section_lists_same_window_combo(tmp_path, monkeypatch):
 
 
 def test_locked_section_empty_when_data_stale(tmp_path, monkeypatch):
-    monkeypatch.setattr(sup, "_today_shanghai", lambda: date(2026, 10, 6))
-    monkeypatch.setattr(sup, "_kline_1h_max_dt", lambda symbol: "2026-09-30 14:00:00")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 6))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2026-09-30 14:00:00")
     row = _v("rb_basis_1", "rb", "basis_momentum", "basis", gate_pass=True)
     row["eval_end_ts"] = "2026-09-30 15:00:00"
     text = _write(tmp_path, {"rb_basis_1": row})
@@ -244,8 +245,8 @@ def test_locked_section_empty_when_data_stale(tmp_path, monkeypatch):
 
 
 def test_locked_section_uses_checkpoint_when_row_has_no_anchor(tmp_path, monkeypatch):
-    monkeypatch.setattr(sup, "_today_shanghai", lambda: date(2026, 10, 8))
-    monkeypatch.setattr(sup, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 8))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
     row = _v("rb_basis_1", "rb", "basis_momentum", "basis", gate_pass=True,
              run_mode="confirmation")
     row["fdr_pass"] = True
@@ -262,8 +263,8 @@ def test_locked_section_uses_checkpoint_when_row_has_no_anchor(tmp_path, monkeyp
 
 
 def test_locked_section_truncates_at_40(tmp_path, monkeypatch):
-    monkeypatch.setattr(sup, "_today_shanghai", lambda: date(2026, 10, 8))
-    monkeypatch.setattr(sup, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 8))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
     snap = {}
     for i in range(41):
         vid = "s%02d_basis" % i

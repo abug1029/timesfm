@@ -6,6 +6,7 @@ import sup_env
 import sup_state
 import sup_lifecycle
 import sup_provider
+import sup_evidence
 import praxist_supervisor as sup
 
 def _patch_paths(monkeypatch, tmp_path):
@@ -109,7 +110,7 @@ def test_harvest_survivors(tmp_path, monkeypatch):
     run = tmp_path / "task_FM" / "experiments" / "run_2026-09-02_10-00-00_x"
     # 保留的 harvest_survivors (回滚用) 读旧诊断产物 evaluation_summary.json;
     # 新提案产物 proposals/*.json 由 harvest_proposals 收割, 见 test_harvest_proposals.py。
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
     d1 = run / "results" / "gen_0" / "p0" / "m_rsi_state_diagnostic_p6" / "diagnostic"
     d1.mkdir(parents=True)
     (d1 / "evaluation_summary.json").write_text(json.dumps(
@@ -156,7 +157,7 @@ def _v(vid, **kw):
     base.update(kw); return base
 
 def test_build_snapshot_metrics(tmp_path, monkeypatch):
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: None)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: None)
     reg = tmp_path / "v.jsonl"
     with open(reg, "w", encoding="utf-8") as f:
         f.write(json.dumps(_v("a", gate_pass=True, pf=1.2, ev=0.02, symbol="m")) + "\n")
@@ -219,11 +220,11 @@ def test_import_does_not_arm_atexit():
 def test_goal_reached_marks_stop_emitted(tmp_path, monkeypatch):
     """goal_reached 干净退出必须先 _mark_stop_emitted, 否则 atexit 兜底误报 unexpected_exit。"""
     monkeypatch.setattr(sup_lifecycle, "_STOP_EMITTED", False)
-    monkeypatch.setattr(sup, "build_snapshot", lambda *a, **k: {
+    monkeypatch.setattr(sup_evidence, "build_snapshot", lambda *a, **k: {
         "symbols_hit": {"ss"}, "families_hit": {"volatility"},
         "pass_variant_pf_ratios": [1.123], "variants": {}})
     # 隔离生产 IO (MENU_INC/VERDICTS/报告/事件未被 _patch_paths 重定向)
-    monkeypatch.setattr(sup, "materialize_known_verdicts", lambda *a, **k: None)
+    monkeypatch.setattr(sup_evidence, "materialize_known_verdicts", lambda *a, **k: None)
     monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
     monkeypatch.setattr(sup, "write_stop_report", lambda *a, **k: None)
     monkeypatch.setattr(sup_lifecycle, "_emit_event", lambda *a, **k: None)
@@ -350,7 +351,7 @@ def test_429_stop_via_main_once_then_resume(tmp_path, monkeypatch):
 
 def test_harvest_survivors_enter_slow_no_start_no_cycle(tmp_path, monkeypatch):
     """有幸存者: harvest 入队, phase=slow, 本 tick 不开下一轮快环, cycles 不加。"""
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
     calls = []
     pops = []
     def fake_praxist(args, **k):
@@ -1060,7 +1061,7 @@ def test_retest_gate_constants_retired():
 
 def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "current")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current")
     with open(sup.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(_aligned_verdict(
             "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False,
@@ -1068,7 +1069,7 @@ def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
     log = str(tmp_path / "decisions.jsonl")
     goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 1}}
     live_n = {"cj": 324}
-    monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: live_n.get(s))
+    monkeypatch.setattr(sup_evidence, "_valid_n_for_symbol", lambda s: live_n.get(s))
     # 数据未增长到硬门样本量 → 不排队
     assert sup._maybe_enqueue_retests(goal, log) == 0
     assert not os.path.exists(sup.QUEUE)
@@ -1088,31 +1089,31 @@ def test_maybe_enqueue_retests_gating_and_dedup(monkeypatch, tmp_path):
 
 def test_maybe_enqueue_retests_respects_margin(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "current")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current")
     with open(sup.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(_aligned_verdict(
             "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False,
             protocol_fingerprint="current")) + "\n")
     goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 30}}
-    monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: 350)
+    monkeypatch.setattr(sup_evidence, "_valid_n_for_symbol", lambda s: 350)
     # 350-324=26 < margin 30 → 不排队
     assert sup._maybe_enqueue_retests(goal, str(tmp_path / "d.jsonl")) == 0
     assert not os.path.exists(sup.QUEUE)
 
 def test_maybe_enqueue_retests_fail_open_on_db_error(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "current")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current")
     with open(sup.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(_aligned_verdict(
             "cj_oi", "cj", "oi", 324, 1.133, 19.46, 0.08, False,
             protocol_fingerprint="current")) + "\n")
     goal = {"cadence": {"retest_min_new_points": 1}}
-    monkeypatch.setattr(sup, "_valid_n_for_symbol", lambda s: None)
+    monkeypatch.setattr(sup_evidence, "_valid_n_for_symbol", lambda s: None)
     # DB 查询失败 → 0 排队, 不抛
     assert sup._maybe_enqueue_retests(goal, str(tmp_path / "d.jsonl")) == 0
 
 def test_menu_renders_symbol_sample_ceiling(monkeypatch, tmp_path):
-    monkeypatch.setattr(sup, "_symbol_n_table",
+    monkeypatch.setattr(sup_evidence, "_symbol_n_table",
                         lambda: [("cj", 324), ("m", 396), ("lh", None)])
     dest = str(tmp_path / "menu.md")
     sup.materialize_covariate_menu({}, dest)
@@ -1177,7 +1178,7 @@ def test_wait_for_batch_zero_timeout_single_scan(tmp_path, monkeypatch):
 
 
 def test_build_snapshot_scalars_v2(tmp_path, monkeypatch):
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: None)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: None)
     reg = tmp_path / "v.jsonl"
     rec = {"variant_id": "m_rsi_state", "symbol": "m", "cov_family": "momentum",
            "schema": "fm.aligned_verdict.v2", "status": "ok",
@@ -1212,7 +1213,7 @@ def test_build_snapshot_min_dir_acc_none_when_no_pass(tmp_path):
     assert snap["min_pass_variant_dir_acc"] is None
 def test_proposal_score_exploration_bias(monkeypatch):
     """2026-09-17 探索偏置调整 + 履历分切 v23 dir_acc 口径 (单测级, 直接调函数)。"""
-    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
+    monkeypatch.setattr(sup_evidence, "load_symbol_status", lambda: {})
     prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
     snap = {
         "rb_vor": {"variant_id": "rb_vor", "symbol": "rb", "cov_override": "vor",
@@ -1242,7 +1243,7 @@ def test_proposal_score_exploration_bias(monkeypatch):
 
 def test_proposal_score_guards(monkeypatch):
     """评审 M-3: 履历/探索防护分支覆盖。"""
-    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
+    monkeypatch.setattr(sup_evidence, "load_symbol_status", lambda: {})
     prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p"}
 
     def _vid():
@@ -1310,7 +1311,7 @@ def test_proposal_score_symbol_status_penalty():
 
 
 def test_proposal_score_family_transfer_beats_fresh_cov(monkeypatch):
-    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
+    monkeypatch.setattr(sup_evidence, "load_symbol_status", lambda: {})
     prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p",
             "covariate_family": "calendar"}
     snap = {
@@ -1332,7 +1333,7 @@ def test_proposal_score_family_transfer_beats_fresh_cov(monkeypatch):
 
 
 def test_proposal_score_weak_family_penalty(monkeypatch):
-    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
+    monkeypatch.setattr(sup_evidence, "load_symbol_status", lambda: {})
     prop = {"symbol_fit": "f", "kill_condition": "k", "promote_condition": "p",
             "covariate_family": "volatility"}
     snap = {
@@ -1728,7 +1729,7 @@ def test_descriptive_failures_do_not_kill_a_family():
 
 def test_harvest_survivors_fp_unavailable_skips(tmp_path, monkeypatch):
     """W6.4: 幸存者收割指纹不可解析 → 静默跳过 (不入队, 不回退旧式身份)。"""
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: None)
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: None)
     run = tmp_path / "task_FM" / "experiments" / "run_2026-09-02_10-00-00_x"
     d1 = run / "results" / "gen_0" / "p0" / "m_ccl_diagnostic_p6" / "diagnostic"
     d1.mkdir(parents=True)
@@ -1801,7 +1802,7 @@ def test_ensure_baselines_asks_generate_only_for_a_missing_file(monkeypatch, tmp
     fake.baseline_filename = baseline_filename
     fake.generate = generate
     monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp-current")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp-current")
     config = tmp_path / "task_FM" / "config"
     config.mkdir(parents=True)
     (config / "baseline_metrics.json").write_text(
@@ -1835,14 +1836,14 @@ def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
     harvested = []
     started = []
     monkeypatch.setattr(sup_lifecycle, "_SHUTDOWN_REQUESTED", False)
-    monkeypatch.setattr(sup, "ensure_baselines", lambda *a, **k: None)
-    monkeypatch.setattr(sup, "build_snapshot", lambda *a, **k: {
+    monkeypatch.setattr(sup_evidence, "ensure_baselines", lambda *a, **k: None)
+    monkeypatch.setattr(sup_evidence, "build_snapshot", lambda *a, **k: {
         "variants": {}, "symbols_hit": set(), "families_hit": set(),
     })
     monkeypatch.setattr(sup, "evaluate_goal", lambda *a, **k: (False, ["not yet"]))
     monkeypatch.setattr(sup, "_read_cpu_hours", lambda: 0.0)
     monkeypatch.setattr(sup_state, "_read_token_m", lambda: (0.0, False))
-    monkeypatch.setattr(sup, "materialize_known_verdicts", lambda *a, **k: None)
+    monkeypatch.setattr(sup_evidence, "materialize_known_verdicts", lambda *a, **k: None)
     monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
     monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "_queue_busy", lambda: False)

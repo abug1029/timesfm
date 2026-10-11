@@ -8,6 +8,7 @@ import json, os, sys
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+import sup_evidence
 import praxist_supervisor as sup
 
 
@@ -85,7 +86,7 @@ def test_ensure_baselines_archives_before_regen(tmp_path, monkeypatch):
 
     fake = _FakeGbp()
     monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp_cur")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_cur")
 
     sup.ensure_baselines(["JD"], str(tmp_path))
 

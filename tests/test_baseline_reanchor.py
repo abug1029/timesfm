@@ -14,6 +14,7 @@ import json, os, sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 import sup_state
+import sup_evidence
 import praxist_supervisor as sup
 
 
@@ -154,7 +155,7 @@ def test_ensure_baselines_reanchors_on_stale_baseline(tmp_path, monkeypatch):
     """指纹合格但基线落后数据 14 天 → 重锚重生（先归档）。"""
     _setup_healthy_baseline(str(tmp_path))   # 末端 2026-09-16 15:00
     monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-09-30 14:00:00")
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp_test")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_test")
     fake = _FakeGbp()
     monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
 
@@ -169,7 +170,7 @@ def test_ensure_baselines_no_regen_when_fresh(tmp_path, monkeypatch):
     """指纹合格且新鲜（落后 2h）→ 不重生。"""
     _setup_healthy_baseline(str(tmp_path), last_cutoff="2026-10-01 08:00:00")
     monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-10-01 10:00:00")
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp_test")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_test")
     fake = _FakeGbp()
     monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
 

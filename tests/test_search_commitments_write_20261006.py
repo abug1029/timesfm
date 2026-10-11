@@ -37,6 +37,7 @@ import sup_paths
 import sup_state
 import sup_lifecycle
 import sup_provider
+import sup_evidence
 import praxist_supervisor as S  # noqa: E402
 import registry_lib as rl  # noqa: E402
 import search_trees as ST  # noqa: E402
@@ -98,8 +99,8 @@ def tmproot(tmp_path, monkeypatch):
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
     monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
-    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
     monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH",
                         str(tmp_path / "search_commitments.jsonl"))
     monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "aligned_pending.jsonl"))
@@ -334,7 +335,7 @@ def test_T3_budget_exhausted_via_real_accepts(tmproot, monkeypatch):
     def _fp(s, c):
         return fps.get(c, FP_TEST)
 
-    monkeypatch.setattr(S, "_experiment_fp_for", _fp)
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", _fp)
 
     def _vid(cov):
         return "m_volatility_" + fps[cov][:12]

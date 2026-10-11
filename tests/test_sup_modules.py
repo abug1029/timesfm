@@ -68,3 +68,29 @@ def test_parse_429_reset_stays_on_provider():
     import sup_provider
     text = "reset at 2026-10-11 01:02:03 +0800"
     assert sup_provider.parse_429_reset(text) is not None
+
+
+def test_is_valid_tier_is_module_level_on_evidence():
+    import inspect
+    import sup_evidence
+    assert inspect.isfunction(sup_evidence.is_valid_tier)
+    src = inspect.getsource(sup_evidence.build_snapshot)
+    assert "def is_valid_tier" not in src
+
+
+def test_fingerprint_bodies_match_baseline():
+    import ast
+    import inspect
+    import subprocess
+    import sup_evidence
+    old = subprocess.check_output(
+        ["git", "show", "9850af2:scripts/praxist_supervisor.py"], text=True)
+    old_tree = ast.parse(old)
+    wanted = {"_current_protocol_fingerprint", "_baseline_protocol_fingerprint"}
+    old_src = {}
+    for node in old_tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in wanted:
+            old_src[node.name] = ast.dump(node, include_attributes=False)
+    for name in wanted:
+        got = ast.parse(inspect.getsource(getattr(sup_evidence, name)))
+        assert ast.dump(got.body[0], include_attributes=False) == old_src[name]

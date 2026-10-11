@@ -36,6 +36,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
 import sup_paths
+import sup_evidence
 import praxist_supervisor as S  # noqa: E402
 
 LONGM = ("波动率范围(VOR)压缩后突破：该品种在低波区积蓄动能后常随放量突破，"
@@ -104,10 +105,10 @@ def tmproot(tmp_path, monkeypatch):
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
     monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
-    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
-    monkeypatch.setattr(S, "_today_shanghai", lambda: date(2099, 1, 1))
-    monkeypatch.setattr(S, "_kline_1h_max_dt", lambda symbol: "2099-01-01 14:00:00")
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2099, 1, 1))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2099-01-01 14:00:00")
     return str(tmp_path)
 
 
@@ -247,7 +248,7 @@ def test_retest_bypasses_success_gate_structurally(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_paths, "REGISTRY", str(tmp_path / "verdicts.jsonl"))
     monkeypatch.setattr(sup_paths, "STATE_PATH", str(tmp_path / "state.json"))
     monkeypatch.setattr(sup_paths, "EVENTS_PATH", str(tmp_path / "events.jsonl"))
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
     nearmiss = {
         "schema": "fm.aligned_verdict.v2",
         "variant_id": "cj_oi_nearmiss", "symbol": "cj", "cov_override": "oi",
@@ -258,7 +259,7 @@ def test_retest_bypasses_success_gate_structurally(tmp_path, monkeypatch):
     }
     with open(S.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(nearmiss) + "\n")
-    monkeypatch.setattr(S, "_valid_n_for_symbol", lambda s: 350)
+    monkeypatch.setattr(sup_evidence, "_valid_n_for_symbol", lambda s: 350)
     monkeypatch.setattr(S.rl, "in_flight_ids", lambda *a, **k: set())
 
     def _poison(*a, **k):

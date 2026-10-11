@@ -21,6 +21,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import sup_paths
 import sup_lifecycle
+import sup_evidence
 import praxist_supervisor as sup  # noqa: E402
 import aligned_slow_loop as slow  # noqa: E402
 
@@ -47,9 +48,9 @@ def _wire(monkeypatch, tmp_path, preregs, snap):
     monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
     monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "pending.jsonl"))
     monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
-    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: snap)
     monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
     sup._CONFIRM_REDISPATCH.clear()
     return str(tmp_path / "decisions.jsonl")
@@ -108,9 +109,9 @@ def test_redispatch_throttled_six_hours(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
     monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "q.jsonl"))
     monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "i.jsonl"))
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
-    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: snap)
     monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
     # 只隔离队列侧：in_flight 恒空、enqueue 记数，让节流成为唯一变量
     monkeypatch.setattr(sup.rl, "in_flight_ids", lambda q, i: set())
@@ -136,9 +137,9 @@ def test_not_enqueued_notice_carries_throttle_state(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
     monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "q.jsonl"))
     monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "i.jsonl"))
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
-    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: snap)
     monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
     monkeypatch.setattr(sup.rl, "in_flight_ids", lambda q, i: set())
     monkeypatch.setattr(sup.rl, "queue_enqueue", lambda path, rows, dead, existing: len(rows))
@@ -236,19 +237,19 @@ def test_timeout_tombstone_stamps_confirmation_identity(tmp_path):
 # ── E6 ───────────────────────────────────────────────────────────────
 def test_harvest_outer_loop_shutdown_returns_empty(monkeypatch, tmp_path):
     """E6：停机信号在扫描中途（外层 run_dir 边界）置位 → 不得返回半份候选。"""
-    monkeypatch.setattr(sup, "_load_evaluator", lambda: type("EV", (), {
+    monkeypatch.setattr(sup_evidence, "_load_evaluator", lambda: type("EV", (), {
         "VALID_COVARIATES": {"vor"}, "ALLOWED_SYMBOLS": {"jd"}, "ARCHIVED_COVARIATES": {},
     })())
-    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
-    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
-    monkeypatch.setattr(sup, "_dead_families", lambda snap: set())
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_symbol_status", lambda: {})
+    monkeypatch.setattr(sup_evidence, "_dead_families", lambda snap: set())
     cfg = tmp_path / "task_FM" / "config"
     cfg.mkdir(parents=True, exist_ok=True)
     (cfg / "baseline_points_jd_nocov.jsonl").write_text(
         json.dumps({"protocol_fingerprint": "fp-current", "cutoff": "2026-01-01 00:00:00",
                     "dir_ok": True}) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp-current")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp-current")
     for name in ("run_x", "run_y"):
         d = tmp_path / "task_FM" / "experiments" / name / "results" / "gen_0" / "proposals"
         d.mkdir(parents=True)

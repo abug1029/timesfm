@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
 import sup_paths
+import sup_evidence
 import praxist_supervisor as S  # noqa: E402
 
 LONGM = ("波动率范围(VOR)压缩后突破：该品种在低波区积蓄动能后常随放量突破，"
@@ -52,8 +53,8 @@ def test_shadow_counts_missing_role_and_keeps_enqueue(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(tmp_path / "symbol_status.json"))
     (tmp_path / "symbol_status.json").write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
-    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
     commitments = tmp_path / "search_commitments.jsonl"
     monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH", str(commitments))
     config = tmp_path / "task_FM" / "config"
@@ -85,8 +86,8 @@ def test_shadow_does_not_write_commitments_for_a_legal_root(tmp_path, monkeypatc
     monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(tmp_path / "symbol_status.json"))
     (tmp_path / "symbol_status.json").write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
-    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
     commitments = tmp_path / "search_commitments.jsonl"
     monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH", str(commitments))
     config = tmp_path / "task_FM" / "config"

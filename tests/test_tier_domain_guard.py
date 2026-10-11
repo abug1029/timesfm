@@ -85,6 +85,7 @@ if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
 def test_is_valid_tier_invalid_calls_log_and_returns_false():
+    import sup_evidence
     import praxist_supervisor as sup
     seen = []
     ok = sup.is_valid_tier(
@@ -103,12 +104,13 @@ def test_is_valid_tier_without_log_does_not_raise():
 
 
 def test_build_snapshot_invalid_tier_does_not_raise(monkeypatch):
+    import sup_evidence
     import sup_state
     import praxist_supervisor as sup
     row = {"variant_id": "v", "tier": "1", "symbol": "rb",
            "gate_pass": False, "dir_acc": 0.5}
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp")
-    monkeypatch.setattr(sup, "symbol_goal_tier", lambda variants, symbol: {
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp")
+    monkeypatch.setattr(sup_evidence, "symbol_goal_tier", lambda variants, symbol: {
         "tier": "不可预测", "n_confirmed_variants": 0})
     monkeypatch.setattr(sup_state, "GOAL_SYMBOLS_SET", frozenset({"rb"}))
     # registry_lib.load_snapshot 返回 {variant_id: row}，没有 "variants" 键。
