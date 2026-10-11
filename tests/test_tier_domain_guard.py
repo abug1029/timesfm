@@ -103,13 +103,14 @@ def test_is_valid_tier_without_log_does_not_raise():
 
 
 def test_build_snapshot_invalid_tier_does_not_raise(monkeypatch):
+    import sup_state
     import praxist_supervisor as sup
     row = {"variant_id": "v", "tier": "1", "symbol": "rb",
            "gate_pass": False, "dir_acc": 0.5}
     monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp")
     monkeypatch.setattr(sup, "symbol_goal_tier", lambda variants, symbol: {
         "tier": "不可预测", "n_confirmed_variants": 0})
-    monkeypatch.setattr(sup, "GOAL_SYMBOLS_SET", frozenset({"rb"}))
+    monkeypatch.setattr(sup_state, "GOAL_SYMBOLS_SET", frozenset({"rb"}))
     # registry_lib.load_snapshot 返回 {variant_id: row}，没有 "variants" 键。
     # 1165 行的 snap.get("variants") 在真实快照上是空的，而且 n_tier_a_or_b 不在返回值里。
     # 按品种计数走 1181 行的 snap.values()，写入 1208 行的 n_tier_a_b。

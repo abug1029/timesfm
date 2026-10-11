@@ -13,6 +13,7 @@
 import json, os, sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+import sup_state
 import praxist_supervisor as sup
 
 
@@ -34,13 +35,13 @@ def _write_prereg(root, rows):
 # ── _baseline_reanchor_reason ──────────────────────────────────────
 
 def test_reanchor_reason_none_when_fresh(tmp_path, monkeypatch):
-    monkeypatch.setattr(sup, "_latest_data_dt", lambda s: "2026-10-01 10:00:00")
+    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-10-01 10:00:00")
     # 无预注册；基线末端落后 2h << 168h
     assert sup._baseline_reanchor_reason("jd", "2026-10-01 08:00:00", str(tmp_path)) is None
 
 
 def test_reanchor_reason_confirmation_window_gap(tmp_path, monkeypatch):
-    monkeypatch.setattr(sup, "_latest_data_dt", lambda s: "2026-10-04 08:00:00")
+    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-10-04 08:00:00")
     _write_prereg(str(tmp_path), [{"prereg_id": "p1", "symbol": "jd",
                                    "confirm_from_ts": "2026-10-03 00:00:00"}])
     reason = sup._baseline_reanchor_reason("jd", "2026-09-30 14:00:00", str(tmp_path))
@@ -50,7 +51,7 @@ def test_reanchor_reason_confirmation_window_gap(tmp_path, monkeypatch):
 
 def test_reanchor_reason_none_when_data_not_caught_up(tmp_path, monkeypatch):
     """国庆缺口：数据末端 09-30 未越过 confirm_from_ts 10-03 → 不重生。"""
-    monkeypatch.setattr(sup, "_latest_data_dt", lambda s: "2026-09-30 14:00:00")
+    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-09-30 14:00:00")
     _write_prereg(str(tmp_path), [{"prereg_id": "p1", "symbol": "jd",
                                    "confirm_from_ts": "2026-10-03 00:00:00"}])
     # (b) 也满足：lag = 0h
@@ -59,21 +60,21 @@ def test_reanchor_reason_none_when_data_not_caught_up(tmp_path, monkeypatch):
 
 def test_reanchor_reason_staleness_cap(tmp_path, monkeypatch):
     """漂移上界：无预注册但基线落后 14 天 > 7 天 → 重锚。"""
-    monkeypatch.setattr(sup, "_latest_data_dt", lambda s: "2026-09-30 14:00:00")
+    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-09-30 14:00:00")
     reason = sup._baseline_reanchor_reason("jd", "2026-09-16 15:00:00", str(tmp_path))
     assert reason is not None
     assert "落后" in reason
 
 
 def test_reanchor_reason_fail_open_on_missing_data(tmp_path, monkeypatch):
-    monkeypatch.setattr(sup, "_latest_data_dt", lambda s: None)
+    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: None)
     _write_prereg(str(tmp_path), [{"prereg_id": "p1", "symbol": "jd",
                                    "confirm_from_ts": "2026-10-03 00:00:00"}])
     assert sup._baseline_reanchor_reason("jd", "2026-09-30 14:00:00", str(tmp_path)) is None
 
 
 def test_reanchor_reason_prereg_of_other_symbol_ignored(tmp_path, monkeypatch):
-    monkeypatch.setattr(sup, "_latest_data_dt", lambda s: "2026-10-04 08:00:00")
+    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-10-04 08:00:00")
     _write_prereg(str(tmp_path), [{"prereg_id": "p1", "symbol": "sr",
                                    "confirm_from_ts": "2026-10-03 00:00:00"}])
     assert sup._baseline_reanchor_reason("jd", "2026-10-04 06:00:00", str(tmp_path)) is None
@@ -152,7 +153,7 @@ def _setup_healthy_baseline(root, n=150, fp="fp_test", last_cutoff="2026-09-16 1
 def test_ensure_baselines_reanchors_on_stale_baseline(tmp_path, monkeypatch):
     """指纹合格但基线落后数据 14 天 → 重锚重生（先归档）。"""
     _setup_healthy_baseline(str(tmp_path))   # 末端 2026-09-16 15:00
-    monkeypatch.setattr(sup, "_latest_data_dt", lambda s: "2026-09-30 14:00:00")
+    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-09-30 14:00:00")
     monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp_test")
     fake = _FakeGbp()
     monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
@@ -167,7 +168,7 @@ def test_ensure_baselines_reanchors_on_stale_baseline(tmp_path, monkeypatch):
 def test_ensure_baselines_no_regen_when_fresh(tmp_path, monkeypatch):
     """指纹合格且新鲜（落后 2h）→ 不重生。"""
     _setup_healthy_baseline(str(tmp_path), last_cutoff="2026-10-01 08:00:00")
-    monkeypatch.setattr(sup, "_latest_data_dt", lambda s: "2026-10-01 10:00:00")
+    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-10-01 10:00:00")
     monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp_test")
     fake = _FakeGbp()
     monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)

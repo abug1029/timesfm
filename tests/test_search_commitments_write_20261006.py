@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
 import sup_paths
+import sup_state
 import praxist_supervisor as S  # noqa: E402
 import registry_lib as rl  # noqa: E402
 import search_trees as ST  # noqa: E402
@@ -388,9 +389,9 @@ def test_maybe_harvest_writes_accepts(tmproot, monkeypatch):
     rows, _ = _harvest(tmproot)
     monkeypatch.setattr(S, "_run_active", lambda: False)
     monkeypatch.setattr(
-        S, "load_state",
+        sup_state, "load_state",
         lambda: {"last_run_id": "run_T", "last_harvested_run_id": "run_OLD"})
-    monkeypatch.setattr(S, "_merge_save", lambda d: None)
+    monkeypatch.setattr(sup_state, "_merge_save", lambda d: None)
     monkeypatch.setattr(S, "_log_decision", lambda *a, **k: None)
     monkeypatch.setattr(
         S, "_harvest_rows",

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 import sup_paths
 import sup_env
+import sup_state
 import praxist_supervisor as sup
 
 def _patch_paths(monkeypatch, tmp_path):
@@ -290,7 +291,7 @@ def test_429_stop_then_resume(tmp_path, monkeypatch):
     assert calls == []  # dry_run 不调 praxist
     now2 = datetime(2026, 9, 2, 11, 30, 0, tzinfo=tz)
     monkeypatch.setattr(sup, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "load_state", lambda: {"last_run_dir": "/tmp/runX", "paused_429": True,
+    monkeypatch.setattr(sup_state, "load_state", lambda: {"last_run_dir": "/tmp/runX", "paused_429": True,
                                                     "cycles_done": 0})
     actions2 = sup.decide_fast_loop(goal, dry_run=True, now=now2)
     assert [a["action"] for a in actions2] == ["run_resumed"]
@@ -525,7 +526,7 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
     # alive=True 会让 _slow_drain_complete() 为 False → 走 drain-defer 分支不退出。
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
-    monkeypatch.setattr(sup, "_read_token_m", lambda: (21.0, False))
+    monkeypatch.setattr(sup_state, "_read_token_m", lambda: (21.0, False))
     (tmp_path / "state.json").write_text(json.dumps({
         "cycles_done": 0, "last_run_id": "runX", "last_run_dir": "/tmp/runX",
         "last_harvested_run_id": None, "paused_429": False,
@@ -545,7 +546,7 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
     st = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     assert st["tokens_baseline_m"] == 21.0
     assert not list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
-    monkeypatch.setattr(sup, "_read_token_m", lambda: (31.0, False))
+    monkeypatch.setattr(sup_state, "_read_token_m", lambda: (31.0, False))
     monkeypatch.setattr(sup, "_STOP_EMITTED", False)
     rc2 = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc2 == 0
@@ -571,7 +572,7 @@ def test_tok_unknown_skips_token_budget(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True})
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: True)
     _patch_paths(monkeypatch, tmp_path)
-    monkeypatch.setattr(sup, "_read_token_m", lambda: (0.0, True))
+    monkeypatch.setattr(sup_state, "_read_token_m", lambda: (0.0, True))
     (tmp_path / "state.json").write_text(json.dumps({
         "cycles_done": 0, "last_run_id": "runX", "last_run_dir": "/tmp/runX",
         "last_harvested_run_id": None, "paused_429": False,
@@ -1838,7 +1839,7 @@ def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
     })
     monkeypatch.setattr(sup, "evaluate_goal", lambda *a, **k: (False, ["not yet"]))
     monkeypatch.setattr(sup, "_read_cpu_hours", lambda: 0.0)
-    monkeypatch.setattr(sup, "_read_token_m", lambda: (0.0, False))
+    monkeypatch.setattr(sup_state, "_read_token_m", lambda: (0.0, False))
     monkeypatch.setattr(sup, "materialize_known_verdicts", lambda *a, **k: None)
     monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
     monkeypatch.setattr(sup, "_run_active", lambda: False)

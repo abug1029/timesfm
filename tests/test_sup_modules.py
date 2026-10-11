@@ -43,3 +43,13 @@ def test_praxist_bin_cache_lives_on_sup_env():
         assert sup_env._praxist_bin() == "/tmp/fake-praxist"
     finally:
         sup_env._PRAXIST = saved
+
+def test_goal_symbols_cache_resets_on_sup_state():
+    import sup_state
+    saved = sup_state._GOAL_SYMBOLS_CACHE
+    try:
+        sup_state._GOAL_SYMBOLS_CACHE = frozenset({"rb"})
+        sup_state._reset_goal_symbols_cache()
+        assert sup_state._GOAL_SYMBOLS_CACHE is None
+    finally:
+        sup_state._GOAL_SYMBOLS_CACHE = saved

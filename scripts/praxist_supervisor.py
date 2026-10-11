@@ -3,12 +3,12 @@
 import argparse, atexit, fcntl, glob, json, logging, os, re, shutil, signal, subprocess, sys, threading, time, traceback, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import yaml
 _BOOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BOOT_DIR)
 sys.path.insert(0, os.path.dirname(_BOOT_DIR))
 import sup_paths
 import sup_env
+import sup_state
 
 _HOMES: dict[str, object] = {  # 每搬完一个模块就填 name -> module
     "HERE": sup_paths,
@@ -40,6 +40,27 @@ _HOMES: dict[str, object] = {  # 每搬完一个模块就填 name -> module
     "_check_required_env": sup_env,
     "_praxist": sup_env,
     "_PRAXIST": sup_env,
+    "load_preregistry": sup_state,
+    "_CONFIRM_DATA_TTL_S": sup_state,
+    "_CONFIRM_DATA_CACHE": sup_state,
+    "_latest_data_dt": sup_state,
+    "load_state": sup_state,
+    "save_state": sup_state,
+    "load_goal": sup_state,
+    "_CADENCE_DEFAULTS": sup_state,
+    "_cad_int": sup_state,
+    "_norm_search_policy": sup_state,
+    "_goal_target_symbols": sup_state,
+    "_GOAL_YAML_DEFAULT": sup_state,
+    "_GOAL_SYMBOLS_CACHE": sup_state,
+    "_assert_goal_symbols_contract": sup_state,
+    "_load_goal_symbols": sup_state,
+    "_reset_goal_symbols_cache": sup_state,
+    "GOAL_SYMBOLS_SET": sup_state,
+    "_ensure_tokens_baseline": sup_state,
+    "_token_spend_m": sup_state,
+    "_read_token_m": sup_state,
+    "_merge_save": sup_state,
 }
 
 
@@ -350,17 +371,6 @@ def due_confirmations(registry, now_ts, blocked_ids, already_ran_ids,
     return out
 
 
-def load_preregistry(path):
-    rows = []
-    if not os.path.exists(path):
-        return rows
-    with open(path, encoding="utf-8") as fh:
-        for line in fh:
-            if line.strip():
-                rows.append(json.loads(line))
-    return rows
-
-
 def load_family_members(path):
     by_vid = {}
     order = []
@@ -406,37 +416,6 @@ def _merge_family_members(members, family_key, returned):
     return out
 
 
-_CONFIRM_DATA_TTL_S = 1800
-_CONFIRM_DATA_CACHE: dict[str, tuple] = {}   # symbol -> (queried_at, latest_dt | None)
-
-
-def _latest_data_dt(symbol):
-    """该品种 1H 数据末端（str，如 "2026-09-30 14:00:00"）；读不到返回 None。
-
-    步② C（2026-10-07 裁定）拉取日重锚的新鲜度数据源；与 _confirm_data_ready
-    共享 _CONFIRM_DATA_CACHE（30 分钟 TTL），pre-flight 查过的主循环闸门直接命中。
-    """
-    key = str(symbol).lower()
-    now = time.time()
-    hit = _CONFIRM_DATA_CACHE.get(key)
-    if hit is not None and now - hit[0] <= _CONFIRM_DATA_TTL_S:
-        return hit[1]
-    latest = None
-    try:
-        from data.data_store import DataStore
-        store = DataStore(key)
-        try:
-            h1 = store.get_main_contract_1h(limit=99999)
-        finally:
-            store.close()
-        if h1 is not None and not h1.empty:
-            latest = str(h1["dt"].astype(str).max())
-    except Exception:
-        latest = None
-    _CONFIRM_DATA_CACHE[key] = (now, latest)
-    return latest
-
-
 def _confirm_data_ready(symbol, confirm_from_ts):
     """该品种的 1H 数据是否已越过 confirm_from_ts。
 
@@ -445,7 +424,7 @@ def _confirm_data_ready(symbol, confirm_from_ts):
     （实测每 ~5.7 分钟一座）。这里做 fail-closed 的数据闸门：查不到数据也算未就绪。
     查询结果按 symbol 缓存 30 分钟，避免每轮打库。
     """
-    latest = _latest_data_dt(symbol)
+    latest = sup_state._latest_data_dt(symbol)
     if not latest:
         return False
     return latest > str(confirm_from_ts)
@@ -465,7 +444,7 @@ def _confirmation_is_final(v):
 
 
 def _maybe_enqueue_confirmations(log, now_ts):
-    registry = load_preregistry(sup_paths.PREREGISTRY_PATH)
+    registry = sup_state.load_preregistry(sup_paths.PREREGISTRY_PATH)
     blocked = rl.in_flight_ids(sup_paths.QUEUE, sup_paths.INPROGRESS)
     snap = _active_protocol_snapshot(sup_paths.REGISTRY)
     # 2026-10-04（E1）：只有满样终态裁决才算「已跑过」。D1 闸门只保证有
@@ -724,130 +703,6 @@ def parse_429_reset(log_text):
         return None
     return datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S %z")
 
-def load_state():
-    if not os.path.exists(sup_paths.STATE_PATH):
-        st = {"cycles_done": 0, "last_run_dir": None, "last_run_id": None,
-              "last_harvested_run_id": None, "paused_429": False, "phase": "fast",
-              "llm_provider": "primary", "llm_route": "primary"}
-    else:
-        try:
-            st = json.load(open(sup_paths.STATE_PATH, encoding="utf-8"))
-        except Exception:
-            st = {"cycles_done": 0}
-    return _ensure_tokens_baseline(st)
-
-def save_state(st):
-    os.makedirs(os.path.dirname(sup_paths.STATE_PATH), exist_ok=True)
-    tmp = sup_paths.STATE_PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(st, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, sup_paths.STATE_PATH)
-
-def load_goal(path):
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)["goal"]
-
-
-# ── cadence 默认值单一来源（技术债 L4，2026-10-08）────────────────────
-# 与 scripts/praxist_goal.yaml 的 goal.cadence 保持一致。此前默认值散落三处且
-# 互相矛盾：survivors_per_cycle 默认 2（yaml=3）、aligned_max_points 在
-# 3493 默认为 400 而 2958 与函数签名为 600（yaml=600）。
-# 键缺失时的静默回退正是漂移的成因 → 回退必留痕，且有测试锁死与 yaml 一致。
-_CADENCE_DEFAULTS = {
-    "survivors_per_cycle": 3,
-    "aligned_max_points": 600,
-}
-
-
-def _cad_int(cad, key):
-    """读 cadence 整数键；缺键回退 _CADENCE_DEFAULTS 并打 WARN 留痕。"""
-    val = (cad or {}).get(key)
-    if val is None:
-        print("[WARN] goal.cadence.%s 缺失，回退默认 %d（应与 praxist_goal.yaml 一致）"
-              % (key, _CADENCE_DEFAULTS[key]), file=sys.stderr)
-        return _CADENCE_DEFAULTS[key]
-    return int(val)
-
-
-def _norm_search_policy(goal):
-    """spec 2026-10-05 §6.1：search_policy ∈ {off, shadow, enforce}，缺省 off。
-
-    - off：批准前后默认，收割行为与今日相同。
-    - shadow：树检查照常求值，只进拒绝计数与决策日志（plan 2.9）。
-    - enforce：§6.2 起的拒绝生效（plan 2.2）。
-    非法值 fail-closed 回 off 并 warning 留痕（打错键不得静默改变收割行为）。
-    精确匹配三个字面量、不做空白归一：带引号的病态值（如 " enforce"）必须
-    留痕走 off，不得无痕激活拒绝（审核 NIT-1，2026-10-06）。
-    goal 每 poll 热重载（main 循环 load_goal，2026-09-08 起与 budgets/
-    cadence 同一热重载设计），宿主改键下一轮 poll 生效、无需重启
-    （审核 MINOR-1 勘正：此前「需重启」的说法与事实相反）。
-    """
-    raw = (goal or {}).get("search_policy", "off")
-    if raw is None:
-        return "off"
-    if raw in ("off", "shadow", "enforce"):
-        return raw
-    logging.warning("search_policy 非法值 %r → 按 off 处理"
-                    "（合法值 off|shadow|enforce，精确匹配）", raw)
-    return "off"
-
-def _goal_target_symbols(goal):
-    cad = (goal or {}).get("cadence") or {}
-    raw = cad.get("target_symbols") or []
-    out = []
-    seen = set()
-    for item in raw:
-        sym = str(item).lower().strip()
-        if not sym or sym in seen:
-            continue
-        seen.add(sym)
-        out.append(sym)
-    return out
-
-
-# ── 目标品种集单源化（技术债 L3，2026-10-08）─────────────────────────
-# 修复前同一语义有三份副本且互相矛盾：
-#   1) praxist_goal.yaml goal.cadence.target_symbols —— 24 个（契约本身）
-#   2) GOAL_SYMBOLS_SET 硬编码 9 个 —— 1★ 信用品种，10-02 goal 重写后已陈旧
-#   3) build_snapshot 内 TARGET_SYMBOLS 硬编码 24 个 —— 与 yaml 恰好重复
-# 三份副本必然漂移。本组函数把 yaml 立为唯一来源；缺失即启动失败
-# （见 _assert_goal_symbols_contract），禁止静默回退硬编码。
-_GOAL_YAML_DEFAULT = os.path.join(sup_paths.FM_ROOT, "scripts", "praxist_goal.yaml")
-_GOAL_SYMBOLS_CACHE = None
-
-
-def _assert_goal_symbols_contract(goal, path=None):
-    """启动期目标品种集契约校验。缺键/空列表 → 抛错（fail loud）。
-
-    静默回退到陈旧硬编码正是 "9 vs 24" 语义分裂能长期存活的成因：
-    契约缺失必须让启动失败，而不是悄悄按旧口径跑。
-    """
-    syms = _goal_target_symbols(goal)
-    if not syms:
-        raise ValueError(
-            "目标品种集契约缺失：%s 的 goal.cadence.target_symbols 为空。"
-            "该字段是目标品种的唯一来源，禁止回退任何硬编码集合。"
-            % (path or _GOAL_YAML_DEFAULT))
-    return syms
-
-
-def _load_goal_symbols(path=None):
-    """读目标品种集并缓存。传 path 时绕过缓存（测试用）。"""
-    global _GOAL_SYMBOLS_CACHE
-    if path is None and _GOAL_SYMBOLS_CACHE is not None:
-        return _GOAL_SYMBOLS_CACHE
-    p = path or _GOAL_YAML_DEFAULT
-    syms = frozenset(_assert_goal_symbols_contract(load_goal(p), p))
-    if path is None:
-        _GOAL_SYMBOLS_CACHE = syms
-    return syms
-
-
-def _reset_goal_symbols_cache():
-    """测试钩子：清缓存，使 _load_goal_symbols 重新读 yaml。"""
-    global _GOAL_SYMBOLS_CACHE
-    _GOAL_SYMBOLS_CACHE = None
-
 def _env_first(*names):
     """First non-empty env value among names (never log/echo secrets)."""
     for n in names:
@@ -873,7 +728,7 @@ def _failover_configured() -> bool:
 
 def _llm_provider(st=None) -> str:
     """Canonical state key is llm_provider; llm_route kept as read fallback."""
-    st = st if st is not None else load_state()
+    st = st if st is not None else sup_state.load_state()
     route = (st.get("llm_provider") or st.get("llm_route") or "primary")
     route = str(route).strip().lower()
     return route if route in ("primary", "failover") else "primary"
@@ -1090,7 +945,7 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
         if v.get("cov_family")
         and v.get("cov_family") != "unknown"
     } & ALLOWED_FAMILIES
-    n_goal_symbols_hit = len(symbols_hit & GOAL_SYMBOLS_SET)
+    n_goal_symbols_hit = len(symbols_hit & sup_state.GOAL_SYMBOLS_SET)
     n_unique_pass_variants = len({v["variant_id"] for v in passing})
     n_families_hit = len(families_hit)
     # v23: v2 过门变体的 min dir_acc (pass_variants = gate_pass 且 fdr_pass;
@@ -1118,7 +973,7 @@ def build_snapshot(registry_path, cycles_done, cpu_hours_used, tokens_used_m):
     
     # 目标品种集：与 GOAL_SYMBOLS_SET 同源（L3：原为第二份硬编码 24 个，
     # 与 yaml 恰好重复 —— 两份副本必然漂移）
-    TARGET_SYMBOLS = set(GOAL_SYMBOLS_SET)
+    TARGET_SYMBOLS = set(sup_state.GOAL_SYMBOLS_SET)
     
     # 按品种统计指标
     symbol_stats = {}
@@ -1374,7 +1229,7 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
         "按协议指纹分组排名；另有 %d 个协议组的 %d 条 verdict 未进主排名"
         "（见 Old-protocol priors，仅上下文）。"
         % (len(_excl_fp_groups), len(_excl_fp_rows)))
-    for sym in sorted(GOAL_SYMBOLS_SET):
+    for sym in sorted(sup_state.GOAL_SYMBOLS_SET):
         n_ok = 0
         n_pass = 0
         for v in items:
@@ -1747,10 +1602,6 @@ def _load_evaluator():
 
 # ── v2 预注册宇宙 (evaluator 预注册品种) ──────────────────────────
 _ev_mod_for_goal = _load_evaluator()
-# 目标品种集：唯一来源 = praxist_goal.yaml goal.cadence.target_symbols。
-# 2026-10-08（L3）删除 9 个 1★ 信用品种的硬编码——它与 yaml 的 24 个早已分裂，
-# 且已退役的信用档（scheme.stars / list_by_stars）与"目标品种"本就是两个概念，不可互代。
-GOAL_SYMBOLS_SET = _load_goal_symbols()
 del _ev_mod_for_goal
 
 
@@ -2996,7 +2847,7 @@ def plan_sample_retests(goal):
         # v2 verdicts don't have max_points; use cadence default
         row = {"variant_id": vid, "symbol": v["symbol"],
                "cov_override": v["cov_override"],
-               "max_points": _cad_int(cad, "aligned_max_points"),
+               "max_points": sup_state._cad_int(cad, "aligned_max_points"),
                "stage": "aligned", "checkpoint_path": "",
                "enqueued_at": _now_iso(), "src_run": "supervisor_retest",
                "source": "sample_retest"}
@@ -3013,7 +2864,7 @@ def _maybe_enqueue_retests(goal, log):
     added = rl.queue_enqueue(sup_paths.QUEUE, [row for row, _, _ in plan],
                              dead=set(), existing=set())
     if added:
-        _merge_save({"phase": "slow"})
+        sup_state._merge_save({"phase": "slow"})
         for row, last_n, cur_n in plan:
             _log_decision(log, "sample_retest_enqueued",
                           "%s n %d->%d (gate_n=%d); checkpoint resume, 只算新点"
@@ -3047,24 +2898,6 @@ def _read_cpu_hours():
             pass
     return round(total, 3)
 
-def _ensure_tokens_baseline(st):
-    """Freeze historical disk usage as baseline on first known read; budget the delta."""
-    if "tokens_baseline_m" in st:
-        return st
-    tok_m, tok_unknown = _read_token_m()
-    if tok_unknown:
-        return st
-    st["tokens_baseline_m"] = float(tok_m)
-    save_state(st)
-    return st
-
-
-def _token_spend_m(st, tok_m):
-    """Tokens used since supervisor baseline (pre-existing disk totals excluded)."""
-    if "tokens_baseline_m" not in st:
-        return float(tok_m)
-    return max(0.0, float(tok_m) - float(st["tokens_baseline_m"]))
-
 
 def _token_budget_hit(tok_spend, tok_unknown, budgets):
     """Return (hit, cap). null cancels the cap; a missing key keeps the default 80.
@@ -3085,26 +2918,6 @@ def _token_budget_hit(tok_spend, tok_unknown, budgets):
         raise ValueError("token_budget_m must be a number or null")
     return float(tok_spend) >= cap_n, cap_n
 
-
-def _read_token_m():
-    """Best-effort. 若所有 generation_results 都缺 runtime_usage, 返回 (0.0, True)=unknown, 跳过 token 预算。"""
-    total = 0.0
-    saw = False
-    for gr in glob.glob(os.path.join(sup_paths.FM_ROOT, "task_FM", "experiments", "run_*", "gen_*", "generation_results.json")):
-        try:
-            d = json.load(open(gr, encoding="utf-8"))
-        except Exception:
-            continue
-        for it in (d if isinstance(d, list) else [d]):
-            u = (it or {}).get("runtime_usage") or {}
-            tok = u.get("total_tokens")
-            if tok is None:
-                tok = (it or {}).get("total_tokens")
-            if tok is None:
-                continue
-            saw = True
-            total += float(tok)
-    return round(total / 1e6, 3), (not saw)
 
 def _in_slow_window(goal, now=None):
     win = (goal.get("cadence") or {}).get("slow_loop_window") or ""
@@ -3190,12 +3003,6 @@ def write_stop_report(kind, snap, why, budgets_line):
         print(f"[WARN] Failed to write state file: {e}", file=sys.stderr)
     return path
 
-def _merge_save(updates):
-    fresh = load_state()
-    fresh.update(updates)
-    save_state(fresh)
-    return fresh
-
 def decide_fast_loop(goal, dry_run=False, now=None):
     """纯决策: 返回 actions 列表 [{action, reason, refs, argv?}]. dry_run 不调用 praxist。
 
@@ -3207,7 +3014,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
     ok, sleep_s = quota_gate(goal, now=now)
     active = _run_active()
     meta = _active_run_meta() if active else None
-    st = ensure_phase(load_state())
+    st = ensure_phase(sup_state.load_state())
     failover_ok = _failover_configured()
     provider_now = _llm_provider(st)
 
@@ -3245,7 +3052,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             r = sup_env._praxist(argv, env=_praxist_env(provider))
             if r.get("ok"):
                 upd = {"paused_429": False, "phase": "fast", **_provider_state(provider)}
-                _merge_save(upd)
+                sup_state._merge_save(upd)
             return r
         return None
 
@@ -3272,7 +3079,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
                             updates["last_run_id"] = js["run_id"]
                 except json.JSONDecodeError:
                     pass
-                _merge_save(updates)
+                sup_state._merge_save(updates)
             return r
         return None
 
@@ -3312,7 +3119,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             if not dry_run:
                 if run_id:
                     sup_env._praxist(["stop", str(run_id)])
-                _merge_save({
+                sup_state._merge_save({
                     "paused_429": False,
                     "last_run_dir": run_dir,
                     "last_run_id": run_id,
@@ -3331,7 +3138,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
                             if js.get("run_id"):
                                 upd["last_run_id"] = js["run_id"]
                         if upd:
-                            _merge_save(upd)
+                            sup_state._merge_save(upd)
                     except json.JSONDecodeError:
                         pass
                 if not r.get("ok"):
@@ -3341,7 +3148,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
                         "refs": [run_id, run_dir, (r.get("stderr") or "")[:200]],
                         "sleep_s": sleep_s,
                     })
-                    _merge_save({"paused_429": True, **_provider_state("failover")})
+                    sup_state._merge_save({"paused_429": True, **_provider_state("failover")})
                 _emit_event("action", "provider_switch", {"from": "primary", "to": "failover", "reason": "429_rate_limit"})
             return actions
         # Already on failover: Ark quota_gate must NOT stop a live DashScope run.
@@ -3363,7 +3170,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
         if not dry_run and run_id:
             r = sup_env._praxist(["stop", str(run_id)])
             if r.get("ok"):
-                _merge_save({
+                sup_state._merge_save({
                     "paused_429": True,
                     "last_run_dir": run_dir,
                     "last_run_id": run_id,
@@ -3416,7 +3223,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
         if not ok and failover_ok:
             rd = st.get("last_run_dir") or st.get("last_run_id")
             if not dry_run:
-                _merge_save({"phase": "fast", **_provider_state("failover")})
+                sup_state._merge_save({"phase": "fast", **_provider_state("failover")})
             if rd and not active and _failover_can_resume_same_run(rd):
                 _plan_resume(rd, "failover", "wait_quota bypassed; failover resume (same model)")
             elif not active:
@@ -3435,7 +3242,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             })
             return actions
         if not dry_run:
-            _merge_save({"phase": "fast"})
+            sup_state._merge_save({"phase": "fast"})
         st = dict(st)
         st["phase"] = "fast"
 
@@ -3477,7 +3284,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     # 目标品种集契约校验（L3）：goal.cadence.target_symbols 缺失即启动失败。
     # 放在 env 检查之前 —— 契约错误不该被"仅告警"的 env 分支吞掉。
-    _assert_goal_symbols_contract(load_goal(args.goal), args.goal)
+    sup_state._assert_goal_symbols_contract(sup_state.load_goal(args.goal), args.goal)
     # Self-healing: load .env.praxist so startup doesn't depend on shell source.
     # Uses args.root so tests with --root tmp_path don't FATAL-exit.
     env_loaded = sup_env._load_dotenv(root=getattr(args, "root", None))
@@ -3533,10 +3340,10 @@ def _harvest_rows(goal):
     pool = load_covariate_pool()
     rows, pstats = harvest_proposals(
         sup_paths.FM_ROOT, snap_now, dead, existing, pool,
-        top_k=_cad_int(cad, "survivors_per_cycle"),
-        aligned_max_points=_cad_int(cad, "aligned_max_points"),
+        top_k=sup_state._cad_int(cad, "survivors_per_cycle"),
+        aligned_max_points=sup_state._cad_int(cad, "aligned_max_points"),
         priority_symbols=cad.get("priority_symbols"),
-        search_policy=_norm_search_policy(goal))
+        search_policy=sup_state._norm_search_policy(goal))
     return rows, dead, existing, pstats
 
 def _commit_search_accepts(rows, dead=None, existing=None):
@@ -3585,7 +3392,7 @@ def _sweep_search_stops(goal, log, snapshot):
     re-raise → 进程退出 → 由外部重启重放整轮（sweep 幂等：已停止树
     不再巡检，重放只补缺失的 stop 行）。
     """
-    if _norm_search_policy(goal) != "enforce":
+    if sup_state._norm_search_policy(goal) != "enforce":
         return 0
     index = st.load_tree_index(sup_paths.SEARCH_COMMITMENTS_PATH)
     if not index.unstopped():
@@ -3617,12 +3424,12 @@ def _sweep_search_promotions(goal, log, snapshot):
     只在 enforce 下写。off / shadow 不追加、不落账。提案文本读不到则跳过
     这一棵（fail-closed），不发明 mechanism。
     """
-    if _norm_search_policy(goal) != "enforce":
+    if sup_state._norm_search_policy(goal) != "enforce":
         return 0
     index = st.load_tree_index(sup_paths.SEARCH_COMMITMENTS_PATH)
     if not index.unstopped():
         return 0
-    registry = load_preregistry(sup_paths.PREREGISTRY_PATH)
+    registry = sup_state.load_preregistry(sup_paths.PREREGISTRY_PATH)
     promoted = 0
     for tree in list(index.unstopped()):
         decision = search_promote.evaluate_tree_promotion(
@@ -3692,10 +3499,10 @@ def _maybe_harvest(st, goal, log):
             _log_decision(log, "search_accepts", f"committed {n_acc}",
                           [r["variant_id"] for r in rows
                            if r.get("search_role")])
-        _merge_save({"last_harvested_run_id": last, "phase": "slow"})
+        sup_state._merge_save({"last_harvested_run_id": last, "phase": "slow"})
         try:
             from praxist_assets_archive import archive_fast_harvest
-            archive_fast_harvest(last, rows, load_state())
+            archive_fast_harvest(last, rows, sup_state.load_state())
         except Exception as e:
             _log_decision(log, "assets_archive_error", f"harvest: {e}")
     else:
@@ -3704,11 +3511,11 @@ def _maybe_harvest(st, goal, log):
                       "(need results/**/proposals/*.json; reject_reasons=%s)"
                       % (pstats.get("reject_reasons") if pstats else {}))
         gate_ok, _ = quota_gate(goal)
-        fresh = load_state()
+        fresh = sup_state.load_state()
         fresh["cycles_done"] = int(fresh.get("cycles_done") or 0) + 1
         fresh["last_harvested_run_id"] = last
         fresh["phase"] = "fast" if gate_ok else "wait_quota"
-        save_state(fresh)
+        sup_state.save_state(fresh)
     return True
 
 
@@ -3823,7 +3630,7 @@ def _prereg_confirm_from_ts(sym_lower, root):
     """该品种全部预注册行的 confirm_from_ts 列表（读 root 相对 preregistry）。"""
     path = os.path.join(root, "task_FM", "config", "preregistry.jsonl")
     out = []
-    for row in load_preregistry(path):
+    for row in sup_state.load_preregistry(path):
         if str(row.get("symbol", "")).lower() == str(sym_lower).lower():
             ts = row.get("confirm_from_ts")
             if ts:
@@ -3844,7 +3651,7 @@ def _baseline_reanchor_reason(sym_lower, last_cutoff, root):
     """
     if not last_cutoff:
         return None
-    data_dt = _latest_data_dt(sym_lower)
+    data_dt = sup_state._latest_data_dt(sym_lower)
     if not data_dt:
         return None
     for ts in _prereg_confirm_from_ts(sym_lower, root):
@@ -4086,7 +3893,7 @@ def cleanup_batch_workers(batch_id):
 
 
 def _maybe_start_slow_loop(goal, log):
-    st = load_state()
+    st = sup_state.load_state()
     if st.get("phase") != "slow":
         return
     if not _queue_busy() or _slow_loop_alive():
@@ -4142,18 +3949,18 @@ def _maybe_start_slow_loop(goal, log):
             _log_decision(log, "active_runs_complete_write_failed", str(e))
 
         # Persist batch_id for FDR promotion on completion
-        fresh = load_state()
+        fresh = sup_state.load_state()
         fresh["current_batch_id"] = batch_id
         fresh["current_batch_records"] = [
             {"variant_id": r.get("variant_id"), "symbol": r.get("symbol", "") or ""}
             for r in batch_records if r.get("variant_id")]
-        save_state(fresh)
+        sup_state.save_state(fresh)
     finally:
         out_fp.close()
     _log_decision(log, "slow_loop_started", "phase=slow, queue busy")
 
 def _maybe_finish_slow(goal, log):
-    st = load_state()
+    st = sup_state.load_state()
     if st.get("phase") != "slow":
         return False
     if not _slow_drain_complete():
@@ -4236,11 +4043,11 @@ def _maybe_finish_slow(goal, log):
         except Exception as e:
             _log_decision(log, "cleanup_batch_error", str(e))
         # Clear batch tracking from state
-        fresh = load_state()
+        fresh = sup_state.load_state()
         fresh.pop("current_batch_id", None)
         fresh.pop("current_batch_records", None)
         fresh.pop("current_batch_variant_ids", None)  # legacy key
-        save_state(fresh)
+        sup_state.save_state(fresh)
     snap = rl.load_snapshot(sup_paths.REGISTRY)
     # 物化给 peer 看的证据同样只认当前协议；被排除的行显式报数，不静默。
     _cur_fp = _current_protocol_fingerprint()
@@ -4268,10 +4075,10 @@ def _maybe_finish_slow(goal, log):
     )
     materialize_covariate_menu(load_covariate_pool(), sup_paths.MENU_INC)
     gate_ok, _ = quota_gate(goal)
-    fresh = load_state()
+    fresh = sup_state.load_state()
     fresh["cycles_done"] = int(fresh.get("cycles_done") or 0) + 1
     fresh["phase"] = "fast" if gate_ok else "wait_quota"
-    save_state(fresh)
+    sup_state.save_state(fresh)
     _log_decision(log, "slow_drain_complete",
                   "queue empty, slow idle, cycle+1 phase={0}".format(fresh["phase"]))
     try:
@@ -4286,8 +4093,8 @@ def _main_locked(args):
     one_shot = args.dry_run or args.once
     # Pre-flight: ensure baseline metrics/points exist for all goal symbols
     try:
-        goal_for_baselines = load_goal(args.goal)
-        ensure_baselines(_goal_target_symbols(goal_for_baselines), args.root)
+        goal_for_baselines = sup_state.load_goal(args.goal)
+        ensure_baselines(sup_state._goal_target_symbols(goal_for_baselines), args.root)
     except Exception as e:
         print(f"[ERROR] ensure_baselines pre-flight failed: {e}", file=sys.stderr)
     while True:
@@ -4298,13 +4105,13 @@ def _main_locked(args):
         # Reload goal every poll so hot token_budget_m / max_cycles edits apply
         # without restart (2026-09-08: stale 50 in-memory while disk was 80 → false
         # budget_exhausted at tok_m=52.516).
-        goal = load_goal(args.goal)
+        goal = sup_state.load_goal(args.goal)
         max_cycles = args.max_cycles or goal["budgets"]["max_cycles"]
-        st = load_state()
+        st = sup_state.load_state()
         cycles = int(st.get("cycles_done") or 0)
         cpu_h = _read_cpu_hours()
-        tok_m, tok_unknown = _read_token_m()
-        tok_spend = _token_spend_m(st, tok_m)
+        tok_m, tok_unknown = sup_state._read_token_m()
+        tok_spend = sup_state._token_spend_m(st, tok_m)
         snap = build_snapshot(sup_paths.REGISTRY, cycles, cpu_h, tok_spend)
         ok, why = evaluate_goal(goal["success_condition"], snap)
         b = goal["budgets"]
@@ -4389,15 +4196,15 @@ def _main_locked(args):
                 budget_hit = False
             else:
                 # Drain finished-run harvest + local slow queue BEFORE exiting on budget.
-                st_pre = load_state()
+                st_pre = sup_state.load_state()
                 code = _shutdown_exit()
                 if code is not None:
                     return code
                 _maybe_harvest(st_pre, goal, log)
-            st_pre = load_state()
+            st_pre = sup_state.load_state()
             if st_pre.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
                 if st_pre.get("phase") != "slow":
-                    _merge_save({"phase": "slow"})
+                    sup_state._merge_save({"phase": "slow"})
                     _emit_event("action", "phase_change", {"from": "fast", "to": "slow"})
                 _maybe_start_slow_loop(goal, log)
                 # One-shot drain wait is not appropriate here; leave slow running and
@@ -4415,10 +4222,10 @@ def _main_locked(args):
                     _maybe_finish_slow(goal, log)
                     # Re-check goal after slow drain — slow loop verdicts may have
                     # satisfied the success condition since the stale snapshot at top.
-                    fresh_cycles = int(load_state().get("cycles_done") or 0)
+                    fresh_cycles = int(sup_state.load_state().get("cycles_done") or 0)
                     fresh_cpu_h = _read_cpu_hours()
-                    fresh_tok_m, fresh_tok_unknown = _read_token_m()
-                    fresh_tok_spend = _token_spend_m(load_state(), fresh_tok_m)
+                    fresh_tok_m, fresh_tok_unknown = sup_state._read_token_m()
+                    fresh_tok_spend = sup_state._token_spend_m(sup_state.load_state(), fresh_tok_m)
                     fresh_snap = build_snapshot(sup_paths.REGISTRY, fresh_cycles, fresh_cpu_h, fresh_tok_spend)
                     fresh_ok, fresh_why = evaluate_goal(goal["success_condition"], fresh_snap)
                     if fresh_ok:
@@ -4459,8 +4266,8 @@ def _main_locked(args):
                 print(json.dumps(rec, ensure_ascii=False))
                 return 0
 
-        st = ensure_phase(load_state())
-        st = _merge_save({"phase": st["phase"]})
+        st = ensure_phase(sup_state.load_state())
+        st = sup_state._merge_save({"phase": st["phase"]})
         # Harvest finished runs even during paused_429 / wait_quota.
         code = _shutdown_exit()
         if code is not None:
@@ -4476,11 +4283,11 @@ def _main_locked(args):
             _maybe_enqueue_confirmations(log, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         except Exception as e:
             _log_decision(log, "confirmation_enqueue_error", str(e))
-        st = load_state()
+        st = sup_state.load_state()
         # Local aligned drain is never blocked by LLM pause/failover.
         if st.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
             if st.get("phase") != "slow":
-                _merge_save({"phase": "slow"})
+                sup_state._merge_save({"phase": "slow"})
             _maybe_start_slow_loop(goal, log)
             _maybe_finish_slow(goal, log)
         planned = decide_fast_loop(goal, dry_run=False)
