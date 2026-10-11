@@ -17,6 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
+import sup_paths
 import praxist_supervisor as S  # noqa: E402
 
 LONGM = ("波动率范围(VOR)压缩后突破：该品种在低波区积蓄动能后常随放量突破，"
@@ -64,11 +65,11 @@ def _vid(sym, cov, family="volatility"):
 
 @pytest.fixture
 def tmproot(tmp_path, monkeypatch):
-    monkeypatch.setattr(S, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
+    monkeypatch.setattr(sup_paths, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
     status_path = tmp_path / "symbol_status.json"
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
     # W6.4: 固定实验指纹, 测试 vid 确定性 (真实 fp 由生产路径覆盖)
     monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
     monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
@@ -252,7 +253,7 @@ def test_dead_symbol_rejected(tmproot, monkeypatch):
             "eg": {"status": "DEAD", "reason": "x"},
             "jd": {"status": "HOLD", "hold_generations": 5, "reason": "y"},
         }}, f)
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", status_path)
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", status_path)
     _make_run(tmproot, _prop(symbol="eg", cov="oi"))
     rows, stats = _harvest(tmproot)
     assert stats["selected"] == 0
@@ -265,7 +266,7 @@ def test_hold_symbol_rejected(tmproot, monkeypatch):
         json.dump({"schema": "fm.symbol_status.v1", "symbols": {
             "jd": {"status": "HOLD", "hold_generations": 5, "reason": "y"},
         }}, f)
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", status_path)
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", status_path)
     _make_run(tmproot, _prop(symbol="jd", cov="ccl"))
     rows, stats = _harvest(tmproot)
     assert stats["selected"] == 0
@@ -278,7 +279,7 @@ def test_active_symbol_still_enqueued(tmproot, monkeypatch):
         json.dump({"schema": "fm.symbol_status.v1", "symbols": {
             "eg": {"status": "DEAD", "reason": "x"},
         }}, f)
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", status_path)
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", status_path)
     _make_run(tmproot, _prop(symbol="m", cov="vor", failure_delta=FAIL_DELTA))
     rows, stats = _harvest(tmproot)
     assert stats["selected"] == 1
@@ -617,7 +618,7 @@ def test_harvest_snapshot_ignores_other_protocols(tmp_path, monkeypatch):
     """旧指纹和无指纹的失败不得进入收割快照，当前协议的失败仍要进入。"""
     reg = tmp_path / "aligned_verdicts.jsonl"
     _write_registry(reg, _mixed_protocol_rows())
-    monkeypatch.setattr(S, "REGISTRY", str(reg))
+    monkeypatch.setattr(sup_paths, "REGISTRY", str(reg))
     monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current")
     captured = {}
 
@@ -639,7 +640,7 @@ def test_retest_plan_ignores_other_protocols(tmp_path, monkeypatch):
     """复测计划同样只排当前协议里 n 不足的未过门裁决。"""
     reg = tmp_path / "aligned_verdicts.jsonl"
     _write_registry(reg, _mixed_protocol_rows())
-    monkeypatch.setattr(S, "REGISTRY", str(reg))
+    monkeypatch.setattr(sup_paths, "REGISTRY", str(reg))
     monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current")
     monkeypatch.setattr(S, "_valid_n_for_symbol", lambda symbol: 400)
     monkeypatch.setattr(S.rl, "in_flight_ids", lambda *a, **k: set())

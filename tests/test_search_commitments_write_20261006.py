@@ -33,6 +33,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
+import sup_paths
 import praxist_supervisor as S  # noqa: E402
 import registry_lib as rl  # noqa: E402
 import search_trees as ST  # noqa: E402
@@ -89,17 +90,17 @@ def _prop(symbol="m", cov="vor", **over):
 
 @pytest.fixture
 def tmproot(tmp_path, monkeypatch):
-    monkeypatch.setattr(S, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
+    monkeypatch.setattr(sup_paths, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
     status_path = tmp_path / "symbol_status.json"
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
     monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
     monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
-    monkeypatch.setattr(S, "SEARCH_COMMITMENTS_PATH",
+    monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH",
                         str(tmp_path / "search_commitments.jsonl"))
-    monkeypatch.setattr(S, "QUEUE", str(tmp_path / "aligned_pending.jsonl"))
-    monkeypatch.setattr(S, "INPROGRESS", str(tmp_path / "aligned_pending.inprogress.jsonl"))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "aligned_pending.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "aligned_pending.inprogress.jsonl"))
     return str(tmp_path)
 
 

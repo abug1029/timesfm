@@ -13,6 +13,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import sup_paths
 import praxist_supervisor as sup  # noqa: E402
 import aligned_slow_loop as slow  # noqa: E402
 
@@ -86,10 +87,10 @@ def test_maybe_enqueue_confirmations_respects_data_gate(tmp_path, monkeypatch):
         "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
     }
     prereg.write_text(json.dumps(reg) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sup, "PREREGISTRY_PATH", str(prereg))
-    monkeypatch.setattr(sup, "FAMILY_REGISTRY", str(fam))
-    monkeypatch.setattr(sup, "QUEUE", str(q))
-    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "i.jsonl"))
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(fam))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(q))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "i.jsonl"))
     monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
     monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup, "rl", type("RL", (), {
@@ -164,10 +165,10 @@ def test_no_data_tombstone_does_not_block_reenqueue(tmp_path, monkeypatch):
         "jd_momentum_realreal01": {"variant_id": "jd_momentum_realreal01",
                                    "prereg_id": "p-other", "status": "ok"},
     }
-    monkeypatch.setattr(sup, "PREREGISTRY_PATH", str(prereg_path))
-    monkeypatch.setattr(sup, "FAMILY_REGISTRY", str(family_path))
-    monkeypatch.setattr(sup, "QUEUE", str(queue_path))
-    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
     monkeypatch.setattr(sup, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
     monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)

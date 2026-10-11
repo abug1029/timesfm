@@ -4,10 +4,44 @@ import argparse, atexit, fcntl, glob, json, logging, os, re, shutil, signal, sub
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import yaml
-HERE = os.path.dirname(os.path.abspath(__file__))
-FM_ROOT = os.path.dirname(HERE)
-sys.path.insert(0, HERE)
-sys.path.insert(0, FM_ROOT)
+_BOOT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _BOOT_DIR)
+sys.path.insert(0, os.path.dirname(_BOOT_DIR))
+import sup_paths
+
+_HOMES: dict[str, object] = {  # 每搬完一个模块就填 name -> module
+    "HERE": sup_paths,
+    "FM_ROOT": sup_paths,
+    "QUEUE": sup_paths,
+    "INPROGRESS": sup_paths,
+    "REGISTRY": sup_paths,
+    "SEARCH_COMMITMENTS_PATH": sup_paths,
+    "STATE_PATH": sup_paths,
+    "LOCK_PATH": sup_paths,
+    "VERDICTS_INC": sup_paths,
+    "POOL_PATH": sup_paths,
+    "BACKLOG_PATH": sup_paths,
+    "SYMBOL_STATUS_PATH": sup_paths,
+    "MENU_INC": sup_paths,
+    "REPORT_DIR": sup_paths,
+    "STATE_MD": sup_paths,
+    "EVENTS_PATH": sup_paths,
+    "HEARTBEAT_PATH": sup_paths,
+    "STOP_REPORT_JSON": sup_paths,
+    "POLL_S": sup_paths,
+    "PHASES": sup_paths,
+    "RETEST_GATE_N": sup_paths,
+    "FAMILY_REGISTRY": sup_paths,
+    "PREREGISTRY_PATH": sup_paths,
+}
+
+
+def __getattr__(name):
+    mod = _HOMES.get(name)
+    if mod is None:
+        raise AttributeError(name)
+    return getattr(mod, name)
+
 import registry_lib as rl
 from goal_dsl import evaluate_goal
 from cascade.cov_family import ALLOWED_FAMILIES, resolve_cov_family
@@ -79,14 +113,14 @@ def _resolve_praxist_bin() -> str:
     """Prefer repo .venv praxist; allow PRAXIST_BIN override."""
     candidates = [
         os.environ.get("PRAXIST_BIN"),
-        os.path.join(FM_ROOT, ".venv", "bin", "praxist"),  # prefer repo venv
+        os.path.join(sup_paths.FM_ROOT, ".venv", "bin", "praxist"),  # prefer repo venv
     ]
     for c in candidates:
         if c and os.path.isfile(c) and os.access(c, os.X_OK):
             return c
     raise RuntimeError(
         "praxist binary not found (tried PRAXIST_BIN, %s); "
-        "install repo .venv or set PRAXIST_BIN" % (FM_ROOT,)
+        "install repo .venv or set PRAXIST_BIN" % (sup_paths.FM_ROOT,)
     )
 
 
@@ -95,19 +129,7 @@ def _praxist_bin() -> str:
     if _PRAXIST is None:
         _PRAXIST = _resolve_praxist_bin()
     return _PRAXIST
-QUEUE = os.path.join(FM_ROOT, "data", "cache", "aligned_pending.jsonl")
-INPROGRESS = os.path.join(FM_ROOT, "data", "cache", "aligned_pending.inprogress.jsonl")
-REGISTRY = os.path.join(FM_ROOT, "task_FM", "config", "aligned_verdicts.jsonl")
 # P2.2 (spec 2026-10-05 §6.7): 搜索树事件账（append-only；写入侧 2.3 落地）
-SEARCH_COMMITMENTS_PATH = os.path.join(FM_ROOT, "task_FM", "config", "search_commitments.jsonl")
-STATE_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_state.json")
-LOCK_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor.lock")
-VERDICTS_INC = os.path.join(FM_ROOT, "task_FM", "known_verdicts.inc.md")
-POOL_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_pool.json")
-BACKLOG_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_backlog.jsonl")
-SYMBOL_STATUS_PATH = os.path.join(FM_ROOT, "task_FM", "config", "symbol_status.json")
-MENU_INC = os.path.join(FM_ROOT, "task_FM", "covariate_menu.inc.md")
-REPORT_DIR = os.path.join(FM_ROOT, "docs", "superpowers", "reports")
 
 
 def _load_dotenv(root=None, path=None):
@@ -121,7 +143,7 @@ def _load_dotenv(root=None, path=None):
     if path:
         p = path
     else:
-        base = root or FM_ROOT
+        base = root or sup_paths.FM_ROOT
         p = os.path.join(base, ".env.praxist")
     if not os.path.isfile(p):
         return False
@@ -161,17 +183,11 @@ def _check_required_env():
     missing_rec = [k for k in recommended if not os.environ.get(k)]
     return missing_req, missing_rec
 
-STATE_MD = os.path.join(FM_ROOT, "STATE.md")
-EVENTS_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_events.jsonl")
-HEARTBEAT_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_heartbeat")
-STOP_REPORT_JSON = os.path.join(FM_ROOT, "data", "cache", "stop_report.json")
 _EVENT_LOCK = threading.Lock()
 _SHUTDOWN_REQUESTED = False
 _RUN_ID = uuid.uuid4().hex[:12]
 _START_TIME = time.time()
 _STOP_EMITTED = False
-POLL_S = 300
-PHASES = ("fast", "slow", "wait_quota")
 # 复测触发判据：只保留"仅差样本量"的近失误筛选 (RETEST_GATE_N)。
 # 非 v23 gate 镜像（v23 口径见
 # docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md）。
@@ -186,7 +202,6 @@ PHASES = ("fast", "slow", "wait_quota")
 #      为 null，INCUMBENT_PF 恒空，`.get(sym, 1.0)` 静默把"PF 相对 incumbent
 #      超过 105%"改写成"PF 绝对值 > 1.05"，导致退化裁决被过度复测。
 #   现只认 v2 schema 的 dir_acc 口径；非 v2 行显式排除而非静默改判。
-RETEST_GATE_N = 350
 
 
 
@@ -203,8 +218,6 @@ from cascade.research_family import (  # noqa: E402
     seal_family as _fam_seal_family,
 )
 
-FAMILY_REGISTRY = os.path.join(FM_ROOT, "task_FM", "config", "family_registry.jsonl")
-PREREGISTRY_PATH = os.path.join(FM_ROOT, "task_FM", "config", "preregistry.jsonl")
 
 
 def family_key_for(symbol, **kwargs):
@@ -520,9 +533,9 @@ def _confirmation_is_final(v):
 
 
 def _maybe_enqueue_confirmations(log, now_ts):
-    registry = load_preregistry(PREREGISTRY_PATH)
-    blocked = rl.in_flight_ids(QUEUE, INPROGRESS)
-    snap = _active_protocol_snapshot(REGISTRY)
+    registry = load_preregistry(sup_paths.PREREGISTRY_PATH)
+    blocked = rl.in_flight_ids(sup_paths.QUEUE, sup_paths.INPROGRESS)
+    snap = _active_protocol_snapshot(sup_paths.REGISTRY)
     # 2026-10-04（E1）：只有满样终态裁决才算「已跑过」。D1 闸门只保证有
     # 1 根 bar 越过 confirm_from_ts，不保证 1199/986 个带 24h 前向标签的
     # 样本已就位——数据恢复后的首裁决必然是 status=ok 的未满样 peek
@@ -584,7 +597,7 @@ def _maybe_enqueue_confirmations(log, now_ts):
     if not rows:
         return 0
     added = 0
-    members = load_family_members(FAMILY_REGISTRY)
+    members = load_family_members(sup_paths.FAMILY_REGISTRY)
     for row in rows:
         try:
             family_key = family_key_for(row["symbol"])
@@ -611,8 +624,8 @@ def _maybe_enqueue_confirmations(log, now_ts):
                                   [row["variant_id"]])
                     continue
                 members = _merge_family_members(members, family_key, decision.get("members") or [])
-                save_family_members(FAMILY_REGISTRY, members)
-            n = rl.queue_enqueue(QUEUE, [row], dead=set(), existing=set())
+                save_family_members(sup_paths.FAMILY_REGISTRY, members)
+            n = rl.queue_enqueue(sup_paths.QUEUE, [row], dead=set(), existing=set())
             added += n
             if n:
                 _log_decision(log, "confirmation_enqueued", row["prereg_id"], [row["variant_id"]])
@@ -661,9 +674,9 @@ def _emit_event(level, event, data=None, **extra):
     rec.update(extra)
     line = json.dumps(rec, ensure_ascii=False, default=str)
     try:
-        os.makedirs(os.path.dirname(EVENTS_PATH), exist_ok=True)
+        os.makedirs(os.path.dirname(sup_paths.EVENTS_PATH), exist_ok=True)
         with _EVENT_LOCK:
-            with open(EVENTS_PATH, "a", encoding="utf-8") as f:
+            with open(sup_paths.EVENTS_PATH, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
                 f.flush()
                 os.fsync(f.fileno())
@@ -678,7 +691,7 @@ def _write_stop_json(event_rec):
     """Write a timestamped stop report JSON (keeps history)."""
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = os.path.join(os.path.dirname(STOP_REPORT_JSON),
+        path = os.path.join(os.path.dirname(sup_paths.STOP_REPORT_JSON),
                             f"stop_report_{ts}.json")
         report = {
             "ts": _now_iso(),
@@ -690,7 +703,7 @@ def _write_stop_json(event_rec):
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
-        with open(STOP_REPORT_JSON, "w", encoding="utf-8") as f:
+        with open(sup_paths.STOP_REPORT_JSON, "w", encoding="utf-8") as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
     except OSError as e:
         print(f"[STOP_REPORT_ERROR] {e}", file=sys.stderr)
@@ -699,8 +712,8 @@ def _write_stop_json(event_rec):
 def _write_heartbeat():
     """Write heartbeat timestamp. Called each main loop iteration."""
     try:
-        os.makedirs(os.path.dirname(HEARTBEAT_PATH), exist_ok=True)
-        with open(HEARTBEAT_PATH, "w") as f:
+        os.makedirs(os.path.dirname(sup_paths.HEARTBEAT_PATH), exist_ok=True)
+        with open(sup_paths.HEARTBEAT_PATH, "w") as f:
             f.write(json.dumps({"ts": _now_iso(), "run_id": _RUN_ID,
                                 "pid": os.getpid()}))
     except OSError as e:
@@ -740,9 +753,9 @@ def _atexit_handler():
     global _STOP_EMITTED
     if _STOP_EMITTED:
         return
-    if os.path.exists(STOP_REPORT_JSON):
+    if os.path.exists(sup_paths.STOP_REPORT_JSON):
         try:
-            existing = json.load(open(STOP_REPORT_JSON, encoding="utf-8"))
+            existing = json.load(open(sup_paths.STOP_REPORT_JSON, encoding="utf-8"))
             if existing.get("run_id") == _RUN_ID:
                 return
         except (OSError, json.JSONDecodeError):
@@ -780,23 +793,23 @@ def parse_429_reset(log_text):
     return datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S %z")
 
 def load_state():
-    if not os.path.exists(STATE_PATH):
+    if not os.path.exists(sup_paths.STATE_PATH):
         st = {"cycles_done": 0, "last_run_dir": None, "last_run_id": None,
               "last_harvested_run_id": None, "paused_429": False, "phase": "fast",
               "llm_provider": "primary", "llm_route": "primary"}
     else:
         try:
-            st = json.load(open(STATE_PATH, encoding="utf-8"))
+            st = json.load(open(sup_paths.STATE_PATH, encoding="utf-8"))
         except Exception:
             st = {"cycles_done": 0}
     return _ensure_tokens_baseline(st)
 
 def save_state(st):
-    os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-    tmp = STATE_PATH + ".tmp"
+    os.makedirs(os.path.dirname(sup_paths.STATE_PATH), exist_ok=True)
+    tmp = sup_paths.STATE_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(st, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, STATE_PATH)
+    os.replace(tmp, sup_paths.STATE_PATH)
 
 def load_goal(path):
     with open(path, encoding="utf-8") as f:
@@ -867,7 +880,7 @@ def _goal_target_symbols(goal):
 #   3) build_snapshot 内 TARGET_SYMBOLS 硬编码 24 个 —— 与 yaml 恰好重复
 # 三份副本必然漂移。本组函数把 yaml 立为唯一来源；缺失即启动失败
 # （见 _assert_goal_symbols_contract），禁止静默回退硬编码。
-_GOAL_YAML_DEFAULT = os.path.join(FM_ROOT, "scripts", "praxist_goal.yaml")
+_GOAL_YAML_DEFAULT = os.path.join(sup_paths.FM_ROOT, "scripts", "praxist_goal.yaml")
 _GOAL_SYMBOLS_CACHE = None
 
 
@@ -1065,7 +1078,7 @@ def _active_run_meta():
     return None
 
 def _latest_429_reset():
-    logs = sorted(glob.glob(os.path.join(FM_ROOT, "task_FM", "experiments", "run_*", "logs", "*.log")),
+    logs = sorted(glob.glob(os.path.join(sup_paths.FM_ROOT, "task_FM", "experiments", "run_*", "logs", "*.log")),
                   key=os.path.getmtime, reverse=True)
     for lp in logs[:5]:
         try:
@@ -1324,7 +1337,7 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
 
 def collect_proposed_variant_ids(root=None):
     """Parse results/**/proposals/*.json into {symbol_cov}."""
-    root = root or FM_ROOT
+    root = root or sup_paths.FM_ROOT
     out = set()
     pattern = os.path.join(root, "task_FM", "experiments", "run_*", "results",
                            "**", "proposals", "*.json")
@@ -1356,9 +1369,9 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
     if status_map is None:
         status_map = load_symbol_status()
     if queue_ids is None:
-        queue_ids = rl.in_flight_ids(QUEUE, INPROGRESS)
+        queue_ids = rl.in_flight_ids(sup_paths.QUEUE, sup_paths.INPROGRESS)
     if proposed_ids is None:
-        proposed_ids = collect_proposed_variant_ids(root or FM_ROOT)
+        proposed_ids = collect_proposed_variant_ids(root or sup_paths.FM_ROOT)
 
     lines = ["## Known aligned verdicts (supervisor snapshot)",
              "v2 pass (gate_pass=True AND fdr_pass=True AND p_value NOT NULL AND run_mode='confirmation'): already solved, do NOT re-propose.",
@@ -1419,7 +1432,7 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
     # 头部锚点：快照时间 + 主协议指纹 + 源 registry mtime（peer 引用证据时的出处）。
     try:
         _reg_mtime = datetime.fromtimestamp(
-            os.path.getmtime(REGISTRY)).isoformat()
+            os.path.getmtime(sup_paths.REGISTRY)).isoformat()
     except Exception:
         _reg_mtime = "n/a"
     _fp8 = (_primary_fp[:8]
@@ -1471,7 +1484,7 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
         clue_lines.insert(1, _protocol_section_line(_primary_fp))
     lines.extend(clue_lines)
     lines.extend(st.render_open_trees(
-        st.load_tree_index(commitments_path or SEARCH_COMMITMENTS_PATH),
+        st.load_tree_index(commitments_path or sup_paths.SEARCH_COMMITMENTS_PATH),
         snapshot if isinstance(snapshot, dict) else {}))
     lines.extend(_dead_family_lines(items, _primary_fp))
     lines.extend(_cross_matrix_lines(_items, _primary_fp))
@@ -1755,7 +1768,7 @@ def load_covariate_pool():
     静默通过等于把错误假设喂给消融实验。
     """
     try:
-        with open(POOL_PATH, encoding="utf-8") as f:
+        with open(sup_paths.POOL_PATH, encoding="utf-8") as f:
             pool = json.load(f) or {}
     except Exception as e:
         print("[WARN] covariate pool load failed (fail-open): %s" % e, file=sys.stderr)
@@ -1776,7 +1789,7 @@ def load_covariate_pool():
 
 def load_symbol_status(path=None):
     """Return {symbol: {"status": "DEAD"|"HOLD"|"ACTIVE", ...}}. Missing file -> {}."""
-    p = path or SYMBOL_STATUS_PATH
+    p = path or sup_paths.SYMBOL_STATUS_PATH
     try:
         with open(p, encoding="utf-8") as f:
             raw = json.load(f) or {}
@@ -1795,7 +1808,7 @@ def load_symbol_status(path=None):
 def _load_evaluator():
     """惰性导入 evaluator (仅 json/os/AST, 无 torch) 复用 active/archived/symbol 校验。"""
     try:
-        p = os.path.join(FM_ROOT, "task_FM", "evaluations", "fm_eval")
+        p = os.path.join(sup_paths.FM_ROOT, "task_FM", "evaluations", "fm_eval")
         if p not in sys.path:
             sys.path.insert(0, p)
         import evaluator as ev
@@ -1820,7 +1833,7 @@ def _cross_run_repeat_counts(root=None, max_runs=20):
     Returns {variant_name: run_count}. Used for repeat-offender penalty.
     Scans at most `max_runs` most recent runs to bound cost.
     """
-    base = root or FM_ROOT
+    base = root or sup_paths.FM_ROOT
     runs_dir = os.path.join(base, "task_FM", "experiments")
     if not os.path.isdir(runs_dir):
         return {}
@@ -2111,13 +2124,13 @@ def _append_backlog(prop, src_path):
     proposal 会被反复看到; 已在 backlog 的同名想法不得重复追加。
     返回 True=本次新增, False=同名已存在。
     """
-    os.makedirs(os.path.dirname(BACKLOG_PATH), exist_ok=True)
+    os.makedirs(os.path.dirname(sup_paths.BACKLOG_PATH), exist_ok=True)
     nc = prop.get("new_covariate") or prop.get("new_cov") or {}
     name = nc.get("name") or prop.get("cov_override")
     existing = set()
-    if os.path.exists(BACKLOG_PATH):
+    if os.path.exists(sup_paths.BACKLOG_PATH):
         try:
-            with open(BACKLOG_PATH, encoding="utf-8") as f:
+            with open(sup_paths.BACKLOG_PATH, encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
                         existing.add(json.loads(line).get("name"))
@@ -2127,7 +2140,7 @@ def _append_backlog(prop, src_path):
         return False
     rec = {"ts": _now_iso(), "src": src_path,
            "name": name, "proposal": prop}
-    with open(BACKLOG_PATH, "a", encoding="utf-8") as f:
+    with open(sup_paths.BACKLOG_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     return True
 
@@ -2670,9 +2683,9 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     search_guard = None
     shadow_guard = None
     if search_policy == "enforce":
-        search_guard = st.SearchGuard.load(SEARCH_COMMITMENTS_PATH, snapshot or {})
+        search_guard = st.SearchGuard.load(sup_paths.SEARCH_COMMITMENTS_PATH, snapshot or {})
     elif search_policy == "shadow":
-        shadow_guard = st.SearchGuard.load(SEARCH_COMMITMENTS_PATH, snapshot or {})
+        shadow_guard = st.SearchGuard.load(sup_paths.SEARCH_COMMITMENTS_PATH, snapshot or {})
         stats["search_would_reject"] = {}
         stats["search_shadow_log"] = []
 
@@ -2822,7 +2835,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 # 0=目标品种且当前可过门; 1=目标品种但样本暂不足(cj/lh); 2=非目标品种; 查询失败归 1
                 if symbol not in priority:
                     tier = 2
-                elif n_now is not None and n_now >= RETEST_GATE_N:
+                elif n_now is not None and n_now >= sup_paths.RETEST_GATE_N:
                     tier = 0
                 else:
                     tier = 1
@@ -2910,7 +2923,7 @@ def materialize_covariate_menu(pool, dest_path):
         lines.append("BELOW GATE symbols cannot pass today regardless of covariate "
                      "(1H bars accrue over time; supervisor auto-retests near-misses):")
         for sym, n in n_table:
-            tag = "unknown" if n is None else ("gate-reachable" if n >= RETEST_GATE_N else "BELOW GATE")
+            tag = "unknown" if n is None else ("gate-reachable" if n >= sup_paths.RETEST_GATE_N else "BELOW GATE")
             lines.append("- %s: n=%s %s" % (sym, "?" if n is None else n, tag))
         lines.append("")
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
@@ -3019,7 +3032,7 @@ def _retest_candidates(snapshot):
         if v.get("run_mode") == "confirmation" or v.get("prereg_id"):
             continue
         n = int(v.get("n") or 0)
-        if n <= 0 or n >= RETEST_GATE_N:
+        if n <= 0 or n >= sup_paths.RETEST_GATE_N:
             continue
         # 2026-10-08（债 2 裁定 C+a）：只认 v2 schema 的 dir_acc 口径。
         # 非 v2 行（v1 legacy 判据用 ic/ev/pf，指标已退役且分母被空 KB 损坏）
@@ -3040,15 +3053,15 @@ def plan_sample_retests(goal):
     """只读：返回当前可排队的 (row, last_n, current_n) 复测计划 (不写队列)。"""
     cad = goal.get("cadence") or {}
     margin = int(cad.get("retest_min_new_points", 1))
-    inflight = rl.in_flight_ids(QUEUE, INPROGRESS)
-    snap = _active_protocol_snapshot(REGISTRY)
+    inflight = rl.in_flight_ids(sup_paths.QUEUE, sup_paths.INPROGRESS)
+    snap = _active_protocol_snapshot(sup_paths.REGISTRY)
     plan = []
     for v in _retest_candidates(snap):
         vid = v["variant_id"]
         if vid in inflight:
             continue
         cur_n = _valid_n_for_symbol(v["symbol"])
-        if not cur_n or cur_n < RETEST_GATE_N:
+        if not cur_n or cur_n < sup_paths.RETEST_GATE_N:
             continue
         if cur_n - int(v.get("n") or 0) < margin:
             continue
@@ -3069,14 +3082,14 @@ def _maybe_enqueue_retests(goal, log):
         return 0
     # dead 去重刻意旁路：这些 variant 上次 gate=False 已在 dead 集，复测是宿主显式决策；
     # queue/inflight 去重仍在 rl.queue_enqueue 内部生效。
-    added = rl.queue_enqueue(QUEUE, [row for row, _, _ in plan],
+    added = rl.queue_enqueue(sup_paths.QUEUE, [row for row, _, _ in plan],
                              dead=set(), existing=set())
     if added:
         _merge_save({"phase": "slow"})
         for row, last_n, cur_n in plan:
             _log_decision(log, "sample_retest_enqueued",
                           "%s n %d->%d (gate_n=%d); checkpoint resume, 只算新点"
-                          % (row["variant_id"], last_n, cur_n, RETEST_GATE_N),
+                          % (row["variant_id"], last_n, cur_n, sup_paths.RETEST_GATE_N),
                           [row["variant_id"]])
             _emit_event("action", "sample_retest_enqueued",
                         {"variant_id": row["variant_id"],
@@ -3091,7 +3104,7 @@ def _log_decision(log_path, action, reason, refs=None):
     return rec
 
 def _read_cpu_hours():
-    p = os.path.join(FM_ROOT, "data", "cache", "slow_loop_metrics.jsonl")
+    p = os.path.join(sup_paths.FM_ROOT, "data", "cache", "slow_loop_metrics.jsonl")
     total = 0.0
     if os.path.exists(p):
         try:
@@ -3149,7 +3162,7 @@ def _read_token_m():
     """Best-effort. 若所有 generation_results 都缺 runtime_usage, 返回 (0.0, True)=unknown, 跳过 token 预算。"""
     total = 0.0
     saw = False
-    for gr in glob.glob(os.path.join(FM_ROOT, "task_FM", "experiments", "run_*", "gen_*", "generation_results.json")):
+    for gr in glob.glob(os.path.join(sup_paths.FM_ROOT, "task_FM", "experiments", "run_*", "gen_*", "generation_results.json")):
         try:
             d = json.load(open(gr, encoding="utf-8"))
         except Exception:
@@ -3185,7 +3198,7 @@ def _deadline_passed(b):
         return False
 
 def _slow_loop_alive():
-    lock_path = os.path.join(FM_ROOT, "data", "cache", "aligned_slow_loop.lock")
+    lock_path = os.path.join(sup_paths.FM_ROOT, "data", "cache", "aligned_slow_loop.lock")
     if not os.path.exists(lock_path):
         return False
     try:
@@ -3202,7 +3215,7 @@ def _slow_loop_alive():
         os.close(f)
 
 def _queue_busy():
-    return bool(rl.queue_load(QUEUE) + rl.queue_load(INPROGRESS))
+    return bool(rl.queue_load(sup_paths.QUEUE) + rl.queue_load(sup_paths.INPROGRESS))
 
 def _slow_drain_complete():
     return (not _queue_busy()) and (not _slow_loop_alive())
@@ -3215,7 +3228,7 @@ def ensure_phase(st):
     if _queue_busy() or _slow_loop_alive():
         st["phase"] = "slow"
         return st
-    if st.get("phase") in PHASES:
+    if st.get("phase") in sup_paths.PHASES:
         return st
     if st.get("paused_429") and not _run_active():
         if _failover_configured() or _llm_provider(st) == "failover":
@@ -3227,9 +3240,9 @@ def ensure_phase(st):
     return st
 
 def write_stop_report(kind, snap, why, budgets_line):
-    os.makedirs(REPORT_DIR, exist_ok=True)
+    os.makedirs(sup_paths.REPORT_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = os.path.join(REPORT_DIR, f"supervisor_{kind}_{ts}.md")
+    path = os.path.join(sup_paths.REPORT_DIR, f"supervisor_{kind}_{ts}.md")
     body = ["# Supervisor {0}".format(kind), "",
             "- ts: {0}".format(_now_iso()),
             "- cycles_done: {0}".format(snap.get("cycles_done")),
@@ -3243,7 +3256,7 @@ def write_stop_report(kind, snap, why, budgets_line):
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(body))
     try:
-        with open(STATE_MD, "a", encoding="utf-8") as f:
+        with open(sup_paths.STATE_MD, "a", encoding="utf-8") as f:
             f.write("\n## Supervisor {0} ({1})\n\nSee {2}\n".format(kind, ts, path))
     except OSError as e:
         print(f"[WARN] Failed to write state file: {e}", file=sys.stderr)
@@ -3281,10 +3294,10 @@ def decide_fast_loop(goal, dry_run=False, now=None):
         tag = "failover_qwen" if provider == "failover" else "primary"
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         run_dir = os.path.join(
-            FM_ROOT, "task_FM", "experiments", f"run_{ts}_{tag}_task_FM",
+            sup_paths.FM_ROOT, "task_FM", "experiments", f"run_{ts}_{tag}_task_FM",
         )
         return [
-            "start", "--task-path", os.path.join(FM_ROOT, "task_FM"),
+            "start", "--task-path", os.path.join(sup_paths.FM_ROOT, "task_FM"),
             "--run-dir", run_dir,
             "--daemonize", "--json",
             "--model-provider", "model_provider:anthropic_messages",
@@ -3530,8 +3543,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--once", action="store_true")
-    ap.add_argument("--goal", default=os.path.join(FM_ROOT, "scripts", "praxist_goal.yaml"))
-    ap.add_argument("--root", default=FM_ROOT)
+    ap.add_argument("--goal", default=os.path.join(sup_paths.FM_ROOT, "scripts", "praxist_goal.yaml"))
+    ap.add_argument("--root", default=sup_paths.FM_ROOT)
     ap.add_argument("--max-cycles", type=int, default=None)
     args = ap.parse_args(argv)
     # 目标品种集契约校验（L3）：goal.cadence.target_symbols 缺失即启动失败。
@@ -3549,17 +3562,17 @@ def main(argv=None):
     if missing_req and not env_loaded:
         # No .env.praxist at this root (tests / non-standard setup). Warn only.
         print("[WARN] No .env.praxist at %s and required vars not in env: %s"
-              % (getattr(args, "root", FM_ROOT), ", ".join(missing_req)),
+              % (getattr(args, "root", sup_paths.FM_ROOT), ", ".join(missing_req)),
               file=sys.stderr)
     if missing_rec:
         print("[WARN] Recommended env vars missing: %s (will use code defaults)"
               % ", ".join(missing_rec), file=sys.stderr)
     _arm_handlers()
-    if args.root != FM_ROOT:
+    if args.root != sup_paths.FM_ROOT:
         # 测试可把模块级路径 monkeypatch; --root 仅给 harvest 用
         pass
-    os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
-    lock = open(LOCK_PATH, "a")
+    os.makedirs(os.path.dirname(sup_paths.LOCK_PATH), exist_ok=True)
+    lock = open(sup_paths.LOCK_PATH, "a")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -3583,15 +3596,15 @@ def main(argv=None):
 
 def _harvest_rows(goal):
     cad = goal.get("cadence") or {}
-    snap_now = _active_protocol_snapshot(REGISTRY)
+    snap_now = _active_protocol_snapshot(sup_paths.REGISTRY)
     dead = rl.dead_variants(snap_now)
     # 修复：existing 包含当前协议的历史裁决（避免重复入队）
-    in_flight = rl.in_flight_ids(QUEUE, INPROGRESS)
+    in_flight = rl.in_flight_ids(sup_paths.QUEUE, sup_paths.INPROGRESS)
     historical = set(snap_now.keys())
     existing = in_flight | historical
     pool = load_covariate_pool()
     rows, pstats = harvest_proposals(
-        FM_ROOT, snap_now, dead, existing, pool,
+        sup_paths.FM_ROOT, snap_now, dead, existing, pool,
         top_k=_cad_int(cad, "survivors_per_cycle"),
         aligned_max_points=_cad_int(cad, "aligned_max_points"),
         priority_symbols=cad.get("priority_symbols"),
@@ -3611,7 +3624,7 @@ def _commit_search_accepts(rows, dead=None, existing=None):
     """
     dead = dead or set()
     existing = existing or set()
-    queued = {r.get("variant_id") for r in rl.queue_load(QUEUE)}
+    queued = {r.get("variant_id") for r in rl.queue_load(sup_paths.QUEUE)}
     n, seen = 0, set()
     for r in rows:
         vid = r.get("variant_id")
@@ -3625,7 +3638,7 @@ def _commit_search_accepts(rows, dead=None, existing=None):
             continue
         seen.add(vid)
         st.append_commitment(
-            SEARCH_COMMITMENTS_PATH, "accept",
+            sup_paths.SEARCH_COMMITMENTS_PATH, "accept",
             tree_id=r["search_tree_id"], symbol=r.get("symbol") or "",
             family=r.get("search_family") or "",
             proposal_id=r.get("search_proposal_id") or "",
@@ -3646,14 +3659,14 @@ def _sweep_search_stops(goal, log, snapshot):
     """
     if _norm_search_policy(goal) != "enforce":
         return 0
-    index = st.load_tree_index(SEARCH_COMMITMENTS_PATH)
+    index = st.load_tree_index(sup_paths.SEARCH_COMMITMENTS_PATH)
     if not index.unstopped():
         return 0
     stops = st.evaluate_tree_stops(index, snapshot or {},
                                    _dead_families(snapshot or {}))
     for tid, reason in stops:
         tree = index.trees[tid]
-        st.append_commitment(SEARCH_COMMITMENTS_PATH, "stop",
+        st.append_commitment(sup_paths.SEARCH_COMMITMENTS_PATH, "stop",
                              tree_id=tid, symbol=tree.symbol,
                              family=tree.family, stop_reason=reason)
         _log_decision(log, "search_stop",
@@ -3678,10 +3691,10 @@ def _sweep_search_promotions(goal, log, snapshot):
     """
     if _norm_search_policy(goal) != "enforce":
         return 0
-    index = st.load_tree_index(SEARCH_COMMITMENTS_PATH)
+    index = st.load_tree_index(sup_paths.SEARCH_COMMITMENTS_PATH)
     if not index.unstopped():
         return 0
-    registry = load_preregistry(PREREGISTRY_PATH)
+    registry = load_preregistry(sup_paths.PREREGISTRY_PATH)
     promoted = 0
     for tree in list(index.unstopped()):
         decision = search_promote.evaluate_tree_promotion(
@@ -3689,7 +3702,7 @@ def _sweep_search_promotions(goal, log, snapshot):
         if decision is None:
             continue
         mechanism, direction = search_promote.read_proposal_copy(
-            FM_ROOT, decision.get("proposal_id") or "")
+            sup_paths.FM_ROOT, decision.get("proposal_id") or "")
         if not mechanism or not direction:
             if isinstance(log, str) and log:
                 _log_decision(log, "search_promote_skip",
@@ -3701,7 +3714,7 @@ def _sweep_search_promotions(goal, log, snapshot):
         # 先写 promote：该事件把树标成终态。若随后预注册追加失败，
         # 下一轮不会再晋升，避免同一棵树追加第二行。
         st.append_commitment(
-            SEARCH_COMMITMENTS_PATH, "promote",
+            sup_paths.SEARCH_COMMITMENTS_PATH, "promote",
             tree_id=tree.tree_id, symbol=decision["symbol"],
             family=tree.family,
             proposal_id=decision.get("proposal_id") or "",
@@ -3709,7 +3722,7 @@ def _sweep_search_promotions(goal, log, snapshot):
             stop_reason="promoted",
             delta_post=decision["delta_post"],
             n_required=decision["n_required"])
-        _append_jsonl(PREREGISTRY_PATH, row)
+        _append_jsonl(sup_paths.PREREGISTRY_PATH, row)
         registry.append(row)
         index.stopped.add(tree.tree_id)
         if isinstance(log, str) and log:
@@ -3744,7 +3757,7 @@ def _maybe_harvest(st, goal, log):
         # _commit_search_accepts docstring：崩溃重放幂等；且必须在
         # _merge_save 之前完成，防 accept 因 harvested_already 永久丢失）。
         n_acc = _commit_search_accepts(rows, dead, existing)
-        n = rl.queue_enqueue(QUEUE, rows, dead, existing)
+        n = rl.queue_enqueue(sup_paths.QUEUE, rows, dead, existing)
         _log_decision(log, "harvested_proposals", f"enqueued {n}",
                       [r["variant_id"] for r in rows])
         if n_acc:
@@ -4150,23 +4163,23 @@ def _maybe_start_slow_loop(goal, log):
         return
     if not _queue_busy() or _slow_loop_alive():
         return
-    out_path = os.path.join(FM_ROOT, "data", "cache", "slow_loop.out")
+    out_path = os.path.join(sup_paths.FM_ROOT, "data", "cache", "slow_loop.out")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     out_fp = open(out_path, "ab")
     try:
-        project_python = os.path.join(FM_ROOT, ".venv", "bin", "python")
+        project_python = os.path.join(sup_paths.FM_ROOT, ".venv", "bin", "python")
         if not os.path.isfile(project_python):
             project_python = sys.executable
         batch_id = "batch_" + uuid.uuid4().hex[:8]
         # Capture current queue records for batch tracking
         try:
-            batch_records = rl.queue_load(QUEUE) + rl.queue_load(INPROGRESS)
+            batch_records = rl.queue_load(sup_paths.QUEUE) + rl.queue_load(sup_paths.INPROGRESS)
         except Exception:
             batch_records = []
 
         # 批次 A2：两段式写入 active_runs.json（防硬杀孤儿）
         # 第一步：Popen 前写意图记录（含 batch_id）
-        active_runs_path = os.path.join(FM_ROOT, "data", "cache", "active_runs.json")
+        active_runs_path = os.path.join(sup_paths.FM_ROOT, "data", "cache", "active_runs.json")
         intent_record = {
             "batch_id": batch_id,
             "status": "starting",
@@ -4180,7 +4193,7 @@ def _maybe_start_slow_loop(goal, log):
             _log_decision(log, "active_runs_intent_write_failed", str(e))
 
         proc = subprocess.Popen(
-            [project_python, os.path.join(HERE, "aligned_slow_loop.py"),
+            [project_python, os.path.join(sup_paths.HERE, "aligned_slow_loop.py"),
              "--batch-id", batch_id],
             stdout=out_fp, stderr=subprocess.STDOUT, start_new_session=True)
 
@@ -4193,7 +4206,7 @@ def _maybe_start_slow_loop(goal, log):
                 "status": "running",
                 "start_intent_ts": intent_record["start_intent_ts"],
                 "pid_assigned_ts": int(time.time()),
-                "cmdline": " ".join([project_python, os.path.join(HERE, "aligned_slow_loop.py"), "--batch-id", batch_id])
+                "cmdline": " ".join([project_python, os.path.join(sup_paths.HERE, "aligned_slow_loop.py"), "--batch-id", batch_id])
             }
             with open(active_runs_path, "w") as f:
                 json.dump(complete_record, f)
@@ -4226,7 +4239,7 @@ def _maybe_finish_slow(goal, log):
                 # legacy state: variant_ids only — resolve symbols from registry verdicts
                 sym_by_vid = {}
                 try:
-                    for vrec in rl.read_verdicts(REGISTRY):
+                    for vrec in rl.read_verdicts(sup_paths.REGISTRY):
                         vid = vrec.get("variant_id")
                         if vid and vid not in sym_by_vid:
                             sym_by_vid[vid] = vrec.get("symbol", "")
@@ -4237,25 +4250,25 @@ def _maybe_finish_slow(goal, log):
             batch_records = saved
             if batch_records:
                 # drain already complete: single scan, tombstone missing immediately
-                wait_for_batch(batch_id, batch_records, REGISTRY, timeout=0)
+                wait_for_batch(batch_id, batch_records, sup_paths.REGISTRY, timeout=0)
         except Exception as e:
             _log_decision(log, "wait_for_batch_error", str(e))
     # Batch completion: apply FDR promotion to batch verdicts
     if batch_id:
         batch_verdicts = []
         try:
-            all_verdicts = rl.read_verdicts(REGISTRY)
+            all_verdicts = rl.read_verdicts(sup_paths.REGISTRY)
             batch_verdicts = [v for v in all_verdicts if v.get("batch_id") == batch_id]
             if batch_verdicts and bh_fdr_promote is not None:
                 updates = promote_batch_for_persistence(batch_verdicts)
                 if updates:
-                    rl.update_batch_verdicts(REGISTRY, batch_id, updates)
+                    rl.update_batch_verdicts(sup_paths.REGISTRY, batch_id, updates)
                     _log_decision(log, "batch_fdr_promote",
                                  f"batch={batch_id} promoted={len(updates)}")
         except Exception as e:
             _log_decision(log, "batch_fdr_error", str(e))
         try:
-            members = load_family_members(FAMILY_REGISTRY)
+            members = load_family_members(sup_paths.FAMILY_REGISTRY)
             now = datetime.now(timezone.utc)
             touched = False
             for verdict in batch_verdicts:
@@ -4287,7 +4300,7 @@ def _maybe_finish_slow(goal, log):
                     _log_decision(log, "confirmation_finalize_error", str(e),
                                   [str(verdict.get("variant_id") or "")])
             if touched:
-                save_family_members(FAMILY_REGISTRY, members)
+                save_family_members(sup_paths.FAMILY_REGISTRY, members)
         except Exception as e:
             _log_decision(log, "confirmation_finalize_error", str(e))
         try:
@@ -4300,7 +4313,7 @@ def _maybe_finish_slow(goal, log):
         fresh.pop("current_batch_records", None)
         fresh.pop("current_batch_variant_ids", None)  # legacy key
         save_state(fresh)
-    snap = rl.load_snapshot(REGISTRY)
+    snap = rl.load_snapshot(sup_paths.REGISTRY)
     # 物化给 peer 看的证据同样只认当前协议；被排除的行显式报数，不静默。
     _cur_fp = _current_protocol_fingerprint()
     _full = snap
@@ -4318,14 +4331,14 @@ def _maybe_finish_slow(goal, log):
               if v.get("protocol_fingerprint") != _cur_fp}
              if _cur_fp is not None else None)
     materialize_known_verdicts(
-        snap, VERDICTS_INC,
+        snap, sup_paths.VERDICTS_INC,
         status_map=load_symbol_status(),
-        queue_ids=rl.in_flight_ids(QUEUE, INPROGRESS),
-        proposed_ids=collect_proposed_variant_ids(FM_ROOT),
-        root=FM_ROOT,
+        queue_ids=rl.in_flight_ids(sup_paths.QUEUE, sup_paths.INPROGRESS),
+        proposed_ids=collect_proposed_variant_ids(sup_paths.FM_ROOT),
+        root=sup_paths.FM_ROOT,
         excluded_items=_excl,
     )
-    materialize_covariate_menu(load_covariate_pool(), MENU_INC)
+    materialize_covariate_menu(load_covariate_pool(), sup_paths.MENU_INC)
     gate_ok, _ = quota_gate(goal)
     fresh = load_state()
     fresh["cycles_done"] = int(fresh.get("cycles_done") or 0) + 1
@@ -4341,7 +4354,7 @@ def _maybe_finish_slow(goal, log):
     return True
 
 def _main_locked(args):
-    log = os.path.join(FM_ROOT, ".omc", "supervisor_decisions.jsonl")
+    log = os.path.join(sup_paths.FM_ROOT, ".omc", "supervisor_decisions.jsonl")
     one_shot = args.dry_run or args.once
     # Pre-flight: ensure baseline metrics/points exist for all goal symbols
     try:
@@ -4364,7 +4377,7 @@ def _main_locked(args):
         cpu_h = _read_cpu_hours()
         tok_m, tok_unknown = _read_token_m()
         tok_spend = _token_spend_m(st, tok_m)
-        snap = build_snapshot(REGISTRY, cycles, cpu_h, tok_spend)
+        snap = build_snapshot(sup_paths.REGISTRY, cycles, cpu_h, tok_spend)
         ok, why = evaluate_goal(goal["success_condition"], snap)
         b = goal["budgets"]
         tok_hit, tok_budget = _token_budget_hit(tok_spend, tok_unknown, b)
@@ -4395,7 +4408,7 @@ def _main_locked(args):
             _mark_stop_emitted()
             return 0
 
-        materialize_covariate_menu(load_covariate_pool(), MENU_INC)
+        materialize_covariate_menu(load_covariate_pool(), sup_paths.MENU_INC)
         # P2.4（spec §6.5）：每轮巡检未停止树的停止条件，先于同轮收割
         # （停止先于新 admit；enforce-only 在函数内门控；写失败向上传播）。
         # 停止先于晋升：本轮刚撞上预算/上界/家族死亡的树不再晋升（§6.5 序、§6.6 条件 1）。
@@ -4411,16 +4424,16 @@ def _main_locked(args):
                    if isinstance(v, dict)}
         if len(_fps_mb) == 1 and None not in _fps_mb:
             _only_fp_mb = next(iter(_fps_mb))
-            _full_mb = rl.load_snapshot(REGISTRY)
+            _full_mb = rl.load_snapshot(sup_paths.REGISTRY)
             _mb_kwargs["excluded_items"] = {
                 vid: v for vid, v in _full_mb.items()
                 if v.get("protocol_fingerprint") != _only_fp_mb}
         materialize_known_verdicts(
-            snap["variants"], VERDICTS_INC,
+            snap["variants"], sup_paths.VERDICTS_INC,
             status_map=load_symbol_status(),
-            queue_ids=rl.in_flight_ids(QUEUE, INPROGRESS),
-            proposed_ids=collect_proposed_variant_ids(FM_ROOT),
-            root=FM_ROOT,
+            queue_ids=rl.in_flight_ids(sup_paths.QUEUE, sup_paths.INPROGRESS),
+            proposed_ids=collect_proposed_variant_ids(sup_paths.FM_ROOT),
+            root=sup_paths.FM_ROOT,
             **_mb_kwargs)
         if ok:
             rec = _log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
@@ -4478,7 +4491,7 @@ def _main_locked(args):
                     fresh_cpu_h = _read_cpu_hours()
                     fresh_tok_m, fresh_tok_unknown = _read_token_m()
                     fresh_tok_spend = _token_spend_m(load_state(), fresh_tok_m)
-                    fresh_snap = build_snapshot(REGISTRY, fresh_cycles, fresh_cpu_h, fresh_tok_spend)
+                    fresh_snap = build_snapshot(sup_paths.REGISTRY, fresh_cycles, fresh_cpu_h, fresh_tok_spend)
                     fresh_ok, fresh_why = evaluate_goal(goal["success_condition"], fresh_snap)
                     if fresh_ok:
                         rec = _log_decision(log, "goal_reached",
@@ -4569,7 +4582,7 @@ def _main_locked(args):
         if one_shot:
             _mark_stop_emitted()
             return 0
-        sleep_s = POLL_S
+        sleep_s = sup_paths.POLL_S
         for a in planned:
             if a.get("sleep_s"):
                 sleep_s = min(sleep_s, int(a["sleep_s"]))

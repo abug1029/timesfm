@@ -22,6 +22,7 @@ from config.backtest_config import (  # noqa: E402
 import monthly_backtest as mb  # noqa: E402
 import preregistry as pr  # noqa: E402
 import aligned_slow_loop as asl  # noqa: E402
+import sup_paths
 import praxist_supervisor as sv  # noqa: E402
 
 
@@ -571,10 +572,10 @@ def test_enqueue_due_confirmation_then_peek_does_not_seal(tmp_path, monkeypatch)
         "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
     }
     prereg_path.write_text(json.dumps(jd) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
-    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
-    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
-    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
     monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
     # 2026-10-03：数据闸门（D1）桩——确认集数据未越过 confirm_from_ts 时不派发
     # （否则空评估 + no_data 墓碑 + 去重失效 = 每轮重复入队）。本测试关注
@@ -634,10 +635,10 @@ def test_enqueue_due_jd_and_sr_registers_each_family(tmp_path, monkeypatch):
         "cov_fingerprint": {"keys": ["daily_slope", "vwap_deviation"]},
     }
     prereg_path.write_text(json.dumps(jd) + "\n" + json.dumps(sr) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
-    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
-    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
-    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
     monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
     # 2026-10-03：数据闸门（D1）桩——确认集数据未越过 confirm_from_ts 时不派发
     # （否则空评估 + no_data 墓碑 + 去重失效 = 每轮重复入队）。本测试关注
@@ -714,10 +715,10 @@ def test_snapshot_prereg_id_blocks_second_enqueue(tmp_path, monkeypatch):
         "status": "registered",
     }
     family_path.write_text(json.dumps(member) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
-    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
-    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
-    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
     monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
     monkeypatch.setattr(sv, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {

@@ -15,6 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
+import sup_paths
 import praxist_supervisor as S  # noqa: E402
 
 LONGM = ("波动率范围(VOR)压缩后突破：该品种在低波区积蓄动能后常随放量突破，"
@@ -68,11 +69,11 @@ def _sv(vid, symbol, cov, *, gate_pass=True, eval_end_ts=None, extra=None):
 
 @pytest.fixture
 def tmproot(tmp_path, monkeypatch):
-    monkeypatch.setattr(S, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
+    monkeypatch.setattr(sup_paths, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
     status_path = tmp_path / "symbol_status.json"
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
     monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
     monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
     return str(tmp_path)

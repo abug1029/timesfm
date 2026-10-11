@@ -19,6 +19,7 @@ import time as _time_mod
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import sup_paths
 import praxist_supervisor as sup  # noqa: E402
 import aligned_slow_loop as slow  # noqa: E402
 
@@ -41,10 +42,10 @@ def _wire(monkeypatch, tmp_path, preregs, snap):
     """标准接线：真实 rl / 派发；快照与数据闸门打桩；节流状态清零。"""
     p = tmp_path / "preregistry.jsonl"
     p.write_text("".join(json.dumps(r) + "\n" for r in preregs), encoding="utf-8")
-    monkeypatch.setattr(sup, "PREREGISTRY_PATH", str(p))
-    monkeypatch.setattr(sup, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
-    monkeypatch.setattr(sup, "QUEUE", str(tmp_path / "pending.jsonl"))
-    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(p))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "pending.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
     monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
     monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)
@@ -102,10 +103,10 @@ def test_redispatch_throttled_six_hours(tmp_path, monkeypatch):
                                       n_confirm_actual=5, n_confirm_required=1199)}
     p = tmp_path / "preregistry.jsonl"
     p.write_text(json.dumps(_prereg(pid)) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sup, "PREREGISTRY_PATH", str(p))
-    monkeypatch.setattr(sup, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
-    monkeypatch.setattr(sup, "QUEUE", str(tmp_path / "q.jsonl"))
-    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "i.jsonl"))
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(p))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "q.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "i.jsonl"))
     monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
     monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)
@@ -130,10 +131,10 @@ def test_not_enqueued_notice_carries_throttle_state(tmp_path, monkeypatch):
                                       n_confirm_actual=5, n_confirm_required=1199)}
     p = tmp_path / "preregistry.jsonl"
     p.write_text(json.dumps(_prereg(pid)) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sup, "PREREGISTRY_PATH", str(p))
-    monkeypatch.setattr(sup, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
-    monkeypatch.setattr(sup, "QUEUE", str(tmp_path / "q.jsonl"))
-    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "i.jsonl"))
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(p))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "q.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "i.jsonl"))
     monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
     monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)

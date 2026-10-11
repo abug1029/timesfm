@@ -18,6 +18,7 @@ from datetime import date
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
+import sup_paths
 import praxist_supervisor as sup  # noqa: E402
 
 FP = "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"
@@ -81,7 +82,7 @@ def test_generated_at_fp8_registry_mtime_header(tmp_path, monkeypatch):
     reg = tmp_path / "verdicts.jsonl"
     reg.write_text(json.dumps(_v("m_mom", "m", "mom", "momentum")) + "\n",
                    encoding="utf-8")
-    monkeypatch.setattr(sup, "REGISTRY", str(reg))
+    monkeypatch.setattr(sup_paths, "REGISTRY", str(reg))
     snap = {"m_mom": _v("m_mom", "m", "mom", "momentum",
                         gate_pass=True, dir_acc=0.55)}
     text = _write(tmp_path, snap)

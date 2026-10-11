@@ -1,24 +1,25 @@
 import json, os, sys
 from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+import sup_paths
 import praxist_supervisor as sup
 
 def _patch_paths(monkeypatch, tmp_path):
     """Keep supervisor IO inside tmp_path; do not touch production data/cache."""
-    monkeypatch.setattr(sup, "FM_ROOT", str(tmp_path))
-    monkeypatch.setattr(sup, "QUEUE", str(tmp_path / "pending.jsonl"))
-    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
-    monkeypatch.setattr(sup, "REGISTRY", str(tmp_path / "verdicts.jsonl"))
-    monkeypatch.setattr(sup, "STATE_PATH", str(tmp_path / "state.json"))
-    monkeypatch.setattr(sup, "LOCK_PATH", str(tmp_path / "sup.lock"))
-    monkeypatch.setattr(sup, "VERDICTS_INC", str(tmp_path / "known_verdicts.inc.md"))
-    monkeypatch.setattr(sup, "REPORT_DIR", str(tmp_path / "reports"))
-    monkeypatch.setattr(sup, "STATE_MD", str(tmp_path / "STATE.md"))
+    monkeypatch.setattr(sup_paths, "FM_ROOT", str(tmp_path))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "pending.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_paths, "REGISTRY", str(tmp_path / "verdicts.jsonl"))
+    monkeypatch.setattr(sup_paths, "STATE_PATH", str(tmp_path / "state.json"))
+    monkeypatch.setattr(sup_paths, "LOCK_PATH", str(tmp_path / "sup.lock"))
+    monkeypatch.setattr(sup_paths, "VERDICTS_INC", str(tmp_path / "known_verdicts.inc.md"))
+    monkeypatch.setattr(sup_paths, "REPORT_DIR", str(tmp_path / "reports"))
+    monkeypatch.setattr(sup_paths, "STATE_MD", str(tmp_path / "STATE.md"))
     # 事件/心跳/停机报告也必须落在 tmp：否则测试会往生产 supervisor_events.jsonl 写
     # run_started/provider_switch/sample_retest_enqueued 等假事件 (2026-09-09 实测污染)。
-    monkeypatch.setattr(sup, "EVENTS_PATH", str(tmp_path / "events.jsonl"))
-    monkeypatch.setattr(sup, "HEARTBEAT_PATH", str(tmp_path / "heartbeat"))
-    monkeypatch.setattr(sup, "STOP_REPORT_JSON", str(tmp_path / "stop_report.json"))
+    monkeypatch.setattr(sup_paths, "EVENTS_PATH", str(tmp_path / "events.jsonl"))
+    monkeypatch.setattr(sup_paths, "HEARTBEAT_PATH", str(tmp_path / "heartbeat"))
+    monkeypatch.setattr(sup_paths, "STOP_REPORT_JSON", str(tmp_path / "stop_report.json"))
 
 
 def _clear_failover_env(monkeypatch):

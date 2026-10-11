@@ -15,6 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
+import sup_paths
 import praxist_supervisor as S  # noqa: E402
 import search_promote as P  # noqa: E402
 import search_trees as st  # noqa: E402
@@ -159,9 +160,9 @@ def test_T8_promotion_appends_one_row_and_keeps_existing(tmp_path, monkeypatch):
         "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in registry),
         encoding="utf-8")
     before = prereg.read_text(encoding="utf-8")
-    monkeypatch.setattr(S, "SEARCH_COMMITMENTS_PATH", commitments)
-    monkeypatch.setattr(S, "PREREGISTRY_PATH", str(prereg))
-    monkeypatch.setattr(S, "FM_ROOT", str(tmp_path))
+    monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH", commitments)
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg))
+    monkeypatch.setattr(sup_paths, "FM_ROOT", str(tmp_path))
     n_promoted = S._sweep_search_promotions(
         {"search_policy": "enforce"}, [], snap)
     assert n_promoted == 1
@@ -185,9 +186,9 @@ def test_T15_appended_row_is_dispatched(tmp_path, monkeypatch):
     _proposal(tmp_path / "proposal.json")
     prereg = tmp_path / "preregistry.jsonl"
     prereg.write_text(json.dumps(_lock(), ensure_ascii=False) + "\n", encoding="utf-8")
-    monkeypatch.setattr(S, "SEARCH_COMMITMENTS_PATH", commitments)
-    monkeypatch.setattr(S, "PREREGISTRY_PATH", str(prereg))
-    monkeypatch.setattr(S, "FM_ROOT", str(tmp_path))
+    monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH", commitments)
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg))
+    monkeypatch.setattr(sup_paths, "FM_ROOT", str(tmp_path))
     snap = {vid: _row(vid)}
     assert S._sweep_search_promotions({"search_policy": "enforce"}, [], snap) == 1
     registry = S.load_preregistry(str(prereg))
@@ -208,8 +209,8 @@ def test_off_policy_does_not_append(tmp_path, monkeypatch):
     prereg = tmp_path / "preregistry.jsonl"
     prereg.write_text(json.dumps(_lock()) + "\n", encoding="utf-8")
     before = prereg.read_bytes()
-    monkeypatch.setattr(S, "SEARCH_COMMITMENTS_PATH", commitments)
-    monkeypatch.setattr(S, "PREREGISTRY_PATH", str(prereg))
+    monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH", commitments)
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg))
     assert S._sweep_search_promotions(
         {"search_policy": "off"}, [], {vid: _row(vid)}) == 0
     assert prereg.read_bytes() == before
