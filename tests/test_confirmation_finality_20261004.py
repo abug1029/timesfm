@@ -20,6 +20,7 @@ import time as _time_mod
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import sup_paths
+import sup_lifecycle
 import praxist_supervisor as sup  # noqa: E402
 import aligned_slow_loop as slow  # noqa: E402
 
@@ -256,7 +257,7 @@ def test_harvest_outer_loop_shutdown_returns_empty(monkeypatch, tmp_path):
                         "cov_override": "vor", "mechanism": "x" * 60}), encoding="utf-8")
 
     # 对照组：未置标志时必须能产出候选（否则下面的断言空转）
-    monkeypatch.setattr(sup, "_SHUTDOWN_REQUESTED", False)
+    monkeypatch.setattr(sup_lifecycle, "_SHUTDOWN_REQUESTED", False)
     rows, stats = sup.harvest_proposals(str(tmp_path), {}, set(), set(),
                                         {"vor": {"family": "momentum"}}, top_k=3)
     assert rows, f"对照组：未置标志时应能产出候选（stats={stats}）"
@@ -273,7 +274,7 @@ def test_harvest_outer_loop_shutdown_returns_empty(monkeypatch, tmp_path):
 
     # 期望序列：#1 外层 run_x 检查、#2 run_x 文件内检查、#3 外层 run_y 检查 → True
     flip = _FlipAfter(2)
-    monkeypatch.setattr(sup, "_SHUTDOWN_REQUESTED", flip)
+    monkeypatch.setattr(sup_lifecycle, "_SHUTDOWN_REQUESTED", flip)
     rows2, stats2 = sup.harvest_proposals(str(tmp_path), {}, set(), set(),
                                           {"vor": {"family": "momentum"}}, top_k=3)
     assert rows2 == [], "外层停机路径不得返回半份候选"

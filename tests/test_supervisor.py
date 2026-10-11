@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import sup_paths
 import sup_env
 import sup_state
+import sup_lifecycle
 import praxist_supervisor as sup
 
 def _patch_paths(monkeypatch, tmp_path):
@@ -216,7 +217,7 @@ def test_import_does_not_arm_atexit():
 
 def test_goal_reached_marks_stop_emitted(tmp_path, monkeypatch):
     """goal_reached 干净退出必须先 _mark_stop_emitted, 否则 atexit 兜底误报 unexpected_exit。"""
-    monkeypatch.setattr(sup, "_STOP_EMITTED", False)
+    monkeypatch.setattr(sup_lifecycle, "_STOP_EMITTED", False)
     monkeypatch.setattr(sup, "build_snapshot", lambda *a, **k: {
         "symbols_hit": {"ss"}, "families_hit": {"volatility"},
         "pass_variant_pf_ratios": [1.123], "variants": {}})
@@ -224,7 +225,7 @@ def test_goal_reached_marks_stop_emitted(tmp_path, monkeypatch):
     monkeypatch.setattr(sup, "materialize_known_verdicts", lambda *a, **k: None)
     monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
     monkeypatch.setattr(sup, "write_stop_report", lambda *a, **k: None)
-    monkeypatch.setattr(sup, "_emit_event", lambda *a, **k: None)
+    monkeypatch.setattr(sup_lifecycle, "_emit_event", lambda *a, **k: None)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(json.dumps({
         "cycles_done": 5, "last_run_id": None, "paused_429": False}), encoding="utf-8")
@@ -547,14 +548,14 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
     assert st["tokens_baseline_m"] == 21.0
     assert not list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
     monkeypatch.setattr(sup_state, "_read_token_m", lambda: (31.0, False))
-    monkeypatch.setattr(sup, "_STOP_EMITTED", False)
+    monkeypatch.setattr(sup_lifecycle, "_STOP_EMITTED", False)
     rc2 = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc2 == 0
     # origin/master: budget_hit while a run is alive waits (budget_hit_wait_run);
     # do not write exhausted report until the run is gone.
     assert not list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
     monkeypatch.setattr(sup, "_run_active", lambda: False)
-    monkeypatch.setattr(sup, "_STOP_EMITTED", False)
+    monkeypatch.setattr(sup_lifecycle, "_STOP_EMITTED", False)
     rc3 = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc3 == 0
     assert list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
@@ -1816,14 +1817,14 @@ def test_sleep_returns_on_the_slice_that_sees_the_flag(monkeypatch):
 
     def _sleep(seconds):
         calls.append(seconds)
-        sup._SHUTDOWN_REQUESTED = True
+        sup_lifecycle._SHUTDOWN_REQUESTED = True
 
     monkeypatch.setattr(sup.time, "sleep", _sleep)
-    sup._SHUTDOWN_REQUESTED = False
+    sup_lifecycle._SHUTDOWN_REQUESTED = False
     try:
         sup._sleep_interruptible(180)
     finally:
-        sup._SHUTDOWN_REQUESTED = False
+        sup_lifecycle._SHUTDOWN_REQUESTED = False
     assert calls == [1]
 
 
@@ -1832,7 +1833,7 @@ def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
     _patch_paths(monkeypatch, tmp_path)
     harvested = []
     started = []
-    monkeypatch.setattr(sup, "_SHUTDOWN_REQUESTED", False)
+    monkeypatch.setattr(sup_lifecycle, "_SHUTDOWN_REQUESTED", False)
     monkeypatch.setattr(sup, "ensure_baselines", lambda *a, **k: None)
     monkeypatch.setattr(sup, "build_snapshot", lambda *a, **k: {
         "variants": {}, "symbols_hit": set(), "families_hit": set(),
@@ -1847,7 +1848,7 @@ def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
 
     def _ensure_phase(st):
-        sup._SHUTDOWN_REQUESTED = True
+        sup_lifecycle._SHUTDOWN_REQUESTED = True
         return st
 
     monkeypatch.setattr(sup, "ensure_phase", _ensure_phase)
@@ -1870,7 +1871,7 @@ def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
     try:
         rc = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     finally:
-        sup._SHUTDOWN_REQUESTED = False
+        sup_lifecycle._SHUTDOWN_REQUESTED = False
     assert rc == 0
     assert harvested == []
     assert started == []

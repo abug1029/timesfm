@@ -42,6 +42,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
 import sup_paths
+import sup_lifecycle
 import praxist_supervisor as S  # noqa: E402
 import registry_lib as rl  # noqa: E402
 import search_trees as ST  # noqa: E402
@@ -412,7 +413,7 @@ def test_commit_docstring_documents_external_restart():
 
 def test_sweep_writes_budget_stop(tmproot, monkeypatch):
     calls = []
-    monkeypatch.setattr(S, "_log_decision", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(sup_lifecycle, "_log_decision", lambda *a, **k: calls.append(a))
     members = _seed_tree(vids=["v1", "v2", "v3"])
     snap = {v: _vrow(v, dir_acc=0.48) for v in members}
     assert S._sweep_search_stops({"search_policy": "enforce"}, None, snap) == 1
@@ -431,7 +432,7 @@ def test_sweep_writes_budget_stop(tmproot, monkeypatch):
 def test_sweep_writes_family_dead_stop(tmproot, monkeypatch):
     """family_dead 走真实 _dead_families：4 条可确认失败 + 0 过门。"""
     calls = []
-    monkeypatch.setattr(S, "_log_decision", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(sup_lifecycle, "_log_decision", lambda *a, **k: calls.append(a))
     TID = "m::momentum::cccc00000003"
     ST.append_commitment(S.SEARCH_COMMITMENTS_PATH, "accept", tree_id=TID,
                          symbol="m", family="momentum", proposal_id="pm",

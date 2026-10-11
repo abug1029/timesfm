@@ -53,3 +53,12 @@ def test_goal_symbols_cache_resets_on_sup_state():
         assert sup_state._GOAL_SYMBOLS_CACHE is None
     finally:
         sup_state._GOAL_SYMBOLS_CACHE = saved
+
+
+def test_sleep_interruptible_sees_lifecycle_flag(monkeypatch):
+    import sup_lifecycle
+    calls = []
+    monkeypatch.setattr(sup_lifecycle.time, "sleep", lambda n: calls.append(n))
+    monkeypatch.setattr(sup_lifecycle, "_SHUTDOWN_REQUESTED", True)
+    sup_lifecycle._sleep_interruptible(5)
+    assert calls == []

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """三环监督环: goal 判定 + 两环调度, 纯 Python 0 token"""
-import argparse, atexit, fcntl, glob, json, logging, os, re, shutil, signal, subprocess, sys, threading, time, traceback, uuid
+import argparse, fcntl, glob, json, logging, os, re, shutil, subprocess, sys, threading, time, traceback, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 _BOOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(_BOOT_DIR))
 import sup_paths
 import sup_env
 import sup_state
+import sup_lifecycle
 
 _HOMES: dict[str, object] = {  # 每搬完一个模块就填 name -> module
     "HERE": sup_paths,
@@ -61,6 +62,23 @@ _HOMES: dict[str, object] = {  # 每搬完一个模块就填 name -> module
     "_token_spend_m": sup_state,
     "_read_token_m": sup_state,
     "_merge_save": sup_state,
+    "_EVENT_LOCK": sup_lifecycle,
+    "_SHUTDOWN_REQUESTED": sup_lifecycle,
+    "_RUN_ID": sup_lifecycle,
+    "_START_TIME": sup_lifecycle,
+    "_STOP_EMITTED": sup_lifecycle,
+    "_now_iso": sup_lifecycle,
+    "_mark_stop_emitted": sup_lifecycle,
+    "_emit_event": sup_lifecycle,
+    "_write_stop_json": sup_lifecycle,
+    "_write_heartbeat": sup_lifecycle,
+    "_signal_handler": sup_lifecycle,
+    "_shutdown_exit": sup_lifecycle,
+    "_sleep_interruptible": sup_lifecycle,
+    "_atexit_handler": sup_lifecycle,
+    "_HANDLERS_ARMED": sup_lifecycle,
+    "_arm_handlers": sup_lifecycle,
+    "_log_decision": sup_lifecycle,
 }
 
 
@@ -136,11 +154,6 @@ def promote_batch_for_persistence(verdicts):
 # P2.2 (spec 2026-10-05 §6.7): 搜索树事件账（append-only；写入侧 2.3 落地）
 
 
-_EVENT_LOCK = threading.Lock()
-_SHUTDOWN_REQUESTED = False
-_RUN_ID = uuid.uuid4().hex[:12]
-_START_TIME = time.time()
-_STOP_EMITTED = False
 # 复测触发判据：只保留"仅差样本量"的近失误筛选 (RETEST_GATE_N)。
 # 非 v23 gate 镜像（v23 口径见
 # docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md）。
@@ -306,9 +319,6 @@ def finalize_confirmation(row, members, now):
     updated = _stamp_member(members, row, label)
     return _seal_if_all_terminal(updated, label, now, None)
 
-def _now_iso():
-    return datetime.now().isoformat()
-
 
 _BASE_COVARIATE = "daily_slope"
 
@@ -331,7 +341,7 @@ def confirmation_queue_row(prereg_row, variant_id):
         "max_points": n_req,
         "stage": "aligned",
         "checkpoint_path": "",
-        "enqueued_at": _now_iso(),
+        "enqueued_at": sup_lifecycle._now_iso(),
         "src_run": "confirmation_dispatch",
         "source": "confirmation",
         "run_mode": "confirmation",
@@ -502,7 +512,7 @@ def _maybe_enqueue_confirmations(log, now_ts):
         _CONFIRMATION_NOTICE[_pid] = _now
         _state = ("redispatch_throttle"
                   if (src.get("prereg_id") or "") in throttled else "not_ready")
-        _log_decision(log, "confirmation_not_enqueued",
+        sup_lifecycle._log_decision(log, "confirmation_not_enqueued",
                       src.get("prereg_id") or "",
                       [str(src.get("symbol") or ""), _state])
     if not rows:
@@ -530,7 +540,7 @@ def _maybe_enqueue_confirmations(log, now_ts):
             if not registered:
                 decision = dispatch_confirmation(proposal, registry, family_members)
                 if not decision["accepted"] or str(decision.get("registration") or "").startswith("rejected"):
-                    _log_decision(log, "confirmation_rejected",
+                    sup_lifecycle._log_decision(log, "confirmation_rejected",
                                   decision.get("reason") or decision.get("registration") or "",
                                   [row["variant_id"]])
                     continue
@@ -539,10 +549,10 @@ def _maybe_enqueue_confirmations(log, now_ts):
             n = rl.queue_enqueue(sup_paths.QUEUE, [row], dead=set(), existing=set())
             added += n
             if n:
-                _log_decision(log, "confirmation_enqueued", row["prereg_id"], [row["variant_id"]])
+                sup_lifecycle._log_decision(log, "confirmation_enqueued", row["prereg_id"], [row["variant_id"]])
                 _CONFIRM_REDISPATCH[row["prereg_id"]] = time.time()
         except Exception as e:
-            _log_decision(log, "confirmation_enqueue_error", str(e),
+            sup_lifecycle._log_decision(log, "confirmation_enqueue_error", str(e),
                           [str(row.get("variant_id") or "")])
     return added
 
@@ -558,143 +568,6 @@ def _finalize_confirmation_verdict(verdict, members, now):
         return None
     row["request_early_seal"] = False
     return finalize_confirmation(row, members, now)
-
-
-def _mark_stop_emitted():
-    global _STOP_EMITTED
-    _STOP_EMITTED = True
-
-
-# ── Event monitoring system ──────────────────────────────────
-
-def _emit_event(level, event, data=None, **extra):
-    """Append a structured event to the events JSONL.
-
-    Thread-safe via _EVENT_LOCK. On write failure, falls back to stderr.
-    Never raises — monitoring must not crash the supervisor.
-    """
-    rec = {
-        "ts": _now_iso(),
-        "schema_version": 1,
-        "run_id": _RUN_ID,
-        "pid": os.getpid(),
-        "level": level,
-        "event": event,
-        "data": data or {},
-    }
-    rec.update(extra)
-    line = json.dumps(rec, ensure_ascii=False, default=str)
-    try:
-        os.makedirs(os.path.dirname(sup_paths.EVENTS_PATH), exist_ok=True)
-        with _EVENT_LOCK:
-            with open(sup_paths.EVENTS_PATH, "a", encoding="utf-8") as f:
-                f.write(line + "\n")
-                f.flush()
-                os.fsync(f.fileno())
-    except OSError as e:
-        print(f"[EVENT_FALLBACK] {line}", file=sys.stderr)
-    if event == "supervisor_stopped":
-        _mark_stop_emitted()
-        _write_stop_json(rec)
-
-
-def _write_stop_json(event_rec):
-    """Write a timestamped stop report JSON (keeps history)."""
-    try:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = os.path.join(os.path.dirname(sup_paths.STOP_REPORT_JSON),
-                            f"stop_report_{ts}.json")
-        report = {
-            "ts": _now_iso(),
-            "run_id": _RUN_ID,
-            "pid": os.getpid(),
-            "uptime_s": round(time.time() - _START_TIME, 1),
-            "event": event_rec.get("event"),
-            "data": event_rec.get("data", {}),
-        }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(report, f, ensure_ascii=False, indent=2)
-        with open(sup_paths.STOP_REPORT_JSON, "w", encoding="utf-8") as f:
-            json.dump(report, f, ensure_ascii=False, indent=2)
-    except OSError as e:
-        print(f"[STOP_REPORT_ERROR] {e}", file=sys.stderr)
-
-
-def _write_heartbeat():
-    """Write heartbeat timestamp. Called each main loop iteration."""
-    try:
-        os.makedirs(os.path.dirname(sup_paths.HEARTBEAT_PATH), exist_ok=True)
-        with open(sup_paths.HEARTBEAT_PATH, "w") as f:
-            f.write(json.dumps({"ts": _now_iso(), "run_id": _RUN_ID,
-                                "pid": os.getpid()}))
-    except OSError as e:
-        print(f"[WARN] Failed to write heartbeat: {e}", file=sys.stderr)
-
-
-def _signal_handler(signum, frame):
-    """Signal handler: set flag only, no I/O. Main loop detects and emits event."""
-    global _SHUTDOWN_REQUESTED
-    _SHUTDOWN_REQUESTED = True
-
-
-def _shutdown_exit():
-    """标志为真时走与循环顶相同的干净退出。不收割，不启动新 run，不杀已经在跑的子进程。"""
-    if not _SHUTDOWN_REQUESTED:
-        return None
-    _emit_event("critical", "supervisor_stopped", {
-        "reason": "signal_received",
-        "exit_code": 0,
-        "uptime_s": round(time.time() - _START_TIME, 1),
-    })
-    return 0
-
-
-def _sleep_interruptible(seconds):
-    """最多睡 seconds 秒。每 1 秒看一次标志。处理函数本身仍然只置标志。"""
-    remaining = max(1, int(seconds))
-    while remaining > 0:
-        if _SHUTDOWN_REQUESTED:
-            return
-        time.sleep(1)
-        remaining -= 1
-
-
-def _atexit_handler():
-    """Emit stop event on any exit path not already handled."""
-    global _STOP_EMITTED
-    if _STOP_EMITTED:
-        return
-    if os.path.exists(sup_paths.STOP_REPORT_JSON):
-        try:
-            existing = json.load(open(sup_paths.STOP_REPORT_JSON, encoding="utf-8"))
-            if existing.get("run_id") == _RUN_ID:
-                return
-        except (OSError, json.JSONDecodeError):
-            pass
-    # atexit 兜底只在未覆盖的退出(未捕获异常等; CPython 此类退出码=1)触发。
-    # 干净退出(goal_reached/budget_exhausted/dry-run/one-shot/signal)已先 _mark_stop_emitted()。
-    # 历史 bug: getattr(sys,"exitcode",1) 中 sys.exitcode 并非标准属性, hasattr 恒 False,
-    # 导致任何干净退出在漏标时都被记 exit_code=1。
-    _emit_event("critical", "supervisor_stopped", {
-        "reason": "unexpected_exit",
-        "exit_code": 1,
-        "uptime_s": round(time.time() - _START_TIME, 1),
-    })
-
-
-# Signal/atexit handlers are armed only when main() actually runs the supervisor.
-# 历史 bug: 这些在 import 时注册, 导致仅把本模块当库 import 的只读脚本/测试
-# (调 harvest_proposals/build_snapshot 等) 退出时被 atexit 误报 unexpected_exit。
-_HANDLERS_ARMED = False
-
-def _arm_handlers():
-    global _HANDLERS_ARMED
-    if _HANDLERS_ARMED:
-        return
-    signal.signal(signal.SIGTERM, _signal_handler)
-    signal.signal(signal.SIGINT, _signal_handler)
-    atexit.register(_atexit_handler)
-    _HANDLERS_ARMED = True
 
 
 def parse_429_reset(log_text):
@@ -1093,7 +966,7 @@ def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=
             out.append({"variant_id": vid, "symbol": symbol, "cov_override": cov,
                         "max_points": int(aligned_max_points),
                         "stage": "aligned", "checkpoint_path": "",
-                        "enqueued_at": _now_iso(), "src_run": os.path.basename(run_dir),
+                        "enqueued_at": sup_lifecycle._now_iso(), "src_run": os.path.basename(run_dir),
                         "_dir_acc": dir_acc})
     out.sort(key=lambda r: -r["_dir_acc"])
     selected = []
@@ -1917,7 +1790,7 @@ def _append_backlog(prop, src_path):
             pass
     if name in existing:
         return False
-    rec = {"ts": _now_iso(), "src": src_path,
+    rec = {"ts": sup_lifecycle._now_iso(), "src": src_path,
            "name": name, "proposal": prop}
     with open(sup_paths.BACKLOG_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -2477,13 +2350,13 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     run_dirs = sorted(glob.glob(os.path.join(root, "task_FM", "experiments", "run_*")),
                       key=os.path.getmtime, reverse=True)
     for run_dir in run_dirs:
-        if _SHUTDOWN_REQUESTED:
+        if sup_lifecycle._SHUTDOWN_REQUESTED:
             # 长扫描不得吃掉停机信号：立刻中止，且不返回半份候选（避免停机途中入队）
             stats["aborted_by_shutdown"] = True
             return [], stats
         for sp in glob.glob(os.path.join(run_dir, "results", "**", "proposals", "*.json"),
                             recursive=True):
-            if _SHUTDOWN_REQUESTED:
+            if sup_lifecycle._SHUTDOWN_REQUESTED:
                 stats["aborted_by_shutdown"] = True
                 return [], stats
             try:
@@ -2495,7 +2368,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             # 批次 F (M4)：abandon 提案处理
             # peer 输出 decision="abandon" 表示反对当前假设，不入队、不加分
             if p.get("decision") == "abandon":
-                _log_decision(log, "proposal_abandoned",
+                sup_lifecycle._log_decision(log, "proposal_abandoned",
                              f"peer={p.get('peer_id', 'unknown')} reason={p.get('abandon_reason', 'N/A')}")
                 _reject("decision_abandon")
                 continue
@@ -2623,7 +2496,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             _cand = {
                 "variant_id": vid, "symbol": symbol, "cov_override": cov,
                 "max_points": int(aligned_max_points), "stage": "aligned",
-                "checkpoint_path": "", "enqueued_at": _now_iso(),
+                "checkpoint_path": "", "enqueued_at": sup_lifecycle._now_iso(),
                 "src_run": os.path.basename(run_dir), "source": "peer_proposal",
                 # PR-B6 质量门留痕 (队列行，供宿主审查门是否过严)
                 "quality_score": round(quality_score, 4), "sector": sector,
@@ -2849,7 +2722,7 @@ def plan_sample_retests(goal):
                "cov_override": v["cov_override"],
                "max_points": sup_state._cad_int(cad, "aligned_max_points"),
                "stage": "aligned", "checkpoint_path": "",
-               "enqueued_at": _now_iso(), "src_run": "supervisor_retest",
+               "enqueued_at": sup_lifecycle._now_iso(), "src_run": "supervisor_retest",
                "source": "sample_retest"}
         plan.append((row, int(v.get("n") or 0), cur_n))
     return plan
@@ -2866,21 +2739,14 @@ def _maybe_enqueue_retests(goal, log):
     if added:
         sup_state._merge_save({"phase": "slow"})
         for row, last_n, cur_n in plan:
-            _log_decision(log, "sample_retest_enqueued",
+            sup_lifecycle._log_decision(log, "sample_retest_enqueued",
                           "%s n %d->%d (gate_n=%d); checkpoint resume, 只算新点"
                           % (row["variant_id"], last_n, cur_n, sup_paths.RETEST_GATE_N),
                           [row["variant_id"]])
-            _emit_event("action", "sample_retest_enqueued",
+            sup_lifecycle._emit_event("action", "sample_retest_enqueued",
                         {"variant_id": row["variant_id"],
                          "last_n": last_n, "current_n": cur_n})
     return added
-
-def _log_decision(log_path, action, reason, refs=None):
-    rec = {"ts": _now_iso(), "action": action, "reason": reason, "refs": refs or []}
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    with open(log_path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    return rec
 
 def _read_cpu_hours():
     p = os.path.join(sup_paths.FM_ROOT, "data", "cache", "slow_loop_metrics.jsonl")
@@ -2985,7 +2851,7 @@ def write_stop_report(kind, snap, why, budgets_line):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = os.path.join(sup_paths.REPORT_DIR, f"supervisor_{kind}_{ts}.md")
     body = ["# Supervisor {0}".format(kind), "",
-            "- ts: {0}".format(_now_iso()),
+            "- ts: {0}".format(sup_lifecycle._now_iso()),
             "- cycles_done: {0}".format(snap.get("cycles_done")),
             "- cpu_hours_used: {0}".format(snap.get("cpu_hours_used")),
             "- tokens_used_m: {0}".format(snap.get("tokens_used_m")),
@@ -3069,7 +2935,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             r = sup_env._praxist(argv, env=_praxist_env(provider))
             if r.get("ok"):
                 updates = {"paused_429": False, "phase": "fast", **_provider_state(provider)}
-                _emit_event("info", "run_started", {"provider": provider, "reason": reason})
+                sup_lifecycle._emit_event("info", "run_started", {"provider": provider, "reason": reason})
                 try:
                     js = json.loads(r["stdout"] or "{}")
                     if isinstance(js, dict):
@@ -3149,7 +3015,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
                         "sleep_s": sleep_s,
                     })
                     sup_state._merge_save({"paused_429": True, **_provider_state("failover")})
-                _emit_event("action", "provider_switch", {"from": "primary", "to": "failover", "reason": "429_rate_limit"})
+                sup_lifecycle._emit_event("action", "provider_switch", {"from": "primary", "to": "failover", "reason": "429_rate_limit"})
             return actions
         # Already on failover: Ark quota_gate must NOT stop a live DashScope run.
         if provider_now == "failover":
@@ -3302,7 +3168,7 @@ def main(argv=None):
     if missing_rec:
         print("[WARN] Recommended env vars missing: %s (will use code defaults)"
               % ", ".join(missing_rec), file=sys.stderr)
-    _arm_handlers()
+    sup_lifecycle._arm_handlers()
     if args.root != sup_paths.FM_ROOT:
         # 测试可把模块级路径 monkeypatch; --root 仅给 harvest 用
         pass
@@ -3312,17 +3178,17 @@ def main(argv=None):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         print("another supervisor holds the lock; exit")
-        _emit_event("info", "lock_contention", {"reason": "another supervisor holds the lock"})
+        sup_lifecycle._emit_event("info", "lock_contention", {"reason": "another supervisor holds the lock"})
         # 主动避让不是崩溃: 标记后退出, atexit 不得误报 unexpected_exit。
-        _mark_stop_emitted()
+        sup_lifecycle._mark_stop_emitted()
         return 0
     try:
         return _main_locked(args)
     except Exception as e:
-        _emit_event("critical", "error", {
+        sup_lifecycle._emit_event("critical", "error", {
             "exception": str(e),
             "traceback": traceback.format_exc()[-500:],
-            "uptime_s": round(time.time() - _START_TIME, 1),
+            "uptime_s": round(time.time() - sup_lifecycle._START_TIME, 1),
         })
         raise
     finally:
@@ -3404,7 +3270,7 @@ def _sweep_search_stops(goal, log, snapshot):
         st.append_commitment(sup_paths.SEARCH_COMMITMENTS_PATH, "stop",
                              tree_id=tid, symbol=tree.symbol,
                              family=tree.family, stop_reason=reason)
-        _log_decision(log, "search_stop",
+        sup_lifecycle._log_decision(log, "search_stop",
                       "tree=%s reason=%s symbol=%s family=%s"
                       % (tid, reason, tree.symbol, tree.family))
     return len(stops)
@@ -3440,12 +3306,12 @@ def _sweep_search_promotions(goal, log, snapshot):
             sup_paths.FM_ROOT, decision.get("proposal_id") or "")
         if not mechanism or not direction:
             if isinstance(log, str) and log:
-                _log_decision(log, "search_promote_skip",
+                sup_lifecycle._log_decision(log, "search_promote_skip",
                               "tree=%s missing proposal text" % tree.tree_id)
             continue
         row = search_promote.build_promotion_prereg(
             decision, mechanism=mechanism, predicted_direction=direction,
-            registered_at=_now_iso(), prereg_id=uuid.uuid4().hex)
+            registered_at=sup_lifecycle._now_iso(), prereg_id=uuid.uuid4().hex)
         # 先写 promote：该事件把树标成终态。若随后预注册追加失败，
         # 下一轮不会再晋升，避免同一棵树追加第二行。
         st.append_commitment(
@@ -3461,7 +3327,7 @@ def _sweep_search_promotions(goal, log, snapshot):
         registry.append(row)
         index.stopped.add(tree.tree_id)
         if isinstance(log, str) and log:
-            _log_decision(log, "search_promote",
+            sup_lifecycle._log_decision(log, "search_promote",
                           "tree=%s vid=%s n=%s" % (
                               tree.tree_id, decision["variant_id"],
                               decision["n_confirm_required"]))
@@ -3481,11 +3347,11 @@ def _maybe_harvest(st, goal, log):
         return False
     rows, dead, existing, pstats = _harvest_rows(goal)
     if pstats and pstats.get("seen"):
-        _log_decision(log, "proposal_scan",
+        sup_lifecycle._log_decision(log, "proposal_scan",
                       "seen=%(seen)d rejected=%(rejected)d backlog=%(backlog)d reasons=%(reject_reasons)s" % pstats,
                       [])
     if pstats and pstats.get("search_shadow_log"):
-        _log_decision(log, "search_shadow",
+        sup_lifecycle._log_decision(log, "search_shadow",
                       "would_reject=%s" % (pstats.get("search_would_reject"),))
     if rows:
         # P2.3 (spec §6.7)：先落搜索 accept 再入队（顺序依据见
@@ -3493,10 +3359,10 @@ def _maybe_harvest(st, goal, log):
         # _merge_save 之前完成，防 accept 因 harvested_already 永久丢失）。
         n_acc = _commit_search_accepts(rows, dead, existing)
         n = rl.queue_enqueue(sup_paths.QUEUE, rows, dead, existing)
-        _log_decision(log, "harvested_proposals", f"enqueued {n}",
+        sup_lifecycle._log_decision(log, "harvested_proposals", f"enqueued {n}",
                       [r["variant_id"] for r in rows])
         if n_acc:
-            _log_decision(log, "search_accepts", f"committed {n_acc}",
+            sup_lifecycle._log_decision(log, "search_accepts", f"committed {n_acc}",
                           [r["variant_id"] for r in rows
                            if r.get("search_role")])
         sup_state._merge_save({"last_harvested_run_id": last, "phase": "slow"})
@@ -3504,9 +3370,9 @@ def _maybe_harvest(st, goal, log):
             from praxist_assets_archive import archive_fast_harvest
             archive_fast_harvest(last, rows, sup_state.load_state())
         except Exception as e:
-            _log_decision(log, "assets_archive_error", f"harvest: {e}")
+            sup_lifecycle._log_decision(log, "assets_archive_error", f"harvest: {e}")
     else:
-        _log_decision(log, "harvest_empty",
+        sup_lifecycle._log_decision(log, "harvest_empty",
                       "finished run produced 0 valid proposals "
                       "(need results/**/proposals/*.json; reject_reasons=%s)"
                       % (pstats.get("reject_reasons") if pstats else {}))
@@ -3925,7 +3791,7 @@ def _maybe_start_slow_loop(goal, log):
             with open(active_runs_path, "w") as f:
                 json.dump(intent_record, f)
         except Exception as e:
-            _log_decision(log, "active_runs_intent_write_failed", str(e))
+            sup_lifecycle._log_decision(log, "active_runs_intent_write_failed", str(e))
 
         proc = subprocess.Popen(
             [project_python, os.path.join(sup_paths.HERE, "aligned_slow_loop.py"),
@@ -3946,7 +3812,7 @@ def _maybe_start_slow_loop(goal, log):
             with open(active_runs_path, "w") as f:
                 json.dump(complete_record, f)
         except Exception as e:
-            _log_decision(log, "active_runs_complete_write_failed", str(e))
+            sup_lifecycle._log_decision(log, "active_runs_complete_write_failed", str(e))
 
         # Persist batch_id for FDR promotion on completion
         fresh = sup_state.load_state()
@@ -3957,7 +3823,7 @@ def _maybe_start_slow_loop(goal, log):
         sup_state.save_state(fresh)
     finally:
         out_fp.close()
-    _log_decision(log, "slow_loop_started", "phase=slow, queue busy")
+    sup_lifecycle._log_decision(log, "slow_loop_started", "phase=slow, queue busy")
 
 def _maybe_finish_slow(goal, log):
     st = sup_state.load_state()
@@ -3987,7 +3853,7 @@ def _maybe_finish_slow(goal, log):
                 # drain already complete: single scan, tombstone missing immediately
                 wait_for_batch(batch_id, batch_records, sup_paths.REGISTRY, timeout=0)
         except Exception as e:
-            _log_decision(log, "wait_for_batch_error", str(e))
+            sup_lifecycle._log_decision(log, "wait_for_batch_error", str(e))
     # Batch completion: apply FDR promotion to batch verdicts
     if batch_id:
         batch_verdicts = []
@@ -3998,10 +3864,10 @@ def _maybe_finish_slow(goal, log):
                 updates = promote_batch_for_persistence(batch_verdicts)
                 if updates:
                     rl.update_batch_verdicts(sup_paths.REGISTRY, batch_id, updates)
-                    _log_decision(log, "batch_fdr_promote",
+                    sup_lifecycle._log_decision(log, "batch_fdr_promote",
                                  f"batch={batch_id} promoted={len(updates)}")
         except Exception as e:
-            _log_decision(log, "batch_fdr_error", str(e))
+            sup_lifecycle._log_decision(log, "batch_fdr_error", str(e))
         try:
             members = load_family_members(sup_paths.FAMILY_REGISTRY)
             now = datetime.now(timezone.utc)
@@ -4032,16 +3898,16 @@ def _maybe_finish_slow(goal, log):
                     members = _merge_family_members(members, family_key, result["members"])
                     touched = True
                 except Exception as e:
-                    _log_decision(log, "confirmation_finalize_error", str(e),
+                    sup_lifecycle._log_decision(log, "confirmation_finalize_error", str(e),
                                   [str(verdict.get("variant_id") or "")])
             if touched:
                 save_family_members(sup_paths.FAMILY_REGISTRY, members)
         except Exception as e:
-            _log_decision(log, "confirmation_finalize_error", str(e))
+            sup_lifecycle._log_decision(log, "confirmation_finalize_error", str(e))
         try:
             cleanup_batch_workers(batch_id)
         except Exception as e:
-            _log_decision(log, "cleanup_batch_error", str(e))
+            sup_lifecycle._log_decision(log, "cleanup_batch_error", str(e))
         # Clear batch tracking from state
         fresh = sup_state.load_state()
         fresh.pop("current_batch_id", None)
@@ -4079,13 +3945,13 @@ def _maybe_finish_slow(goal, log):
     fresh["cycles_done"] = int(fresh.get("cycles_done") or 0) + 1
     fresh["phase"] = "fast" if gate_ok else "wait_quota"
     sup_state.save_state(fresh)
-    _log_decision(log, "slow_drain_complete",
+    sup_lifecycle._log_decision(log, "slow_drain_complete",
                   "queue empty, slow idle, cycle+1 phase={0}".format(fresh["phase"]))
     try:
         from praxist_assets_archive import archive_slow_cycle
         archive_slow_cycle(fresh, goal)
     except Exception as e:
-        _log_decision(log, "assets_archive_error", f"slow: {e}")
+        sup_lifecycle._log_decision(log, "assets_archive_error", f"slow: {e}")
     return True
 
 def _main_locked(args):
@@ -4098,8 +3964,8 @@ def _main_locked(args):
     except Exception as e:
         print(f"[ERROR] ensure_baselines pre-flight failed: {e}", file=sys.stderr)
     while True:
-        _write_heartbeat()
-        code = _shutdown_exit()
+        sup_lifecycle._write_heartbeat()
+        code = sup_lifecycle._shutdown_exit()
         if code is not None:
             return code
         # Reload goal every poll so hot token_budget_m / max_cycles edits apply
@@ -4140,7 +4006,7 @@ def _main_locked(args):
             planned = decide_fast_loop(goal, dry_run=True)
             for a in planned:
                 print(json.dumps(a, ensure_ascii=False, default=str))
-            _mark_stop_emitted()
+            sup_lifecycle._mark_stop_emitted()
             return 0
 
         materialize_covariate_menu(load_covariate_pool(), sup_paths.MENU_INC)
@@ -4171,15 +4037,15 @@ def _main_locked(args):
             root=sup_paths.FM_ROOT,
             **_mb_kwargs)
         if ok:
-            rec = _log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
+            rec = sup_lifecycle._log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
             write_stop_report("goal_reached", snap, why, rec["reason"])
-            _emit_event("critical", "goal_reached", {
+            sup_lifecycle._emit_event("critical", "goal_reached", {
                 "why": why, "cycles_done": cycles, "cpu_h": cpu_h, "tok_m": tok_spend,
                 "symbols_hit": sorted(snap.get("symbols_hit") or []),
-                "uptime_s": round(time.time() - _START_TIME, 1),
+                "uptime_s": round(time.time() - sup_lifecycle._START_TIME, 1),
             })
             # 干净终止: 先标记, 否则 atexit 兜底会误报 supervisor_stopped/unexpected_exit。
-            _mark_stop_emitted()
+            sup_lifecycle._mark_stop_emitted()
             print(json.dumps(rec, ensure_ascii=False))
             return 0
         if budget_hit:
@@ -4187,7 +4053,7 @@ def _main_locked(args):
             # can harvest→slow before any budget_exhausted return (2026-09-07 lesson:
             # exited at tok>budget while failover run lived → missed harvest).
             if _run_active():
-                _log_decision(
+                sup_lifecycle._log_decision(
                     log, "budget_hit_wait_run",
                     f"cycles={cycles}/{max_cycles} cpu_h={cpu_h} "
                     f"tok_m={tok_spend}/{tok_budget}; "
@@ -4197,7 +4063,7 @@ def _main_locked(args):
             else:
                 # Drain finished-run harvest + local slow queue BEFORE exiting on budget.
                 st_pre = sup_state.load_state()
-                code = _shutdown_exit()
+                code = sup_lifecycle._shutdown_exit()
                 if code is not None:
                     return code
                 _maybe_harvest(st_pre, goal, log)
@@ -4205,12 +4071,12 @@ def _main_locked(args):
             if st_pre.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
                 if st_pre.get("phase") != "slow":
                     sup_state._merge_save({"phase": "slow"})
-                    _emit_event("action", "phase_change", {"from": "fast", "to": "slow"})
+                    sup_lifecycle._emit_event("action", "phase_change", {"from": "fast", "to": "slow"})
                 _maybe_start_slow_loop(goal, log)
                 # One-shot drain wait is not appropriate here; leave slow running and
                 # only exit once queue is empty. If still draining, keep process alive.
                 if not _slow_drain_complete():
-                    _log_decision(
+                    sup_lifecycle._log_decision(
                         log, "budget_hit_drain_slow",
                         f"cycles={cycles} cpu_h={cpu_h} tok_m={tok_spend}; "
                         "defer exit until aligned queue drains",
@@ -4229,15 +4095,15 @@ def _main_locked(args):
                     fresh_snap = build_snapshot(sup_paths.REGISTRY, fresh_cycles, fresh_cpu_h, fresh_tok_spend)
                     fresh_ok, fresh_why = evaluate_goal(goal["success_condition"], fresh_snap)
                     if fresh_ok:
-                        rec = _log_decision(log, "goal_reached",
+                        rec = sup_lifecycle._log_decision(log, "goal_reached",
                                             "; ".join(fresh_why) or "all conditions met (post-slow-drain)")
                         write_stop_report("goal_reached", fresh_snap, fresh_why, rec["reason"])
-                        _emit_event("critical", "goal_reached", {
+                        sup_lifecycle._emit_event("critical", "goal_reached", {
                             "why": fresh_why, "cycles_done": fresh_cycles,
                             "cpu_h": fresh_cpu_h, "tok_m": fresh_tok_spend,
                             "source": "budget_hit_post_slow_drain",
                         })
-                        _mark_stop_emitted()
+                        sup_lifecycle._mark_stop_emitted()
                         print(json.dumps(rec, ensure_ascii=False))
                         return 0
                     # Goal not reached — recompute budget_hit with fresh numbers
@@ -4251,25 +4117,25 @@ def _main_locked(args):
                     cycles, cpu_h, tok_spend, snap = fresh_cycles, fresh_cpu_h, fresh_tok_spend, fresh_snap
                     tok_unknown, tok_hit, tok_budget = fresh_tok_unknown, fresh_tok_hit, fresh_tok_budget
             if budget_hit:
-                rec = _log_decision(log, "budget_exhausted",
+                rec = sup_lifecycle._log_decision(log, "budget_exhausted",
                                     f"cycles={cycles}/{max_cycles} cpu_h={cpu_h} "
                                     f"tok_m={tok_spend}/{tok_budget} tok_unknown={tok_unknown} "
                                     f"tok_hit={tok_hit}")
                 write_stop_report("budget_exhausted", snap, [rec["reason"]], rec["reason"])
-                _emit_event("critical", "budget_exhausted", {
+                sup_lifecycle._emit_event("critical", "budget_exhausted", {
                     "cycles": cycles, "cpu_h": cpu_h, "tok_m": tok_spend,
                     "tok_unknown": tok_unknown,
-                    "uptime_s": round(time.time() - _START_TIME, 1),
+                    "uptime_s": round(time.time() - sup_lifecycle._START_TIME, 1),
                 })
                 # 干净终止: 先标记, 否则 atexit 兜底会误报 supervisor_stopped/unexpected_exit。
-                _mark_stop_emitted()
+                sup_lifecycle._mark_stop_emitted()
                 print(json.dumps(rec, ensure_ascii=False))
                 return 0
 
         st = ensure_phase(sup_state.load_state())
         st = sup_state._merge_save({"phase": st["phase"]})
         # Harvest finished runs even during paused_429 / wait_quota.
-        code = _shutdown_exit()
+        code = sup_lifecycle._shutdown_exit()
         if code is not None:
             return code
         if not _run_active():
@@ -4278,11 +4144,11 @@ def _main_locked(args):
         try:
             _maybe_enqueue_retests(goal, log)
         except Exception as e:
-            _log_decision(log, "retest_scan_error", str(e))
+            sup_lifecycle._log_decision(log, "retest_scan_error", str(e))
         try:
             _maybe_enqueue_confirmations(log, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         except Exception as e:
-            _log_decision(log, "confirmation_enqueue_error", str(e))
+            sup_lifecycle._log_decision(log, "confirmation_enqueue_error", str(e))
         st = sup_state.load_state()
         # Local aligned drain is never blocked by LLM pause/failover.
         if st.get("phase") == "slow" or _queue_busy() or _slow_loop_alive():
@@ -4293,14 +4159,14 @@ def _main_locked(args):
         planned = decide_fast_loop(goal, dry_run=False)
         for a in planned:
             print(json.dumps(a, ensure_ascii=False, default=str))
-            _log_decision(log, a["action"], a.get("reason", ""), a.get("refs") or [])
+            sup_lifecycle._log_decision(log, a["action"], a.get("reason", ""), a.get("refs") or [])
 
         # Session unstick (ops nudge / optional disk backfill). Safe no-op when healthy.
         try:
             from praxist_session_unstick import detect_and_act as _session_unstick
             _u = _session_unstick(dry_run=False, force=False)
             if _u.get("action") not in (None, "noop") or _u.get("escalate"):
-                _log_decision(
+                sup_lifecycle._log_decision(
                     log,
                     "session_unstick_escalate" if _u.get("escalate") else "session_unstick",
                     _u.get("reason") or _u.get("action") or "",
@@ -4312,16 +4178,16 @@ def _main_locked(args):
                        "backfill", "missing_peers", "synth")}},
                                  ensure_ascii=False, default=str))
         except Exception as e:
-            _log_decision(log, "session_unstick_error", str(e))
+            sup_lifecycle._log_decision(log, "session_unstick_error", str(e))
 
         if one_shot:
-            _mark_stop_emitted()
+            sup_lifecycle._mark_stop_emitted()
             return 0
         sleep_s = sup_paths.POLL_S
         for a in planned:
             if a.get("sleep_s"):
                 sleep_s = min(sleep_s, int(a["sleep_s"]))
-        _sleep_interruptible(max(1, sleep_s))
+        sup_lifecycle._sleep_interruptible(max(1, sleep_s))
 
 if __name__ == "__main__":
     sys.exit(main() or 0)

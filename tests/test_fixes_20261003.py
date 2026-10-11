@@ -16,6 +16,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 import sup_paths
+import sup_lifecycle
 import praxist_supervisor as sup  # noqa: E402
 import cascade.research_family as rf  # noqa: E402
 
@@ -197,16 +198,16 @@ def test_harvest_aborts_on_shutdown_flag(monkeypatch, tmp_path):
                     "dir_ok": True}) + "\n", encoding="utf-8")
     monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp-current")
 
-    monkeypatch.setattr(sup, "_SHUTDOWN_REQUESTED", False)
+    monkeypatch.setattr(sup_lifecycle, "_SHUTDOWN_REQUESTED", False)
     rows, stats = sup.harvest_proposals(str(tmp_path), {}, set(), set(),
                                         {"vor": {"family": "momentum"}}, top_k=3)
     assert rows, f"对照组：未置标志时应能入队（stats={stats}）"
 
-    sup._SHUTDOWN_REQUESTED = True
+    sup_lifecycle._SHUTDOWN_REQUESTED = True
     try:
         rows2, stats2 = sup.harvest_proposals(str(tmp_path), {}, set(), set(),
                                               {"vor": {"family": "momentum"}}, top_k=3)
     finally:
-        sup._SHUTDOWN_REQUESTED = False
+        sup_lifecycle._SHUTDOWN_REQUESTED = False
     assert rows2 == [], "停机时不得返回半份候选"
     assert stats2.get("aborted_by_shutdown") is True
