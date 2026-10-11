@@ -110,3 +110,12 @@ def test_prescreen_import_failure_logs_on_harvest_module(monkeypatch):
     sup_harvest._prescreen_async({}, "/tmp/no-such.json", "rb")
     assert seen
     assert "TypeSafe" in seen[0][0]
+
+
+def test_family_for_stays_nested_over_pool():
+    import inspect
+    import sup_family
+    assert not hasattr(sup_family, "family_for")
+    src = inspect.getsource(sup_family._maybe_enqueue_confirmations)
+    assert "def family_for(cov):" in src
+    assert "pool.get(cov)" in src

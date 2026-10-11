@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import sup_paths
 import sup_lifecycle
 import sup_evidence
+import sup_family
 import praxist_supervisor as sup  # noqa: E402
 import aligned_slow_loop as slow  # noqa: E402
 
@@ -51,7 +52,7 @@ def _wire(monkeypatch, tmp_path, preregs, snap):
     monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
     monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: snap)
-    monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
     sup._CONFIRM_REDISPATCH.clear()
     return str(tmp_path / "decisions.jsonl")
 
@@ -112,7 +113,7 @@ def test_redispatch_throttled_six_hours(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
     monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: snap)
-    monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
     # 只隔离队列侧：in_flight 恒空、enqueue 记数，让节流成为唯一变量
     monkeypatch.setattr(sup.rl, "in_flight_ids", lambda q, i: set())
     monkeypatch.setattr(sup.rl, "queue_enqueue", lambda path, rows, dead, existing: len(rows))
@@ -140,7 +141,7 @@ def test_not_enqueued_notice_carries_throttle_state(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
     monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: snap)
-    monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
     monkeypatch.setattr(sup.rl, "in_flight_ids", lambda q, i: set())
     monkeypatch.setattr(sup.rl, "queue_enqueue", lambda path, rows, dead, existing: len(rows))
     log = str(tmp_path / "decisions.jsonl")

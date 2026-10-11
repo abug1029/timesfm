@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from s1_fake_rl import install_fake_rl
 import sup_paths
 import sup_evidence
+import sup_family
 import praxist_supervisor as sup  # noqa: E402
 import aligned_slow_loop as slow  # noqa: E402
 
@@ -104,13 +105,13 @@ def test_maybe_enqueue_confirmations_respects_data_gate(tmp_path, monkeypatch):
     })())
     monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp")
     # 数据闸门关闭
-    monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: False)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: False)
     log = str(tmp_path / "d.jsonl")
     assert sup._maybe_enqueue_confirmations(log, "2026-10-03 12:00:00") == 0
     assert not q.exists(), "数据未到位时不得写队列"
     assert not fam.exists(), "数据未到位时不得登记 family 成员"
     # 闸门打开 → 派发
-    monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
     assert sup._maybe_enqueue_confirmations(log, "2026-10-03 12:00:00") == 0  # queue_enqueue 桩返回 0
     assert fam.exists(), "闸门打开后应登记 family 成员"
     members = [json.loads(l) for l in open(fam, encoding="utf-8") if l.strip()]
@@ -176,7 +177,7 @@ def test_no_data_tombstone_does_not_block_reenqueue(tmp_path, monkeypatch):
     monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
     monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: snap)
-    monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
     sup._CONFIRM_REDISPATCH.clear()   # 2026-10-04（E2）：进程内节流状态，测试间必须清
     n = sup._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
     assert n == 1, "快照里只有 no_data 墓碑时，数据到位后仍应派发确认行"

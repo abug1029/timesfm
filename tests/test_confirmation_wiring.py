@@ -24,6 +24,7 @@ import preregistry as pr  # noqa: E402
 import aligned_slow_loop as asl  # noqa: E402
 import sup_paths
 import sup_evidence
+import sup_family
 import praxist_supervisor as sv  # noqa: E402
 
 
@@ -581,7 +582,7 @@ def test_enqueue_due_confirmation_then_peek_does_not_seal(tmp_path, monkeypatch)
     # 2026-10-03：数据闸门（D1）桩——确认集数据未越过 confirm_from_ts 时不派发
     # （否则空评估 + no_data 墓碑 + 去重失效 = 每轮重复入队）。本测试关注
     # 「派发 → peek」链路，故显式放行；闸门本身由 test_confirm_bugs_20261003.py 覆盖。
-    monkeypatch.setattr(sv, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
     monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: {})
     sv._CONFIRM_REDISPATCH.clear()   # 2026-10-04（E2）：重派节流是进程内状态，测试间必须清
@@ -644,7 +645,7 @@ def test_enqueue_due_jd_and_sr_registers_each_family(tmp_path, monkeypatch):
     # 2026-10-03：数据闸门（D1）桩——确认集数据未越过 confirm_from_ts 时不派发
     # （否则空评估 + no_data 墓碑 + 去重失效 = 每轮重复入队）。本测试关注
     # 「派发 → peek」链路，故显式放行；闸门本身由 test_confirm_bugs_20261003.py 覆盖。
-    monkeypatch.setattr(sv, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
     monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {
         "vor": {"family": "momentum"},
         "vwap_deviation": {"family": "momentum"},
