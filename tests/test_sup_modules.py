@@ -33,3 +33,13 @@ def test_shim_here_follows_sup_paths(monkeypatch):
     assert sup.FM_ROOT == "/tmp/s1-root"
     assert "HERE" not in vars(sup)
     assert "FM_ROOT" not in vars(sup)
+
+
+def test_praxist_bin_cache_lives_on_sup_env():
+    import sup_env
+    saved = sup_env._PRAXIST
+    try:
+        sup_env._PRAXIST = "/tmp/fake-praxist"
+        assert sup_env._praxist_bin() == "/tmp/fake-praxist"
+    finally:
+        sup_env._PRAXIST = saved
