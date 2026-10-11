@@ -62,3 +62,9 @@ def test_sleep_interruptible_sees_lifecycle_flag(monkeypatch):
     monkeypatch.setattr(sup_lifecycle, "_SHUTDOWN_REQUESTED", True)
     sup_lifecycle._sleep_interruptible(5)
     assert calls == []
+
+
+def test_parse_429_reset_stays_on_provider():
+    import sup_provider
+    text = "reset at 2026-10-11 01:02:03 +0800"
+    assert sup_provider.parse_429_reset(text) is not None

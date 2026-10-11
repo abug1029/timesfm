@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """三环监督环: goal 判定 + 两环调度, 纯 Python 0 token"""
-import argparse, fcntl, glob, json, logging, os, re, shutil, subprocess, sys, threading, time, traceback, uuid
+import argparse, fcntl, glob, json, logging, os, shutil, subprocess, sys, threading, time, traceback, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 _BOOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -10,6 +10,7 @@ import sup_paths
 import sup_env
 import sup_state
 import sup_lifecycle
+import sup_provider
 
 _HOMES: dict[str, object] = {  # 每搬完一个模块就填 name -> module
     "HERE": sup_paths,
@@ -79,6 +80,21 @@ _HOMES: dict[str, object] = {  # 每搬完一个模块就填 name -> module
     "_HANDLERS_ARMED": sup_lifecycle,
     "_arm_handlers": sup_lifecycle,
     "_log_decision": sup_lifecycle,
+    "parse_429_reset": sup_provider,
+    "_env_first": sup_provider,
+    "_failover_configured": sup_provider,
+    "_llm_provider": sup_provider,
+    "_llm_route": sup_provider,
+    "_praxist_env": sup_provider,
+    "_failover_model_name": sup_provider,
+    "_recorded_run_model": sup_provider,
+    "_failover_can_resume_same_run": sup_provider,
+    "_model_argv": sup_provider,
+    "_provider_state": sup_provider,
+    "_status_rows": sup_provider,
+    "_run_active": sup_provider,
+    "_active_run_meta": sup_provider,
+    "_latest_429_reset": sup_provider,
 }
 
 
@@ -570,181 +586,6 @@ def _finalize_confirmation_verdict(verdict, members, now):
     return finalize_confirmation(row, members, now)
 
 
-def parse_429_reset(log_text):
-    m = re.search(r"reset at (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})", log_text)
-    if not m:
-        return None
-    return datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S %z")
-
-def _env_first(*names):
-    """First non-empty env value among names (never log/echo secrets)."""
-    for n in names:
-        v = (os.environ.get(n) or "").strip()
-        if v:
-            return v
-    return None
-
-
-def _failover_configured() -> bool:
-    """DashScope (or other) Anthropic-compatible failover ready?
-
-    Accepts both FAILOVER_* and ANTHROPIC_FAILOVER_* names (launchers source .env.praxist).
-    """
-    base = _env_first("FAILOVER_ANTHROPIC_BASE_URL", "ANTHROPIC_FAILOVER_BASE_URL")
-    key = _env_first(
-        "FAILOVER_ANTHROPIC_API_KEY",
-        "ANTHROPIC_FAILOVER_API_KEY",
-        "FAILOVER_ANTHROPIC_AUTH_TOKEN",
-    )
-    return bool(base and key)
-
-
-def _llm_provider(st=None) -> str:
-    """Canonical state key is llm_provider; llm_route kept as read fallback."""
-    st = st if st is not None else sup_state.load_state()
-    route = (st.get("llm_provider") or st.get("llm_route") or "primary")
-    route = str(route).strip().lower()
-    return route if route in ("primary", "failover") else "primary"
-
-
-# Back-compat alias used by older call sites / docs
-def _llm_route(st=None) -> str:
-    return _llm_provider(st)
-
-
-def _praxist_env(route: str | None = None, st=None):
-    """Build env for praxist child. Selects primary vs failover from state/route.
-
-    Primary (default): Volcengine Ark via ANTHROPIC_* or PRIMARY_*.
-    Failover: DashScope coding Anthropic endpoint via FAILOVER_* / ANTHROPIC_FAILOVER_*.
-    """
-    env = dict(os.environ)
-    route = (route or _llm_provider(st)).strip().lower()
-    if route == "failover" and _failover_configured():
-        base = _env_first("FAILOVER_ANTHROPIC_BASE_URL", "ANTHROPIC_FAILOVER_BASE_URL")
-        key = _env_first(
-            "FAILOVER_ANTHROPIC_API_KEY",
-            "ANTHROPIC_FAILOVER_API_KEY",
-            "FAILOVER_ANTHROPIC_AUTH_TOKEN",
-        )
-        if base:
-            env["ANTHROPIC_BASE_URL"] = base
-        if key:
-            env["ANTHROPIC_API_KEY"] = key
-            env["ANTHROPIC_AUTH_TOKEN"] = key
-        model = _env_first("FAILOVER_MODEL", "ANTHROPIC_FAILOVER_MODEL") or "qwen3.7-plus"
-        env["PRAXIST_FAILOVER_MODEL"] = model
-        env["PRAXIST_MODEL"] = model  # praxist start resolves --model from PRAXIST_MODEL
-        env["MODEL"] = model
-    else:
-        # Restore primary Ark endpoint/key when explicitly on primary.
-        p_base = _env_first("PRIMARY_ANTHROPIC_BASE_URL", "ANTHROPIC_BASE_URL")
-        p_key = _env_first(
-            "PRIMARY_ANTHROPIC_API_KEY",
-            "ANTHROPIC_API_KEY",
-            "ANTHROPIC_AUTH_TOKEN",
-        )
-        if p_base:
-            env["ANTHROPIC_BASE_URL"] = p_base
-        if p_key:
-            env["ANTHROPIC_API_KEY"] = p_key
-            env["ANTHROPIC_AUTH_TOKEN"] = p_key
-        model = _env_first("PRIMARY_MODEL") or "claude-opus-4-7"
-        env["PRAXIST_MODEL"] = model
-        env["MODEL"] = model
-    # Claude Code prefers ANTHROPIC_AUTH_TOKEN over API_KEY. After route overlay,
-    # force both to the SAME selected key so a stale primary AUTH_TOKEN cannot
-    # ride into a DashScope failover process (401 invalid access token).
-    key = env.get("ANTHROPIC_API_KEY") or env.get("ANTHROPIC_AUTH_TOKEN")
-    if key:
-        env["ANTHROPIC_API_KEY"] = key
-        env["ANTHROPIC_AUTH_TOKEN"] = key
-    volc_key = os.environ.get("VOLCENGINE_API_KEY")
-    if volc_key:
-        env["VOLCENGINE_API_KEY"] = volc_key
-    # Sticky RUN_DIR from old shells/.env.praxist makes `praxist start`
-    # try to reuse a finished non-empty dir (e.g. 11-57 SHUTDOWN). Drop it
-    # so default/fresh starts allocate a new experiments/run_<ts>_… path.
-    for sticky in ("RUN_DIR", "RUN", "RUNDIR", "PRAXIST_RUN_DIR"):
-        env.pop(sticky, None)
-    return env
-
-
-def _failover_model_name() -> str:
-    return _env_first("FAILOVER_MODEL", "ANTHROPIC_FAILOVER_MODEL") or "qwen3.7-plus"
-
-
-def _recorded_run_model(run_dir) -> str | None:
-    """Read canonical --model from an existing run's startup_config.json."""
-    if not run_dir:
-        return None
-    p = os.path.join(str(run_dir), "startup_config.json")
-    try:
-        data = json.loads(open(p, encoding="utf-8").read())
-    except (OSError, json.JSONDecodeError, TypeError):
-        return None
-    args = data.get("canonical_args") if isinstance(data, dict) else None
-    if not isinstance(args, dict):
-        return None
-    model = str(args.get("model") or "").strip()
-    return model or None
-
-
-def _failover_can_resume_same_run(run_dir) -> bool:
-    """Praxist resume rejects model identity changes.
-
-    Only resume the same run_dir on failover when it already started with the
-    failover model id. Otherwise start a fresh run (DashScope qwen ≠ Ark claude).
-    """
-    recorded = _recorded_run_model(run_dir)
-    if not recorded:
-        return False
-    return recorded == _failover_model_name()
-
-
-def _model_argv(route: str | None = None, st=None) -> list:
-    """--model override for start/resume (primary: claude-opus-4-7; failover: qwen3.7-plus)."""
-    route = (route or _llm_provider(st)).strip().lower()
-    if route == "failover":
-        return ["--model", _failover_model_name()]
-    model = _env_first("PRIMARY_MODEL") or "claude-opus-4-7"
-    return ["--model", model]
-
-
-def _provider_state(provider: str) -> dict:
-    """Persist both llm_provider (canonical) and llm_route (compat)."""
-    return {"llm_provider": provider, "llm_route": provider}
-
-
-def _status_rows():
-    r = sup_env._praxist(["status", "--json"])
-    try:
-        data = json.loads(r["stdout"] or "[]")
-        return data if isinstance(data, list) else []
-    except json.JSONDecodeError:
-        return []
-
-def _run_active():
-    return any((row or {}).get("state") in {"running", "starting"} for row in _status_rows())
-
-def _active_run_meta():
-    for row in _status_rows():
-        if (row or {}).get("state") in {"running", "starting"}:
-            return row
-    return None
-
-def _latest_429_reset():
-    logs = sorted(glob.glob(os.path.join(sup_paths.FM_ROOT, "task_FM", "experiments", "run_*", "logs", "*.log")),
-                  key=os.path.getmtime, reverse=True)
-    for lp in logs[:5]:
-        try:
-            reset = parse_429_reset(open(lp, encoding="utf-8", errors="ignore").read())
-        except OSError:
-            continue
-        if reset:
-            return reset
-    return None
-
 def quota_gate(goal, now=None):
     """return (window_ok, sleep_seconds_if_blocked). Windows refill at reset+N*win_h."""
     cad = goal.get("cadence") or {}
@@ -752,7 +593,7 @@ def quota_gate(goal, now=None):
     win_h = float(cad.get("quota_window_hours", 5.0))
     margin_h = float(cad.get("quota_margin_min", 30)) / 60.0
     need = run_h + margin_h
-    reset = _latest_429_reset()
+    reset = sup_provider._latest_429_reset()
     if reset is None:
         return True, 0
     now = now or datetime.now(reset.tzinfo)
@@ -2837,8 +2678,8 @@ def ensure_phase(st):
         return st
     if st.get("phase") in sup_paths.PHASES:
         return st
-    if st.get("paused_429") and not _run_active():
-        if _failover_configured() or _llm_provider(st) == "failover":
+    if st.get("paused_429") and not sup_provider._run_active():
+        if sup_provider._failover_configured() or sup_provider._llm_provider(st) == "failover":
             st["phase"] = "fast"
         else:
             st["phase"] = "wait_quota"
@@ -2878,17 +2719,17 @@ def decide_fast_loop(goal, dry_run=False, now=None):
     """
     actions = []
     ok, sleep_s = quota_gate(goal, now=now)
-    active = _run_active()
-    meta = _active_run_meta() if active else None
+    active = sup_provider._run_active()
+    meta = sup_provider._active_run_meta() if active else None
     st = ensure_phase(sup_state.load_state())
-    failover_ok = _failover_configured()
-    provider_now = _llm_provider(st)
+    failover_ok = sup_provider._failover_configured()
+    provider_now = sup_provider._llm_provider(st)
 
     def _resume_argv(rd, provider):
         return [
             "resume", rd, "--daemonize", "--json",
             "--model-provider", "model_provider:anthropic_messages",
-            *_model_argv(provider),
+            *sup_provider._model_argv(provider),
         ]
 
     def _start_argv(provider):
@@ -2902,7 +2743,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             "--run-dir", run_dir,
             "--daemonize", "--json",
             "--model-provider", "model_provider:anthropic_messages",
-            *_model_argv(provider),
+            *sup_provider._model_argv(provider),
         ]
 
     def _plan_resume(rd, provider, reason):
@@ -2915,9 +2756,9 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             "llm_provider": provider,
         })
         if not dry_run:
-            r = sup_env._praxist(argv, env=_praxist_env(provider))
+            r = sup_env._praxist(argv, env=sup_provider._praxist_env(provider))
             if r.get("ok"):
-                upd = {"paused_429": False, "phase": "fast", **_provider_state(provider)}
+                upd = {"paused_429": False, "phase": "fast", **sup_provider._provider_state(provider)}
                 sup_state._merge_save(upd)
             return r
         return None
@@ -2932,9 +2773,9 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             "llm_provider": provider,
         })
         if not dry_run:
-            r = sup_env._praxist(argv, env=_praxist_env(provider))
+            r = sup_env._praxist(argv, env=sup_provider._praxist_env(provider))
             if r.get("ok"):
-                updates = {"paused_429": False, "phase": "fast", **_provider_state(provider)}
+                updates = {"paused_429": False, "phase": "fast", **sup_provider._provider_state(provider)}
                 sup_lifecycle._emit_event("info", "run_started", {"provider": provider, "reason": reason})
                 try:
                     js = json.loads(r["stdout"] or "{}")
@@ -2955,7 +2796,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
         run_dir = (meta or {}).get("run_dir") or st.get("last_run_dir")
         if provider_now == "primary" and failover_ok and run_dir:
             stop_argv = ["stop", str(run_id)] if run_id else None
-            can_resume = _failover_can_resume_same_run(run_dir)
+            can_resume = sup_provider._failover_can_resume_same_run(run_dir)
             continue_argv = (
                 _resume_argv(run_dir, "failover") if can_resume else _start_argv("failover")
             )
@@ -2990,9 +2831,9 @@ def decide_fast_loop(goal, dry_run=False, now=None):
                     "last_run_dir": run_dir,
                     "last_run_id": run_id,
                     "phase": "fast",
-                    **_provider_state("failover"),
+                    **sup_provider._provider_state("failover"),
                 })
-                r = sup_env._praxist(continue_argv, env=_praxist_env("failover"))
+                r = sup_env._praxist(continue_argv, env=sup_provider._praxist_env("failover"))
                 if r.get("ok") and not can_resume:
                     # Capture new run_dir/id from start JSON when available
                     try:
@@ -3014,7 +2855,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
                         "refs": [run_id, run_dir, (r.get("stderr") or "")[:200]],
                         "sleep_s": sleep_s,
                     })
-                    sup_state._merge_save({"paused_429": True, **_provider_state("failover")})
+                    sup_state._merge_save({"paused_429": True, **sup_provider._provider_state("failover")})
                 sup_lifecycle._emit_event("action", "provider_switch", {"from": "primary", "to": "failover", "reason": "429_rate_limit"})
             return actions
         # Already on failover: Ark quota_gate must NOT stop a live DashScope run.
@@ -3053,7 +2894,7 @@ def decide_fast_loop(goal, dry_run=False, now=None):
             if failover_ok or provider_now == "failover":
                 # Stay on failover for THIS run (no thrash to primary mid-run)
                 if provider_now == "failover" or (failover_ok and not ok):
-                    if _failover_can_resume_same_run(rd):
+                    if sup_provider._failover_can_resume_same_run(rd):
                         _plan_resume(
                             rd, "failover",
                             "paused_429; resume via DashScope failover (same model id)",
@@ -3089,8 +2930,8 @@ def decide_fast_loop(goal, dry_run=False, now=None):
         if not ok and failover_ok:
             rd = st.get("last_run_dir") or st.get("last_run_id")
             if not dry_run:
-                sup_state._merge_save({"phase": "fast", **_provider_state("failover")})
-            if rd and not active and _failover_can_resume_same_run(rd):
+                sup_state._merge_save({"phase": "fast", **sup_provider._provider_state("failover")})
+            if rd and not active and sup_provider._failover_can_resume_same_run(rd):
                 _plan_resume(rd, "failover", "wait_quota bypassed; failover resume (same model)")
             elif not active:
                 _plan_start(
@@ -3343,7 +3184,7 @@ def _maybe_harvest(st, goal, log):
     """
     last = st.get("last_run_id")
     harvested_already = bool(last) and st.get("last_harvested_run_id") == last
-    if _run_active() or not last or harvested_already:
+    if sup_provider._run_active() or not last or harvested_already:
         return False
     rows, dead, existing, pstats = _harvest_rows(goal)
     if pstats and pstats.get("seen"):
@@ -4052,7 +3893,7 @@ def _main_locked(args):
             # If a fast run is still alive, do NOT exit — wait for it to finish so we
             # can harvest→slow before any budget_exhausted return (2026-09-07 lesson:
             # exited at tok>budget while failover run lived → missed harvest).
-            if _run_active():
+            if sup_provider._run_active():
                 sup_lifecycle._log_decision(
                     log, "budget_hit_wait_run",
                     f"cycles={cycles}/{max_cycles} cpu_h={cpu_h} "
@@ -4138,7 +3979,7 @@ def _main_locked(args):
         code = sup_lifecycle._shutdown_exit()
         if code is not None:
             return code
-        if not _run_active():
+        if not sup_provider._run_active():
             _maybe_harvest(st, goal, log)
         # n-不足型近失误自动复测 (本地慢环, 不受 LLM 暂停/failover 影响)。
         try:

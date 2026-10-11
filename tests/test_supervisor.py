@@ -5,6 +5,7 @@ import sup_paths
 import sup_env
 import sup_state
 import sup_lifecycle
+import sup_provider
 import praxist_supervisor as sup
 
 def _patch_paths(monkeypatch, tmp_path):
@@ -56,7 +57,7 @@ def test_quota_gate_banned_and_remaining(monkeypatch):
     reset = datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz)
     goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
                         "quota_margin_min": 30}}
-    monkeypatch.setattr(sup, "_latest_429_reset", lambda: reset)
+    monkeypatch.setattr(sup_provider, "_latest_429_reset", lambda: reset)
     # 封禁中
     now = datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)
     ok, sleep_s = sup.quota_gate(goal, now=now)
@@ -171,7 +172,7 @@ def test_build_snapshot_metrics(tmp_path, monkeypatch):
 def test_dry_run_one_shot_no_sleep(tmp_path, monkeypatch):
     slept = {"n": 0}
     monkeypatch.setattr(sup.time, "sleep", lambda s: slept.__setitem__("n", slept["n"] + 1))
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True})
     _patch_paths(monkeypatch, tmp_path)
@@ -247,8 +248,8 @@ def test_goal_reached_marks_stop_emitted(tmp_path, monkeypatch):
 
 def test_cycles_increment_only_after_harvest(tmp_path, monkeypatch):
     monkeypatch.setattr(sup.time, "sleep", lambda s: None)
-    monkeypatch.setattr(sup, "_run_active", lambda: True)  # run 仍在
-    monkeypatch.setattr(sup, "_active_run_meta",
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: True)  # run 仍在
+    monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True})
@@ -276,14 +277,14 @@ def test_429_stop_then_resume(tmp_path, monkeypatch):
         calls.append(list(args))
         return {"ok": True, "stdout": ""}
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
-    monkeypatch.setattr(sup, "_run_active", lambda: True)
-    monkeypatch.setattr(sup, "_active_run_meta",
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
+    monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     tz = timezone(timedelta(hours=8))
     reset = datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz)
-    monkeypatch.setattr(sup, "_latest_429_reset", lambda: reset)
+    monkeypatch.setattr(sup_provider, "_latest_429_reset", lambda: reset)
     goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
                         "quota_margin_min": 30}}
     now = datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)
@@ -291,7 +292,7 @@ def test_429_stop_then_resume(tmp_path, monkeypatch):
     assert [a["action"] for a in actions] == ["run_paused_429"]
     assert calls == []  # dry_run 不调 praxist
     now2 = datetime(2026, 9, 2, 11, 30, 0, tzinfo=tz)
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup_state, "load_state", lambda: {"last_run_dir": "/tmp/runX", "paused_429": True,
                                                     "cycles_done": 0})
     actions2 = sup.decide_fast_loop(goal, dry_run=True, now=now2)
@@ -317,8 +318,8 @@ def test_429_stop_via_main_once_then_resume(tmp_path, monkeypatch):
         calls.append(list(args))
         return {"ok": True, "stdout": json.dumps({"run_id": "runX", "run_dir": "/tmp/runX"})}
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
-    monkeypatch.setattr(sup, "_run_active", lambda: True)
-    monkeypatch.setattr(sup, "_active_run_meta",
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
+    monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (False, 90))
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
@@ -337,7 +338,7 @@ def test_429_stop_via_main_once_then_resume(tmp_path, monkeypatch):
     assert st.get("cycles_done", 0) == 0
     assert ["stop", "runX"] in calls
     calls.clear()
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     rc2 = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc2 == 0
@@ -356,7 +357,7 @@ def test_harvest_survivors_enter_slow_no_start_no_cycle(tmp_path, monkeypatch):
         calls.append(list(args))
         return {"ok": True, "stdout": json.dumps({"run_id": "runY", "run_dir": "/tmp/runY"})}
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     monkeypatch.setattr(sup.subprocess, "Popen",
@@ -404,7 +405,7 @@ def test_harvest_empty_counts_cycle_and_allows_start(tmp_path, monkeypatch):
         calls.append(list(args))
         return {"ok": True, "stdout": json.dumps({"run_id": "runY", "run_dir": "/tmp/runY"})}
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
@@ -428,7 +429,7 @@ def test_slow_drain_counts_cycle_then_start(tmp_path, monkeypatch):
         calls.append(list(args))
         return {"ok": True, "stdout": json.dumps({"run_id": "runY", "run_dir": "/tmp/runY"})}
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
@@ -452,7 +453,7 @@ def test_phase_slow_blocks_start_even_in_window(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(sup_env, "_praxist",
                         lambda args, **k: calls.append(list(args)) or {"ok": True, "stdout": "{}"})
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: True)
     _patch_paths(monkeypatch, tmp_path)
@@ -477,7 +478,7 @@ def test_phase_slow_blocks_start_even_in_window(tmp_path, monkeypatch):
 def test_slow_starts_outside_clock_window(tmp_path, monkeypatch):
     pops = []
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True, "stdout": "{}"})
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     monkeypatch.setattr(sup, "_in_slow_window", lambda goal, now=None: False)
@@ -503,7 +504,7 @@ def test_ensure_phase_migrates_legacy_state(tmp_path, monkeypatch):
     _clear_failover_env(monkeypatch)
     _patch_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     (tmp_path / "pending.jsonl").write_text(
         json.dumps({"variant_id": "m_ccl", "symbol": "m", "cov_override": "ccl",
                     "max_points": 400, "stage": "aligned", "checkpoint_path": "",
@@ -518,8 +519,8 @@ def test_ensure_phase_migrates_legacy_state(tmp_path, monkeypatch):
 def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
     """Historical disk tokens are a baseline; only the delta counts toward token_budget_m."""
     monkeypatch.setattr(sup.time, "sleep", lambda s: None)
-    monkeypatch.setattr(sup, "_run_active", lambda: True)
-    monkeypatch.setattr(sup, "_active_run_meta",
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
+    monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True})
@@ -554,7 +555,7 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
     # origin/master: budget_hit while a run is alive waits (budget_hit_wait_run);
     # do not write exhausted report until the run is gone.
     assert not list((tmp_path / "reports").glob("supervisor_budget_exhausted_*.md"))
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup_lifecycle, "_STOP_EMITTED", False)
     rc3 = sup.main(["--once", "--goal", str(goal), "--root", str(tmp_path)])
     assert rc3 == 0
@@ -566,8 +567,8 @@ def test_tokens_baseline_delta_budget(tmp_path, monkeypatch):
 
 def test_tok_unknown_skips_token_budget(tmp_path, monkeypatch):
     monkeypatch.setattr(sup.time, "sleep", lambda s: None)
-    monkeypatch.setattr(sup, "_run_active", lambda: True)
-    monkeypatch.setattr(sup, "_active_run_meta",
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
+    monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True})
@@ -675,7 +676,7 @@ def test_429_failover_resume_not_wait_quota(tmp_path, monkeypatch):
         return {"ok": True, "stdout": ""}
 
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(
@@ -687,7 +688,7 @@ def test_429_failover_resume_not_wait_quota(tmp_path, monkeypatch):
     )
     tz = __import__("datetime").timezone(__import__("datetime").timedelta(hours=8))
     reset = __import__("datetime").datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz)
-    monkeypatch.setattr(sup, "_latest_429_reset", lambda: reset)
+    monkeypatch.setattr(sup_provider, "_latest_429_reset", lambda: reset)
     goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
                         "quota_margin_min": 30}}
     now = __import__("datetime").datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)  # before reset
@@ -706,8 +707,8 @@ def test_active_429_plans_failover_llm(tmp_path, monkeypatch):
     """Active + quota banned + failover → run_failover_llm + planned resume argv."""
     _set_failover_env(monkeypatch)
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True, "stdout": ""})
-    monkeypatch.setattr(sup, "_run_active", lambda: True)
-    monkeypatch.setattr(sup, "_active_run_meta",
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
+    monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
@@ -720,7 +721,7 @@ def test_active_429_plans_failover_llm(tmp_path, monkeypatch):
     )
     tz = __import__("datetime").timezone(__import__("datetime").timedelta(hours=8))
     reset = __import__("datetime").datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz)
-    monkeypatch.setattr(sup, "_latest_429_reset", lambda: reset)
+    monkeypatch.setattr(sup_provider, "_latest_429_reset", lambda: reset)
     goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
                         "quota_margin_min": 30}}
     now = __import__("datetime").datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)
@@ -755,7 +756,7 @@ def test_new_run_started_reverts_to_primary(tmp_path, monkeypatch):
             {"run_id": "runY", "run_dir": "/tmp/runY"})}
 
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "quota_gate", lambda goal, now=None: (True, 0))
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
@@ -820,8 +821,8 @@ def test_429_triggers_failover_not_wait_quota(tmp_path, monkeypatch):
                       "model": (env or {}).get("PRAXIST_MODEL")})
         return {"ok": True, "stdout": "{}", "stderr": ""}
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
-    monkeypatch.setattr(sup, "_run_active", lambda: True)
-    monkeypatch.setattr(sup, "_active_run_meta",
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
+    monkeypatch.setattr(sup_provider, "_active_run_meta",
                         lambda: {"run_id": "runX", "run_dir": "/tmp/runX", "state": "running"})
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     monkeypatch.setenv("FAILOVER_ANTHROPIC_BASE_URL", "https://coding.dashscope.aliyuncs.com/apps/anthropic")
@@ -836,7 +837,7 @@ def test_429_triggers_failover_not_wait_quota(tmp_path, monkeypatch):
     }), encoding="utf-8")
     tz = timezone(timedelta(hours=8))
     reset = datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz)
-    monkeypatch.setattr(sup, "_latest_429_reset", lambda: reset)
+    monkeypatch.setattr(sup_provider, "_latest_429_reset", lambda: reset)
     goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0, "quota_margin_min": 30}}
     now = datetime(2026, 9, 2, 10, 0, 0, tzinfo=tz)
     actions = sup.decide_fast_loop(goal, dry_run=True, now=now)
@@ -885,9 +886,9 @@ def test_active_429_resumes_when_run_already_failover_model(tmp_path, monkeypatc
         "canonical_args": {"model": "qwen3.7-plus"},
     }), encoding="utf-8")
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True, "stdout": ""})
-    monkeypatch.setattr(sup, "_run_active", lambda: True)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
     monkeypatch.setattr(
-        sup, "_active_run_meta",
+        sup_provider, "_active_run_meta",
         lambda: {"run_id": "runQ", "run_dir": str(run), "state": "running"},
     )
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
@@ -898,7 +899,7 @@ def test_active_429_resumes_when_run_already_failover_model(tmp_path, monkeypatc
     }), encoding="utf-8")
     tz = timezone(timedelta(hours=8))
     monkeypatch.setattr(
-        sup, "_latest_429_reset",
+        sup_provider, "_latest_429_reset",
         lambda: datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz),
     )
     goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
@@ -920,7 +921,7 @@ def test_paused_429_fresh_start_on_identity_wall(tmp_path, monkeypatch):
         "canonical_args": {"model": "claude-opus-4-7"},
     }), encoding="utf-8")
     monkeypatch.setattr(sup_env, "_praxist", lambda *a, **k: {"ok": True, "stdout": ""})
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "state.json").write_text(json.dumps({
@@ -929,7 +930,7 @@ def test_paused_429_fresh_start_on_identity_wall(tmp_path, monkeypatch):
     }), encoding="utf-8")
     tz = timezone(timedelta(hours=8))
     monkeypatch.setattr(
-        sup, "_latest_429_reset",
+        sup_provider, "_latest_429_reset",
         lambda: datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz),
     )
     goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
@@ -953,9 +954,9 @@ def test_active_failover_run_not_stopped_by_ark_quota(tmp_path, monkeypatch):
         return {"ok": True, "stdout": ""}
 
     monkeypatch.setattr(sup_env, "_praxist", fake_praxist)
-    monkeypatch.setattr(sup, "_run_active", lambda: True)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: True)
     monkeypatch.setattr(
-        sup, "_active_run_meta",
+        sup_provider, "_active_run_meta",
         lambda: {"run_id": "runF", "run_dir": "/tmp/runF", "state": "running"},
     )
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
@@ -967,7 +968,7 @@ def test_active_failover_run_not_stopped_by_ark_quota(tmp_path, monkeypatch):
     }), encoding="utf-8")
     tz = timezone(timedelta(hours=8))
     monkeypatch.setattr(
-        sup, "_latest_429_reset",
+        sup_provider, "_latest_429_reset",
         lambda: datetime(2026, 9, 2, 11, 26, 27, tzinfo=tz),
     )
     goal = {"cadence": {"run_budget_hours": 2.0, "quota_window_hours": 5.0,
@@ -1843,7 +1844,7 @@ def test_once_does_not_harvest_or_start_when_flag_is_set_after_the_top_check(
     monkeypatch.setattr(sup_state, "_read_token_m", lambda: (0.0, False))
     monkeypatch.setattr(sup, "materialize_known_verdicts", lambda *a, **k: None)
     monkeypatch.setattr(sup, "materialize_covariate_menu", lambda *a, **k: None)
-    monkeypatch.setattr(sup, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(sup, "_queue_busy", lambda: False)
     monkeypatch.setattr(sup, "_slow_loop_alive", lambda: False)
 
