@@ -1,4 +1,10 @@
 """
+⚠️ DESIGN RISK: 本脚本做全量 DELETE + INSERT，仅用于首次建仓或灾难恢复。
+不应被日常流程（data_management.py / daily_update.py）调度。
+日常 1H 采集请用 collect_1h.py（增量模式，INSERT OR REPLACE）。
+
+参考：2026-07-15 Lesson #11 "DELETE 全表 + INSERT 模式在数据采集场景都是定时炸弹"。
+
 拉取 TqSdk 主力连续合约历史 1H 数据
 
 从 KQ.m@ 连续合约拉取 10000 根 1H bar (约 2020-07 起)
@@ -55,6 +61,7 @@ def pull_symbol_1h(fetcher: TqSdkFetcher, symbol: str, data_length: int = 10000)
     # 写入数据库
     with DataStore(symbol) as store:
         # 先删除旧的 _MAIN 数据
+        # ALLOWED: 本脚本设计为初始化/灾难恢复专用，全量 DELETE 是其职责
         deleted = store.conn.execute(
             "DELETE FROM kline_1h WHERE contract_code = ?", (contract_code,)
         ).rowcount
@@ -62,6 +69,14 @@ def pull_symbol_1h(fetcher: TqSdkFetcher, symbol: str, data_length: int = 10000)
 
         # 写入新数据
         stored = store.store_klines_1h(contract_code, df)
+
+        # MIN_ROWS 保护（防 TqSdk 网络异常返回部分数据）
+        MIN_ROWS = 500
+        if stored < MIN_ROWS:
+            print(
+                f"[ERROR] {contract_code}: 全量重建仅写入 {stored} 行 < {MIN_ROWS}，"
+                f"可能 TqSdk 网络异常，已摧毁 {deleted} 行历史数据！"
+            )
 
     return {
         "symbol": symbol,

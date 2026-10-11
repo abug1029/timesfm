@@ -7,6 +7,7 @@
   python scripts/daily_update.py --full       # 强制全量 (回退到旧行为)
 """
 
+from datetime import datetime
 import sys
 import argparse
 import warnings
@@ -153,23 +154,54 @@ def extract_xreg_incremental(symbol, store, dates=None):
 
 
 def collect_1h_main_only(symbol, fetcher, calculator, store):
-    """只采集主力合约的 1H 数据 (TqSdk)
-
+    """增量采集主力合约 1H 数据 (TqSdk)。
+    
+    设计原则：INSERT OR REPLACE + MIN_1H_ROWS 保护 + 防御性 DELETE 仅清 dt > new_max。
+    参考：collect_1h.py 的 collect_1h_for_symbol()（2026-07-15 Lesson #11 修复）。
+    
     2026-07-02: 数据已切换为 _CONT 格式, 直接采集 _MAIN 到 kline_1h。
+    2026-10-11: 从全量 DELETE+INSERT 改为增量模式（对齐 collect_1h.py）。
     """
     # 使用 _MAIN 标记存储主力连续 1H
     main_code = f"{symbol.upper()}_MAIN"
-    df = fetcher.get_main_continuous_kline(symbol, dur_sec=3600, data_length=10000)
-    if not df.empty:
-        df = df.rename(columns={'dt': 'date'})
-        df['contract_code'] = main_code
-        df = calculator.calculate_all(df)
-        df = df.rename(columns={'open': 'open_price', 'close': 'close_price'})
-        # 清空旧 _MAIN 数据, 写入新数据
-        store.conn.execute('DELETE FROM kline_1h WHERE contract_code = ?', (main_code,))
-        return store.store_klines_1h(main_code, df)
+    # P1 优化：按需拉取（而非固定 10000 bars）
+    latest_dt = store.get_latest_date(main_code)
+    if latest_dt:
+        try:
+            gap_days = (datetime.now() - datetime.strptime(latest_dt[:10], "%Y-%m-%d")).days
+            data_length = max(100, gap_days * 10 + 50)
+        except (ValueError, TypeError):
+            data_length = 10000
+    else:
+        data_length = 10000
+    
+    df = fetcher.get_main_continuous_kline(symbol, dur_sec=3600, data_length=data_length)
+    if df.empty:
+        return 0
 
-    return 0
+    df = df.rename(columns={'dt': 'date'})
+    df['contract_code'] = main_code
+    df = calculator.calculate_all(df)
+    df = df.rename(columns={'open': 'open_price', 'close': 'close_price'})
+
+    # 数据量保护: TqSdk 网络异常可能返回部分数据，避免用少量数据覆盖历史
+    # store_klines_1h 内部用 INSERT OR REPLACE，增量更新是安全的；
+    # 但全量 DELETE 后再 INSERT 会丢失历史，因此仅在新数据覆盖完整区间时才清空。
+    MIN_1H_ROWS = 500  # 健康的主力连续 1H 数据应远超此阈值
+    stored = store.store_klines_1h(main_code, df)  # INSERT OR REPLACE，安全增量
+    if stored > 0:
+        print(f"  {main_code} 1H: +{stored} 条")
+        # 仅当新数据量充足时清理可能残留的旧合约脏数据 (INSERT OR REPLACE 已覆盖主键，此处为防御性清理)
+        if stored >= MIN_1H_ROWS:
+            # 清除比新数据最新日期更靠后的异常未来 bar (理论上不应存在，防御性)
+            new_max = df['date'].max() if 'date' in df.columns else None
+            if new_max is not None:
+                store.conn.execute(
+                    "DELETE FROM kline_1h WHERE contract_code = ? AND dt > ?",
+                    (main_code, str(new_max))
+                )
+
+    return stored
 
 
 def update_symbol(symbol, fetcher, calculator, full=False):

@@ -678,8 +678,20 @@ def _write_stop_json(event_rec):
         print(f"[STOP_REPORT_ERROR] {e}", file=sys.stderr)
 
 
+_LAST_HB_WRITE = 0.0
+
 def _write_heartbeat():
-    """Write heartbeat timestamp. Called each main loop iteration."""
+    """Write heartbeat timestamp. Called each main loop iteration.
+
+    Throttled to at most once per second to avoid I/O spam when called
+    from tight loops (e.g. ensure_baselines per-symbol regen).
+    
+    MINOR fix: 失败时也更新时间戳，防止持续失败时 stderr spam at 1Hz。
+    """
+    global _LAST_HB_WRITE
+    now = time.monotonic()
+    if now - _LAST_HB_WRITE < 1.0:
+        return
     try:
         os.makedirs(os.path.dirname(HEARTBEAT_PATH), exist_ok=True)
         with open(HEARTBEAT_PATH, "w") as f:
@@ -687,6 +699,8 @@ def _write_heartbeat():
                                 "pid": os.getpid()}))
     except OSError as e:
         print(f"[WARN] Failed to write heartbeat: {e}", file=sys.stderr)
+    finally:
+        _LAST_HB_WRITE = now  # 无论成功失败都更新，防止 spam
 
 
 def _signal_handler(signum, frame):
@@ -4016,55 +4030,58 @@ def ensure_baselines(symbols, root):
             return
     cur_fp = _current_protocol_fingerprint()
     for sym in sorted(symbols):
-        sym_lower = sym.lower()
-        points_path = os.path.join(config_dir, gbp.baseline_filename(sym_lower, None))
-        met = metrics.get(sym_lower, {})
-        if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
-            _regen_baseline_with_archive(sym_lower, points_path, root)
-            continue
-        n_lines = 0
-        last_cutoff = None
-        if os.path.exists(points_path):
-            try:
-                with open(points_path, encoding="utf-8") as f:
-                    for line in f:
-                        if line.strip():
-                            try:
-                                rec = json.loads(line)
-                                n_lines += 1
-                                last_cutoff = rec.get("cutoff") or last_cutoff
-                            except json.JSONDecodeError:
-                                pass
-            except OSError:
-                pass
-        if n_lines < 100:
-            _regen_baseline_with_archive(sym_lower, points_path, root)
-            continue
-
-        # ── 协议指纹校验（2026-09-28 新增）──
-        # 行数够不等于可用：指纹不符则跨协议不可比，必须重生。
-        if cur_fp is None:
-            continue
-        status, base_fp = _baseline_protocol_fingerprint(points_path)
-        if status != "ok":
-            reason = ("首行缺 protocol_fingerprint（pre-A1 遗留基线）"
-                      if status == "missing" else "基线首行不可读")
-            print(f"[WARN] ensure_baselines: {sym_lower} {reason} → 重生",
-                  file=sys.stderr)
-        elif base_fp != cur_fp:
-            print(
-                f"[WARN] ensure_baselines: {sym_lower} 基线协议指纹不符 "
-                f"({base_fp[:16]}… != {cur_fp[:16]}…) → 重生（跨协议不可比）",
-                file=sys.stderr,
-            )
-        else:
-            # 行数与指纹均合格 → 步② C 拉取日重锚检查
-            reanchor = _baseline_reanchor_reason(sym_lower, last_cutoff, root)
-            if reanchor is None:
+        try:
+            sym_lower = sym.lower()
+            points_path = os.path.join(config_dir, gbp.baseline_filename(sym_lower, None))
+            met = metrics.get(sym_lower, {})
+            if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
+                _regen_baseline_with_archive(sym_lower, points_path, root)
                 continue
-            print(f"[WARN] ensure_baselines: {sym_lower} {reanchor} → 重生",
-                  file=sys.stderr)
-        _regen_baseline_with_archive(sym_lower, points_path, root)
+            n_lines = 0
+            last_cutoff = None
+            if os.path.exists(points_path):
+                try:
+                    with open(points_path, encoding="utf-8") as f:
+                        for line in f:
+                            if line.strip():
+                                try:
+                                    rec = json.loads(line)
+                                    n_lines += 1
+                                    last_cutoff = rec.get("cutoff") or last_cutoff
+                                except json.JSONDecodeError:
+                                    pass
+                except OSError:
+                    pass
+            if n_lines < 100:
+                _regen_baseline_with_archive(sym_lower, points_path, root)
+                continue
+
+            # ── 协议指纹校验（2026-09-28 新增）──
+            # 行数够不等于可用：指纹不符则跨协议不可比，必须重生。
+            if cur_fp is None:
+                continue
+            status, base_fp = _baseline_protocol_fingerprint(points_path)
+            if status != "ok":
+                reason = ("首行缺 protocol_fingerprint（pre-A1 遗留基线）"
+                          if status == "missing" else "基线首行不可读")
+                print(f"[WARN] ensure_baselines: {sym_lower} {reason} → 重生",
+                      file=sys.stderr)
+            elif base_fp != cur_fp:
+                print(
+                    f"[WARN] ensure_baselines: {sym_lower} 基线协议指纹不符 "
+                    f"({base_fp[:16]}… != {cur_fp[:16]}…) → 重生（跨协议不可比）",
+                    file=sys.stderr,
+                )
+            else:
+                # 行数与指纹均合格 → 步② C 拉取日重锚检查
+                reanchor = _baseline_reanchor_reason(sym_lower, last_cutoff, root)
+                if reanchor is None:
+                    continue
+                print(f"[WARN] ensure_baselines: {sym_lower} {reanchor} → 重生",
+                      file=sys.stderr)
+            _regen_baseline_with_archive(sym_lower, points_path, root)
+        finally:
+            _write_heartbeat()   # P0-A: heartbeat per symbol, prevents watchdog S2 false-kill
 
 
 def wait_for_batch(batch_id, batch_records, registry_path, timeout=7200):

@@ -135,22 +135,25 @@ def run_script(script_name: str, args: list[str] = None, timeout: int = 300) -> 
 
 
 def collect_1h(symbols: list[str] = None) -> list[dict]:
-    """采集 1H 数据。"""
+    """采集 1H 数据（增量模式）。
+    
+    设计原则：仅调用 collect_1h.py（增量安全），不调用 pull_history_1h.py（全量 DELETE+INSERT）。
+    pull_history_1h.py 仅用于首次建仓或灾难恢复，不应被日常流程调度。
+    参考：2026-07-15 Lesson #11 "DELETE 全表 + INSERT 是定时炸弹"。
+    2026-10-11: 移除 pull_history_1h.py 调用（覆盖增量修复）。
+    """
     syms = symbols or DEFAULT_SYMBOLS
     n = len(syms)
     results = []
 
-    # 1. 增量采集（从各合约）
+    # 增量采集（INSERT OR REPLACE，安全）
     t1 = _timeout_for("collect_1h.py", n)
     print(f"[INFO] Starting 1H collection for {n} symbols (timeout set to {t1}s)...")
     r = run_script("collect_1h.py", syms, timeout=t1)
     results.append(r)
 
-    # 2. 拉取主力连续历史 1H（{_MAIN} 合约，用于回测和精度对比）
-    t2 = _timeout_for("pull_history_1h.py", n)
-    print(f"[INFO] Starting pull_history_1h for {n} symbols (timeout set to {t2}s)...")
-    r2 = run_script("pull_history_1h.py", syms, timeout=t2)
-    results.append(r2)
+    # ⚠️ 已移除 pull_history_1h.py 调用（全量 DELETE+INSERT，覆盖增量修复）
+    # 如需全量重建历史，手动运行：python scripts/pull_history_1h.py
 
     return results
 
@@ -205,6 +208,8 @@ def backfill_gaps() -> list[dict]:
 
     if short_1h:
         print(f"  1H (MAIN) 不足 {MIN_1H_ROWS}: {', '.join(short_1h)}")
+        # ALLOWED: backfill_gaps 仅在数据不足（< MIN_1H_ROWS）时调用 pull_history_1h.py
+        # 用于灾难恢复/首次建仓，不属于日常采集流程
         r = run_script("pull_history_1h.py", short_1h, timeout=300)
         results.append(r)
 

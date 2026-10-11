@@ -143,6 +143,7 @@ class DataAuditor:
                 level="CRITICAL", dimension="数据源一致性",
                 symbol=symbol,
                 message=f"kline_1d 存在非 _CONT 合约 {r[0]} ({r[1]} 条, {r[2]}~{r[3]})",
+                # ALLOWED: read-only audit, DELETE only in suggestion string, not executed
                 action=f"DELETE FROM kline_1d WHERE contract_code = '{r[0]}';"
             ))
 
@@ -160,6 +161,7 @@ class DataAuditor:
                 level="CRITICAL", dimension="数据源一致性",
                 symbol=symbol,
                 message=f"kline_1h 存在连续合约 {r[0]} ({r[1]} 条, {r[2]}~{r[3]})",
+                # ALLOWED: read-only audit, DELETE only in suggestion string, not executed
                 action=f"DELETE FROM kline_1h WHERE contract_code = '{r[0]}';"
             ))
 

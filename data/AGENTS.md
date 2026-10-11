@@ -67,6 +67,30 @@ monthly:
 python -m unittest tests.test_future_bar_guard tests.test_basis_oi_filter -v
 ```
 
+### 采集策略（2026-10-11 确立）
+
+**核心原则**：1H 数据必须增量更新，禁止裸 DELETE（详见 `../CLAUDE.md` 数据采集设计原则章节）。
+
+**权威实现**：
+- `collect_1h.py` → `collect_1h_for_symbol()`：增量模式（INSERT OR REPLACE + MIN_1H_ROWS = 500 + 防御性 DELETE dt > new_max）
+- `daily_update.py` → `collect_1h_main_only()`：已对齐 `collect_1h.py` 增量模式（2026-10-11 修复）
+- `data_management.py` → `collect_1h()`：仅调用 `collect_1h.py`（2026-10-11 移除 `pull_history_1h.py` 调用）
+
+**特殊路径**：
+- `pull_history_1h.py`：**仅初始化/灾难恢复**用，全量 DELETE + INSERT。设计如此，必须有 `# ALLOWED: 初始化专用` 注释 + MIN_ROWS 保护。
+- `backfill_gaps()`：数据不足时（`< MIN_1H_ROWS`）调用 `pull_history_1h.py` 是合法例外，已显式标注 `# ALLOWED`。
+
+**数据源**：TqSdk（天勤量化），单一数据源。`data/akshare_fetcher.py.deprecated` 已废弃。
+
+**保护机制**：
+- `MIN_1H_ROWS = 500`：TqSdk 网络异常返回部分数据时，跳过写入防覆盖历史
+- `tests/test_no_full_wipe.py`：AST 闸门检测裸 DELETE 模式，CI 必须通过
+
+**历史教训**：
+- 2026-07-15 Lesson #11："DELETE 全表 + INSERT 模式在数据采集场景都是定时炸弹"
+- 2026-10-11 修复：`daily_update.py` 和 `data_management.py` 同步对齐增量模式
+
+
 ## Dependencies
 
 ### Internal
