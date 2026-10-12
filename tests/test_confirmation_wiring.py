@@ -22,6 +22,9 @@ from config.backtest_config import (  # noqa: E402
 import monthly_backtest as mb  # noqa: E402
 import preregistry as pr  # noqa: E402
 import aligned_slow_loop as asl  # noqa: E402
+import sup_paths
+import sup_evidence
+import sup_family
 import praxist_supervisor as sv  # noqa: E402
 
 
@@ -571,17 +574,17 @@ def test_enqueue_due_confirmation_then_peek_does_not_seal(tmp_path, monkeypatch)
         "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
     }
     prereg_path.write_text(json.dumps(jd) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
-    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
-    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
-    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
-    monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
     # 2026-10-03：数据闸门（D1）桩——确认集数据未越过 confirm_from_ts 时不派发
     # （否则空评估 + no_data 墓碑 + 去重失效 = 每轮重复入队）。本测试关注
     # 「派发 → peek」链路，故显式放行；闸门本身由 test_confirm_bugs_20261003.py 覆盖。
-    monkeypatch.setattr(sv, "_confirm_data_ready", lambda s, t: True)
-    monkeypatch.setattr(sv, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {})
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: {})
     sv._CONFIRM_REDISPATCH.clear()   # 2026-10-04（E2）：重派节流是进程内状态，测试间必须清
     n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
     assert n == 1
@@ -634,20 +637,20 @@ def test_enqueue_due_jd_and_sr_registers_each_family(tmp_path, monkeypatch):
         "cov_fingerprint": {"keys": ["daily_slope", "vwap_deviation"]},
     }
     prereg_path.write_text(json.dumps(jd) + "\n" + json.dumps(sr) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
-    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
-    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
-    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
-    monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
     # 2026-10-03：数据闸门（D1）桩——确认集数据未越过 confirm_from_ts 时不派发
     # （否则空评估 + no_data 墓碑 + 去重失效 = 每轮重复入队）。本测试关注
     # 「派发 → peek」链路，故显式放行；闸门本身由 test_confirm_bugs_20261003.py 覆盖。
-    monkeypatch.setattr(sv, "_confirm_data_ready", lambda s, t: True)
-    monkeypatch.setattr(sv, "load_covariate_pool", lambda: {
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {
         "vor": {"family": "momentum"},
         "vwap_deviation": {"family": "momentum"},
     })
-    monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {})
+    monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: {})
     sv._CONFIRM_REDISPATCH.clear()   # 2026-10-04（E2）：同上，进程内节流状态隔离
     n = sv._maybe_enqueue_confirmations(str(tmp_path / "decisions.jsonl"), "2026-10-03 12:00:00")
     assert n == 2
@@ -714,13 +717,13 @@ def test_snapshot_prereg_id_blocks_second_enqueue(tmp_path, monkeypatch):
         "status": "registered",
     }
     family_path.write_text(json.dumps(member) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sv, "PREREGISTRY_PATH", str(prereg_path))
-    monkeypatch.setattr(sv, "FAMILY_REGISTRY", str(family_path))
-    monkeypatch.setattr(sv, "QUEUE", str(queue_path))
-    monkeypatch.setattr(sv, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
-    monkeypatch.setattr(sv, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
-    monkeypatch.setattr(sv, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sv, "_active_protocol_snapshot", lambda path: {
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg_path))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(family_path))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(queue_path))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda symbol, cov: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: {
         # 2026-10-04（E1）：阻断条件收紧为「满样终态裁决」——fixture 补上
         # status=ok 与满样 n_confirm 戳；未满样 peek 不再永久阻断。
         vid: {"variant_id": vid, "prereg_id": prereg_id, "run_mode": "confirmation",

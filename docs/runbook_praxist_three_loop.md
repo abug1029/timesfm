@@ -138,9 +138,9 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
   3. tier 2：其余品种。
   同 tier 内按协变量履历分；第一遍每个 family 一席，第二遍按分补满。
 - 0 份合格提案 → `harvest_empty`（仍计 1 cycle）。有入队则 `phase=slow`，cycle 等到慢环抽干再 +1。
-- 每 tick（无论 phase）还跑 `_maybe_enqueue_retests`：对「硬门仅差 n」的近失误裁决（`n<350 且 ic≥0.05 且 ev>0 且 pf/incumbent>1.05`；2026-09-11 时点判据，运行时以 scripts/praxist_supervisor.py `_retest_candidates` 为准，2026-09-17 起裁决口径见 v23 spec），当本地库有效点长到 ≥350 且比上次裁决多 ≥`retest_min_new_points` 点时，**旁路 dead 去重**补队（`source:"sample_retest"`），checkpoint resume 只算新点。dry-run 中以 `sample_retest_plan` 行展示。
+- 每 tick（无论 phase）还跑 `_maybe_enqueue_retests`：对「硬门仅差 n」的近失误裁决（实现是 `scripts/sup_loops.py` 的 `_retest_candidates`；触发判据见 [runtime_contract.md](./runtime_contract.md)「复测触发判据（2026-10-08 裁定 C+a）」），当本地库有效点长到 ≥350 且比上次裁决多 ≥`retest_min_new_points` 点时，**旁路 dead 去重**补队（`source:"sample_retest"`），checkpoint resume 只算新点。dry-run 中以 `sample_retest_plan` 行展示。
 - 菜单 `covariate_menu.inc.md` 每轮由协变量池 + **品种样本天花板表**（每品种当前可对齐有效点，`BELOW GATE`/`gate-reachable`，`_valid_n_for_symbol` 复刻月度回测有效点计数，fail-open）物化生成。
-- 非 dry-run 每轮会 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`（品种表不截断；Effective clues 从 snapshot 现场算过门族/近门/弱族；禁止再提案最多 80 条；`verdicts_truncated=<N>` 行标记被截断的裁决计数——2026-09-28 M4）。
+- 非 dry-run 每轮会 `scripts/sup_evidence.py` 的 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`（品种表不截断；Effective clues 从 snapshot 现场算过门族/近门/弱族；禁止再提案最多 80 条；`verdicts_truncated=<N>` 行标记被截断的裁决计数——2026-09-28 M4）。
 - `prompt_base.jinja2`：先读证据再写提案；`{% include 'known_verdicts.inc.md' ignore missing %}` 与 `covariate_menu.inc.md`。**不要**再写「优先波动率族」。
 - **红线：** 只有 `aligned_slow_loop.py` 可写 `aligned_verdicts.jsonl`。
 - **TypeSafe Jev 预筛（2026-09-22，可选增强）：** harvest 每个合格提案 `_prescreen_async`（fire-and-forget daemon 线程）调 TypeSafe 三问，原子写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度降权/奖励；**永远不阻断慢环回测**。缺 `TYPESAFE_API_KEY`、超时、降级时静默跳过（`skip_suggested=None`）。降权因异步滞后一轮收割生效。慢环读同一文件注入 `verdict.metadata.prescreen`。验证：`python scripts/validate_typesafe_prescreen.py`；质量门禁：`python scripts/track_prescreen_quality.py`。
@@ -157,7 +157,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 ### 文档/单测可本地完成
 
 1. **`--dry-run`**：输出含 `goal_reached` 或 `budget_exhausted`（若已达）、`harvest_plan`、`sample_retest_plan`（若有近失误可复测），以及 `wait_quota` / `run_started` / `run_paused_429` / `run_resumed` 之一；立即退出，无 sleep、无新进程、无 cycle 增量。
-2. **假 429**：在某 `task_FM/experiments/run_*/logs/*.log` 注入含未来 `reset at ...` 的行 → `quota_gate` False；有活 run 时 `decide_fast_loop` 给出 `run_paused_429`（argv: `stop <run_id>`）。
+2. **假 429**：在某 `task_FM/experiments/run_*/logs/*.log` 注入含未来 `reset at ...` 的行 → `quota_gate` False；有活 run 时 `scripts/sup_loops.py` 的 `decide_fast_loop` 给出 `run_paused_429`（argv: `stop <run_id>`）。
 3. **inprogress 恢复**：向 `aligned_pending.inprogress.jsonl` 写一行合法候选，跑 `aligned_slow_loop.py --once` → recover 后产出 verdict（或 checkpoint 续跑）。
 4. **cycle 计数**：在 `--once` 循环下，`max_cycles` 不会因 300s tick 耗尽；`cycles_done` 仅在「已完成 run 被 harvest」后 +1。
 
@@ -331,7 +331,7 @@ bash scripts/diagnose_three_loop.sh
 - `docs/praxist.md` — 架构概览（本体 vs 三环、现行合同、现场快照）
 - `docs/2026-09-19-three-loop-followup-spec.md` — 2026-09-19 跟进合同
 - `docs/archive/superseded-2026-09/2026-09-19-peer-proposal-quality-verification.md` — 提案质量单测验证（已归档）
-- `scripts/praxist_supervisor.py` — 监督环
+- `scripts/praxist_supervisor.py` — 监督环入口（shim）。符号家见 [praxist.md](./praxist.md)
 - `scripts/aligned_slow_loop.py` — 慢环
 - `scripts/mem_guard.py` — 全局 flock≤2 + MemAvailable 门 + RSS shed（RLIMIT_AS 默认 OFF）
 - `scripts/praxist_mem_guard_hook.py` / `install_praxist_mem_guard_hook.py` — protected_pids 强制挂钩

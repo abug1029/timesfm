@@ -56,6 +56,8 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
    └─ 慢环  scripts/aligned_slow_loop.py        唯一验证器；唯一可写 aligned_verdicts.jsonl
 ```
 
+符号家的唯一表在 `docs/praxist.md`。入口文件不定义这些符号。
+
 - 快环产物：`results/gen_<N>/<peer>/proposals/<symbol>_<cov>.json`（`fm.hypothesis_proposal.v1`，mechanism ≥40 字；有历史失败时必填 `failure_delta` ≥20 字）
 - 面板：`cohort_size=2`，任务侧 topology `panel_topology:fm_two_peer`（`task_FM/.praxist/plugins/panel_topologies/fm_two_peer/`），`peer_role_rotation = [exploit, falsifier]`。**不要**指望 4 角色覆盖，**不要**改 `.venv` 里的校验器。合入后必须重启监督环才加载新 topology。
 - 硬门（v23）：n≥350、n_eff≥50（Bartlett）、dir_acc ≥ `effective_min`（`max(0.50, min(0.52, baseline_dir_acc))`，基线缺失时 0.52）。`dir_acc` 略低于 0.52 但 `gate_pass=True` **符合设计**（低基线品种放宽），不是 bug。新 verdict 落库 `baseline_dir_acc` 与 `effective_min`（`evaluator.build_summary`）。
@@ -63,7 +65,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 - 裁决链（v23）：DirAcc/MAPE + DM 检验（Newey-West HAC + HLN）+ BH-FDR（per-symbol 多重校正；K<4 时降级固定 Bonferroni α=0.025）；verdict schema `fm.aligned_verdict.v2`（v1 已离线迁移）
 - **Praxist 裁决唯一权威** = `docs/superpowers/specs/2026-09-14-prediction-quality-redesign-design.md`；PF/EV/MaxDD/IC 退役出裁决链，仅作经济报表字段
 - 目标：见 `scripts/praxist_goal.yaml` 的 `success_condition: all_symbols_pass_phase1`。
-- 选题证据：`scripts/praxist_supervisor.py::materialize_known_verdicts` 写 `task_FM/known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose）。提示词**先读证据再写**，不要优先波动率族。
+- 选题证据：`scripts/sup_evidence.py` 的 `materialize_known_verdicts` 写 `task_FM/known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose）。提示词**先读证据再写**，不要优先波动率族。
 - 机器状态：`data/cache/supervisor_state.json`；裁决：`task_FM/config/aligned_verdicts.jsonl`
 - `task_FM/task.yaml` 禁止明文 API key；密钥只进 `.env.praxist`
 - Windows 挂载/副本可能过期；读本仓用 `wsl -d Ubuntu-22.04 -- bash -c "..."`

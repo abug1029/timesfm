@@ -13,6 +13,8 @@
 
 **最后更新**: 2026-10-01（v4 收口阶段 2 完成并重启：窗口锚 / checkpoint 身份 / 协议 v4 / vid 生产接线全部落地，v4 重生波 9/9 闭环。见下方「三环状态」与「Stage 3 交付状态」小节）
 
+> **代码位置（2026-10-12）**：监督环实现提交是 `e416104`（拆分 `3e8756e` 并入当时的 master `94a320f`）。入口仍是 `scripts/praxist_supervisor.py`，符号家见 `docs/praxist.md`。心跳节流在 `scripts/sup_lifecycle.py`。宿主 `/home/abug/timesfm` 仍跑切换前的进程。下文的 PID 与重启记录是切换前的宿主事实。换进程只走 `docs/three_loop_restart_protocol.md`，本次未执行。
+
 > **三环状态**：**运行中**（是否真在跑：`pgrep -f praxist_supervisor`，无输出即已停）。
 > 已加载 v4 收口 + 阶段 3 确认机制（2026-10-02 20:27 启动的那次）。
 > `cycles_done` / **PID** / phase 是**活计数**，此处一律不记录 —— 读 `data/cache/supervisor_state.json`。

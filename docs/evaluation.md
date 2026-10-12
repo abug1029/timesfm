@@ -98,7 +98,7 @@ if not (math.isfinite(n) and math.isfinite(n_eff) and math.isfinite(dir_acc)):
 
 ### 4.3 fdr_pass 落盘前置条件
 
-`praxist_supervisor.py::fdr_pass_persistable()` —— 只有**确认运行 + 缺失可接受 +
+`scripts/sup_family.py` 的 `fdr_pass_persistable()` —— 只有**确认运行 + 缺失可接受 +
 DM 可确认**时，`fdr_pass=True` 才允许写入：
 
 ```
@@ -141,7 +141,7 @@ run_mode == "confirmation"
 | **变体级 DEAD** | variant | verdict 的 `gate_pass` | 家族封账时判定 |
 | **品种级 `SYMBOL_DEAD` / `HOLD`** | symbol | `config/symbol_status.json` | 人手改 JSON |
 
-**家族死亡判据**（`scripts/praxist_supervisor.py` 的 `_dead_families(snapshot, min_ok=4)`）：
+**家族死亡判据**（`scripts/sup_evidence.py` 的 `_dead_families(snapshot, min_ok=4)`）：
 只数 `dm_status ∈ {ok, set_mismatch_ok}` 的 ok 行；`n_ok ≥ 4` 且 `gate_pass == 0`。
 `insufficient_common` / `no_common_cutoff` / `set_mismatch_descriptive` 等**描述性 DM 不计数**
 ——它们不代表「试过且失败」。
@@ -165,7 +165,7 @@ run_mode == "confirmation"
 映射表：[fingerprint_component_mapping.md](./fingerprint_component_mapping.md)
 
 **版本定义**：符号 `PROTOCOL_FINGERPRINT_VERSION`（定义在 `task_FM/evaluations/fm_eval/evaluator.py`，行号不作合同）。`scripts/restart_readiness_check.py` 有 assert 守着。
-**bump 后必须重生基线**——`ensure_baselines` 自动比对。
+**bump 后必须重生基线**——`scripts/sup_evidence.py` 的 `ensure_baselines` 自动比对。
 
 ### ⚠️ 指纹不覆盖数据窗口语义
 

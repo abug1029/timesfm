@@ -15,6 +15,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
+import sup_paths
+import sup_evidence
 import praxist_supervisor as S  # noqa: E402
 
 LONGM = ("波动率范围(VOR)压缩后突破：该品种在低波区积蓄动能后常随放量突破，"
@@ -68,13 +70,13 @@ def _sv(vid, symbol, cov, *, gate_pass=True, eval_end_ts=None, extra=None):
 
 @pytest.fixture
 def tmproot(tmp_path, monkeypatch):
-    monkeypatch.setattr(S, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
+    monkeypatch.setattr(sup_paths, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
     status_path = tmp_path / "symbol_status.json"
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
-    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
     return str(tmp_path)
 
 
@@ -87,8 +89,8 @@ def _harvest(root, **kw):
 
 
 def test_national_day_gap_fail_open(tmproot, monkeypatch):
-    monkeypatch.setattr(S, "_today_shanghai", lambda: date(2026, 10, 6))
-    monkeypatch.setattr(S, "_kline_1h_max_dt", lambda symbol: "2026-09-30 14:00:00")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 6))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2026-09-30 14:00:00")
     prior = _sv("rb_volatility_prior", "rb", "vor", gate_pass=True,
                 eval_end_ts="2026-09-30 15:00:00")
     _make_run(tmproot, _prop(symbol="rb", cov="vor"))
@@ -101,8 +103,8 @@ def test_national_day_gap_fail_open(tmproot, monkeypatch):
 
 def test_age_three_days_still_rejects(tmproot, monkeypatch):
     # 2026-10-09 周五 → 2026-10-12 周一，日历差正好 3，不放行。
-    monkeypatch.setattr(S, "_today_shanghai", lambda: date(2026, 10, 12))
-    monkeypatch.setattr(S, "_kline_1h_max_dt", lambda symbol: "2026-10-09 14:00:00")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 12))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2026-10-09 14:00:00")
     prior = _sv("m_volatility_prior", "m", "vor", gate_pass=True,
                 eval_end_ts="2026-10-09 15:00:00")
     reason, state = S._success_delta_gate(
@@ -112,8 +114,8 @@ def test_age_three_days_still_rejects(tmproot, monkeypatch):
 
 
 def test_age_four_days_opens(tmproot, monkeypatch):
-    monkeypatch.setattr(S, "_today_shanghai", lambda: date(2026, 10, 14))
-    monkeypatch.setattr(S, "_kline_1h_max_dt", lambda symbol: "2026-10-10 14:00:00")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 14))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2026-10-10 14:00:00")
     prior = _sv("m_volatility_prior", "m", "vor", gate_pass=True,
                 eval_end_ts="2026-10-10 15:00:00")
     reason, state = S._success_delta_gate(
@@ -123,8 +125,8 @@ def test_age_four_days_opens(tmproot, monkeypatch):
 
 
 def test_fresh_bar_same_anchor_still_rejects(tmproot, monkeypatch):
-    monkeypatch.setattr(S, "_today_shanghai", lambda: date(2026, 10, 8))
-    monkeypatch.setattr(S, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 8))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2026-10-08 10:00:00")
     prior = _sv("m_volatility_prior", "m", "vor", gate_pass=True,
                 eval_end_ts="2026-09-30 15:00:00")
     reason, state = S._success_delta_gate(
@@ -135,7 +137,7 @@ def test_fresh_bar_same_anchor_still_rejects(tmproot, monkeypatch):
 def test_window_moved_does_not_read_kline(tmproot, monkeypatch):
     def _boom(symbol):
         raise AssertionError("window_moved 不应读 kline")
-    monkeypatch.setattr(S, "_kline_1h_max_dt", _boom)
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", _boom)
     prior = _sv("m_volatility_prior", "m", "vor", gate_pass=True,
                 eval_end_ts="2026-09-23 15:00:00")
     other = _sv("jd_volatility_other", "jd", "vor", gate_pass=True,
@@ -148,8 +150,8 @@ def test_window_moved_does_not_read_kline(tmproot, monkeypatch):
 
 
 def test_unreadable_kline_stays_closed(tmproot, monkeypatch):
-    monkeypatch.setattr(S, "_today_shanghai", lambda: date(2026, 10, 6))
-    monkeypatch.setattr(S, "_kline_1h_max_dt", lambda symbol: None)
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 6))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: None)
     prior = _sv("m_volatility_prior", "m", "vor", gate_pass=True,
                 eval_end_ts="2026-09-30 15:00:00")
     reason, state = S._success_delta_gate(
@@ -158,12 +160,12 @@ def test_unreadable_kline_stays_closed(tmproot, monkeypatch):
 
 
 def test_stale_is_per_symbol(tmproot, monkeypatch):
-    monkeypatch.setattr(S, "_today_shanghai", lambda: date(2026, 10, 6))
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 6))
 
     def _max(symbol):
         return "2026-09-30 14:00:00" if symbol == "rb" else "2026-10-06 14:00:00"
 
-    monkeypatch.setattr(S, "_kline_1h_max_dt", _max)
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", _max)
     rb = _sv("rb_volatility_prior", "rb", "vor", gate_pass=True,
              eval_end_ts="2026-09-30 15:00:00")
     m = _sv("m_volatility_prior", "m", "vor", gate_pass=True,
@@ -177,8 +179,8 @@ def test_stale_is_per_symbol(tmproot, monkeypatch):
 
 
 def test_stale_warning_once_per_symbol(tmproot, monkeypatch, caplog):
-    monkeypatch.setattr(S, "_today_shanghai", lambda: date(2026, 10, 6))
-    monkeypatch.setattr(S, "_kline_1h_max_dt", lambda symbol: "2026-09-30 14:00:00")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2026, 10, 6))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2026-09-30 14:00:00")
     prior = _sv("rb_volatility_prior", "rb", "vor", gate_pass=True,
                 eval_end_ts="2026-09-30 15:00:00")
     snap = {"rb_volatility_prior": prior}

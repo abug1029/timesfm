@@ -33,6 +33,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
+import sup_paths
+import sup_state
+import sup_lifecycle
+import sup_provider
+import sup_evidence
+import sup_loops
 import praxist_supervisor as S  # noqa: E402
 import registry_lib as rl  # noqa: E402
 import search_trees as ST  # noqa: E402
@@ -89,17 +95,17 @@ def _prop(symbol="m", cov="vor", **over):
 
 @pytest.fixture
 def tmproot(tmp_path, monkeypatch):
-    monkeypatch.setattr(S, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
+    monkeypatch.setattr(sup_paths, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
     status_path = tmp_path / "symbol_status.json"
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
-    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
-    monkeypatch.setattr(S, "SEARCH_COMMITMENTS_PATH",
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH",
                         str(tmp_path / "search_commitments.jsonl"))
-    monkeypatch.setattr(S, "QUEUE", str(tmp_path / "aligned_pending.jsonl"))
-    monkeypatch.setattr(S, "INPROGRESS", str(tmp_path / "aligned_pending.inprogress.jsonl"))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "aligned_pending.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "aligned_pending.inprogress.jsonl"))
     return str(tmp_path)
 
 
@@ -330,7 +336,7 @@ def test_T3_budget_exhausted_via_real_accepts(tmproot, monkeypatch):
     def _fp(s, c):
         return fps.get(c, FP_TEST)
 
-    monkeypatch.setattr(S, "_experiment_fp_for", _fp)
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", _fp)
 
     def _vid(cov):
         return "m_volatility_" + fps[cov][:12]
@@ -385,14 +391,14 @@ def test_maybe_harvest_writes_accepts(tmproot, monkeypatch):
     _make_run(tmproot, _prop("m", "vor", search_role="root"),
               filename="m_root.json")
     rows, _ = _harvest(tmproot)
-    monkeypatch.setattr(S, "_run_active", lambda: False)
+    monkeypatch.setattr(sup_provider, "_run_active", lambda: False)
     monkeypatch.setattr(
-        S, "load_state",
+        sup_state, "load_state",
         lambda: {"last_run_id": "run_T", "last_harvested_run_id": "run_OLD"})
-    monkeypatch.setattr(S, "_merge_save", lambda d: None)
-    monkeypatch.setattr(S, "_log_decision", lambda *a, **k: None)
+    monkeypatch.setattr(sup_state, "_merge_save", lambda d: None)
+    monkeypatch.setattr(sup_lifecycle, "_log_decision", lambda *a, **k: None)
     monkeypatch.setattr(
-        S, "_harvest_rows",
+        sup_loops, "_harvest_rows",
         lambda goal: (rows, set(), set(),
                       {"seen": 1, "rejected": 0, "backlog": 0,
                        "reject_reasons": {}}))

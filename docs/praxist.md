@@ -62,6 +62,32 @@ CLI：`praxist start|resume|stop|status|monitor|doctor|resolve`。本仓入口�
    └─ 慢环  scripts/aligned_slow_loop.py        纯 CPU，0 token，唯一验证器
 ```
 
+### 监督环模块（2026-10-12）
+
+进程入口仍是 `scripts/praxist_supervisor.py`。它是 `__getattr__` shim：只有 `__name__ == "__main__"` 才调用 `sup_loops.main()`，当库 import 不进主循环。符号定义在 `scripts/sup_*.py`。下表是归属的唯一表。其他文档只点符号，并链回本节。
+
+| 模块 | 归这里的职责 |
+|------|----------------|
+| `scripts/sup_paths.py` | 路径与 `POLL_S` |
+| `scripts/sup_env.py` | 把 `.env.praxist` 装进进程环境 |
+| `scripts/sup_state.py` | `load_state` / `save_state`；确认数据缓存 `_CONFIRM_DATA_CACHE`、`_CONFIRM_DATA_TTL_S` |
+| `scripts/sup_lifecycle.py` | `_signal_handler`、`_sleep_interruptible`、停机标志 |
+| `scripts/sup_provider.py` | `_praxist_env`、`parse_429_reset`、`_failover_can_resume_same_run` |
+| `scripts/sup_evidence.py` | `build_snapshot`、`ensure_baselines`、`_dead_families`、`materialize_known_verdicts`、`is_valid_tier`；`CROSS_MATRIX_MAX_ROWS`、`OLD_PRIORS_MAX_ROWS`、`_CONFIRMATORY_DM` |
+| `scripts/sup_harvest.py` | `harvest_proposals`、`materialize_covariate_menu`、`_sector_filter_check`、`_apply_prescreen_score` |
+| `scripts/sup_family.py` | `fdr_pass_persistable`、`promote_batch_for_persistence`、`_maybe_enqueue_confirmations`；`_PERSISTABLE_DM` |
+| `scripts/sup_loops.py` | `main`、`decide_fast_loop`、`_retest_candidates`、监督环 flock |
+
+和 spec `docs/superpowers/specs/2026-10-09-s1-supervisor-split-spec.md` 附录不一致、以本表为准的六处：`_CONFIRM_DATA_CACHE` 与 `_CONFIRM_DATA_TTL_S` 在 `sup_state`（附录写 family）；`_CONFIRMATORY_DM`、`CROSS_MATRIX_MAX_ROWS`、`OLD_PRIORS_MAX_ROWS` 在 `sup_evidence`（附录把 DM 写在 family，把两个行预算写在 harvest）；`_ev_mod_for_goal` 在 `sup_evidence` 里赋值后随即 `del`，import 结束后模块字典里没有这个名字（附录写 state）。`_PERSISTABLE_DM` 是 `sup_family` 里另一份 frozenset，和 `_CONFIRMATORY_DM` 不是同一个对象。`family_for` 是 `_maybe_enqueue_confirmations` 内部的闭包，不是模块属性。
+
+`is_valid_tier(v, log=None)` 定义在 `sup_evidence`。这是这次拆分唯一的行为变化：非法 tier 不再因为名字未定义而 `NameError`。调用仍写 `is_valid_tier(v)`。协议指纹函数体未改，不 bump 指纹。
+
+`sup_evidence.py`、`sup_loops.py`、`sup_harvest.py` 超过 700 行。计划规定超限只记录、不再拆。补丁打在定义模块上。shim 上的同名读取走 `__getattr__`。
+
+`build_variant_id()` 的三处调用在 `sup_harvest`（两处）和 `sup_family`（一处）。`compute_experiment_fingerprint()` 的调用在 `sup_evidence`，与前者不是同一个函数。
+
+记录：`docs/superpowers/changelogs/2026-10-12-s1-supervisor-split.md`。代码在分支 `feat/s1-supervisor-split`。宿主 `/home/abug/timesfm` 仍跑切换前的进程；换进程只走 [three_loop_restart_protocol.md](./three_loop_restart_protocol.md)，本次未执行。
+
 总线全是只追加文件。一个 **cycle** = 一次已结束的 Praxist run + harvest（有入队则再把慢环抽干）。不是 5 分钟 poll。`phase` ∈ `{fast, slow, wait_quota}`；慢环没抽干时禁止开下一轮快环。
 
 ### 快环（2026-09-08 方案 A 起）
@@ -89,7 +115,7 @@ Peer 第一件事：至少写 2 份假设到
 
 选座（`survivors_per_cycle=3`）：优先集 = goal `cadence.priority_symbols`（2026-09-23 起 goal.yaml 未设该键，优先集当前为空）；无优先品种时候选按协变量族正交填满，细节见 runbook 选座节。
 
-近失误自动复测（2026-09-09 引入）：裁决只差样本（n<350；2026-09-11 时点触发条件 ic≥0.05、ev>0、PF 比现任好 5%，实现见 `scripts/praxist_supervisor.py::_retest_candidates`，以运行时代码为准）时，本地库长到 ≥350 就补队，checkpoint 只算新点。首个候选 `cj_oi`（n=324）。
+近失误自动复测（2026-09-09 引入）：实现是 `scripts/sup_loops.py` 的 `_retest_candidates`。现行触发判据见 [runtime_contract.md](./runtime_contract.md)「复测触发判据（2026-10-08 裁定 C+a）」。本地库长到门槛就补队，checkpoint 只算新点。
 
 ### 慢环
 
@@ -100,7 +126,7 @@ Peer 第一件事：至少写 2 份假设到
 
 日线预测按 `(symbol, cutoff, 窗口, 模型指纹)` 缓存（日线模型不吃协变量）。队列 claim / inprogress / recover，kill 后零损失。**只有慢环能写** `task_FM/config/aligned_verdicts.jsonl`。伪造 verdict = 破坏预注册纪律。
 
-Stage 3 契约（2026-09-28/29 结案）：评估带 horizon 填充标记（`cascade/horizon_fill.py`）与实验指纹（`cascade/experiment_fingerprint.py`）；多重比较按研究 family 结账（`cascade/research_family.py`）；基线协议指纹由监督环 `ensure_baselines` 比对，不符自动重生。详见 [system_design.md §11.4](./system_design.md)。
+Stage 3 契约（2026-09-28/29 结案）：评估带 horizon 填充标记（`cascade/horizon_fill.py`）与实验指纹（`cascade/experiment_fingerprint.py`）；多重比较按研究 family 结账（`cascade/research_family.py`）；基线协议指纹由 `scripts/sup_evidence.py` 的 `ensure_baselines` 比对，不符自动重生。详见 [system_design.md §11.4](./system_design.md)。
 
 ---
 

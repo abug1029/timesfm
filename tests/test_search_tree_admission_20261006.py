@@ -41,6 +41,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
+import sup_paths
+import sup_evidence
 import praxist_supervisor as S  # noqa: E402
 import search_trees as ST  # noqa: E402
 
@@ -88,14 +90,14 @@ def _prop(symbol="m", cov="vor", **over):
 
 @pytest.fixture
 def tmproot(tmp_path, monkeypatch):
-    monkeypatch.setattr(S, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
+    monkeypatch.setattr(sup_paths, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
     status_path = tmp_path / "symbol_status.json"
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
-    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
-    monkeypatch.setattr(S, "SEARCH_COMMITMENTS_PATH",
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH",
                         str(tmp_path / "search_commitments.jsonl"))
     return str(tmp_path)
 
@@ -310,7 +312,7 @@ def test_T18_exploit_and_falsifier_both_fit(tmproot, monkeypatch):
     区分——生产中 fp 含请求协变量，此处按 cov 区分 monkeypatch 以复刻。
     """
     _tree()
-    monkeypatch.setattr(S, "_experiment_fp_for",
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for",
                         lambda s, c: FP_TEST if c == "vor" else FP_ALT)
     _make_run(tmproot, _child(), filename="m_exploit.json")
     _make_run(tmproot, _child(cov="bb_squeeze", role="falsifier"),
@@ -447,7 +449,7 @@ def test_family_unresolved_skips_guard(tmproot, monkeypatch):
     """协变量在活跃池（过 cov_not_in_active_pool）但族不可解析 → 守卫跳过，
     归因仍走下方既有 family_unresolved。pool 置空 + 提案不声明族，复刻
     「池缺该协变量」的族解析失败（不用假协变量名——那会先撞池检查）。"""
-    monkeypatch.setattr(S, "load_covariate_pool", lambda: {})
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {})
     _make_run(tmproot, _prop("m", "vor", family=""))
     rows, stats = _harvest(tmproot)
     assert rows == [] and stats["selected"] == 0
@@ -477,7 +479,7 @@ def test_shadow_is_inert_until_29(tmproot):
 
 def test_unit_expansion_tie_lex(tmp_path, monkeypatch):
     path = str(tmp_path / "search_commitments.jsonl")
-    monkeypatch.setattr(S, "SEARCH_COMMITMENTS_PATH", path)
+    monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH", path)
     _commit("accept", "m::volatility::t00000000001", ts="2026-10-01T00:00:00")
     _commit("accept", "rb::volatility::t00000000002", symbol="rb",
             ts="2026-10-01T00:00:00")

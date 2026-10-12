@@ -14,7 +14,7 @@
 > - **门判据阈值 → [evaluation.md](./evaluation.md)**（唯一权威）
 > - spec 级设计论证 → `superpowers/specs/`
 >
-> 最后核实：2026-10-05，commit `ee01b56`。**本文档不钉活快照**。
+> 监督环符号家核实于 2026-10-12，本分支 `3e8756e`。其余合同仍以 2026-10-05 `ee01b56` 的核实为底。**本文档不钉活快照**。模块表在 [praxist.md](./praxist.md)。
 
 ---
 
@@ -22,13 +22,13 @@
 
 | 维度 | 监督环 | 快环 | 慢环 |
 |------|--------|------|------|
-| 载体 | `scripts/praxist_supervisor.py` | Praxist 核心（`.venv`，**不可改**） | `scripts/aligned_slow_loop.py` |
+| 载体 | 入口 `scripts/praxist_supervisor.py`（符号家见 [praxist.md](./praxist.md)） | Praxist 核心（`.venv`，**不可改**） | `scripts/aligned_slow_loop.py` |
 | Token | **0**（纯调度） | 有 | 0 |
 | 唯一可写 | `data/cache/supervisor_state.json` · `supervisor.lock` | `results/**/proposals/*.json` | **`task_FM/config/aligned_verdicts.jsonl`** |
-| 节律 | tick `POLL_S = 300`（秒） | `run_budget_hours: 1.5` | 跑到队列空 |
+| 节律 | tick `POLL_S = 300`（秒，定义在 `scripts/sup_paths.py`） | `run_budget_hours: 1.5` | 跑到队列空 |
 | 门 | goal DSL 求值 | 提案质量门 | v23 硬门 |
 
-**tick 不是 sleep**：`scripts/praxist_supervisor.py` 的 `POLL_S = 300`，主循环由 `_sleep_interruptible()` 实现——每 1s 检查停止标志，所以 SIGTERM 最迟下个 tick 内生效，不必等满 300s。
+**tick 不是 sleep**：`POLL_S = 300` 定义在 `scripts/sup_paths.py`。主循环在 `scripts/sup_loops.py`，睡眠由 `scripts/sup_lifecycle.py` 的 `_sleep_interruptible()` 实现——每 1s 检查停止标志，所以 SIGTERM 最迟下个 tick 内生效，不必等满 300s。
 
 ---
 
@@ -127,7 +127,7 @@ PF/EV/MaxDD 已在 evaluator 契约中退役，且 `INCUMBENT_PF` 因 L1 经济�
 
 ### bump 后的必做动作
 
-指纹一变，**所有基线跨协议不可比**。`praxist_supervisor.py::ensure_baselines` 自动比对，不符即**整品种重生**。
+指纹一变，**所有基线跨协议不可比**。`scripts/sup_evidence.py` 的 `ensure_baselines` 自动比对，不符即**整品种重生**。
 
 历史教训：原实现只查 `n_lines < 100`，导致 rb 的旧基线（588 行、protocol_v1）被静默保留，表现为 `dm_status=protocol_mismatch` 难以归因。**现在指纹校验已补上**（`_baseline_protocol_fingerprint()`）。
 
@@ -142,7 +142,7 @@ PF/EV/MaxDD 已在 evaluator 契约中退役，且 `INCUMBENT_PF` 因 L1 经济�
 
 ## 5. 研究 family
 
-`cascade/research_family.py` 是状态机的**唯一家**；`praxist_supervisor.py` 的接线是**薄接线**，别把状态机搬进监督环。
+`cascade/research_family.py` 是状态机的**唯一家**；监督环侧接线在 `scripts/sup_family.py`，是**薄接线**，别把状态机搬进监督环。
 
 | 规则 | 值 | 为什么 |
 |------|---|--------|
@@ -152,7 +152,7 @@ PF/EV/MaxDD 已在 evaluator 契约中退役，且 `INCUMBENT_PF` 因 L1 经济�
 | **abandoned / timeout 计入 K** | — | **防「结果不好就丢掉」式 p-hacking** |
 | 封账 | **一次性**跑 BH-FDR | 防止封账时选择性汇报 |
 
-**DEAD 家族判据**（`scripts/praxist_supervisor.py` 的 `_dead_families(snapshot, min_ok=4)`）：
+**DEAD 家族判据**（`scripts/sup_evidence.py` 的 `_dead_families(snapshot, min_ok=4)`）：
 只数 `dm_status ∈ {ok, set_mismatch_ok}` 的 ok 行；`n_ok ≥ 4` 且 `gate_pass == 0` 才算死亡。
 `insufficient_common` / `no_common_cutoff` / `set_mismatch_descriptive` 等**描述性 DM 一律不计数**——它们不代表「试过且失败」。
 
@@ -176,7 +176,7 @@ PF/EV/MaxDD 已在 evaluator 契约中退役，且 `INCUMBENT_PF` 因 L1 经济�
 2. checkpoint 命名空间隔离：`{vid}__prereg_{id[:8]}.jsonl`——**防 resume 把探索点混进确认 DM**
 3. 确认判定：`run_mode == "confirmation"` ∧ `gate_pass` ∧ `fdr_pass` ∧ `p_value` 非空 ∧ `pairing_valid` ∧ `missingness_admissible` ∧ `dm_status ∈ {ok, set_mismatch_ok}`
 
-落盘前还有一道 `fdr_pass_persistable()`：只有**确认运行 + 缺失可接受 + DM 可确认**时 `fdr_pass=True` 才允许写。
+落盘前还有一道 `scripts/sup_family.py` 的 `fdr_pass_persistable()`：只有**确认运行 + 缺失可接受 + DM 可确认**时 `fdr_pass=True` 才允许写。
 
 ---
 
@@ -199,7 +199,7 @@ PF/EV/MaxDD 已在 evaluator 契约中退役，且 `INCUMBENT_PF` 因 L1 经济�
 | `missing_predicted_direction` | 缺预测方向 |
 | `missing_kill_promote` | 缺 kill / promote 条件 |
 
-### 板块级 circuit-breaker：`scripts/praxist_supervisor.py` 的 `_sector_filter_check()`
+### 板块级 circuit-breaker：`scripts/sup_harvest.py` 的 `_sector_filter_check()`
 
 **只有板块成员全集失败才拦。** 这是防饿死设计：
 
@@ -247,8 +247,8 @@ T7 追加：失败数 ≥ 板块 50% 但未全失败时打 WARN 预警（部分�
 
 ### Stage 3 三个新模块的接线状态
 
-`experiment_fingerprint` **已接线**：`ef.build_variant_id()` 在 `praxist_supervisor.py` 有 **3 个调用点**（373 / 1167 / 2436）。
-另有 2339 行的 `ef.compute_experiment_fingerprint()`——**不同函数**，勿混淆。
+`experiment_fingerprint` **已接线**。`ef.build_variant_id()` 有 3 个调用：`scripts/sup_harvest.py` 两处，`scripts/sup_family.py` 一处。
+`ef.compute_experiment_fingerprint()` 的调用在 `scripts/sup_evidence.py`，与 `build_variant_id` 不是同一个函数。
 历史 `aligned_verdicts.jsonl` 混着两种 vid 格式——旧行 `{symbol}_{cov}`，新行 `{symbol}_{family}_{fp12}`。**读历史行别假设格式统一。**
 
 ---
@@ -258,3 +258,4 @@ T7 追加：失败数 ≥ 板块 50% 但未全失败时打 WARN 预警（部分�
 | 日期 | 内容 |
 |------|------|
 | 2026-10-05 | 初版。事实基线实测自 commit `ee01b56`，全部经代码核实 |
+| 2026-10-12 | 监督环拆到 `scripts/sup_*.py`。入口仍是 shim。符号家以 [praxist.md](./praxist.md) 为准 |

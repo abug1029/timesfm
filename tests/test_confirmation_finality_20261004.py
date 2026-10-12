@@ -19,6 +19,10 @@ import time as _time_mod
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import sup_paths
+import sup_lifecycle
+import sup_evidence
+import sup_family
 import praxist_supervisor as sup  # noqa: E402
 import aligned_slow_loop as slow  # noqa: E402
 
@@ -41,14 +45,14 @@ def _wire(monkeypatch, tmp_path, preregs, snap):
     """标准接线：真实 rl / 派发；快照与数据闸门打桩；节流状态清零。"""
     p = tmp_path / "preregistry.jsonl"
     p.write_text("".join(json.dumps(r) + "\n" for r in preregs), encoding="utf-8")
-    monkeypatch.setattr(sup, "PREREGISTRY_PATH", str(p))
-    monkeypatch.setattr(sup, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
-    monkeypatch.setattr(sup, "QUEUE", str(tmp_path / "pending.jsonl"))
-    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
-    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)
-    monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(p))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "pending.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: snap)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
     sup._CONFIRM_REDISPATCH.clear()
     return str(tmp_path / "decisions.jsonl")
 
@@ -102,14 +106,14 @@ def test_redispatch_throttled_six_hours(tmp_path, monkeypatch):
                                       n_confirm_actual=5, n_confirm_required=1199)}
     p = tmp_path / "preregistry.jsonl"
     p.write_text(json.dumps(_prereg(pid)) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sup, "PREREGISTRY_PATH", str(p))
-    monkeypatch.setattr(sup, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
-    monkeypatch.setattr(sup, "QUEUE", str(tmp_path / "q.jsonl"))
-    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "i.jsonl"))
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
-    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)
-    monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(p))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "q.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "i.jsonl"))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: snap)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
     # 只隔离队列侧：in_flight 恒空、enqueue 记数，让节流成为唯一变量
     monkeypatch.setattr(sup.rl, "in_flight_ids", lambda q, i: set())
     monkeypatch.setattr(sup.rl, "queue_enqueue", lambda path, rows, dead, existing: len(rows))
@@ -130,14 +134,14 @@ def test_not_enqueued_notice_carries_throttle_state(tmp_path, monkeypatch):
                                       n_confirm_actual=5, n_confirm_required=1199)}
     p = tmp_path / "preregistry.jsonl"
     p.write_text(json.dumps(_prereg(pid)) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sup, "PREREGISTRY_PATH", str(p))
-    monkeypatch.setattr(sup, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
-    monkeypatch.setattr(sup, "QUEUE", str(tmp_path / "q.jsonl"))
-    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "i.jsonl"))
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
-    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sup, "_active_protocol_snapshot", lambda path: snap)
-    monkeypatch.setattr(sup, "_confirm_data_ready", lambda s, t: True)
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(p))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(tmp_path / "family_registry.jsonl"))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "q.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "i.jsonl"))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_active_protocol_snapshot", lambda path: snap)
+    monkeypatch.setattr(sup_family, "_confirm_data_ready", lambda s, t: True)
     monkeypatch.setattr(sup.rl, "in_flight_ids", lambda q, i: set())
     monkeypatch.setattr(sup.rl, "queue_enqueue", lambda path, rows, dead, existing: len(rows))
     log = str(tmp_path / "decisions.jsonl")
@@ -234,19 +238,19 @@ def test_timeout_tombstone_stamps_confirmation_identity(tmp_path):
 # ── E6 ───────────────────────────────────────────────────────────────
 def test_harvest_outer_loop_shutdown_returns_empty(monkeypatch, tmp_path):
     """E6：停机信号在扫描中途（外层 run_dir 边界）置位 → 不得返回半份候选。"""
-    monkeypatch.setattr(sup, "_load_evaluator", lambda: type("EV", (), {
+    monkeypatch.setattr(sup_evidence, "_load_evaluator", lambda: type("EV", (), {
         "VALID_COVARIATES": {"vor"}, "ALLOWED_SYMBOLS": {"jd"}, "ARCHIVED_COVARIATES": {},
     })())
-    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
-    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
-    monkeypatch.setattr(sup, "_dead_families", lambda snap: set())
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_symbol_status", lambda: {})
+    monkeypatch.setattr(sup_evidence, "_dead_families", lambda snap: set())
     cfg = tmp_path / "task_FM" / "config"
     cfg.mkdir(parents=True, exist_ok=True)
     (cfg / "baseline_points_jd_nocov.jsonl").write_text(
         json.dumps({"protocol_fingerprint": "fp-current", "cutoff": "2026-01-01 00:00:00",
                     "dir_ok": True}) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp-current")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp-current")
     for name in ("run_x", "run_y"):
         d = tmp_path / "task_FM" / "experiments" / name / "results" / "gen_0" / "proposals"
         d.mkdir(parents=True)
@@ -255,7 +259,7 @@ def test_harvest_outer_loop_shutdown_returns_empty(monkeypatch, tmp_path):
                         "cov_override": "vor", "mechanism": "x" * 60}), encoding="utf-8")
 
     # 对照组：未置标志时必须能产出候选（否则下面的断言空转）
-    monkeypatch.setattr(sup, "_SHUTDOWN_REQUESTED", False)
+    monkeypatch.setattr(sup_lifecycle, "_SHUTDOWN_REQUESTED", False)
     rows, stats = sup.harvest_proposals(str(tmp_path), {}, set(), set(),
                                         {"vor": {"family": "momentum"}}, top_k=3)
     assert rows, f"对照组：未置标志时应能产出候选（stats={stats}）"
@@ -272,7 +276,7 @@ def test_harvest_outer_loop_shutdown_returns_empty(monkeypatch, tmp_path):
 
     # 期望序列：#1 外层 run_x 检查、#2 run_x 文件内检查、#3 外层 run_y 检查 → True
     flip = _FlipAfter(2)
-    monkeypatch.setattr(sup, "_SHUTDOWN_REQUESTED", flip)
+    monkeypatch.setattr(sup_lifecycle, "_SHUTDOWN_REQUESTED", flip)
     rows2, stats2 = sup.harvest_proposals(str(tmp_path), {}, set(), set(),
                                           {"vor": {"family": "momentum"}}, top_k=3)
     assert rows2 == [], "外层停机路径不得返回半份候选"

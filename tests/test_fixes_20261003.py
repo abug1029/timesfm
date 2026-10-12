@@ -11,10 +11,16 @@ import os
 import sys
 import json
 import time
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from s1_fake_rl import install_fake_rl
+import sup_paths
+import sup_lifecycle
+import sup_evidence
 import praxist_supervisor as sup  # noqa: E402
 import cascade.research_family as rf  # noqa: E402
 
@@ -139,19 +145,19 @@ def test_confirmation_not_enqueued_is_throttled(tmp_path, monkeypatch):
         "cov_fingerprint": {"keys": ["daily_slope", "vor"]},
     }]
     prereg.write_text(json.dumps(reg[0]) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sup, "PREREGISTRY_PATH", str(prereg))
-    monkeypatch.setattr(sup, "FAMILY_REGISTRY", str(tmp_path / "family.jsonl"))
-    monkeypatch.setattr(sup, "QUEUE", str(tmp_path / "q.jsonl"))
-    monkeypatch.setattr(sup, "INPROGRESS", str(tmp_path / "i.jsonl"))
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
-    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_paths, "PREREGISTRY_PATH", str(prereg))
+    monkeypatch.setattr(sup_paths, "FAMILY_REGISTRY", str(tmp_path / "family.jsonl"))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "q.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "i.jsonl"))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
     # vid 已在队里 → 不再派发，走到 not_enqueued 分支
-    monkeypatch.setattr(sup, "rl", type("RL", (), {
+    install_fake_rl(monkeypatch, type("RL", (), {
         "in_flight_ids": staticmethod(lambda q, i: {"jd_momentum_" + ("ab" * 32)[:12]}),
         "queue_enqueue": staticmethod(lambda *a, **k: 0),
         "load_snapshot": staticmethod(lambda path, only_protocol=None: {}),
     }))
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp-current")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp-current")
     sup._CONFIRMATION_NOTICE.clear()
     log = str(tmp_path / "decisions.jsonl")
 
@@ -173,13 +179,13 @@ def test_harvest_aborts_on_shutdown_flag(monkeypatch, tmp_path):
     """停机标志置位时收割立即中止，且不返回半份候选（避免停机途中入队）。"""
     ev = sup._load_evaluator()
     # 最小可用替身：只提供 VALID_COVARIATES / ALLOWED_SYMBOLS / ARCHIVED_COVARIATES
-    monkeypatch.setattr(sup, "_load_evaluator", lambda: type("EV", (), {
+    monkeypatch.setattr(sup_evidence, "_load_evaluator", lambda: type("EV", (), {
         "VALID_COVARIATES": {"vor"}, "ALLOWED_SYMBOLS": {"jd"}, "ARCHIVED_COVARIATES": {},
     })())
-    monkeypatch.setattr(sup, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
-    monkeypatch.setattr(sup, "_experiment_fp_for", lambda s, c: "ab" * 32)
-    monkeypatch.setattr(sup, "load_symbol_status", lambda: {})
-    monkeypatch.setattr(sup, "_dead_families", lambda snap: set())
+    monkeypatch.setattr(sup_evidence, "load_covariate_pool", lambda: {"vor": {"family": "momentum"}})
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: "ab" * 32)
+    monkeypatch.setattr(sup_evidence, "load_symbol_status", lambda: {})
+    monkeypatch.setattr(sup_evidence, "_dead_families", lambda snap: set())
 
     run_dir = tmp_path / "task_FM" / "experiments" / "run_x"
     (run_dir / "results" / "gen_0" / "proposals").mkdir(parents=True)
@@ -194,18 +200,18 @@ def test_harvest_aborts_on_shutdown_flag(monkeypatch, tmp_path):
     (cfg / "baseline_points_jd_nocov.jsonl").write_text(
         json.dumps({"protocol_fingerprint": "fp-current", "cutoff": "2026-01-01 00:00:00",
                     "dir_ok": True}) + "\n", encoding="utf-8")
-    monkeypatch.setattr(sup, "_current_protocol_fingerprint", lambda: "fp-current")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp-current")
 
-    monkeypatch.setattr(sup, "_SHUTDOWN_REQUESTED", False)
+    monkeypatch.setattr(sup_lifecycle, "_SHUTDOWN_REQUESTED", False)
     rows, stats = sup.harvest_proposals(str(tmp_path), {}, set(), set(),
                                         {"vor": {"family": "momentum"}}, top_k=3)
     assert rows, f"对照组：未置标志时应能入队（stats={stats}）"
 
-    sup._SHUTDOWN_REQUESTED = True
+    sup_lifecycle._SHUTDOWN_REQUESTED = True
     try:
         rows2, stats2 = sup.harvest_proposals(str(tmp_path), {}, set(), set(),
                                               {"vor": {"family": "momentum"}}, top_k=3)
     finally:
-        sup._SHUTDOWN_REQUESTED = False
+        sup_lifecycle._SHUTDOWN_REQUESTED = False
     assert rows2 == [], "停机时不得返回半份候选"
     assert stats2.get("aborted_by_shutdown") is True

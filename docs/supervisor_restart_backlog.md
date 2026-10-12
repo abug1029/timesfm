@@ -4,7 +4,7 @@
 
 ## 1. 菜单 track 行固定前缀「【旧口径线索·非证据】」
 
-- 位置: `scripts/praxist_supervisor.py` 的 `materialize_covariate_menu` 渲染 track 行处：
+- 位置: `scripts/sup_harvest.py` 的 `materialize_covariate_menu` 渲染 track 行处：
   `tr = " [track: %s]" % v["track_record"] ...`
 - 做法: 给菜单 track 行加固定前缀「【旧口径线索·非证据】」（防御性，防止 pool 未来再写入裸数字时被当作证据）。
 - 背景: pool 源头已在 2026-09-17 去数字（covariate_pool 内 10 条 v22 旧口径 track_record 标注，见 git log）。
@@ -85,11 +85,11 @@ launcher 内部已做 `setsid nohup` 孤儿化；验证会话独立性看 `ps -o
   （14:16:05 还发起新 run），最终需 `SIGKILL` 强制停止；停机事件由 atexit 兜底补发，
   `stop_report.json` 未刷新（仍为 10-02 PID 418）。
 
-**根因（结构性，非「信号丢了一次」）**：`_signal_handler`（`scripts/praxist_supervisor.py`）按设计只置
+**根因（结构性，非「信号丢了一次」）**：`_signal_handler`（`scripts/sup_lifecycle.py`）按设计只置
 `_SHUTDOWN_REQUESTED = True`（无 I/O，做法正确）；但该标志**只在主循环顶被读**
 （主循环顶 `_shutdown_exit()`，紧跟 `_write_heartbeat()`）。主循环内存在多处**无超时阻塞调用**
 （如 `_maybe_finish_slow` 等慢环子进程退出、`rl.queue_*` / `_harvest_rows` 的文件锁与全量扫描），
-信号一旦落在这些调用中间，标志在阻塞解除前读不到。叠加 `POLL_S = 300`，
+信号一旦落在这些调用中间，标志在阻塞解除前读不到。叠加 `scripts/sup_paths.py` 的 `POLL_S = 300`，
 最坏情况要再等一整轮 poll。
 
 **因此「发两次 SIGTERM」不是可靠口径**——2026-10-03 第二次同样无效，白等 120s。

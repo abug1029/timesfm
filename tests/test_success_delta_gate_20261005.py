@@ -35,6 +35,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
+import sup_paths
+import sup_evidence
+import sup_harvest
 import praxist_supervisor as S  # noqa: E402
 
 LONGM = ("波动率范围(VOR)压缩后突破：该品种在低波区积蓄动能后常随放量突破，"
@@ -98,15 +101,15 @@ def _sv(vid, symbol, cov, *, gate_pass=True, eval_end_ts=None, extra=None):
 
 @pytest.fixture
 def tmproot(tmp_path, monkeypatch):
-    monkeypatch.setattr(S, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
+    monkeypatch.setattr(sup_paths, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
     status_path = tmp_path / "symbol_status.json"
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
-    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
-    monkeypatch.setattr(S, "_today_shanghai", lambda: date(2099, 1, 1))
-    monkeypatch.setattr(S, "_kline_1h_max_dt", lambda symbol: "2099-01-01 14:00:00")
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_evidence, "_today_shanghai", lambda: date(2099, 1, 1))
+    monkeypatch.setattr(sup_evidence, "_kline_1h_max_dt", lambda symbol: "2099-01-01 14:00:00")
     return str(tmp_path)
 
 
@@ -240,13 +243,13 @@ def test_retest_bypasses_success_gate_structurally(tmp_path, monkeypatch):
     毒化 harvest_proposals：若复测路径误走收割（从而误过 success 门），
     本测试立刻炸。近失误 v2 裁决走 plan_sample_retests → rl.queue_enqueue。
     """
-    monkeypatch.setattr(S, "FM_ROOT", str(tmp_path))
-    monkeypatch.setattr(S, "QUEUE", str(tmp_path / "pending.jsonl"))
-    monkeypatch.setattr(S, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
-    monkeypatch.setattr(S, "REGISTRY", str(tmp_path / "verdicts.jsonl"))
-    monkeypatch.setattr(S, "STATE_PATH", str(tmp_path / "state.json"))
-    monkeypatch.setattr(S, "EVENTS_PATH", str(tmp_path / "events.jsonl"))
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_paths, "FM_ROOT", str(tmp_path))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "pending.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "inprogress.jsonl"))
+    monkeypatch.setattr(sup_paths, "REGISTRY", str(tmp_path / "verdicts.jsonl"))
+    monkeypatch.setattr(sup_paths, "STATE_PATH", str(tmp_path / "state.json"))
+    monkeypatch.setattr(sup_paths, "EVENTS_PATH", str(tmp_path / "events.jsonl"))
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
     nearmiss = {
         "schema": "fm.aligned_verdict.v2",
         "variant_id": "cj_oi_nearmiss", "symbol": "cj", "cov_override": "oi",
@@ -257,12 +260,12 @@ def test_retest_bypasses_success_gate_structurally(tmp_path, monkeypatch):
     }
     with open(S.REGISTRY, "w", encoding="utf-8") as f:
         f.write(json.dumps(nearmiss) + "\n")
-    monkeypatch.setattr(S, "_valid_n_for_symbol", lambda s: 350)
+    monkeypatch.setattr(sup_evidence, "_valid_n_for_symbol", lambda s: 350)
     monkeypatch.setattr(S.rl, "in_flight_ids", lambda *a, **k: set())
 
     def _poison(*a, **k):
         raise AssertionError("复测路径不得调用 harvest_proposals / success 门")
-    monkeypatch.setattr(S, "harvest_proposals", _poison)
+    monkeypatch.setattr(sup_harvest, "harvest_proposals", _poison)
 
     goal = {"cadence": {"aligned_max_points": 600, "retest_min_new_points": 1}}
     added = S._maybe_enqueue_retests(goal, str(tmp_path / "decisions.jsonl"))

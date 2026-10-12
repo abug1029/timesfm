@@ -62,6 +62,9 @@
 | [superpowers/plans/2026-10-07-tech-debt-closure-plan.md](./superpowers/plans/2026-10-07-tech-debt-closure-plan.md) | 技术债收口计划。§2.2 顶部是现行备份裁定；同节下文的异机方案是当日历史 | 在用 |
 | [superpowers/changelogs/2026-10-07-tech-debt-closure-plan-and-rulings.md](./superpowers/changelogs/2026-10-07-tech-debt-closure-plan-and-rulings.md) | 裁定与实施记录。备份于当晚改回同仓：推 `origin`，不再异机 tar / cron / rclone | 在用 |
 | [../BACKUP_SYNC_GUIDE.md](../BACKUP_SYNC_GUIDE.md) | 独立 backup remote 已停用。备份=本仓推 GitHub | 已停用 |
+| **2026-10-12 监督环拆分（本分支；宿主未切换）** | | |
+| [praxist.md](./praxist.md) | 监督环模块归属的唯一表。入口仍是 `scripts/praxist_supervisor.py` | 在用 |
+| [superpowers/changelogs/2026-10-12-s1-supervisor-split.md](./superpowers/changelogs/2026-10-12-s1-supervisor-split.md) | 拆分记录。代码 `3e8756e`。宿主未重启 | 在用 |
 | **Praxist 三环合同** | | |
 | [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（提示词纪律以 2026-09-19 为准） | 在用 |
 | [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 | 在用 |

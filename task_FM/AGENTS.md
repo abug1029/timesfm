@@ -44,11 +44,11 @@ FM_a 的 Praxist 任务包：把「找更好的协变量」这件事写成一份
 
 | 文件 | 生成者 |
 |------|--------|
-| `known_verdicts.inc.md` | 监督环 `materialize_known_verdicts` 每轮物化 |
-| `covariate_menu.inc.md` | 监督环 `materialize_covariate_menu` 每轮物化 |
+| `known_verdicts.inc.md` | `scripts/sup_evidence.py` 的 `materialize_known_verdicts` 每轮物化 |
+| `covariate_menu.inc.md` | `scripts/sup_harvest.py` 的 `materialize_covariate_menu` 每轮物化 |
 | `config/aligned_verdicts.jsonl` | **仅慢环可写**（行数随慢环增长，实时 `wc -l`） |
 | `config/family_registry.jsonl` | family 成员登记 |
-| `config/baseline_points_*.jsonl` | `ensure_baselines` 按协议指纹重生 |
+| `config/baseline_points_*.jsonl` | `scripts/sup_evidence.py` 的 `ensure_baselines` 按协议指纹重生 |
 | `experiments/run_*/results/**/proposals/*.json` | peer 写的假设提案 |
 
 > `experiments/` 的分级与清理策略见 [../docs/run_artifacts.md](../docs/run_artifacts.md)。
@@ -62,7 +62,7 @@ FM_a 的 Praxist 任务包：把「找更好的协变量」这件事写成一份
 1. **peer 不加载 TimesFM**，不跑评估（`evaluations/fm_eval/run.py` 对 peer 禁用）
 2. **peer 只写假设**，不碰裁决
 3. 提案写入根仅限 `results/**/proposals/*.json`
-4. **不得绕过 flock**（`scripts/praxist_supervisor.py` 持锁期间另起监督环会退避）
+4. **不得绕过 flock**（锁在 `scripts/sup_loops.py` 的 `main` 里取得；进程入口仍是 `scripts/praxist_supervisor.py`。持锁期间另起监督环会退避）
 5. 密钥只进 `.env.praxist`，**不要写进 `task.yaml`**
 
 ### 提案质量门（18 道，`_proposal_quality_gate`）
@@ -110,7 +110,7 @@ FM_a 的 Praxist 任务包：把「找更好的协变量」这件事写成一份
 - 版本定义：`task_FM/evaluations/fm_eval/evaluator.py` 的 `PROTOCOL_FINGERPRINT_VERSION = "protocol_v4"`
 - 当前值：**`f02b2a433fd572ea…`**
 - 组件映射表：[../docs/fingerprint_component_mapping.md](../docs/fingerprint_component_mapping.md)
-- **bump 后必须重生基线**：`ensure_baselines` 自动比对，不符即整品种重生（`scripts/fingerprint_lib.py` 的静默回退已退役，会抛异常）
+- **bump 后必须重生基线**：`scripts/sup_evidence.py` 的 `ensure_baselines` 自动比对，不符即整品种重生（`scripts/fingerprint_lib.py` 的静默回退已退役，会抛异常）
 
 ### 研究 family 封账
 

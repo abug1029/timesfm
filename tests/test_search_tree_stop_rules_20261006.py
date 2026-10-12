@@ -41,6 +41,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, ROOT)
 
+import sup_paths
+import sup_lifecycle
+import sup_evidence
+import sup_loops
 import praxist_supervisor as S  # noqa: E402
 import registry_lib as rl  # noqa: E402
 import search_trees as ST  # noqa: E402
@@ -59,17 +63,17 @@ TID_M = ST.tree_id_for("m", "volatility", PID_M)
 
 @pytest.fixture
 def tmproot(tmp_path, monkeypatch):
-    monkeypatch.setattr(S, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
+    monkeypatch.setattr(sup_paths, "BACKLOG_PATH", str(tmp_path / "backlog.jsonl"))
     status_path = tmp_path / "symbol_status.json"
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
-    monkeypatch.setattr(S, "SYMBOL_STATUS_PATH", str(status_path))
-    monkeypatch.setattr(S, "_experiment_fp_for", lambda s, c: FP_TEST)
-    monkeypatch.setattr(S, "_current_protocol_fingerprint", lambda: "current-protocol")
-    monkeypatch.setattr(S, "SEARCH_COMMITMENTS_PATH",
+    monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
+    monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
+    monkeypatch.setattr(sup_paths, "SEARCH_COMMITMENTS_PATH",
                         str(tmp_path / "search_commitments.jsonl"))
-    monkeypatch.setattr(S, "QUEUE", str(tmp_path / "aligned_pending.jsonl"))
-    monkeypatch.setattr(S, "INPROGRESS", str(tmp_path / "aligned_pending.inprogress.jsonl"))
+    monkeypatch.setattr(sup_paths, "QUEUE", str(tmp_path / "aligned_pending.jsonl"))
+    monkeypatch.setattr(sup_paths, "INPROGRESS", str(tmp_path / "aligned_pending.inprogress.jsonl"))
     return str(tmp_path)
 
 
@@ -411,7 +415,7 @@ def test_commit_docstring_documents_external_restart():
 
 def test_sweep_writes_budget_stop(tmproot, monkeypatch):
     calls = []
-    monkeypatch.setattr(S, "_log_decision", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(sup_lifecycle, "_log_decision", lambda *a, **k: calls.append(a))
     members = _seed_tree(vids=["v1", "v2", "v3"])
     snap = {v: _vrow(v, dir_acc=0.48) for v in members}
     assert S._sweep_search_stops({"search_policy": "enforce"}, None, snap) == 1
@@ -430,7 +434,7 @@ def test_sweep_writes_budget_stop(tmproot, monkeypatch):
 def test_sweep_writes_family_dead_stop(tmproot, monkeypatch):
     """family_dead 走真实 _dead_families：4 条可确认失败 + 0 过门。"""
     calls = []
-    monkeypatch.setattr(S, "_log_decision", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(sup_lifecycle, "_log_decision", lambda *a, **k: calls.append(a))
     TID = "m::momentum::cccc00000003"
     ST.append_commitment(S.SEARCH_COMMITMENTS_PATH, "accept", tree_id=TID,
                          symbol="m", family="momentum", proposal_id="pm",
@@ -476,6 +480,6 @@ def test_sweep_write_failure_propagates(tmproot, monkeypatch):
 
 def test_sweep_called_every_cycle_in_main_loop():
     """主循环每轮巡检插桩存在性（materialize 之后、收割之前）。"""
-    with open(S.__file__, encoding="utf-8") as f:
+    with open(sup_loops.__file__, encoding="utf-8") as f:
         src = f.read()
     assert '_sweep_search_stops(goal, log, snap["variants"])' in src

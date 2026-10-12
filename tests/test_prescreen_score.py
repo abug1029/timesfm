@@ -175,15 +175,16 @@ class TestPrescreenAsync:
     def test_import_error_silent(self):
         """prescreen 模块导入失败时静默返回, 不抛给调用方."""
         import scripts.praxist_supervisor as s
+        import sup_harvest
 
         class _FakeLog:
             def __init__(self): self.calls = []
             def warning(self, *a, **k): self.calls.append((a, k))
 
         # 模拟 prescreen 导入失败 → _prescreen_async 应记录 warning 后返回
-        orig_log = s.logging
+        orig_log = sup_harvest.logging
         result = _FakeLog()
-        s.logging = result  # 替换模块级 logging (内含 warning 引用到模块级 logging)
+        sup_harvest.logging = result  # 替换模块级 logging (内含 warning 引用到模块级 logging)
         try:
             # 覆盖: 强制 typesafe 子模块导入抛错
             import builtins
@@ -200,7 +201,7 @@ class TestPrescreenAsync:
             finally:
                 builtins.__import__ = real_import
         finally:
-            s.logging = orig_log
+            sup_harvest.logging = orig_log
         assert len(result.calls) >= 1  # 记录了 warning (导入失败)
 
 

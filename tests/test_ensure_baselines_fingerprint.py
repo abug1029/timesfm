@@ -96,7 +96,7 @@ def fake_env(tmp_path, monkeypatch):
     fake = _FakeGBP()
     monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
     monkeypatch.setattr(
-        "scripts.praxist_supervisor._current_protocol_fingerprint",
+        "sup_evidence._current_protocol_fingerprint",
         lambda: CUR_FP,
     )
     return root, cfg, fake
@@ -155,7 +155,7 @@ def test_fingerprint_check_skipped_when_current_unavailable(fake_env, monkeypatc
     """当前指纹不可得时跳过校验（并告警），不得误删可用基线。"""
     root, cfg, fake = fake_env
     monkeypatch.setattr(
-        "scripts.praxist_supervisor._current_protocol_fingerprint",
+        "sup_evidence._current_protocol_fingerprint",
         lambda: None,
     )
     _write_metrics(cfg, "sr")
