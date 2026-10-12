@@ -137,23 +137,6 @@ def _create_tables(conn: sqlite3.Connection):
         )
     """)
 
-    # ── contracts ──
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS contracts (
-            contract_code   TEXT PRIMARY KEY,
-            product         TEXT NOT NULL,
-            exchange        TEXT NOT NULL,
-            contract_month  INTEGER,
-            delivery_year   INTEGER,
-            is_active       INTEGER DEFAULT 1,
-            is_main         INTEGER DEFAULT 0,
-            main_since      TEXT,
-            first_listed    TEXT,
-            last_trading    TEXT,
-            updated_at      TEXT DEFAULT (datetime('now'))
-        )
-    """)
-
     # ── xreg_factors ──
     c.execute("""
         CREATE TABLE IF NOT EXISTS xreg_factors (

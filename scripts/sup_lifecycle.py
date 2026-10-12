@@ -81,8 +81,20 @@ def _write_stop_json(event_rec):
         print(f"[STOP_REPORT_ERROR] {e}", file=sys.stderr)
 
 
+_LAST_HB_WRITE = 0.0
+
 def _write_heartbeat():
-    """Write heartbeat timestamp. Called each main loop iteration."""
+    """Write heartbeat timestamp. Called each main loop iteration.
+
+    Throttled to at most once per second so a tight caller, including
+    ensure_baselines, does not rewrite the heartbeat file on every symbol.
+    A failed write still advances the stamp, so a persistent OSError does
+    not print a warning on every call.
+    """
+    global _LAST_HB_WRITE
+    now = time.monotonic()
+    if now - _LAST_HB_WRITE < 1.0:
+        return
     try:
         os.makedirs(os.path.dirname(sup_paths.HEARTBEAT_PATH), exist_ok=True)
         with open(sup_paths.HEARTBEAT_PATH, "w") as f:
@@ -90,6 +102,8 @@ def _write_heartbeat():
                                 "pid": os.getpid()}))
     except OSError as e:
         print(f"[WARN] Failed to write heartbeat: {e}", file=sys.stderr)
+    finally:
+        _LAST_HB_WRITE = now
 
 
 def _signal_handler(signum, frame):

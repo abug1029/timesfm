@@ -23,7 +23,14 @@ import fcntl
 from pathlib import Path
 from datetime import datetime
 
+# MAJOR fix: sys.path.setup 必须在 praxist_supervisor import 之前，否则 standalone CLI 运行时 import 失败
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# P0-A 补丁：单 symbol 重生期间也写心跳，防看门狗 S2 误杀
+try:
+    from praxist_supervisor import _write_heartbeat as _hb
+except ImportError:
+    def _hb(): pass  # 测试或独立运行时忽略
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 from cascade.baseline_paths import baseline_filename
@@ -129,9 +136,10 @@ def generate(symbol: str, cov: str, root: str):
                     fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     written += 1
 
-                    # 每 50 点打印进度
+                    # 每 50 点打印进度 + 写心跳（P0-A 补丁）
                     if written % 50 == 0:
                         print(f"[Progress] Baseline generation for {sym_upper}: {written}/{total} points done...")
+                        _hb()
 
             temp_file.rename(jsonl_file)
         except Exception:

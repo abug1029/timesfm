@@ -19,6 +19,7 @@ from cascade.cov_family import ALLOWED_FAMILIES
 
 import sup_paths
 import sup_state
+import sup_lifecycle
 
 # 批次 B：tier 值域守卫（Q2=b，N10 语义消歧）
 VALID_TIER_VALUES = frozenset({"S", "A", "B", "C", "D"})
@@ -1351,52 +1352,55 @@ def ensure_baselines(symbols, root):
             return
     cur_fp = _current_protocol_fingerprint()
     for sym in sorted(symbols):
-        sym_lower = sym.lower()
-        points_path = os.path.join(config_dir, gbp.baseline_filename(sym_lower, None))
-        met = metrics.get(sym_lower, {})
-        if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
-            _regen_baseline_with_archive(sym_lower, points_path, root)
-            continue
-        n_lines = 0
-        last_cutoff = None
-        if os.path.exists(points_path):
-            try:
-                with open(points_path, encoding="utf-8") as f:
-                    for line in f:
-                        if line.strip():
-                            try:
-                                rec = json.loads(line)
-                                n_lines += 1
-                                last_cutoff = rec.get("cutoff") or last_cutoff
-                            except json.JSONDecodeError:
-                                pass
-            except OSError:
-                pass
-        if n_lines < 100:
-            _regen_baseline_with_archive(sym_lower, points_path, root)
-            continue
-
-        # ── 协议指纹校验（2026-09-28 新增）──
-        # 行数够不等于可用：指纹不符则跨协议不可比，必须重生。
-        if cur_fp is None:
-            continue
-        status, base_fp = _baseline_protocol_fingerprint(points_path)
-        if status != "ok":
-            reason = ("首行缺 protocol_fingerprint（pre-A1 遗留基线）"
-                      if status == "missing" else "基线首行不可读")
-            print(f"[WARN] ensure_baselines: {sym_lower} {reason} → 重生",
-                  file=sys.stderr)
-        elif base_fp != cur_fp:
-            print(
-                f"[WARN] ensure_baselines: {sym_lower} 基线协议指纹不符 "
-                f"({base_fp[:16]}… != {cur_fp[:16]}…) → 重生（跨协议不可比）",
-                file=sys.stderr,
-            )
-        else:
-            # 行数与指纹均合格 → 步② C 拉取日重锚检查
-            reanchor = _baseline_reanchor_reason(sym_lower, last_cutoff, root)
-            if reanchor is None:
+        try:
+            sym_lower = sym.lower()
+            points_path = os.path.join(config_dir, gbp.baseline_filename(sym_lower, None))
+            met = metrics.get(sym_lower, {})
+            if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
+                _regen_baseline_with_archive(sym_lower, points_path, root)
                 continue
-            print(f"[WARN] ensure_baselines: {sym_lower} {reanchor} → 重生",
-                  file=sys.stderr)
-        _regen_baseline_with_archive(sym_lower, points_path, root)
+            n_lines = 0
+            last_cutoff = None
+            if os.path.exists(points_path):
+                try:
+                    with open(points_path, encoding="utf-8") as f:
+                        for line in f:
+                            if line.strip():
+                                try:
+                                    rec = json.loads(line)
+                                    n_lines += 1
+                                    last_cutoff = rec.get("cutoff") or last_cutoff
+                                except json.JSONDecodeError:
+                                    pass
+                except OSError:
+                    pass
+            if n_lines < 100:
+                _regen_baseline_with_archive(sym_lower, points_path, root)
+                continue
+
+            # ── 协议指纹校验（2026-09-28 新增）──
+            # 行数够不等于可用：指纹不符则跨协议不可比，必须重生。
+            if cur_fp is None:
+                continue
+            status, base_fp = _baseline_protocol_fingerprint(points_path)
+            if status != "ok":
+                reason = ("首行缺 protocol_fingerprint（pre-A1 遗留基线）"
+                          if status == "missing" else "基线首行不可读")
+                print(f"[WARN] ensure_baselines: {sym_lower} {reason} → 重生",
+                      file=sys.stderr)
+            elif base_fp != cur_fp:
+                print(
+                    f"[WARN] ensure_baselines: {sym_lower} 基线协议指纹不符 "
+                    f"({base_fp[:16]}… != {cur_fp[:16]}…) → 重生（跨协议不可比）",
+                    file=sys.stderr,
+                )
+            else:
+                # 行数与指纹均合格 → 步② C 拉取日重锚检查
+                reanchor = _baseline_reanchor_reason(sym_lower, last_cutoff, root)
+                if reanchor is None:
+                    continue
+                print(f"[WARN] ensure_baselines: {sym_lower} {reanchor} → 重生",
+                      file=sys.stderr)
+            _regen_baseline_with_archive(sym_lower, points_path, root)
+        finally:
+            sup_lifecycle._write_heartbeat()
