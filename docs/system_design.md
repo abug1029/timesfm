@@ -870,6 +870,8 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
    └─ 慢环  scripts/aligned_slow_loop.py        唯一验证器，唯一可写 aligned_verdicts.jsonl
 ```
 
+模块归属的唯一表在 [praxist.md](./praxist.md)。入口文件不定义这些符号。
+
 - **方案 A**：peer 只写机制化假设（不加载 TimesFM），慢环是唯一验证器
 - **面板**：`cohort_size=2`，`panel_topology:fm_two_peer`（exploit + falsifier）
 - **硬门**（v23）：→ [evaluation.md](./evaluation.md) + DM + BH-FDR
@@ -895,7 +897,7 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
 | `docs/runbook_praxist_three_loop.md` | 运维手册：启停、429 failover、故障速查 |
 | `docs/spec_hypothesis_driven_fast_loop_20260908.md` | 方案 A 设计 |
 | `docs/2026-09-19-three-loop-followup-spec.md` | 跟进合同 |
-| `scripts/praxist_supervisor.py` | 监督环（自加载 .env.praxist） |
+| `scripts/praxist_supervisor.py` | 监督环入口（shim）。`.env.praxist` 由 `scripts/sup_env.py` 装入，`main` 在 `scripts/sup_loops.py` |
 | `scripts/aligned_slow_loop.py` | 慢环（唯一 verdicts 写入者） |
 | `scripts/start_supervisor.sh` | 监督环规范启动器（PATH / .env.praxist / setsid 孤儿化） |
 | `cascade/horizon_fill.py` | horizon 尾填充契约（Stage 3） |
@@ -917,8 +919,8 @@ Stage 3（协变量可信度）2026-09-28/29 结案，在慢环/监督环侧新�
 | horizon 尾填充契约 | `cascade/horizon_fill.py` | `horizon_known` 四类受控词表（`known_ahead` / `persistence` / `self_referential` / `unknowable`），唯一家 `task_FM/config/covariate_pool.json`；非 `known_ahead` 的 horizon 段逐值填 context 末值并落 `horizon_fill` 标记（替代历史 zeros/decay 填充），配套修复 1-bar 前视 |
 | 实验指纹 | `cascade/experiment_fingerprint.py` | 单次实验身份 = `weight_fingerprint` + `target_snapshot_hash` + `context_config_hash`（48-bit 截断）；与 `research_target_hash`（研究问题身份，稳定）严格区分，不得混用 |
 | 研究 family | `cascade/research_family.py` | 多重比较纪律：一个品种 = 一个研究问题 = 一个 family（同一 protocol_fingerprint 下），批次 / 运行 / 代际不重置校正；family 90 天关闭、≤20 成员、单成员 180 天 T_max |
-| 基线协议指纹 | `scripts/praxist_supervisor.py::ensure_baselines` | 基线协议指纹不符（协议成分变更，**现 v4 = `f02b2a43…`**，v3 = `91ab913e…`，v2 = `bd851c9c…`）→ 整品种基线自动重生；2026-10-01/02 实测 9 个 nocov 基线全部带 v4 指纹落章（fu 为入集后首个基线），两次波均全量重生 |
-| 物化修复 K6/M4 | `scripts/praxist_supervisor.py` | `known_verdicts.inc.md` 图例单条、`v2_pass` 已退役，K6 现表述为 `gate_pass` 且 `not fdr_pass`（K6）；品种表不截断 + `verdicts_truncated=<N>` 截断标记（M4）。`migrated_pass` 随v4 收口（计划 2.7）一并退役 |
+| 基线协议指纹 | `scripts/sup_evidence.py` 的 `ensure_baselines` | 基线协议指纹不符（协议成分变更，**现 v4 = `f02b2a43…`**，v3 = `91ab913e…`，v2 = `bd851c9c…`）→ 整品种基线自动重生；2026-10-01/02 实测 9 个 nocov 基线全部带 v4 指纹落章（fu 为入集后首个基线），两次波均全量重生 |
+| 物化修复 K6/M4 | `scripts/sup_evidence.py` 的 `materialize_known_verdicts` | `known_verdicts.inc.md` 图例单条、`v2_pass` 已退役，K6 现表述为 `gate_pass` 且 `not fdr_pass`（K6）；品种表不截断 + `verdicts_truncated=<N>` 截断标记（M4）。`migrated_pass` 随v4 收口（计划 2.7）一并退役 |
 
 smoke 套件（`test_smoke_ss_end_to_end`）已于 2026-09-29 按用户裁定退役（连续两次同栈 pyarrow ImportError，`cascade/lgbm_features.py`）；回归以 `pytest tests/` 全量为准。
 
@@ -934,7 +936,7 @@ smoke 套件（`test_smoke_ss_end_to_end`）已于 2026-09-29 按用户裁定退
   （`{vid}__prereg_{id[:8]}.jsonl`，防 resume 把探索点混进确认 DM）、family 分派与封账、underpowered 可封账、
   goal 重写、首批 2 条预注册、**收割/复测只看当前协议**（`_active_protocol_snapshot`，修复了收割枯竭）
 - 未决问题（截至 2026-10-03，见 `docs/superpowers/reports/2026-10-03-fm-a-open-issues.md`）：
-  `_dead_families` 把不可确认的描述性失败计入死亡阈值（`term_structure` 已误判死）；两处红测待转绿；
+  `_dead_families`（`scripts/sup_evidence.py`）把不可确认的描述性失败计入死亡阈值（`term_structure` 已误判死）；两处红测待转绿；
   第一次 SIGTERM 会被忽略（睡眠未切片）；agri 板块 5/10 长期半退化
 - 运行计数以 `data/cache/supervisor_state.json` 为准（cycles_done 随调度递增，不在此写死）
 - 目标（`scripts/praxist_goal.yaml`，**2026-10-02 重写**）：**唯一成功条件 `all_symbols_pass_phase1`**——

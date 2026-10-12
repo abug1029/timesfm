@@ -54,7 +54,7 @@
 
 **为什么退役**（四条证据，任一独立成立）：
 
-1. **零决策参与** —— `praxist_supervisor.py` / `aligned_slow_loop.py` 从不读取它；
+1. **零决策参与** —— 监督环（入口 `scripts/praxist_supervisor.py`，实现在 `scripts/sup_*.py`）与 `aligned_slow_loop.py` 从不读取它；
 2. **自我声明脱钩** —— 模块 docstring 写明数值冻结在 2026-08 v2 月度回测口径，
    「不得作为 v23 证据引用」；
 3. **服务目标不可达** —— 2026-08-03 结论「3 星不可达（DirAcc 天花板 ~58%）」；

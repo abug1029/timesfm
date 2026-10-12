@@ -21,7 +21,7 @@ set +a
 |------|------|------|
 | `ANTHROPIC_BASE_URL` | Anthropic 兼容网关 | 当前任务用 Volcengine Ark coding endpoint |
 | `ANTHROPIC_API_KEY` | 网关鉴权 | **仅** `.env.praxist`；勿写入 yaml / 报告 |
-| `ANTHROPIC_AUTH_TOKEN` | 备选鉴权名 | `praxist_supervisor._praxist_env` 会映射到 `ANTHROPIC_API_KEY` |
+| `ANTHROPIC_AUTH_TOKEN` | 备选鉴权名 | `scripts/sup_provider.py` 的 `_praxist_env` 会映射到 `ANTHROPIC_API_KEY` |
 | `VOLCENGINE_API_KEY` | Volc 直连时 | 若网关另要 Volc key 再填；否则可空 |
 | `FM_TIMESFM_MODEL_PATH` | TimesFM 本地权重根 | `<FM_ROOT>/models/timesfm-2.5-200m-pytorch`（WSL 仓内） |
 | `TIMESFM_WEIGHTS_DIR` | 指纹 / 兼容别名 | 可与上者同路径 |
@@ -48,7 +48,7 @@ set +a
 
 1. `stop` 当前 run
 2. 将 state `llm_provider`（兼写 `llm_route`）设为 `failover`
-3. `_praxist_env(failover)` 用 `FAILOVER_*` / `ANTHROPIC_FAILOVER_*` 覆盖 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY`
+3. `scripts/sup_provider.py` 的 `_praxist_env(failover)` 用 `FAILOVER_*` / `ANTHROPIC_FAILOVER_*` 覆盖 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY`
 4. 以 `FAILOVER_MODEL` / `ANTHROPIC_FAILOVER_MODEL`（默认 `qwen3.7-plus`）带 **`--model` argv** 做 `resume`（或无 run_dir 时 `start`）——**有 failover 时不只 `wait_quota`**
 5. 同时写入 env `PRAXIST_MODEL` / `MODEL`（praxist `start` 也会从 `PRAXIST_MODEL` 解析模型）
 6. 若 failover resume 失败 → `paused_429=true`，等待 Ark reset

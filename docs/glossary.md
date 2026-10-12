@@ -4,7 +4,7 @@
 > 阈值类术语见 [evaluation.md](./evaluation.md)；运行合同见 [runtime_contract.md](./runtime_contract.md)；
 > 数据类见 [data_dictionary.md](./data_dictionary.md)。
 >
-> 最后核实：2026-10-05，commit `ee01b56`。
+> 监督环符号家核实于 2026-10-12，本分支 `3e8756e`。其余术语仍以 2026-10-05 `ee01b56` 的核实为底。归属表在 [praxist.md](./praxist.md)。
 
 ---
 
@@ -12,11 +12,11 @@
 
 | 术语 | 含义 | 载体 |
 |------|------|------|
-| **监督环** | 外层调度器，**零 token**，每 300s 一个 tick 决定「起快环 / 收割 / 跑慢环」 | `scripts/praxist_supervisor.py` |
+| **监督环** | 外层调度器，**零 token**，每 300s 一个 tick 决定「起快环 / 收割 / 跑慢环」 | 入口 `scripts/praxist_supervisor.py`；符号家见 [praxist.md](./praxist.md) |
 | **快环** | peer 生成**机制化假设提案**，**不加载 TimesFM** | `.venv` 内 Praxist 核心 |
 | **慢环** | **唯一验证器**，唯一可写裁决注册表 | `scripts/aligned_slow_loop.py` |
 | **cycle** | 监督环的一次完整循环 = 结束 run + harvest + 慢环抽干 | `supervisor_state.json:cycles_done` |
-| **harvest** | 快环跑完后，监督环扫 `results/**/proposals/*.json` 入队 | `harvest_proposals()` |
+| **harvest** | 快环跑完后，监督环扫 `results/**/proposals/*.json` 入队 | `scripts/sup_harvest.py` 的 `harvest_proposals()` |
 | **Praxist** | 领域无关的**研究控制平面**（0.5.0）；本仓 `task_FM/` 提供科学合同 | `.venv`（**不可改**，升级会丢） |
 
 ---
@@ -91,7 +91,7 @@
 | 旧 `{symbol}_{cov}` | `cf_rsi6` | Stage 3 之前 |
 | 新 `{symbol}_{family}_{fp12}` | `lh_momentum_e5272a12ce30` | `cascade/experiment_fingerprint.py::build_variant_id()`（supervisor 中别名为 `ef`） |
 
-**读历史行不要假设格式统一。** 生成方：`praxist_supervisor.py` 3 个调用点（373 / 1167 / 2436）。
+**读历史行不要假设格式统一。** `build_variant_id()` 的调用在 `scripts/sup_harvest.py`（两处）和 `scripts/sup_family.py`（一处）。`compute_experiment_fingerprint()` 的调用在 `scripts/sup_evidence.py`，与前者不是同一个函数。
 
 ---
 
@@ -102,7 +102,7 @@
 | **信用档 / star** | 0–3 星；**当前无真实 3 星** | `config/prediction_scheme.py::list_by_stars` |
 | **`SYMBOL_DEAD`** | **品种级**停止探索（人手改 JSON） | `config/symbol_status.json` |
 | **`HOLD`** | 品种级暂停 | 同上 |
-| **DEAD 家族** | **变体级**：同族 ≥4 条可确认 DM 裁决且 0 条过门 | `_dead_families(min_ok=4)` |
+| **DEAD 家族** | **变体级**：同族 ≥4 条可确认 DM 裁决且 0 条过门 | `scripts/sup_evidence.py` 的 `_dead_families(min_ok=4)` |
 
 > ⚠️ **品种级 DEAD/HOLD 与变体级 DEAD 是两套状态机，别混名。**
 > ⚠️ **不要硬编码品种清单**——以 `list_by_stars(2)` 为唯一事实源。
@@ -116,7 +116,7 @@
 | **gems / frontier / findings** | Praxist 内部的 session / 探索前沿状态 |
 | **shared_store.db** | Praxist 运行时 sqlite（**不是**面向 peer 的反馈通道） |
 | **`research_memory.jsonl`** | 设计为跨 run 反馈——**当前全部 0 字节，未实现** |
-| **`materialize_known_verdicts`** | 每轮把已知裁决物化成 `known_verdicts.inc.md` 供 peer 读 |
+| **`materialize_known_verdicts`** | `scripts/sup_evidence.py`。每轮把已知裁决物化成 `known_verdicts.inc.md` 供 peer 读 |
 | **proposal 质量门** | 18 道，任一不满足即拒收 |
 
 ---

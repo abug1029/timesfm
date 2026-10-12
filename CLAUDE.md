@@ -42,7 +42,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 
 Peer 提出协变量提案时，监督环用 **TypeSafe System One (Jev)** 做三问预筛（机制可信度 Noul / 新颖度 Choice / 预期效果 Score），但**只做软建议、绝不阻断慢环回测**：
 
-- **调度降权**：`scripts/praxist_supervisor.py:_apply_prescreen_score()` 读 `.prescreen.json` 调整 `_proposal_priority_score`。invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5。**用 net scoring 而非硬阻断**，slow loop 永远跑、可审计。
+- **调度降权**：`scripts/sup_harvest.py` 的 `_apply_prescreen_score()` 读 `.prescreen.json` 调整 `_proposal_priority_score`。invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5。**用 net scoring 而非硬阻断**，slow loop 永远跑、可审计。
 - **质量门禁（Phase 3）**：`scripts/track_prescreen_quality.py` 扫描带 `metadata.prescreen` 的 verdict，验证 Jev 判断与回测一致性。样本 < 50 不产出调度建议，避免小样本误校准。
 - **慢环注入**：`scripts/aligned_slow_loop.py` 把 `.prescreen.json` 读入 `verdict["metadata"]["prescreen"]`（status/skip_suggested/plausibility/novelty/effect_size/note）。
 - **幂等/异步**：supervisor 触发是 fire-and-forget（daemon 线程），已有 success 结果则跳过，不重复付费。
@@ -63,14 +63,14 @@ spec v15 的 §8.3 八项出口条件已全部核验。**新增三个模块是�
 
 装配点（改协变量流程时必须看这两处）：
 - `cascade/features.py::_enforce_horizon_contract()` 挂在 `build_covariate_matrix` 与 `build_combo_covariate_matrix` 两个装配点
-- `scripts/praxist_supervisor.py` 的 family 接线是**薄接线**，逻辑全在 `cascade/research_family.py`，别把状态机搬进监督环
+- `scripts/sup_family.py` 的 family 接线是**薄接线**，逻辑全在 `cascade/research_family.py`，别把状态机搬进监督环
 
 指纹与 fail-loud：
 - `PROTOCOL_FINGERPRINT_VERSION = "protocol_v4"`（定义在 `task_FM/evaluations/fm_eval/evaluator.py` 的 `PROTOCOL_FINGERPRINT_VERSION`；`scripts/restart_readiness_check.py` 有断言守着，不是 v4 会启动失败），七个 spec 组件（CONTEXT_BARS/DAYS、EVAL_WINDOW_BARS、STEP、HORIZON、cutoff、cov_fill、adj_rule+roll_guard）→ 映射表见 `docs/fingerprint_component_mapping.md`
 - `scripts/fingerprint_lib.py` 的**静默回退已退役**（W6.4）：找不到 praxist 二进制会抛异常，不再假装成功
 - 新增统计公式（`detection_threshold_vs_random/_vs_baseline`、`n_required`）带输入守卫，`n_eff=0` / `delta<=0` 直接抛
 
-**已接线**（2026-10-05 勘误，原文写「尚未接线 / 171 条」已过时）：`ef.build_variant_id()` 在 `praxist_supervisor.py` 有 **3 个调用点**（373 / 1167 / 2146）；2339 行是 `ef.compute_experiment_fingerprint()`，**不同函数**，勿混淆。新裁决按 `{symbol}_{family}_{fp12}` 生成 vid。`baseline_dir_acc` / `effective_min` / `metadata` / `prereg_id` 字段均已落盘。
+**已接线**（2026-10-12 随监督环拆分更新）：`ef.build_variant_id()` 有 3 个调用，在 `scripts/sup_harvest.py`（两处）和 `scripts/sup_family.py`（一处）。`ef.compute_experiment_fingerprint()` 的调用在 `scripts/sup_evidence.py`，与前者不是同一个函数。新裁决按 `{symbol}_{family}_{fp12}` 生成 vid。`baseline_dir_acc` / `effective_min` / `metadata` / `prereg_id` 字段均已落盘。
 
 历史 `aligned_verdicts.jsonl` 里混着两种 vid 格式：旧行 `{symbol}_{cov}`（如 `cf_rsi6`），新行 `{symbol}_{family}_{fp12}`（如 `lh_momentum_e5272a12ce30`）。**读历史行时不要假设格式统一**；总行数是活计数，实时 `wc -l`。
 

@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-09-20 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-10-12 -->
 
 # docs
 
@@ -30,7 +30,7 @@
 | **`glossary.md`** | 术语表（每条带代码锚点） |
 | **`tech_stack.md`** | 依赖版本 / 环境 / 目录职责 / 入口命令 |
 | **`data_dictionary.md`** | 品种集合 / 协变量族 / 数据表 / 防穿越 |
-| **`praxist.md`** | 架构概览：Praxist 本体 vs 三环；方案 A 合同 |
+| **`praxist.md`** | 架构概览：Praxist 本体 vs 三环；方案 A 合同；**监督环模块归属的唯一表** |
 | **`runbook_praxist_three_loop.md`** | **运维手册**：启停、429、队列/checkpoint、方案 A 收割、数据资产备份（同仓推 origin）、故障速查 |
 | **`system_design.md`** | 系统设计全景：架构/数据流/协变量/评估/Praxist 三环 + TypeSafe 预筛 |
 | **`run_artifacts.md`** | 运行产物分级 / 真相源隔离 / 清理流程 |
