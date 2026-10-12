@@ -1686,3 +1686,15 @@
 {"ts": "2026-10-08T20:12:25.913691", "action": "batch_fdr_promote", "reason": "batch=batch_9420540e promoted=3", "refs": []}
 {"ts": "2026-10-08T20:12:45.768938", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
 {"ts": "2026-10-08T20:13:05.986595", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-12T21:16:00.972906", "action": "confirmation_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd_volatility_967201660969"]}
+{"ts": "2026-10-12T21:16:00.975407", "action": "confirmation_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr_momentum_d14107e9a961"]}
+{"ts": "2026-10-12T21:16:00.979807", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-10-12T21:21:59.204835", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "redispatch_throttle"]}
+{"ts": "2026-10-12T21:21:59.213682", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "redispatch_throttle"]}
+{"ts": "2026-10-12T21:21:59.511607", "action": "batch_fdr_promote", "reason": "batch=batch_6fe4fc01 promoted=2", "refs": []}
+{"ts": "2026-10-12T21:22:13.269873", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-10-12T21:22:33.326970", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-12T21:28:57.637341", "action": "proposal_scan", "reason": "seen=5925 rejected=5859 backlog=0 reasons={'quality_below_threshold': 188, 'schema_mismatch': 630, 'no_success_delta': 44, 'dedup': 4953, 'cov_not_in_active_pool': 28, 'unparseable_json': 6, 'backlog_dup': 7, 'missing_symbol_or_cov': 3}", "refs": []}
+{"ts": "2026-10-12T21:28:57.640127", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 5245, 'search_tree_busy': 34}", "refs": []}
+{"ts": "2026-10-12T21:28:57.641054", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["ma_calendar_c833a1bcf053", "ma_inventory_9e1ac86e7951", "cf_momentum_72489fd162e6"]}
+{"ts": "2026-10-12T21:28:57.763868", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
