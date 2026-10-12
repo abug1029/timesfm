@@ -1698,3 +1698,68 @@
 {"ts": "2026-10-12T21:28:57.640127", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 5245, 'search_tree_busy': 34}", "refs": []}
 {"ts": "2026-10-12T21:28:57.641054", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["ma_calendar_c833a1bcf053", "ma_inventory_9e1ac86e7951", "cf_momentum_72489fd162e6"]}
 {"ts": "2026-10-12T21:28:57.763868", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-10-13T01:00:24.644696", "action": "confirmation_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd_volatility_967201660969"]}
+{"ts": "2026-10-13T01:00:24.645216", "action": "confirmation_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr_momentum_d14107e9a961"]}
+{"ts": "2026-10-13T01:00:24.648596", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-10-13T01:06:11.079928", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "redispatch_throttle"]}
+{"ts": "2026-10-13T01:06:11.084269", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "redispatch_throttle"]}
+{"ts": "2026-10-13T01:06:11.302050", "action": "batch_fdr_promote", "reason": "batch=batch_8eb58280 promoted=2", "refs": []}
+{"ts": "2026-10-13T01:06:19.847627", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-10-13T01:06:32.231194", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T01:12:23.023502", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T01:18:13.668339", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T01:24:07.725195", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T01:30:02.748431", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T01:35:56.837407", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T01:41:50.796498", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T01:47:47.535410", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T01:53:42.573809", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T01:59:35.715464", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T02:05:28.406636", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T02:11:23.227280", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T02:17:16.437246", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T02:23:10.725655", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T02:29:07.365676", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T02:35:04.055738", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T02:41:00.783555", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T02:46:51.579869", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T02:52:43.995352", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T02:58:37.206370", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T03:04:29.155444", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T03:10:24.850323", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T03:16:22.033060", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T03:22:18.220836", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T03:28:14.231872", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T03:34:10.899569", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T03:40:12.914662", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T03:46:08.560570", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T03:52:06.469921", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T03:58:00.503998", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T04:03:57.234757", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T04:09:52.480967", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T04:15:48.232807", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T04:21:45.492672", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T04:27:41.391777", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T04:33:40.453818", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T04:39:39.783544", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T04:45:38.527831", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T04:51:36.517201", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T04:57:32.243015", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:03:29.954546", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:09:27.113276", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:15:22.035406", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:21:18.685746", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:27:13.814243", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:33:09.817258", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:33:09.839954", "action": "session_unstick", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "f0531749-1caa-4ba2-ae79-e8f50f015ea3_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T05:39:08.545595", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:45:01.869375", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:50:53.349728", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:56:48.165222", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T05:56:48.184419", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "8ee286ca-e0da-43ae-813d-4e5c383cc74b_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T06:02:39.941897", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T06:08:30.201808", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T06:14:20.763938", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T06:20:11.490608", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T06:20:11.511424", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "b377997c-0d05-4f91-b689-a25bdbd4e7cd_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T06:26:34.499397", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}

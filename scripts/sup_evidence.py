@@ -1213,6 +1213,9 @@ def _archive_baseline_before_regen(points_path):
 # 每次启动全品种重生（33 品种 × ~1.5 分钟回测 ≈ 50 分钟）。
 _BASELINE_STALENESS_MAX_H = 168
 
+# 跨 poll 记忆：重生后 cutoff 未推进的品种 → 跳过重生等 daily_update
+_RECENTLY_REGENED_NO_ADVANCE: dict[str, str] = {}  # sym_lower -> prev_cutoff
+
 def _prereg_confirm_from_ts(sym_lower, root):
     """该品种全部预注册行的 confirm_from_ts 列表（读 root 相对 preregistry）。"""
     path = os.path.join(root, "task_FM", "config", "preregistry.jsonl")
@@ -1302,6 +1305,29 @@ def _guard_confirm_from_ts_after_regen(sym_lower, points_path, archive_path, roo
         print(f"[ERROR] ensure_baselines: {sym_lower} 守卫恢复失败: {e}", file=sys.stderr)
     return False
 
+
+def _read_last_cutoff(points_path):
+    """读取基线文件的最后一个 cutoff。
+
+    用于重生后比较 cutoff 是否推进，配合 _RECENTLY_REGENED_NO_ADVANCE 实现
+    重生循环防护（Phase 1 止血）。
+    """
+    last_cutoff = None
+    try:
+        with open(points_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        rec = json.loads(line)
+                        last_cutoff = rec.get("cutoff") or last_cutoff
+                    except json.JSONDecodeError:
+                        pass
+    except OSError:
+        pass
+    return last_cutoff
+
+
 def _regen_baseline_with_archive(sym_lower, points_path, root):
     """步②统一重生入口：归档 → 重生 → 守卫断言（ensure_baselines 重生点共用）。
 
@@ -1320,6 +1346,8 @@ def _regen_baseline_with_archive(sym_lower, points_path, root):
               + ": " + str(e), file=sys.stderr)
         return
     _guard_confirm_from_ts_after_regen(sym_lower, points_path, archive, root)
+    # 重生后读取新的 last_cutoff，供调用方判断是否推进
+    return _read_last_cutoff(points_path)
 
 def ensure_baselines(symbols, root):
     """Check baseline_metrics.json + baseline_points_{symbol}.jsonl validity.
@@ -1355,6 +1383,23 @@ def ensure_baselines(symbols, root):
         try:
             sym_lower = sym.lower()
             points_path = os.path.join(config_dir, gbp.baseline_filename(sym_lower, None))
+
+            # ── Phase 1 止血：重生循环防护 ──
+            # 如果上次重生后 cutoff 未推进且数据未增长，跳过重生等 daily_update
+            # 记录的是上次重生时的数据末端，用于判断 daily_update 是否拉了新数据
+            if sym_lower in _RECENTLY_REGENED_NO_ADVANCE:
+                prev_data_dt = _RECENTLY_REGENED_NO_ADVANCE[sym_lower]
+                current_data_dt = sup_state._latest_data_dt(sym_lower)
+                # 数据末端未变 → 继续跳过
+                # 数据末端变了（daily_update 拉了新数据）→ 允许重生
+                if current_data_dt == prev_data_dt:
+                    print(f"[INFO] ensure_baselines: {sym_lower} 跳过重生（上次重生基线末端未推进，数据未增长，等 daily_update）",
+                          file=sys.stderr)
+                    continue
+                else:
+                    # 数据有变化，清除记录允许重生
+                    _RECENTLY_REGENED_NO_ADVANCE.pop(sym_lower)
+
             met = metrics.get(sym_lower, {})
             if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
                 _regen_baseline_with_archive(sym_lower, points_path, root)
@@ -1388,12 +1433,14 @@ def ensure_baselines(symbols, root):
                           if status == "missing" else "基线首行不可读")
                 print(f"[WARN] ensure_baselines: {sym_lower} {reason} → 重生",
                       file=sys.stderr)
+                _regen_baseline_with_archive(sym_lower, points_path, root)
             elif base_fp != cur_fp:
                 print(
                     f"[WARN] ensure_baselines: {sym_lower} 基线协议指纹不符 "
                     f"({base_fp[:16]}… != {cur_fp[:16]}…) → 重生（跨协议不可比）",
                     file=sys.stderr,
                 )
+                _regen_baseline_with_archive(sym_lower, points_path, root)
             else:
                 # 行数与指纹均合格 → 步② C 拉取日重锚检查
                 reanchor = _baseline_reanchor_reason(sym_lower, last_cutoff, root)
@@ -1401,6 +1448,16 @@ def ensure_baselines(symbols, root):
                     continue
                 print(f"[WARN] ensure_baselines: {sym_lower} {reanchor} → 重生",
                       file=sys.stderr)
-            _regen_baseline_with_archive(sym_lower, points_path, root)
+                # 重生前记录当前 cutoff
+                prev_cutoff_before_regen = last_cutoff
+                new_cutoff = _regen_baseline_with_archive(sym_lower, points_path, root)
+                # 重生后比较 cutoff 是否推进（Phase 1 止血）
+                if new_cutoff is not None and new_cutoff == prev_cutoff_before_regen:
+                    # 记录数据末端（不是 cutoff），用于下次判断 daily_update 是否拉了新数据
+                    current_data_dt = sup_state._latest_data_dt(sym_lower)
+                    _RECENTLY_REGENED_NO_ADVANCE[sym_lower] = current_data_dt
+                    print(f"[WARN] ensure_baselines: {sym_lower} 重生后基线末端未推进 "
+                          f"(停在 {new_cutoff}) → 下次 poll 跳过重生",
+                          file=sys.stderr)
         finally:
             sup_lifecycle._write_heartbeat()

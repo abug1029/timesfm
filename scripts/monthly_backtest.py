@@ -270,10 +270,10 @@ def select_eval_indices(dts, *, eval_start_ts=None, max_points=None):
     eval_start_ts 为空时与旧公式逐点相同：左边界仍是
     max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)。
     有值时左边界改为「收盘时间 >= eval_start_ts 且 idx >= CONTEXT_BARS」的第一根，
-    不再用尾部窗口。右边界仍是 total - HORIZON。然后才 [:max_points]。
+    不再用尾部窗口。右边界是 total - HORIZON - 1（保证最后一个 eval 点有完整 HORIZON 根 target）。然后才 [:max_points]。
     """
     total = len(dts)
-    right = total - HORIZON
+    right = total - HORIZON - 1
     if eval_start_ts is None:
         left = max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)
     else:

@@ -30,7 +30,7 @@ import praxist_supervisor as sv  # noqa: E402
 
 def _legacy_indices(total, max_points=None):
     eval_start = max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)
-    indices = list(range(eval_start, total - HORIZON + 1, STEP))
+    indices = list(range(eval_start, total - HORIZON, STEP))
     if max_points is not None:
         indices = indices[:max_points]
     return indices
@@ -110,7 +110,7 @@ def test_eval_start_ts_drops_prior_bars_and_takes_forward_prefix():
     tail_prefix = _legacy_indices(total, 4)
     assert got != tail_prefix
     assert got[0] < tail_prefix[0]
-    assert max(got) <= total - HORIZON
+    assert max(got) <= total - HORIZON - 1
 
 
 def test_eval_start_before_context_still_starts_at_context_bars():
