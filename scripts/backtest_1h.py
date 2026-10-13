@@ -221,7 +221,7 @@ def summarize_results(all_results: dict) -> str:
         "# 1H 级联预测回测报告",
         "",
         f"**生成日期**: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}",
-        f"**模型**: TimesFM 2.5 级联 (日线→1H XReg)",
+        f"**模型**: TimesFM 3.0 级联 (日线→1H XReg)",
         f"**Context**: 480 bars (1H) + 250 days (日线)",
         f"**Horizon**: 24 bars | **步长**: 24 bars",
         "",
@@ -292,7 +292,7 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # 加载模型 (共享实例)
-    print("\n[1] 加载 TimesFM 2.5 模型...")
+    print("\n[1] 加载 TimesFM 3.0 模型...")
     torch.set_float32_matmul_precision("high")
 
     daily_model = DailyModel()

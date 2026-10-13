@@ -89,7 +89,7 @@ def generate_report(results: list, output_path: Path):
     lines.append("| 字段 | 值 |")
     lines.append("|------|-----|")
     lines.append(f"| 生成日期 | {now} |")
-    lines.append(f"| 模型 | TimesFM 2.5 (200M) |")
+    lines.append(f"| 模型 | TimesFM 3.0 |")
     lines.append(f"| 数据来源 | TqSdk (天勤量化) |")
     symbols_str = " / ".join(f"{r['name']}{r['symbol'].upper()}" for r in results)
     lines.append(f"| 预测品种 | {symbols_str} |")

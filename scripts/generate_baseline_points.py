@@ -162,6 +162,7 @@ def generate(symbol: str, cov: str, root: str):
                     metrics = {}
 
                 metrics[sym_lower] = {
+                    "vid": _proto,
                     "dir_acc": summary["dir_acc"],
                     "endpoint_mape": summary["endpoint_mape"],
                     "n": summary["n"],

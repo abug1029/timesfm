@@ -183,7 +183,7 @@ def main():
         log("全部作业已完成。")
         return
 
-    log("[模型] 加载 TimesFM 2.5 ...")
+    log("[模型] 加载 TimesFM 3.0 ...")
     t0 = time.time()
     torch.set_float32_matmul_precision("high")
     from cascade.daily_model import DailyModel

@@ -22,7 +22,7 @@
 | 面板 topology | `task_FM/.praxist/plugins/panel_topologies/fm_two_peer/`（`cohort_size=2` → exploit+falsifier） |
 | Verdict 注册表 | `task_FM/config/aligned_verdicts.jsonl`（仅慢环可写；新行含 `baseline_dir_acc`/`effective_min`） |
 
-**TimesFM 权重 / RAM：** PRAXIST 用本仓 `models/timesfm-2.5-200m-pytorch/`（`TIMESFM_MODEL_PATH` / `.env.praxist`）。**当前 WSL2 仅 7.7 GiB / 无 GPU / 无 swap**：方案 A（2026-09-08，peer 只写机制化提案、零 TimesFM 加载）后 peer 常驻 ~330MB，TimesFM 仅慢环单实例加载，N=2 舒适；旧盒（15GiB）"并行 peer eval 共载"结论在本机不适用。详见 `docs/host_environment_assessment.md` 顶部迁移表。
+**TimesFM 权重 / RAM：** PRAXIST 用本仓 `models/timesfm-3.0-pytorch/`（`TIMESFM_MODEL_PATH` / `.env.praxist`）。**当前 WSL2 仅 7.7 GiB / 无 GPU / 无 swap**：方案 A（2026-09-08，peer 只写机制化提案、零 TimesFM 加载）后 peer 常驻 ~330MB，TimesFM 仅慢环单实例加载，N=2 舒适；旧盒（15GiB）"并行 peer eval 共载"结论在本机不适用。详见 `docs/host_environment_assessment.md` 顶部迁移表。
 
 
 **内存硬顶（2026-09-04 总管 retune）：** 不以紧 `RLIMIT_AS` 为主（TimesFM safetensors mmap 冲突）。主路径：① 全局 flock ≤**2** + `MemAvailable < 2GiB` 拒启；② RSS shed（单进程 RSS>~3.5GiB 或 avail<2GiB → TERM，日志 `data/cache/capacity_actions.log`）；③ cgroup 时优先 `memory.max`/`memory.high`。强制挂钩：`scripts/praxist_mem_guard_hook.py` patch `protected_pids.launch_command`（`.pth` 安装见 `scripts/install_praxist_mem_guard_hook.py`），peer Bash/batch_runner/fm_eval 不靠 prompt。§4b 证据：N=4 ≈**8.53 GiB** 不可持续；N=2 舒适。e2e round complete（fast+harvest+slow）。详见 `docs/host_environment_assessment.md` Hard caps。

@@ -141,7 +141,7 @@ def _resume_mode_conflict(observed_modes, ablation_mode):
 def _weight_shards(weights_dir):
     import glob as _glob
     base = weights_dir or os.environ.get("TIMESFM_WEIGHTS_DIR") or os.path.expanduser(
-        "~/.cache/huggingface/hub/models--google--timesfm-2.5-200m-pytorch/snapshots")
+        "~/.cache/huggingface/hub/models--google--timesfm-3.0-pytorch/snapshots")
     snaps = sorted(_glob.glob(os.path.join(base, "*", "*.safetensors")))
     if not snaps:
         snaps = sorted(_glob.glob(os.path.join(base, "*.safetensors")))
@@ -863,7 +863,7 @@ def generate_report(summary_list, categories, comparison):
         f"# 1H 级联预测月度回测报告 — {now.strftime('%Y年%m月')}",
         "",
         f"**回测日期**: {now.strftime('%Y-%m-%d')}",
-        f"**模型**: TimesFM 2.5 级联 (日线→1H XReg)",
+        f"**模型**: TimesFM 3.0 级联 (日线→1H XReg)",
         f"**参数**: context={CONTEXT_BARS}bars, horizon={HORIZON}bars, step={STEP}bars, daily={CONTEXT_DAYS}d→{HORIZON_DAYS}d",
         "",
         "---",
@@ -1124,7 +1124,7 @@ def main():
         print(f"{'=' * 60}")
 
     # 加载模型
-    print("\n[1/4] 加载 TimesFM 2.5 模型...")
+    print("\n[1/4] 加载 TimesFM 3.0 模型...")
     torch.set_float32_matmul_precision("high")
     daily_model = DailyModel()
     hourly_model = HourlyModel(shared_model=daily_model.model)

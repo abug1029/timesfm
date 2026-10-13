@@ -13,7 +13,7 @@
 
 > **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
 > | 行情库 | **本仓 `db/` 为真实目录**（29 个 `futures_<sym>.db`），不再是 `/workspace` symlink；`.env` 为真实文件 |
-> | 权重 | 本仓 `models/timesfm-2.5-200m-pytorch/` |
+> | 权重 | 本仓 `models/timesfm-3.0-pytorch/` |
 > | Praxist CLI | 本仓 `.venv/bin/praxist` |
 >
 > 旧盒的 N=4≈8.53GiB 结论在 7.7GiB WSL 上更不可持续；flock≤2 / `MemAvailable<2GiB` 拒启的硬顶继续有效。旧 `/workspace` 硬编码残留会报 `assets_archive_error: Permission denied: '/workspace'`（已 catch，非阻塞，待清理）。
@@ -75,7 +75,7 @@
 | 指标 | 结果 |
 |------|------|
 | doctor | **ok**（无 fail）；warn：`praxist_console` 不在 PATH、`PRAXIST_MODEL` provider default、`config_dir`/`registry_dir` 默认路径、`codex_skills` 0/10 |
-| 独立模型路径 | `/workspace/repos/timesfm-abug1029/models/timesfm-2.5-200m-pytorch`（`TIMESFM_MODEL_PATH` from `.env.praxist`） |
+| 独立模型路径 | `/workspace/repos/timesfm-abug1029/models/timesfm-3.0-pytorch`（`TIMESFM_MODEL_PATH` from `.env.praxist`） |
 | 单次评估 RSS 峰值 | **≈ 2.11 GiB**（max ≈ 2161 MiB；`resource.getrusage(RUSAGE_CHILDREN).ru_maxrss`） |
 | 单次评估耗时 | **≈ 6.6–6.7 s** wall（单品种 `fu`，`--no-auto-collect`，串行冷/热加载各次独立进程） |
 | 连续 N 次是否稳定 | **是**（N=3，exit 0，无 OOM；与「预测」岗无共驻冲突） |

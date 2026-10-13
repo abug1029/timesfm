@@ -20,7 +20,7 @@ from cascade.features import build_covariate_matrix
 
 
 def load_model():
-    print("[1/4] 加载 TimesFM 2.5 模型...")
+    print("[1/4] 加载 TimesFM 3.0 模型...")
     torch.set_float32_matmul_precision("high")
     model = timesfm3.TimesFM3Forecaster.from_pretrained(
         "google/timesfm-3.0-pytorch"

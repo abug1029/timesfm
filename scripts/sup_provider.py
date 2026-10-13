@@ -70,7 +70,7 @@ def _praxist_env(route: str | None = None, st=None):
         if key:
             env["ANTHROPIC_API_KEY"] = key
             env["ANTHROPIC_AUTH_TOKEN"] = key
-        model = _env_first("FAILOVER_MODEL", "ANTHROPIC_FAILOVER_MODEL") or "qwen3.7-plus"
+        model = _env_first("FAILOVER_MODEL", "ANTHROPIC_FAILOVER_MODEL") or "kimi-k2.5"
         env["PRAXIST_FAILOVER_MODEL"] = model
         env["PRAXIST_MODEL"] = model  # praxist start resolves --model from PRAXIST_MODEL
         env["MODEL"] = model
@@ -87,7 +87,7 @@ def _praxist_env(route: str | None = None, st=None):
         if p_key:
             env["ANTHROPIC_API_KEY"] = p_key
             env["ANTHROPIC_AUTH_TOKEN"] = p_key
-        model = _env_first("PRIMARY_MODEL") or "claude-opus-4-7"
+        model = _env_first("PRIMARY_MODEL") or "kimi-k2.5"
         env["PRAXIST_MODEL"] = model
         env["MODEL"] = model
     # Claude Code prefers ANTHROPIC_AUTH_TOKEN over API_KEY. After route overlay,
@@ -109,7 +109,7 @@ def _praxist_env(route: str | None = None, st=None):
 
 
 def _failover_model_name() -> str:
-    return _env_first("FAILOVER_MODEL", "ANTHROPIC_FAILOVER_MODEL") or "qwen3.7-plus"
+    return _env_first("FAILOVER_MODEL", "ANTHROPIC_FAILOVER_MODEL") or "kimi-k2.5"
 
 
 def _recorded_run_model(run_dir) -> str | None:
@@ -141,11 +141,11 @@ def _failover_can_resume_same_run(run_dir) -> bool:
 
 
 def _model_argv(route: str | None = None, st=None) -> list:
-    """--model override for start/resume (primary: claude-opus-4-7; failover: qwen3.7-plus)."""
+    """--model override for start/resume (primary: kimi-k2.5; failover: kimi-k2.5)."""
     route = (route or _llm_provider(st)).strip().lower()
     if route == "failover":
         return ["--model", _failover_model_name()]
-    model = _env_first("PRIMARY_MODEL") or "claude-opus-4-7"
+    model = _env_first("PRIMARY_MODEL") or "kimi-k2.5"
     return ["--model", model]
 
 

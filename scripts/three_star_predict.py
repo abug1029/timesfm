@@ -202,7 +202,7 @@ def run_all_schemes(horizon: int = 24, collect: bool = False, auto_collect: bool
 
     # ── 阶段 2: 预加载共享模型 + 逐品种预测 ──
     from cascade.daily_model import DailyModel
-    print(f"\n  加载 TimesFM 2.5 模型 (共享)...")
+    print(f"\n  加载 TimesFM 3.0 模型 (共享)...")
     bootstrap = DailyModel()
     shared_model = bootstrap.model
     print(f"  模型已加载")
@@ -288,7 +288,7 @@ def _build_summary_report(results: dict, timestamp: str) -> str:
         f"| 字段 | 值 |",
         f"|------|-----|",
         f"| 生成日期 | {now} |",
-        f"| 模型 | TimesFM 2.5 级联 (日线→1H XReg) |",
+        f"| 模型 | TimesFM 3.0 级联 (日线→1H XReg) |",
         f"| 固化方案版本 | 2026-06 |",
         f"| 三星品种 | SS (不锈钢), UR (尿素), SR (白糖) |",
         f"",

@@ -882,7 +882,7 @@ def main() -> int:
             refresh_intraday_1h(s)
 
     # 加载模型一次（DailyModel() 内部 from_pretrained）
-    print("[Copilot] 加载 TimesFM 2.5 ...")
+    print("[Copilot] 加载 TimesFM 3.0 ...")
     from cascade.daily_model import DailyModel
 
     bootstrap = DailyModel()

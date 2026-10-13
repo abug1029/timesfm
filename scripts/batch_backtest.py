@@ -193,7 +193,7 @@ def generate_report(all_results, summary, categories):
         "# 1H 级联预测 — 多品种批量回测报告",
         "",
         f"**生成日期**: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}",
-        f"**模型**: TimesFM 2.5 级联 (日线→1H XReg)",
+        f"**模型**: TimesFM 3.0 级联 (日线→1H XReg)",
         f"**Context**: 480 bars | **Horizon**: 24 bars | **Step**: 24 bars",
         "",
         "---",

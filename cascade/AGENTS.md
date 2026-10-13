@@ -67,6 +67,6 @@ python -m unittest tests.test_vol_scaled_mae tests.test_neutral_ab_report tests.
 
 ### External
 
-- TimesFM 2.5、PyTorch、pandas/numpy；LightGBM 仅 A2 归档路径，生产入口不依赖
+- TimesFM 3.0、PyTorch、pandas/numpy；LightGBM 仅 A2 归档路径，生产入口不依赖
 
 <!-- MANUAL: -->

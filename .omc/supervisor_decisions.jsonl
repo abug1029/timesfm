@@ -1763,3 +1763,49 @@
 {"ts": "2026-10-13T06:20:11.490608", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
 {"ts": "2026-10-13T06:20:11.511424", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "b377997c-0d05-4f91-b689-a25bdbd4e7cd_ops_nudge_wake_peers.json", ""]}
 {"ts": "2026-10-13T06:26:34.499397", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T06:53:36.500835", "action": "confirmation_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd_volatility_967201660969"]}
+{"ts": "2026-10-13T06:53:36.501347", "action": "confirmation_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr_momentum_d14107e9a961"]}
+{"ts": "2026-10-13T06:53:36.506455", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-10-13T06:53:46.654386", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "6c037748-1852-4fd3-8427-a20fcf881ef6_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T06:59:24.080113", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "redispatch_throttle"]}
+{"ts": "2026-10-13T06:59:24.082354", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "redispatch_throttle"]}
+{"ts": "2026-10-13T06:59:24.295107", "action": "batch_fdr_promote", "reason": "batch=batch_4de1f93b promoted=2", "refs": []}
+{"ts": "2026-10-13T06:59:32.911479", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-10-13T06:59:46.728553", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T07:05:35.948511", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T07:11:26.955366", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T07:17:20.248079", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T07:17:20.270298", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "d58a0122-0a09-4bfd-a30d-3cb1543b8bfb_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T07:56:03.903013", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T07:56:03.924193", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "cc69a752-5d62-4e02-9070-cc75ffea1c14_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T08:02:23.800065", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T08:08:49.254356", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T08:15:06.180309", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T08:21:23.918512", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T08:21:23.941544", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "59575dfb-c60f-42bc-9f49-d0a2299c6afe_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T08:27:36.639972", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T08:33:47.508142", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T08:39:47.792528", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T08:46:23.365602", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T08:46:23.395618", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "af211d7e-1aea-4b28-b0ac-e533c3d3e99b_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T08:52:49.076327", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T08:58:41.146239", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T09:04:34.247040", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T09:10:35.631256", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T09:10:35.653291", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "31560d1d-3940-4c47-9c55-258d30ae01d3_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T09:16:27.267318", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T09:22:36.432018", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T09:29:41.497138", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T09:35:40.186114", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T09:35:40.206188", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "3275c4d7-ee64-42fa-aaf2-79cf224c1879_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T09:41:56.480152", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T09:48:09.035615", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-13T13:26:37.539006", "action": "confirmation_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd_volatility_5a33a734dae5"]}
+{"ts": "2026-10-13T13:26:37.547808", "action": "confirmation_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr_momentum_60a4be636464"]}
+{"ts": "2026-10-13T13:26:37.555834", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-10-13T13:27:01.834052", "action": "session_unstick_escalate", "reason": "nudge_written", "refs": ["/home/abug/timesfm/task_FM/experiments/run_2026-10-12_21-22-24_primary_task_FM", "a98f48ed-cfbe-4ff3-af9d-f8c0fdacc6d8_ops_nudge_wake_peers.json", ""]}
+{"ts": "2026-10-13T13:32:42.435613", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "redispatch_throttle"]}
+{"ts": "2026-10-13T13:32:42.441785", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "redispatch_throttle"]}
+{"ts": "2026-10-13T13:32:42.710081", "action": "batch_fdr_promote", "reason": "batch=batch_b1973640 promoted=2", "refs": []}
+{"ts": "2026-10-13T13:32:52.449250", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-10-13T13:33:11.608819", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}

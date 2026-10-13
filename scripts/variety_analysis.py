@@ -475,7 +475,7 @@ def main():
             from cascade.daily_model import DailyModel
             bootstrap = DailyModel()
             shared_model = bootstrap.model
-            print(f"  KB: {len(kb.get('symbols', {}))} 品种 | TimesFM 2.5 已加载")
+            print(f"  KB: {len(kb.get('symbols', {}))} 品种 | TimesFM 3.0 已加载")
         except Exception as e:
             print(f"  ⚠️ Copilot 加载失败，降级为纯技术面: {e}")
             use_predict = False

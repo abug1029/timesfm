@@ -344,7 +344,7 @@ def _build_report(symbol, daily_result, hourly_result,
         f"| 字段 | 值 |",
         f"|------|-----|",
         f"| 生成日期 | {now} |",
-        f"| 模型 | TimesFM 2.5 级联 (日线→1H XReg) |",
+        f"| 模型 | TimesFM 3.0 级联 (日线→1H XReg) |",
         f"| 预测时域 | {horizon} 小时 |",
         f"",
     ])
@@ -889,7 +889,7 @@ def main():
     _log_progress(f"START {ts} symbols={','.join(s.upper() for s in symbols)}")
 
     # 预加载模型 (共享实例，避免重复加载 ~800MB)
-    print(f"\n  加载 TimesFM 2.5 模型 (共享)...")
+    print(f"\n  加载 TimesFM 3.0 模型 (共享)...")
     from cascade.daily_model import DailyModel
     bootstrap = DailyModel()
     shared_model = bootstrap.model

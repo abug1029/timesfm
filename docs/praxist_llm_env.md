@@ -23,7 +23,7 @@ set +a
 | `ANTHROPIC_API_KEY` | 网关鉴权 | **仅** `.env.praxist`；勿写入 yaml / 报告 |
 | `ANTHROPIC_AUTH_TOKEN` | 备选鉴权名 | `scripts/sup_provider.py` 的 `_praxist_env` 会映射到 `ANTHROPIC_API_KEY` |
 | `VOLCENGINE_API_KEY` | Volc 直连时 | 若网关另要 Volc key 再填；否则可空 |
-| `FM_TIMESFM_MODEL_PATH` | TimesFM 本地权重根 | `<FM_ROOT>/models/timesfm-2.5-200m-pytorch`（WSL 仓内） |
+| `FM_TIMESFM_MODEL_PATH` | TimesFM 本地权重根 | `<FM_ROOT>/models/timesfm-3.0-pytorch`（WSL 仓内） |
 | `TIMESFM_WEIGHTS_DIR` | 指纹 / 兼容别名 | 可与上者同路径 |
 | `PRAXIST_BIN` | praxist 可执行文件 | supervisor 默认解析本仓 `.venv/bin/praxist` |
 | `CUDA_VISIBLE_DEVICES` | 设备 | task.yaml 默认 `""`（CPU） |
@@ -39,7 +39,7 @@ set +a
 ## 隔离说明
 
 - **预测岗** `timesFM_fu`：自有权重 / HF cache。
-- **PRAXIST / 本仓**：必须用 `models/timesfm-2.5-200m-pytorch` 本地副本；`get_timesfm_model_path()` 优先 env 与本地目录，避免 runtime 解析 bare HF id 到共享 cache。
+- **PRAXIST / 本仓**：必须用 `models/timesfm-3.0-pytorch` 本地副本；`get_timesfm_model_path()` 优先 env 与本地目录，避免 runtime 解析 bare HF id 到共享 cache。
 
 
 ## 429 Failover（DashScope）
