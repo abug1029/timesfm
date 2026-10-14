@@ -4,6 +4,8 @@ import logging
 import os
 import shutil
 import sys
+import fcntl
+import atexit
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -1235,11 +1237,13 @@ def _norm_bar_dt(value):
         text = text[:plus].strip()
     if "." in text:
         text = text.split(".", 1)[0].strip()
-    try:
-        return datetime.strptime(text, "%Y-%m-%d %H:%M:%S").strftime(
-            "%Y-%m-%d %H:%M:%S")
-    except ValueError:
-        return None
+    # 尝试多种时间格式（有无秒均可）
+    for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"]:
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+    return None
 
 
 def _canonical_data_end(value):
@@ -1356,10 +1360,15 @@ def _baseline_reanchor_reason(sym_lower, last_cutoff, root):
             return (f"基线末端 {last_cutoff} 未覆盖确认窗起点 {ts}"
                     f"（数据已到位 → 拉取日重锚）")
     try:
-        lag_h = ((datetime.strptime(data_dt, "%Y-%m-%d %H:%M:%S")
-                  - datetime.strptime(last_cutoff, "%Y-%m-%d %H:%M:%S"))
+        # 支持多种时间格式（有无秒均可）
+        data_dt_norm = _norm_bar_dt(data_dt)
+        last_cutoff_norm = _norm_bar_dt(last_cutoff)
+        if data_dt_norm is None or last_cutoff_norm is None:
+            return None
+        lag_h = ((datetime.strptime(data_dt_norm, "%Y-%m-%d %H:%M:%S")
+                  - datetime.strptime(last_cutoff_norm, "%Y-%m-%d %H:%M:%S"))
                  .total_seconds() / 3600.0)
-    except ValueError:
+    except (ValueError, TypeError):
         return None
     if lag_h > _BASELINE_STALENESS_MAX_H:
         return (f"基线末端落后数据末端 {lag_h:.0f}h "
@@ -1433,6 +1442,40 @@ def _regen_baseline_with_archive(sym_lower, points_path, root):
     _guard_confirm_from_ts_after_regen(sym_lower, points_path, archive, root)
     return _read_last_cutoff(points_path)
 
+# ══════════════════════════════════════════════════
+#  ensure_baselines 全局互斥锁
+# ══════════════════════════════════════════════════
+
+ENSURE_LOCK_FILE = "/tmp/ensure_baselines.lock"
+_ensure_lock_fp = None
+
+def _acquire_ensure_lock():
+    """确保只有一个 ensure_baselines 实例运行"""
+    global _ensure_lock_fp
+
+    # 检查残留锁
+    if os.path.exists(ENSURE_LOCK_FILE):
+        try:
+            with open(ENSURE_LOCK_FILE) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, 0)
+        except (ProcessLookupError, ValueError, PermissionError):
+            os.remove(ENSURE_LOCK_FILE)
+
+    try:
+        _ensure_lock_fp = open(ENSURE_LOCK_FILE, "w")
+        fcntl.flock(_ensure_lock_fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _ensure_lock_fp.write(str(os.getpid()))
+        _ensure_lock_fp.flush()
+
+        atexit.register(lambda: fcntl.flock(_ensure_lock_fp.fileno(), fcntl.LOCK_UN))
+        return True
+    except IOError:
+        raise RuntimeError(
+            "另一个 ensure_baselines 进程正在运行，禁止并发启动。\n"
+            f"锁文件: {ENSURE_LOCK_FILE}"
+        )
+
 def ensure_baselines(symbols, root):
     """Check baseline_metrics.json + baseline_points_{symbol}.jsonl validity.
 
@@ -1447,6 +1490,8 @@ def ensure_baselines(symbols, root):
       导致其与新生基线跨协议不可比 —— 而 comparable() 会因此拒绝配对，
       表现为 dm_status=protocol_mismatch，难以归因。现补上指纹校验。
     """
+    _acquire_ensure_lock()
+
     try:
         import generate_baseline_points as gbp
     except ImportError:
@@ -1520,13 +1565,21 @@ def ensure_baselines(symbols, root):
                       file=sys.stderr)
                 prev_cutoff = last_cutoff
                 new_cutoff = _regen_baseline_with_archive(sym_lower, points_path, root)
+                # Circuit breaker: 检测推进幅度（< 7 天视为停滞），而不是是否推进
                 if (new_cutoff is not None
-                        and _norm_bar_dt(new_cutoff) is not None
-                        and _norm_bar_dt(new_cutoff) == _norm_bar_dt(prev_cutoff)):
-                    _remember_stall(sym_lower, root, sup_state._latest_data_dt(sym_lower))
-                    if _RECENTLY_REGENED_NO_ADVANCE.get(sym_lower):
-                        print(f"[WARN] ensure_baselines: {sym_lower} 重生后基线末端未推进 "
-                              f"(停在 {new_cutoff}) → 下次启动数据末端未变则跳过重生",
+                    and prev_cutoff is not None
+                    and _norm_bar_dt(new_cutoff) is not None
+                    and _norm_bar_dt(prev_cutoff) is not None):
+                    new_str = _norm_bar_dt(new_cutoff)
+                    prev_str = _norm_bar_dt(prev_cutoff)
+                    new_dt = datetime.strptime(new_str, "%Y-%m-%d %H:%M:%S")
+                    prev_dt = datetime.strptime(prev_str, "%Y-%m-%d %H:%M:%S")
+                    advance_seconds = (new_dt - prev_dt).total_seconds()
+                    advance_days = advance_seconds / 86400
+                    if advance_days < 7:  # 推进 < 7 天视为停滞
+                        _remember_stall(sym_lower, root, sup_state._latest_data_dt(sym_lower))
+                        print(f"[WARN] ensure_baselines: {sym_lower} 重生后基线末端推进太慢 "
+                              f"({advance_days:.1f} 天 < 7 天) → 记录停滞，下次启动数据末端未变则跳过重生",
                               file=sys.stderr)
                 continue
             _regen_baseline_with_archive(sym_lower, points_path, root)

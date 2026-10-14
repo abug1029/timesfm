@@ -53,13 +53,32 @@ def generate(symbol: str, cov: str, root: str):
     config_dir = root_path / "task_FM" / "config"
     config_dir.mkdir(parents=True, exist_ok=True)
 
-    # 同品种 .lock 排他
+    # 同品种 .lock 排他（等待最多 1 小时）
     lock_file = config_dir / f".{sym_lower}.lock"
     lock_fp = open(lock_file, "w")
-    try:
-        fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except IOError:
-        raise RuntimeError(f"品种 {sym_upper} 正在生成中（锁冲突）")
+
+    import time
+    max_wait = 3600  # 秒
+    start_time = time.time()
+    last_print_time = 0
+
+    while True:
+        try:
+            fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break  # 成功获取锁
+        except IOError:
+            elapsed = time.time() - start_time
+            if elapsed >= max_wait:
+                lock_fp.close()
+                raise RuntimeError(
+                    f"品种 {sym_upper} 正在生成中（锁冲突，已等待 {int(elapsed)}s）\n"
+                    f"建议：检查锁文件 {lock_file} 是否残留，或杀僵死持锁进程"
+                )
+            # 每 60 秒打印一次（避免连打）
+            if elapsed - last_print_time >= 60:
+                print(f"INFO: 等待品种 {sym_upper} 锁释放... ({int(elapsed)}s/{max_wait}s)")
+                last_print_time = elapsed
+            time.sleep(5)
 
     try:
         print(f"[Start] Baseline generation for {sym_upper} with cov={cov}")

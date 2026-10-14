@@ -163,9 +163,14 @@ def _create_tables(conn: sqlite3.Connection):
     _migrate(conn)
 
 
-def init_db(db_path: Path) -> sqlite3.Connection:
-    """初始化数据库，创建所有表"""
-    conn = sqlite3.connect(str(db_path))
+def init_db(db_path: Path, timeout: float = 30.0) -> sqlite3.Connection:
+    """初始化数据库，创建所有表。
+
+    Args:
+        db_path: 数据库文件路径
+        timeout: SQLite 锁等待超时（秒），默认 30s 避免偶发锁冲突立即失败
+    """
+    conn = sqlite3.connect(str(db_path), timeout=timeout)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     _create_tables(conn)

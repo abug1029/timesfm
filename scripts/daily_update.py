@@ -11,6 +11,9 @@ from datetime import datetime
 import sys
 import argparse
 import warnings
+import os
+import fcntl
+import atexit
 warnings.filterwarnings("ignore")
 
 import pandas as pd
@@ -24,6 +27,61 @@ from data.tqsdk_fetcher import UnifiedFetcher
 from data.indicator_calculator import IndicatorCalculator
 from data.data_store import DataStore
 from data.main_chain import MainChainBuilder
+
+
+# ══════════════════════════════════════════════════
+#  进程互斥锁（防止并发运行）
+# ══════════════════════════════════════════════════
+
+LOCK_FILE = "/tmp/daily_update.lock"
+_lock_fp = None
+
+def _check_stale_lock():
+    """检查锁文件是否残留（进程已死但锁文件还在）"""
+    if not os.path.exists(LOCK_FILE):
+        return False
+    try:
+        with open(LOCK_FILE) as f:
+            pid = int(f.read().strip())
+        # 检查进程是否存活
+        os.kill(pid, 0)
+        return False  # 进程存活，锁有效
+    except (ProcessLookupError, ValueError, PermissionError):
+        # 进程已死或 PID 无效，锁残留
+        return True
+
+def acquire_process_lock():
+    """确保只有一个 daily_update.py 实例运行"""
+    global _lock_fp
+
+    # 先检查残留锁
+    if _check_stale_lock():
+        print(f"WARNING: 检测到残留锁文件，清理: {LOCK_FILE}")
+        os.remove(LOCK_FILE)
+
+    try:
+        _lock_fp = open(LOCK_FILE, "w")
+        fcntl.flock(_lock_fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_fp.write(str(os.getpid()))
+        _lock_fp.flush()
+
+        # 注册退出清理
+        def cleanup():
+            global _lock_fp
+            if _lock_fp:
+                try:
+                    fcntl.flock(_lock_fp.fileno(), fcntl.LOCK_UN)
+                    _lock_fp.close()
+                except:
+                    pass
+                # 不删除锁文件，避免竞态；下次启动会检查 PID
+
+        atexit.register(cleanup)
+        return True
+    except IOError:
+        print("ERROR: 另一个 daily_update.py 进程正在运行")
+        print(f"请等待其完成，或检查锁文件: {LOCK_FILE}")
+        sys.exit(1)
 
 
 # XReg 指标因子列表 (与 predict.py 保持一致)
@@ -265,6 +323,8 @@ def update_symbol(symbol, fetcher, calculator, full=False):
 
 
 def main():
+    acquire_process_lock()
+
     parser = argparse.ArgumentParser(description="每日增量更新")
     parser.add_argument("symbols", nargs="*", help="品种代码")
     parser.add_argument("--all", action="store_true", help="所有已采集品种")

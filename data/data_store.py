@@ -231,6 +231,44 @@ class DataStore:
         self.close()
         return False
 
+    def _execute_write_with_retry(self, sql: str, params: tuple = (), max_retries: int = 3):
+        """带重试的写入操作，应对偶发 database is locked
+
+        Args:
+            sql: SQL 语句
+            params: SQL 参数
+            max_retries: 最大重试次数，默认 3 次（指数退避：1s, 2s, 4s）
+        """
+        import time
+        for attempt in range(max_retries):
+            try:
+                self.conn.execute(sql, params)
+                self.conn.commit()
+                return
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # 1s, 2s, 4s
+                    logger.warning(f"数据库锁定，{wait_time}s 后重试 ({attempt+1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                raise
+
+    def _executemany_write_with_retry(self, sql: str, rows: list, max_retries: int = 3):
+        """带重试的批量写入操作"""
+        import time
+        for attempt in range(max_retries):
+            try:
+                self.conn.executemany(sql, rows)
+                self.conn.commit()
+                return
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.warning(f"数据库锁定，{wait_time}s 后重试 ({attempt+1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                raise
+
     # ══════════════════════════════════════════════════
     #  写入
     # ══════════════════════════════════════════════════
@@ -329,8 +367,7 @@ class DataStore:
             rows.append(tuple(_clean_val(row.get(c)) for c in cols))
 
         try:
-            self.conn.executemany(sql, rows)
-            self.conn.commit()
+            self._executemany_write_with_retry(sql, rows)
             stored = len(rows)
         except Exception as e:
             logger.error(f"store_main_continuous failed: {e}")
@@ -741,11 +778,10 @@ class DataStore:
 
     def _update_meta(self, key: str, value: str):
         try:
-            self.conn.execute(
+            self._execute_write_with_retry(
                 "INSERT OR REPLACE INTO metadata (meta_key, meta_value) VALUES (?, ?)",
                 (key, value)
             )
-            self.conn.commit()
         except Exception as e:
             logger.warning(f"_update_meta failed: {e}")
 
