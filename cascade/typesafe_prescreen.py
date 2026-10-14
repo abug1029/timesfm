@@ -275,45 +275,83 @@ def _build_state(
     }
 
 
-def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 5.0) -> Any:
-    """调用 TypeSafe SDK judge（3 问并行）。"""
-    from typesafe_sdk import Choice, Noul, Score, TypeSafeClient
+def _get_laya_base_url() -> str:
+    """获取 Laya 服务 URL。优先使用环境变量，默认 Tailscale 地址。"""
+    return _env_nonempty("LAYA_BASE_URL") or "http://100.96.19.116:8000"
 
-    client = TypeSafeClient(api_key=api_key, timeout=timeout)
-    return client.system_one(
-        model="jev-latest",
-        state=state,
-        questions={
-            "mechanism_plausibility": Noul(
-                instructions=(
+
+def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -> Any:
+    """调用 Laya 服务（替代 TypeSafe SDK）。Laya 使用相同的 /v1/systemone 协议。"""
+    import requests
+
+    base_url = _get_laya_base_url()
+    url = f"{base_url}/v1/systemone"
+
+    # 构建请求 payload（兼容 TypeSafe SDK 格式）
+    payload = {
+        "model": "jev-latest",
+        "state": state,
+        "questions": {
+            "mechanism_plausibility": {
+                "type": "noul",
+                "instructions": (
                     f"基于 {state['symbol']} 的品种特征（{state['sector']}板块，"
                     f"{state['contract_details']}），该协变量提案的机制解释是否合理"
                     f"且有经济逻辑支撑？"
                 ),
-            ),
-            "novelty_vs_redundancy": Choice(
-                instructions=(
+            },
+            "novelty_vs_redundancy": {
+                "type": "choice",
+                "instructions": (
                     f"该提案与 {state['symbol']} 已有协变量的关系"
                     f"（见 covariate_menu 和 recent_verdicts_summary）"
                 ),
-                criteria={
+                "criteria": {
                     "novel": "全新机制，与现有协变量正交",
                     "extension": "已知机制的新参数或新品种适配",
                     "redundant": "与现有协变量高度重叠（机制或数值相关性>0.8）",
                     "invalid": "机制不存在或逻辑错误",
                 },
-            ),
-            "expected_effect_size": Score(
-                instructions=f"预期该协变量对 {state['symbol']} 预测质量的信息量贡献",
-                criteria=[
+            },
+            "expected_effect_size": {
+                "type": "score",
+                "instructions": f"预期该协变量对 {state['symbol']} 预测质量的信息量贡献",
+                "criteria": [
                     "无新增信息（纯噪声或已完全捕获）",
                     "微弱新增信息（与现有协变量高度相关，边际贡献有限）",
                     "中等新增信息（独立信号维度，可能有交互效应）",
                     "强新增信息（正交维度，高预期独立贡献）",
                 ],
-            ),
+            },
         },
-    )
+    }
+
+    # Laya 不需要 API key，但保留 header 以兼容
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+    response.raise_for_status()
+
+    result_data = response.json()
+
+    # 将 Laya 响应转换为兼容 TypeSafe SDK 的对象
+    class MockAnswer:
+        def __init__(self, data):
+            self.noul = data.get("noul")
+            self.choice = data.get("choice")
+            self.score = data.get("score")
+            self.confidence = data.get("confidence")
+
+    class MockResult:
+        def __init__(self, data):
+            self.answers = {
+                qid: MockAnswer(ans_data)
+                for qid, ans_data in data.get("answers", {}).items()
+            }
+
+    return MockResult(result_data)
 
 
 # ── 主入口 ──────────────────────────────────────────
