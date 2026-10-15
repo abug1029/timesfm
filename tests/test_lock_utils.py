@@ -33,17 +33,38 @@ def test_symbol_lock_timeout():
 
 
 def test_symbol_lock_concurrent():
-    """跨进程并发竞争"""
-    with SymbolLock("test_concurrent"):
+    """跨进程并发竞争与交接"""
+    lock_file = Path("task_FM/config/.fg.lock")
+    
+    # 1. 主进程获取锁
+    with SymbolLock("fg"):
+        assert lock_file.exists()
+        
+        # 2. 子进程尝试获取，应该失败
         result = subprocess.run(
             ["python3", "-c", 
              "from scripts.lock_utils import SymbolLock; "
-             "SymbolLock('test_concurrent', timeout=1, poll_interval=0.1).__enter__()"],
+             "SymbolLock('fg', timeout=1, poll_interval=0.1).__enter__()"],
             capture_output=True, text=True,
             cwd="/home/abug/timesfm"
         )
-        assert result.returncode != 0, "子进程应失败"
+        assert result.returncode != 0
         assert "锁冲突" in result.stderr
+    
+    # 3. 主进程释放锁后，锁文件应该被清理
+    assert not lock_file.exists()
+    
+    # 4. 新进程可以成功获取锁
+    result = subprocess.run(
+        ["python3", "-c",
+         "from scripts.lock_utils import SymbolLock; "
+         "lock = SymbolLock('fg'); lock.__enter__(); "
+         "print('SUCCESS'); lock.__exit__(None, None, None)"],
+        capture_output=True, text=True,
+        cwd="/home/abug/timesfm"
+    )
+    assert result.returncode == 0
+    assert "SUCCESS" in result.stdout
 
 
 def test_symbol_lock_path():

@@ -6,7 +6,7 @@
 
 ## 主要变更
 
-- **Phase 1**: SymbolLock 类 + incremental_baseline 加锁 + metrics 同步
+- **Phase 1**: SymbolLock 类 + incremental 接入 SymbolLock（与 gbp 同路径 flock；gbp 内联锁未迁）+ metrics 同步
 - **Phase 2**: 冷却期(2h) + 频率限制(24h) + breaker schema 扩展
 - **Phase 3**: 阈值调整 168h → 336h + 覆盖度测量工具
 - **Phase 4**: 集成验证通过（10 个测试，6.49s）
@@ -14,6 +14,10 @@
 ## 测试结果
 
 10 passed in 6.49s
+
+**测试环境**：
+`PYTHONPATH=scripts:.`
+
 
 ## 文件清单
 

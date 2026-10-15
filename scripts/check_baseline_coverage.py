@@ -1,48 +1,67 @@
 #!/usr/bin/env python3
 """检查基线覆盖度
 
-覆盖度定义：有确认窗 cutoff 且基线末端 >= cutoff 的品种比例
+覆盖度定义：基线末端 >= 确认窗起点的品种比例
+SPEC 门闩：覆盖度 > 95%
 """
 import sys
 import json
 from pathlib import Path
+from datetime import datetime
 
-# 添加项目根目录到路径
 _repo_root = Path(__file__).resolve().parent.parent
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
 from data.config import DEFAULT_SYMBOLS
 
-def check_coverage(root: str = "."):
-    """检查基线覆盖度
-    
-    Returns:
-        dict: 覆盖度统计
-    """
-    config_dir = Path(root) / "task_FM" / "config"
-    
-    # 读取 metrics
-    metrics_path = config_dir / "baseline_metrics.json"
-    with open(metrics_path, encoding="utf-8") as f:
-        metrics = json.load(f)
+CONFIRM_WINDOW_START = datetime(2026, 10, 3, 0, 0, 0)
+
+def check_coverage():
+    """检查基线覆盖度"""
+    config_dir = _repo_root / "task_FM" / "config"
     
     total = len(DEFAULT_SYMBOLS)
     covered = 0
     uncovered = []
     
     for sym in DEFAULT_SYMBOLS:
-        sym_lower = sym.lower()
-        m = metrics.get(sym_lower)
-        if m and m.get("n", 0) > 0:
-            covered += 1
-        else:
+        bl_file = config_dir / f"baseline_points_{sym.lower()}_nocov.jsonl"
+        if not bl_file.exists():
+            uncovered.append(sym)
+            continue
+        
+        lines = bl_file.read_text().strip().split("\n")
+        if not lines:
+            uncovered.append(sym)
+            continue
+        
+        try:
+            last = json.loads(lines[-1])
+            cutoff_str = last.get("cutoff", "")
+            cutoff_dt = None
+            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"]:
+                try:
+                    cutoff_dt = datetime.strptime(cutoff_str, fmt)
+                    break
+                except ValueError:
+                    continue
+            
+            if cutoff_dt and cutoff_dt >= CONFIRM_WINDOW_START:
+                covered += 1
+            else:
+                uncovered.append(sym)
+        except Exception:
             uncovered.append(sym)
     
+    coverage_ratio = covered / total if total > 0 else 0
     result = {
         "total_symbols": total,
         "covered_symbols": covered,
-        "coverage_ratio": covered / total if total > 0 else 0,
+        "coverage_ratio": coverage_ratio,
+        "coverage_pct": f"{coverage_ratio * 100:.1f}%",
+        "spec_gate": "> 95%",
+        "gate_passed": coverage_ratio > 0.95,
         "uncovered": uncovered
     }
     

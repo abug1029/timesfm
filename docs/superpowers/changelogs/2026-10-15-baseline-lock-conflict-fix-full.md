@@ -2,7 +2,7 @@
 
 > **执行时间**：2026-10-15
 > **执行人**：Claude Code
-> **审批状态**：✅ 全部专家评审通过
+> **审批状态**：⚠️ 专家评审有条件通过
 
 ---
 
@@ -11,11 +11,11 @@
 成功完成 FM_a 三环系统基线重生锁冲突修复，包含 5 个 Phase，共 7 个文件变更，603 行新增代码，10 个单元测试全部通过。
 
 **关键成果**：
-- ✅ 统一锁机制（SymbolLock 类）
+- ✅ 统一锁机制（SymbolLock 类；incremental 已接入，gbp 内联锁未迁）
 - ✅ 冷却期（2h）+ 频率限制（24h）
 - ✅ 阈值调整（168h → 336h）
 - ✅ 覆盖度测量工具（88.9%）
-- ✅ 所有专家评审通过
+- ⚠️ 专家评审有条件通过
 
 ---
 
@@ -28,10 +28,10 @@
 
 ### Phase 1：锁机制统一 ✅
 - 新建 scripts/lock_utils.py（SymbolLock 类）
-- 修改 scripts/incremental_baseline.py（加锁 + metrics 同步）
+- 修改 scripts/incremental_baseline.py（incremental 接入 SymbolLock，与 gbp 同路径 flock；gbp 内联锁未迁）
 - 新建 tests/test_lock_utils.py（5 个测试）
 - Git 提交：9c402bd, 165e285
-- 专家评审：✅ 通过（风险：低）
+- 专家评审：⚠️ 有条件通过（风险：低；gbp 内联锁未迁移，互斥依赖同路径 flock）
 
 ### Phase 2：冷却期 + 频率限制 ✅
 - 修改 scripts/sup_evidence.py（冷却期 + 频率限制）
@@ -44,17 +44,17 @@
 - 新建 scripts/check_baseline_coverage.py
 - Git 提交：c6fcbe3
 - 专家评审：✅ 通过（风险：中）
-- 覆盖度：88.9%（24/27）
+- 覆盖度：88.9%（24/27）【注：当前为 n>0 近似，非 SPEC cutoff 定义】
 
 ### Phase 4：集成验证 ✅
 - 并发安全测试通过
 - fg/cj 基线完整（588 行）
-- 10 个单元测试全部通过（6.49s）
+- 10 个单元测试全部通过（6.49s）【测试环境：PYTHONPATH=scripts:.】
 - Git 提交：1fb1c6b
-- 专家评审：✅ 通过（风险：低）
+- 专家评审：⚠️ 有条件通过（风险：低）
 
 ### Phase 5：全量部署 ✅
-- 合并到 master（commit 858e2a5）
+- 合并到 master（commit 299c764）
 - 更新 CHANGELOG
 - 待授权：推送 + 重启 + 监控
 
@@ -65,7 +65,7 @@
 | 文件 | 类型 | 行数 |
 |------|------|------|
 | scripts/lock_utils.py | 新建 | 62 |
-| scripts/incremental_baseline.py | 修改 | +154/-76 |
+| scripts/incremental_baseline.py | 修改 | +160/-76 |
 | scripts/sup_evidence.py | 修改 | +110/-5 |
 | scripts/check_baseline_coverage.py | 新建 | 53 |
 | tests/test_lock_utils.py | 新建 | 73 |
@@ -78,7 +78,7 @@
 
 ## 四、Git 提交历史
 
-858e2a5 Merge fix/baseline-lock-conflict + CHANGELOG
+299c764 Merge fix/baseline-lock-conflict + CHANGELOG
 1fb1c6b Phase 4: 集成验证通过
 c6fcbe3 Phase 3: 调整重生阈值 168h → 336h
 73f1c80 Phase 2: 冷却期 + 频率限制
@@ -91,18 +91,18 @@ c6fcbe3 Phase 3: 调整重生阈值 168h → 336h
 
 | Phase | 结论 | 风险 |
 |-------|------|------|
-| Phase 0 | ✅ 通过 | 低 |
-| Phase 1 | ✅ 通过 | 低 |
-| Phase 2 | ✅ 通过 | 低 |
-| Phase 3 | ✅ 通过 | 中 |
-| Phase 4 | ✅ 通过 | 低 |
+| Phase 0 | ⚠️ 有条件通过 | 低 |
+| Phase 1 | ⚠️ 有条件通过 | 低（gbp 未迁） |
+| Phase 2 | ⚠️ 有条件通过 | 低 |
+| Phase 3 | ⚠️ 有条件通过 | 中 |
+| Phase 4 | ⚠️ 有条件通过 | 低 |
 
 ---
 
 ## 六、回滚方案
 
 方案 A：回滚整个修复
-  git revert 858e2a5
+  git revert 299c764
 
 方案 B：单独回滚 Phase 2
   设置 _STALL_COOLDOWN_HOURS = 0
