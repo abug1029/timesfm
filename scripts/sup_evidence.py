@@ -1141,6 +1141,11 @@ def _baseline_protocol_fingerprint(points_path):
         return ("unreadable", None)
     return ("missing", None)
 
+# 冷却期 + 频率限制（2026-10-15 新增）
+_STALL_COOLDOWN_HOURS = 2
+_FREQUENCY_LIMIT_HOURS = 24
+
+
 def _current_protocol_fingerprint():
     """当前协议指纹；不可得时返回 None（此时跳过指纹校验并告警）。"""
     try:
@@ -1218,7 +1223,7 @@ _BASELINE_STALENESS_MAX_H = 168
 # ensure_baselines 只在 supervisor 启动的 pre-flight 跑一次，进程内字典活不到
 # 下一次启动。停滞品种落到 data/cache（gitignore），下次启动只有数据末端
 # 严格变新才允许再重生。
-_RECENTLY_REGENED_NO_ADVANCE: dict[str, str] = {}
+_RECENTLY_REGENED_NO_ADVANCE: dict[str, dict] = {}  # 扩展为 dict 以支持冷却期/频率限制
 
 
 def _regen_breaker_path(root):
@@ -1256,7 +1261,10 @@ def _canonical_data_end(value):
 
 
 def _load_regen_breaker(root):
-    """用该 root 的磁盘记录替换进程内记忆。缺失或损坏则清空。"""
+    """用该 root 的磁盘记录替换进程内记忆。缺失或损坏则清空。
+    
+    2026-10-15 扩展：支持 str→dict 兼容（旧格式自动转换）
+    """
     _RECENTLY_REGENED_NO_ADVANCE.clear()
     path = _regen_breaker_path(root)
     try:
@@ -1267,7 +1275,16 @@ def _load_regen_breaker(root):
     if not isinstance(data, dict):
         return
     for key, val in data.items():
-        if isinstance(key, str) and isinstance(val, str) and val.strip():
+        if not isinstance(key, str):
+            continue
+        # 向后兼容：str → dict
+        if isinstance(val, str) and val.strip():
+            _RECENTLY_REGENED_NO_ADVANCE[key.lower()] = {
+                "data_end": val,
+                "cooldown_until": None,
+                "last_regen": None
+            }
+        elif isinstance(val, dict):
             _RECENTLY_REGENED_NO_ADVANCE[key.lower()] = val
 
 
@@ -1285,8 +1302,14 @@ def _stall_still_blocks(sym_lower, root):
 
     读失败、格式对不上、末端相同或更旧都不清除。只有两边都能解析且
     当前末端严格更晚才放行。
+    
+    2026-10-15 扩展：支持 dict 格式（从 data_end 字段读取）
     """
-    prev = _RECENTLY_REGENED_NO_ADVANCE.get(sym_lower)
+    prev_entry = _RECENTLY_REGENED_NO_ADVANCE.get(sym_lower)
+    if not prev_entry:
+        return False
+    # 向后兼容：dict 格式读 data_end，str 格式直接使用
+    prev = prev_entry.get("data_end") if isinstance(prev_entry, dict) else prev_entry
     if not prev:
         return False
     current = _canonical_data_end(sup_state._latest_data_dt(sym_lower))
@@ -1303,12 +1326,77 @@ def _stall_still_blocks(sym_lower, root):
 
 
 def _remember_stall(sym_lower, root, data_dt):
+    """记录停滞，设置冷却期。
+    
+    2026-10-15 扩展：写入 dict 格式（含 cooldown_until）
+    """
     canonical = _canonical_data_end(data_dt)
     if not canonical:
         return
-    _RECENTLY_REGENED_NO_ADVANCE[sym_lower] = canonical
+    # 写入 dict 格式（含冷却期）
+    from datetime import datetime, timedelta
+    cooldown_until = (datetime.now() + timedelta(hours=_STALL_COOLDOWN_HOURS)).isoformat()
+    _RECENTLY_REGENED_NO_ADVANCE[sym_lower] = {
+        "data_end": canonical,
+        "cooldown_until": cooldown_until,
+        "last_regen": None
+    }
     _save_regen_breaker(root)
 
+
+
+
+def _in_cooldown(sym_lower, root):
+    """检查是否在冷却期内（本地 naive 时间）。
+    
+    2026-10-15 新增
+    """
+    entry = _RECENTLY_REGENED_NO_ADVANCE.get(sym_lower)
+    if not entry or not isinstance(entry, dict):
+        return False
+    cooldown_until = entry.get("cooldown_until")
+    if not cooldown_until:
+        return False
+    from datetime import datetime
+    try:
+        cooldown_dt = datetime.fromisoformat(cooldown_until)
+        return datetime.now() < cooldown_dt
+    except (ValueError, TypeError):
+        return False
+
+
+def _frequency_exceeded(sym_lower, root):
+    """检查是否超过频率限制（24h 内最多重生 1 次）。
+    
+    2026-10-15 新增
+    """
+    entry = _RECENTLY_REGENED_NO_ADVANCE.get(sym_lower)
+    if not entry or not isinstance(entry, dict):
+        return False
+    last_regen = entry.get("last_regen")
+    if not last_regen:
+        return False
+    from datetime import datetime
+    try:
+        last_regen_dt = datetime.fromisoformat(last_regen)
+        hours_since = (datetime.now() - last_regen_dt).total_seconds() / 3600
+        return hours_since < _FREQUENCY_LIMIT_HOURS
+    except (ValueError, TypeError):
+        return False
+
+
+def _record_regen(sym_lower, root):
+    """记录重生时间（本地 naive 时间）。
+    
+    2026-10-15 新增
+    """
+    from datetime import datetime
+    entry = _RECENTLY_REGENED_NO_ADVANCE.get(sym_lower, {})
+    if not isinstance(entry, dict):
+        entry = {"data_end": entry, "cooldown_until": None, "last_regen": None}
+    entry["last_regen"] = datetime.now().isoformat()
+    _RECENTLY_REGENED_NO_ADVANCE[sym_lower] = entry
+    _save_regen_breaker(root)
 
 def _read_last_cutoff(points_path):
     """基线文件最后一个 cutoff。重生后用来判断末端有没有推进。"""
@@ -1561,10 +1649,20 @@ def ensure_baselines(symbols, root):
                     print(f"[INFO] ensure_baselines: {sym_lower} 跳过重生（上次重生基线末端未推进，数据未增长，等 daily_update）",
                           file=sys.stderr)
                     continue
+                # 2026-10-15 新增：冷却期 + 频率限制检查
+                if _in_cooldown(sym_lower, root):
+                    print(f"[INFO] ensure_baselines: {sym_lower} 在冷却期内，跳过重生",
+                          file=sys.stderr)
+                    continue
+                if _frequency_exceeded(sym_lower, root):
+                    print(f"[WARN] ensure_baselines: {sym_lower} 24h 内已重生，跳过",
+                          file=sys.stderr)
+                    continue
                 print(f"[WARN] ensure_baselines: {sym_lower} {reanchor} → 重生",
                       file=sys.stderr)
                 prev_cutoff = last_cutoff
                 new_cutoff = _regen_baseline_with_archive(sym_lower, points_path, root)
+                _record_regen(sym_lower, root)  # 2026-10-15 新增：记录重生时间
                 # Circuit breaker: 检测推进幅度（< 7 天视为停滞），而不是是否推进
                 if (new_cutoff is not None
                     and prev_cutoff is not None
