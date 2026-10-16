@@ -8,6 +8,7 @@ import time
 import traceback
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 _repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _repo_root not in sys.path:
@@ -1072,6 +1073,11 @@ def _maybe_finish_slow(goal, log):
         archive_slow_cycle(fresh, goal)
     except Exception as e:
         sup_lifecycle._log_decision(log, "assets_archive_error", f"slow: {e}")
+    try:
+        import sup_memory_bridge
+        sup_memory_bridge.run()
+    except Exception as e:
+        sup_lifecycle._log_decision(log, "memory_bridge_error", f"slow: {e}")
     return True
 
 def _main_locked(args):
@@ -1100,6 +1106,11 @@ def _main_locked(args):
         tok_spend = sup_state._token_spend_m(st, tok_m)
         snap = sup_evidence.build_snapshot(sup_paths.REGISTRY, cycles, cpu_h, tok_spend)
         ok, why = evaluate_goal(goal["success_condition"], snap)
+        try:
+            import sup_memory_bridge
+            sup_memory_bridge.run()
+        except Exception as e:
+            sup_lifecycle._log_decision(log, "memory_bridge_error", f"main: {e}")
         b = goal["budgets"]
         tok_hit, tok_budget = _token_budget_hit(tok_spend, tok_unknown, b)
         budget_hit = (cycles >= max_cycles or cpu_h >= b.get("cpu_hours", 60)
