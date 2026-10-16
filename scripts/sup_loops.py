@@ -26,6 +26,7 @@ except ImportError:
 
 import sup_env
 import sup_evidence
+import aggregate_rejection_stats
 import sup_family
 import sup_harvest
 import sup_lifecycle
@@ -1057,6 +1058,7 @@ def _maybe_finish_slow(goal, log):
         root=sup_paths.FM_ROOT,
         excluded_items=_excl,
     )
+    aggregate_rejection_stats.main()  # M3: 刷新拒收摘要
     sup_harvest.materialize_covariate_menu(sup_evidence.load_covariate_pool(), sup_paths.MENU_INC)
     gate_ok, _ = quota_gate(goal)
     fresh = sup_state.load_state()
@@ -1154,6 +1156,7 @@ def _main_locked(args):
             proposed_ids=sup_evidence.collect_proposed_variant_ids(sup_paths.FM_ROOT),
             root=sup_paths.FM_ROOT,
             **_mb_kwargs)
+        aggregate_rejection_stats.main()  # M3: 刷新拒收摘要
         if ok:
             rec = sup_lifecycle._log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
             write_stop_report("goal_reached", snap, why, rec["reason"])
