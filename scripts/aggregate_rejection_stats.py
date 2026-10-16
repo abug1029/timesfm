@@ -28,9 +28,13 @@ from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FM_ROOT = os.path.dirname(HERE)
+
+# Reuse canonical path from sup_paths (single source of truth)
+sys.path.insert(0, HERE)
+import sup_paths  # noqa: E402
 DECISIONS_LOG = os.path.join(FM_ROOT, ".omc", "supervisor_decisions.jsonl")
 SUPERVISOR_STATE = os.path.join(FM_ROOT, "data", "cache", "supervisor_state.json")
-OUTPUT_FILE = os.path.join(FM_ROOT, "task_FM", "known_rejections.inc.md")
+OUTPUT_FILE = sup_paths.REJECTIONS_INC  # canonical path from sup_paths
 
 
 def parse_reject_reasons(reason_str):

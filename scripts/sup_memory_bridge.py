@@ -15,7 +15,7 @@ import registry_lib as rl          # noqa: E402
 import sup_evidence                # noqa: E402
 import sup_paths                   # noqa: E402
 
-_OUTPUT = Path(sup_paths.FM_ROOT) / "data" / "cache" / "gate_pass_stats.yaml"
+# ponytail: output dir comes from caller (sup_loops passes last_run_dir); no hardcoded cache path
 
 
 def _aggregate():
@@ -70,10 +70,19 @@ def _write_yaml(stats, path):
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def run():
+def run(run_dir=None):
+    """Write gate_pass_stats.yaml into <run_dir>/research_memory/ledgers/.
+
+    If *run_dir* is None, falls back to data/cache/ for backward compat
+    (e.g. manual CLI invocation with no supervisor state yet).
+    """
     stats = _aggregate()
-    _write_yaml(stats, _OUTPUT)
-    print(f"[bridge] wrote {len(stats)} symbols -> {_OUTPUT}")
+    if run_dir is not None:
+        out = Path(run_dir) / "research_memory" / "ledgers" / "gate_pass_stats.yaml"
+    else:
+        out = Path(sup_paths.FM_ROOT) / "data" / "cache" / "gate_pass_stats.yaml"
+    _write_yaml(stats, out)
+    print(f"[bridge] wrote {len(stats)} symbols -> {out}")
 
 
 if __name__ == "__main__":
