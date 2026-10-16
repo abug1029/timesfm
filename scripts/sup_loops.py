@@ -1105,11 +1105,6 @@ def _main_locked(args):
         tok_spend = sup_state._token_spend_m(st, tok_m)
         snap = sup_evidence.build_snapshot(sup_paths.REGISTRY, cycles, cpu_h, tok_spend)
         ok, why = evaluate_goal(goal["success_condition"], snap)
-        try:
-            import sup_memory_bridge
-            sup_memory_bridge.run(run_dir=st.get("last_run_dir"))
-        except Exception as e:
-            sup_lifecycle._log_decision(log, "memory_bridge_error", f"main: {e}")
         b = goal["budgets"]
         tok_hit, tok_budget = _token_budget_hit(tok_spend, tok_unknown, b)
         budget_hit = (cycles >= max_cycles or cpu_h >= b.get("cpu_hours", 60)
@@ -1167,6 +1162,12 @@ def _main_locked(args):
             root=sup_paths.FM_ROOT,
             **_mb_kwargs)
         aggregate_rejection_stats.main()  # M3: 刷新拒收摘要
+        # SPEC FR-2：bridge 在 materialize_known_verdicts() 和 aggregate_rejection_stats.main() 之后调用
+        try:
+            import sup_memory_bridge
+            sup_memory_bridge.run(run_dir=st.get("last_run_dir"))
+        except Exception as e:
+            sup_lifecycle._log_decision(log, "memory_bridge_error", f"main: {e}")
         if ok:
             rec = sup_lifecycle._log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
             write_stop_report("goal_reached", snap, why, rec["reason"])
