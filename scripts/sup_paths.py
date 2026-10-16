@@ -9,7 +9,6 @@ SEARCH_COMMITMENTS_PATH = os.path.join(FM_ROOT, "task_FM", "config", "search_com
 STATE_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor_state.json")
 LOCK_PATH = os.path.join(FM_ROOT, "data", "cache", "supervisor.lock")
 VERDICTS_INC = os.path.join(FM_ROOT, "task_FM", "known_verdicts.inc.md")
-REJECTIONS_INC = os.path.join(FM_ROOT, "task_FM", "known_rejections.inc.md")
 POOL_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_pool.json")
 BACKLOG_PATH = os.path.join(FM_ROOT, "task_FM", "config", "covariate_backlog.jsonl")
 SYMBOL_STATUS_PATH = os.path.join(FM_ROOT, "task_FM", "config", "symbol_status.json")
