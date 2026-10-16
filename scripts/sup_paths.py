@@ -23,3 +23,6 @@ PHASES = ("fast", "slow", "wait_quota")
 RETEST_GATE_N = 350
 FAMILY_REGISTRY = os.path.join(FM_ROOT, "task_FM", "config", "family_registry.jsonl")
 PREREGISTRY_PATH = os.path.join(FM_ROOT, "task_FM", "config", "preregistry.jsonl")
+
+# 障碍 1：拒收摘要文件路径（供 aggregate_rejection_stats.py 使用）
+REJECTIONS_INC = os.path.join(FM_ROOT, 'task_FM', 'known_rejections.inc.md')
