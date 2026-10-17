@@ -3,6 +3,18 @@
 > **状态**: 设计草案（2026-09-22）
 > **当前**: 预筛结果仅作为软建议写入 `.prescreen.json`，供慢环注入 verdict metadata，不改变 peer 或调度行为。
 
+> **已迁移**: 本文档描述原始 Jev 设计（2026-09-22），
+实际实现已于 2026-10-17 迁移到 Laya System-1。
+> 当前实现见 `cascade/typesafe_prescreen.py` 和 `docs/praxist_llm_env.md`。
+> 
+> 关键变更：
+> - 调用方式：TypeSafe SDK -> Laya HTTP POST
+> - 模型：`jev-latest` -> `laya-rl-agent`
+> - API Key：需要 -> 不需要
+> - State 语言：中文/英文混合 -> 必须英文
+> - 超时：5s -> 60s
+
+
 ## 当前数据流（已实现）
 
 ```
@@ -35,7 +47,28 @@ Slow Loop → 读 proposal + .prescreen.json → 注入 verdict["metadata"]["pre
 2. **Jev 影响 peer 提案的调度优先级** — `skip_suggested=True` 的提案应被降权
 3. **Jev 影响 peer 的探索方向** — plausibility 低的机制应收到反馈信号
 
----
+---> **已迁移**: 本文档描述原始 Jev 设计（2026-09-22），
+实际实现已于 2026-10-17 迁移到 Laya System-1。
+> 当前实现见 `cascade/typesafe_prescreen.py` 和 `docs/praxist_llm_env.md`。
+> 
+> 关键变更：
+> - 调用方式：TypeSafe SDK -> Laya HTTP POST
+> - 模型：`jev-latest` -> `laya-rl-agent`
+> - API Key：需要 -> 不需要
+> - State 语言：中文/英文混合 -> 必须英文
+> - 超时：5s -> 60s
+
+
+> **已迁移**: 本文档描述原始 Jev 设计（2026-09-22），实际实现已于 2026-10-17 迁移到 Laya System-1。
+> 当前实现见  和 。
+> 
+> 关键变更：
+> - 调用方式：TypeSafe SDK → Laya HTTP POST
+> - 模型： → 
+> - API Key：需要 → 不需要
+> - State 语言：中文/英文混合 → 必须英文
+> - 超时：5s → 60s
+
 
 ## Phase 1（当前已完成 — 不改变 peer 行为）
 
@@ -45,7 +78,18 @@ Slow Loop → 读 proposal + .prescreen.json → 注入 verdict["metadata"]["pre
 - 先验证 Jev 的判断质量（5 个 proposal 验证，2/5 完全一致，3 个边界偏离需人工审核预期）
 - 确认 Jev 的 plausibility/novelty/effect_size 与人类评估的统计一致性后，再接入 peer 调度
 
----
+---> **已迁移**: 本文档描述原始 Jev 设计（2026-09-22），
+实际实现已于 2026-10-17 迁移到 Laya System-1。
+> 当前实现见 `cascade/typesafe_prescreen.py` 和 `docs/praxist_llm_env.md`。
+> 
+> 关键变更：
+> - 调用方式：TypeSafe SDK -> Laya HTTP POST
+> - 模型：`jev-latest` -> `laya-rl-agent`
+> - API Key：需要 -> 不需要
+> - State 语言：中文/英文混合 -> 必须英文
+> - 超时：5s -> 60s
+
+
 
 ## Phase 2（建议 — prescreen 影响调度优先级）
 

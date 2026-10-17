@@ -49,7 +49,7 @@ Peer 提出协变量提案时，监督环用 **Laya System-1** 做三问预筛�
 
 关键文件：`cascade/typesafe_prescreen.py`（核心模块，异常分类：超时→degraded、鉴权→error）。调用方式：`requests` HTTP POST 到 Laya `/v1/systemone`（`cascade/typesafe_prescreen.py::_call_laya()`），URL 由 `LAYA_BASE_URL` 环境变量配置（默认 Tailscale `100.96.19.116:8000`，局域网用 `10.1.1.67:8000`）。模型名 `laya-rl-agent`。
 
-设计权威：`docs/superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md`；状态细节见记忆 `fm-typesafe-prescreen`。
+设计权威：`docs/superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md`（已迁移到 Laya，规格文件待重命名）；状态细节见记忆 `fm-typesafe-prescreen`。
 
 ## Stage 3 协变量可信度（2026-09-29 结案，commit `381f31e`）
 

@@ -47,7 +47,7 @@ set +a
 | **局域网地址** | 同一局域网用 `http://10.1.1.67:8000`（需设置 `LAYA_BASE_URL`） |
 | **调用方式** | `requests` HTTP POST 到 `/v1/systemone`（纯 HTTP，非 SDK） |
 | **熔断器** | 连续 3 次超时 → 10 分钟熔断（600s）；成功即重置 |
-| **超时** | `_call_laya` 默认 30s；`_prescreen_impl` 调用时传 5s |
+| **超时** | `_call_laya` 默认 60s；`_prescreen_impl` 调用时传 60s（2026-10-17 从 30s 提升到 60s） |
 | **API Key** | Laya 不需要 API key，代码已移除 `_get_typesafe_api_key()`。保留 `.env.praxist` 中的 `TYPESAFE_API_KEY` 仅为向后兼容。 |
 | **降级路径** | 超时/异常 → 返回 `degraded`/`error`，不触发预筛 |
 
