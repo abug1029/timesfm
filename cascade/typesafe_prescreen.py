@@ -253,13 +253,23 @@ def _build_state(
     verdict_history: list[dict[str, Any]] | None,
     covariate_menu: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """构建 Laya System-1 的 State。"""
+    """构建 Laya System-1 的 State（英文，避免中文导致超时）。"""
     symbol_profile = _load_symbol_profile(symbol)
+    
+    # 提取关键字段，构建英文描述（不包含中文 mechanism/symbol_fit）
+    proposal_summary = {
+        "proposal_id": proposal.get("proposal_id", ""),
+        "symbol": proposal.get("symbol", symbol),
+        "cov_override": proposal.get("cov_override", ""),
+        "covariate_family": proposal.get("covariate_family", ""),
+        "predicted_direction": proposal.get("predicted_direction", ""),
+    }
+    
     return {
         "symbol": symbol,
-        "proposal": proposal,
-        "sector": symbol_profile.get("sector", "未知"),
-        "contract_details": symbol_profile.get("contract_details", ""),
+        "proposal_summary": proposal_summary,  # 英文关键字段，不包含中文长文本
+        "sector": symbol_profile.get("sector", "commodity"),
+        "contract_details": symbol_profile.get("contract_details", "futures contract"),
         "covariate_menu": covariate_menu or _load_covariate_menu(),
         "recent_verdicts_summary": _extract_relevant_history(verdict_history, symbol),
     }
