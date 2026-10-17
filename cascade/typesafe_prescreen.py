@@ -356,7 +356,7 @@ def _prescreen_impl(
     state = _build_state(proposal, symbol, verdict_history, covariate_menu)
 
     try:
-        result = _call_laya(state, timeout=5.0)
+        result = _call_laya(state, timeout=30.0)
     except (TimeoutError, TypeSafeTimeoutError) as e:
         _record_timeout()
         logger.warning("Laya API 超时: %s", e)
