@@ -279,7 +279,6 @@ def process_proposal(proposal_path, stats, queue_path, queue_lock, verdict_histo
 def main():
     parser = argparse.ArgumentParser(description="批量处理积压的 prescreen 提案")
     parser.add_argument("--max", type=int, default=500, help="最多处理 N 个提案（默认 500）")
-    parser.add_argument("--cooldown-hours", type=int, default=24, help="degraded/error 冷却期（小时，默认 24）")
     parser.add_argument("--workers", type=int, default=5, help="线程池大小（默认 5）")
     parser.add_argument("--dry-run", action="store_true", help="只扫描不执行")
     parser.add_argument("--force", action="store_true", help="忽略冷却期强制重试")
@@ -418,7 +417,7 @@ def main():
     snap = stats.snapshot()
     state["processed"] = list(processed_set)
     state["stats"] = snap
-    state["last_run"] = datetime.now().isoformat()
+    state["last_run"] = datetime.now(timezone.utc).isoformat()
     state["version"] = SCRIPT_VERSION
     save_state(state)
 
