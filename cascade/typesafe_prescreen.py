@@ -232,11 +232,16 @@ def _serialize_raw_answers(answers: dict) -> dict[str, Any]:
 # ── 内部辅助 ────────────────────────────────────────
 
 def _load_symbol_profile(symbol: str) -> dict[str, str]:
-    """加载品种画像（板块 + 合约详情）。"""
-    from config.sector_map import sector_of, SECTOR_NAMES
+    """加载品种画像（板块 + 合约详情，英文）。"""
+    from config.sector_map import sector_of
     sector = sector_of(symbol)
-    sector_name = SECTOR_NAMES.get(sector, sector)
-    return {"sector": sector_name, "contract_details": f"{symbol} ({sector_name})"}
+    # 英文板块名（避免中文导致 Laya 超时）
+    sector_en = {
+        "black": "black", "nonferrous": "nonferrous", "precious": "precious",
+        "energy": "energy", "chemical": "chemical", "agricultural": "agricultural",
+        "soft": "soft", "forestry": "forestry", "livestock": "livestock",
+    }.get(sector, sector)
+    return {"sector": sector_en, "contract_details": f"{symbol} futures ({sector_en} sector)"}
 
 
 def _load_covariate_menu() -> dict[str, Any]:
@@ -270,8 +275,9 @@ def _build_state(
         "proposal_summary": proposal_summary,  # 英文关键字段，不包含中文长文本
         "sector": symbol_profile.get("sector", "commodity"),
         "contract_details": symbol_profile.get("contract_details", "futures contract"),
-        "covariate_menu": covariate_menu or _load_covariate_menu(),
-        "recent_verdicts_summary": _extract_relevant_history(verdict_history, symbol),
+        # 跳过中文 covariate_menu 和 recent_verdicts_summary（避免 Laya 超时）
+        # "covariate_menu": covariate_menu or _load_covariate_menu(),
+        # "recent_verdicts_summary": _extract_relevant_history(verdict_history, symbol),
     }
 
 
