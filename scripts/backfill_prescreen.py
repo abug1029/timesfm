@@ -3,13 +3,16 @@
 
 用法:
   source .venv/bin/activate
-  python scripts/backfill_prescreen.py [--max N] [--cooldown-hours N] [--workers N]
-    [--dry-run] [--force] [--resume] [--reset] [--queue-path PATH] [--timeout-min N]
+  python scripts/backfill_prescreen.py [--max N] [--workers N]
+    [--dry-run] [--force] [--reset] [--queue-path PATH] [--timeout-min N]
+    [--skip-laya-check]
 
 断点续跑: 默认自动恢复上次进度; --reset 清空进度重新开始。
+--force: 强制重跑所有提案（包括已成功状态）。
 """
 import argparse
 import glob
+import hashlib
 import json
 import logging
 import os
@@ -29,7 +32,7 @@ if str(FM_ROOT) not in sys.path:
 # ── 路径常量 ────────────────────────────────────────
 STATE_FILE = FM_ROOT / "data" / "cache" / "backfill_prescreen_state.json"
 LOG_FILE = FM_ROOT / "logs" / "backfill_prescreen.log"
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "2.0.0"
 
 # ── 优雅退出 ────────────────────────────────────────
 _shutdown = False
@@ -48,7 +51,7 @@ signal.signal(signal.SIGTERM, _sig_handler)
 # ── 日志配置 ────────────────────────────────────────
 def setup_logging():
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     run_log = LOG_FILE.parent / f"backfill_prescreen_{ts}.log"
 
     root = logging.getLogger()
@@ -93,12 +96,12 @@ def save_state(state):
 
 # ── Laya 健康检查 ──────────────────────────────────
 def check_laya_health(timeout=10):
-    """检查 Laya 服务是否可达。"""
+    """检查 Laya 服务是否可达。导入失败时 fail-closed（返回 False）。"""
     try:
         from data.config import _env_nonempty
     except ImportError:
-        logging.warning("无法导入 data.config，跳过 Laya 健康检查")
-        return True
+        logging.error("无法导入 data.config，Laya 健康检查 fail-closed")
+        return False
 
     base_url = _env_nonempty("LAYA_BASE_URL") or "http://10.1.1.67:8000"
     health_url = base_url + "/health"
@@ -136,49 +139,93 @@ def check_supervisor_harvest():
     return False
 
 
-# ── 冷却期检查 ─────────────────────────────────────
-def should_skip(prescreen_path, cooldown_hours, force):
-    """检查是否应跳过（已有 success 或在冷却期内）。"""
-    if not prescreen_path.exists():
+# ── 提案跳过逻辑 ───────────────────────────────────
+def should_skip(proposal_path, force, processed_set):
+    """检查是否应跳过。
+
+    - 已在 processed_set（之前 run 中 success）→ 跳过，除非 force
+    - 已有 prescreen 且 status == "success" → 跳过，除非 force
+    - 其它状态（degraded/error/failed）→ 不跳过，允许重试
+    """
+    if proposal_path in processed_set:
+        return True
+
+    prescreen_path = Path(proposal_path).with_suffix(".prescreen.json")
+    if prescreen_path.exists():
+        try:
+            data = json.loads(prescreen_path.read_text(encoding="utf-8"))
+            if data.get("status") == "success":
+                return True
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if force:
         return False
 
+    return False
+
+
+# ── 从提案提取字段 ─────────────────────────────────
+def extract_proposal_fields(proposal_path):
+    """从 proposal JSON 提取 symbol, cov_override, proposal_id。
+
+    返回 dict 或 None（解析失败时）。
+    """
     try:
-        data = json.loads(prescreen_path.read_text(encoding="utf-8"))
-        status = data.get("status")
+        data = json.loads(Path(proposal_path).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        logging.error("无法解析提案 %s: %s", proposal_path, e)
+        return None
 
-        # success 永远跳过
-        if status == "success":
-            return True
+    symbol = data.get("symbol", "")
+    if not symbol:
+        logging.warning("提案 %s 缺少 symbol 字段，跳过", proposal_path)
+        return None
 
-        # force 模式忽略冷却期
-        if force:
-            return False
+    cov_override = data.get("cov_override") or ""
 
-        # 检查冷却期
-        ts = data.get("ts")
-        if ts:
-            try:
-                last_attempt = datetime.fromisoformat(ts)
-                if datetime.now(timezone.utc) - last_attempt < timedelta(hours=cooldown_hours):
-                    return True
-            except ValueError:
-                pass
+    # 新协变量提案用 new_covariate.name
+    if not cov_override:
+        new_cov = data.get("new_covariate")
+        if isinstance(new_cov, dict):
+            cov_override = new_cov.get("name", "")
 
-        return False
-    except (json.JSONDecodeError, OSError):
-        # 损坏文件 → 允许重试
-        return False
+    proposal_id = data.get("proposal_id", Path(proposal_path).stem)
+
+    return {
+        "symbol": symbol,
+        "cov_override": cov_override,
+        "proposal_id": proposal_id,
+        "proposal_data": data,
+    }
 
 
-# ── 提取 symbol ────────────────────────────────────
-def extract_symbol(proposal_path):
-    """从 proposal 文件提取 symbol。"""
-    p = Path(proposal_path)
+def generate_variant_id(symbol, cov_override, proposal_path):
+    """生成符合现网约定的 variant_id。
+
+    格式：{symbol}_{cov_family}_{fingerprint[:12]}
+
+    cov_family 通过 resolve_cov_family 获取；
+    fingerprint 使用 proposal 内容的 MD5 前 12 位。
+    """
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        return data.get("symbol", p.stem.split("_")[0])
+        from cascade.cov_family import resolve_cov_family
+        family = resolve_cov_family({"cov_override": cov_override or None})
     except Exception:
-        return p.stem.split("_")[0]
+        family = "unknown"
+
+    fp_hex = hashlib.md5(proposal_path.encode()).hexdigest()[:12]
+
+    return f"{symbol}_{family}_{fp_hex}"
+
+
+def extract_src_run(proposal_path):
+    """从提案路径提取 run_* 目录名。"""
+    p = Path(proposal_path)
+    for parent in p.parents:
+        if parent.name.startswith("run_"):
+            return parent.name
+    return os.path.basename(p.parent.parent)
 
 
 # ── 加载辅助数据 ────────────────────────────────────
@@ -234,16 +281,26 @@ class Stats:
 
 
 # ── 处理单个提案 ────────────────────────────────────
-def process_proposal(proposal_path, stats, queue_path, queue_lock, verdict_history, covariate_menu):
-    """处理单个提案，返回结果标签。"""
-    try:
-        symbol = extract_symbol(proposal_path)
-        proposal = json.loads(Path(proposal_path).read_text(encoding="utf-8"))
+def process_proposal(proposal_path, stats, verdict_history, covariate_menu):
+    """处理单个提案，返回 (status_label, queue_row_or_None)。
 
+    成功时构造 queue row（符合 QUEUE_FIELDS）供调用方入队；
+    失败/降级时返回 (status, None)，不入队（可重试）。
+    """
+    fields = extract_proposal_fields(proposal_path)
+    if fields is None:
+        stats.inc("failed")
+        return "error", None
+
+    symbol = fields["symbol"]
+    cov_override = fields["cov_override"]
+    proposal_data = fields["proposal_data"]
+
+    try:
         from cascade.typesafe_prescreen import prescreen_and_save
 
         result = prescreen_and_save(
-            proposal=proposal,
+            proposal=proposal_data,
             proposal_path=str(proposal_path),
             symbol=symbol,
             verdict_history=verdict_history,
@@ -251,28 +308,34 @@ def process_proposal(proposal_path, stats, queue_path, queue_lock, verdict_histo
         )
 
         status = result.get("status", "unknown")
+
         if status == "success":
             stats.inc("success")
-            # 通过的提案入队慢环
-            if not result.get("skip_suggested"):
-                entry = {
-                    "proposal_path": str(proposal_path),
-                    "prescreen": result,
-                    "enqueued_at": datetime.now(timezone.utc).isoformat(),
-                }
-                with queue_lock:
-                    with open(queue_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                stats.inc("enqueued")
-            return "success"
+
+            # 构造符合 QUEUE_FIELDS 的入队行
+            variant_id = generate_variant_id(symbol, cov_override, proposal_path)
+            src_run = extract_src_run(proposal_path)
+
+            queue_row = {
+                "variant_id": variant_id,
+                "symbol": symbol,
+                "cov_override": cov_override or None,
+                "max_points": 600,
+                "stage": "prescreen",
+                "checkpoint_path": "",
+                "enqueued_at": datetime.now(timezone.utc).isoformat(),
+                "src_run": src_run,
+                "_proposal_path": str(proposal_path),
+            }
+            return "success", queue_row
         else:
             stats.inc("failed")
-            return status
+            return status, None
 
     except Exception as e:
         logging.error("处理失败 %s: %s\n%s", proposal_path, e, traceback.format_exc())
         stats.inc("failed")
-        return "error"
+        return "error", None
 
 
 # ── 主函数 ──────────────────────────────────────────
@@ -281,27 +344,23 @@ def main():
     parser.add_argument("--max", type=int, default=500, help="最多处理 N 个提案（默认 500）")
     parser.add_argument("--workers", type=int, default=5, help="线程池大小（默认 5）")
     parser.add_argument("--dry-run", action="store_true", help="只扫描不执行")
-    parser.add_argument("--force", action="store_true", help="忽略冷却期强制重试")
-    parser.add_argument("--resume", action="store_true", help="继续上次运行（默认行为）")
+    parser.add_argument("--force", action="store_true", help="强制重跑所有提案（包括已成功状态）")
     parser.add_argument("--reset", action="store_true", help="清空进度重新开始")
-    parser.add_argument("--queue-path", type=str, default="task_FM/config/queue.jsonl", help="慢环队列路径")
+    parser.add_argument("--queue-path", type=str, default=None,
+                        help="慢环队列路径（默认 data/cache/aligned_pending.jsonl）")
     parser.add_argument("--timeout-min", type=int, default=30, help="单次运行最大时长（分钟，默认 30）")
+    parser.add_argument("--skip-laya-check", action="store_true", help="跳过 Laya 健康检查")
     args = parser.parse_args()
 
     log_path = setup_logging()
     logging.info("=" * 60)
     logging.info("backfill_prescreen v%s 启动", SCRIPT_VERSION)
-    logging.info("参数: max=%d cooldown=%dh workers=%d dry_run=%s force=%s reset=%s timeout=%dmin",
-                 args.max, args.cooldown_hours, args.workers, args.dry_run, args.force, args.reset, args.timeout_min)
+    logging.info("参数: max=%d workers=%d dry_run=%s force=%s reset=%s timeout=%dmin skip_laya=%s",
+                 args.max, args.workers, args.dry_run, args.force, args.reset,
+                 args.timeout_min, args.skip_laya_check)
 
-    # ── 检查上次运行时间 ─────────────────────────
+    # ── 加载状态 ─────────────────────────────────
     state = load_state()
-    if state["last_run"] and not args.reset:
-        last_run = datetime.fromisoformat(state["last_run"])
-        gap = datetime.now() - last_run
-        if gap < timedelta(hours=1):
-            logging.warning("上次运行在 %s 前（%s），如需重新运行请确认或加 --reset",
-                            last_run.strftime("%H:%M:%S"), gap)
 
     if args.reset:
         logging.info("--reset: 清空进度重新开始")
@@ -313,12 +372,32 @@ def main():
         }
 
     processed_set = set(state.get("processed", []))
-    logging.info("已处理: %d 条", len(processed_set))
+    logging.info("已处理（success）: %d 条", len(processed_set))
+
+    # ── 检查上次运行时间 ─────────────────────────
+    if state.get("last_run") and not args.reset:
+        try:
+            last_run_str = state["last_run"]
+            if last_run_str.endswith("Z"):
+                last_run_str = last_run_str[:-1] + "+00:00"
+            last_run = datetime.fromisoformat(last_run_str)
+            if last_run.tzinfo is None:
+                last_run = last_run.replace(tzinfo=timezone.utc)
+            gap = datetime.now(timezone.utc) - last_run
+            if gap < timedelta(hours=1):
+                logging.warning("上次运行在 %s 前（%s），如需重新运行请确认或加 --reset",
+                                last_run.strftime("%H:%M:%S"), gap)
+        except (ValueError, TypeError) as e:
+            logging.warning("解析 last_run 失败: %s", e)
+
+    if args.force:
+        logging.info("--force: 清空 processed_set，重跑所有提案")
+        processed_set = set()
 
     # ── Laya 健康检查 ────────────────────────────
-    if not args.dry_run:
+    if not args.dry_run and not args.skip_laya_check:
         if not check_laya_health():
-            logging.error("Laya 服务不可达，退出。使用 --dry-run 仅扫描。")
+            logging.error("Laya 服务不可达，退出。使用 --dry-run 仅扫描，或 --skip-laya-check 强制跳过。")
             sys.exit(1)
 
     # ── Supervisor 检查 ──────────────────────────
@@ -333,10 +412,7 @@ def main():
     # ── 过滤 ─────────────────────────────────────
     to_process = []
     for p in sorted(all_proposals):
-        if p in processed_set:
-            continue
-        prescreen_path = Path(p).with_suffix(".prescreen.json")
-        if should_skip(prescreen_path, args.cooldown_hours, args.force):
+        if should_skip(p, args.force, processed_set):
             continue
         to_process.append(p)
         if len(to_process) >= args.max:
@@ -358,8 +434,15 @@ def main():
     # ── 初始化 ───────────────────────────────────
     stats = Stats()
     stats.total = len(to_process)
-    queue_lock = Lock()
-    queue_path = FM_ROOT / args.queue_path
+
+    import sup_paths as sp
+    import registry_lib as rl
+
+    if args.queue_path:
+        queue_path = Path(args.queue_path)
+    else:
+        queue_path = Path(sp.QUEUE)
+
     queue_path.parent.mkdir(parents=True, exist_ok=True)
 
     verdict_history = load_verdict_history()
@@ -367,15 +450,25 @@ def main():
     logging.info("加载 %d 条历史裁决, covariate_menu: %s",
                  len(verdict_history), "有" if covariate_menu else "无")
 
+    existing = set()
+    dead = set()
+    try:
+        snapshot = rl.load_snapshot(str(queue_path))
+        existing = set(snapshot.keys())
+        dead = rl.dead_variants(snapshot)
+        logging.info("队列中已有 %d 条，dead %d 条", len(existing), len(dead))
+    except Exception as e:
+        logging.warning("加载队列快照失败: %s", e)
+
     start_time = time.monotonic()
     timeout_secs = args.timeout_min * 60
 
-    # ── 线程池处理 ───────────────────────────────
+    queue_rows = []
+
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
             executor.submit(
-                process_proposal, p, stats, queue_path, queue_lock,
-                verdict_history, covariate_menu
+                process_proposal, p, stats, verdict_history, covariate_menu
             ): p
             for p in to_process
         }
@@ -398,7 +491,18 @@ def main():
                         f.cancel()
                 break
 
-            processed_set.add(proposal_path)
+            try:
+                status_label, queue_row = future.result()
+            except Exception as e:
+                logging.error("future 异常 %s: %s", proposal_path, e)
+                status_label = "error"
+                queue_row = None
+
+            if status_label == "success":
+                processed_set.add(proposal_path)
+                if queue_row is not None:
+                    queue_rows.append(queue_row)
+
             if i % 10 == 0:
                 state["processed"] = list(processed_set)
                 state["stats"] = stats.snapshot()
@@ -412,7 +516,15 @@ def main():
                     snap["enqueued"], elapsed
                 )
 
-    # ── 最终统计 ─────────────────────────────────
+    if queue_rows:
+        try:
+            added = rl.queue_enqueue(str(queue_path), queue_rows, dead, existing)
+            stats.enqueued = added
+            logging.info("入队 %d 条到 %s", added, queue_path)
+        except Exception as e:
+            logging.error("入队失败: %s", e)
+            stats.inc("failed")
+
     elapsed = time.monotonic() - start_time
     snap = stats.snapshot()
     state["processed"] = list(processed_set)
