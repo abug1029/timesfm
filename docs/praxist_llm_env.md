@@ -36,6 +36,49 @@ set +a
 | `TIMESFM_MODEL_PATH` | 与 `FM_TIMESFM_MODEL_PATH` 兼容别名 |
 | `TYPESAFE_API_KEY` | TypeSafe Jev 协变量预筛（`cascade/typesafe_prescreen.py`）；**仅** `.env.praxist`；无 key 自动降级为 degraded。模型名 `jev-latest` |
 
+## Laya System-1 调用（监督环预筛）
+
+> 仅 **监督环(S1)** 的协变量预筛调用 Laya。代码已迁移到 `cascade/typesafe_prescreen.py`。
+
+| 项目 | 详情 |
+|------|------|
+| **调用位置** | `cascade/typesafe_prescreen.py` → `_call_typesafe()` (L283-348) |
+| **URL 配置** | 环境变量 `LAYA_BASE_URL`；默认 `http://100.96.19.116:8000`（Tailscale） |
+| **局域网地址** | 同一局域网用 `http://10.1.1.67:8000`（需设置 `LAYA_BASE_URL`） |
+| **调用方式** | `requests` HTTP POST 到 `/v1/systemone`（纯 HTTP，非 SDK） |
+| **熔断器** | 连续 3 次超时 → 10 分钟熔断（600s）；成功即重置 |
+| **超时** | `_call_typesafe` 默认 30s；`_prescreen_impl` 调用时传 5s |
+| **API Key** | `.env.praxist` 中 `TYPESAFE_API_KEY` 被注释掉 → Laya **不会被调用** |
+| **降级路径** | 超时/异常 → 返回 `degraded`/`error`，不触发预筛 |
+
+**2026-10-17 修复**：Laya 需要英文输入（中文 instructions 导致超时 >60s）。已将 `_call_typesafe()` 中的 instructions/criteria 翻译为英文，实测 6.5s 完成（之前超时）。
+
+### 启用 Laya 预筛
+
+1. 取消 `.env.praxist` 中 `TYPESAFE_API_KEY` 的注释（或设为任意非空值）
+2. 设置 `LAYA_BASE_URL=http://10.1.1.67:8000`（局域网）或 `http://100.96.19.116:8000`（Tailscale）
+3. 连通性测试：`curl http://10.1.1.67:8000/health` 应返回 `{"status":"ok"}`
+
+### 调用链
+
+```
+scripts/praxist_supervisor.py（监督环主循环）
+  ↓ 触发慢环收割
+scripts/sup_harvest.py:175,203
+  ↓
+cascade/typesafe_prescreen.py:447  prescreen_and_save()
+  ↓
+cascade/typesafe_prescreen.py:413  prescreen_proposal()
+  ↓
+cascade/typesafe_prescreen.py:359  _prescreen_impl()
+  ↓
+cascade/typesafe_prescreen.py:283  _call_typesafe()  ← HTTP POST
+  ↓
+cascade/typesafe_prescreen.py:278  _get_laya_base_url()  ← URL 解析
+```
+
+
+
 ## 隔离说明
 
 - **预测岗** `timesFM_fu`：自有权重 / HF cache。

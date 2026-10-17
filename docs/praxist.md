@@ -90,6 +90,25 @@ CLI：`praxist start|resume|stop|status|monitor|doctor|resolve`。本仓入口�
 
 总线全是只追加文件。一个 **cycle** = 一次已结束的 Praxist run + harvest（有入队则再把慢环抽干）。不是 5 分钟 poll。`phase` ∈ `{fast, slow, wait_quota}`；慢环没抽干时禁止开下一轮快环。
 
+### 信息流与语言
+
+```
+S1 监督环（0 token）
+  ↓ 启动 praxist（CLI argv）
+S2 快环（Praxist peer agents，Claude SDK）
+  ↓ 读取：prompt 模板（英文）+ known_verdicts.inc.md（中文）+ covariate_menu.inc.md（中文）
+  ↓ 输出：proposal JSON（中文字段：mechanism、symbol_fit、kill_condition 等）
+S1 监督环收割（sup_harvest.py::harvest_proposals）
+  ↓ 调用 Laya 预筛（cascade/typesafe_prescreen.py）— 需翻译成英文
+  ↓ 入队慢环
+S3 慢环（aligned_slow_loop.py）
+  ↓ walk-forward 回测 → 写 verdict（中文）到 aligned_verdicts.jsonl
+S1 监督环物化（sup_evidence.py::materialize_known_verdicts）
+  ↓ 更新 known_verdicts.inc.md → 下一轮 S2 读取
+```
+
+**关键**：peer 在**快环**（S2），不是慢环。慢环只做回测验证。
+
 ### 快环（2026-09-08 方案 A 起）
 
 Peer **是假设作者，不是评估器**。禁止跑 `evaluations/fm_eval/run.py`，禁止加载 TimesFM。n=3~6 的诊断 PF 统计上不可信（实测 ss+ccl 诊断 PF=10.1，慢环真相 1.02），还浪费一次模型加载。

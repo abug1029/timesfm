@@ -287,7 +287,8 @@ def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -
     base_url = _get_laya_base_url()
     url = f"{base_url}/v1/systemone"
 
-    # 构建请求 payload（兼容 TypeSafe SDK 格式）
+    # 构建请求 payload（兼容 TypeSafe SDK 格式，英文 instructions/criteria）
+    # Laya 需要英文输入（中文会导致超时），state 字段保留原文但在 instructions 中用英文描述
     payload = {
         "model": "jev-latest",
         "state": state,
@@ -295,32 +296,34 @@ def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -
             "mechanism_plausibility": {
                 "type": "noul",
                 "instructions": (
-                    f"基于 {state['symbol']} 的品种特征（{state['sector']}板块，"
-                    f"{state['contract_details']}），该协变量提案的机制解释是否合理"
-                    f"且有经济逻辑支撑？"
+                    f"Based on the characteristics of {state.get('symbol', 'this')} futures "
+                    f"({state.get('sector', 'commodity')} sector, {state.get('contract_details', 'contract')}), "
+                    f"is the mechanism explanation of this covariate proposal plausible and supported by economic logic?"
                 ),
             },
             "novelty_vs_redundancy": {
                 "type": "choice",
                 "instructions": (
-                    f"该提案与 {state['symbol']} 已有协变量的关系"
-                    f"（见 covariate_menu 和 recent_verdicts_summary）"
+                    f"How does this proposal relate to existing covariates for {state.get('symbol', 'this')}? "
+                    f"(see covariate_menu and recent_verdicts_summary)"
                 ),
                 "criteria": {
-                    "novel": "全新机制，与现有协变量正交",
-                    "extension": "已知机制的新参数或新品种适配",
-                    "redundant": "与现有协变量高度重叠（机制或数值相关性>0.8）",
-                    "invalid": "机制不存在或逻辑错误",
+                    "novel": "Entirely new mechanism, orthogonal to existing covariates",
+                    "extension": "Known mechanism with new parameters or new product adaptation",
+                    "redundant": "Highly overlapping with existing covariates (mechanism or correlation >0.8)",
+                    "invalid": "Mechanism does not exist or logic is flawed",
                 },
             },
             "expected_effect_size": {
                 "type": "score",
-                "instructions": f"预期该协变量对 {state['symbol']} 预测质量的信息量贡献",
+                "instructions": (
+                    f"Expected information contribution of this covariate to {state.get('symbol', 'this')} prediction quality"
+                ),
                 "criteria": [
-                    "无新增信息（纯噪声或已完全捕获）",
-                    "微弱新增信息（与现有协变量高度相关，边际贡献有限）",
-                    "中等新增信息（独立信号维度，可能有交互效应）",
-                    "强新增信息（正交维度，高预期独立贡献）",
+                    "No new information (pure noise or fully captured)",
+                    "Weak new information (highly correlated with existing covariates, limited marginal contribution)",
+                    "Moderate new information (independent signal dimension, possible interaction effects)",
+                    "Strong new information (orthogonal dimension, high expected independent contribution)",
                 ],
             },
         },

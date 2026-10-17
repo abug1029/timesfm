@@ -47,7 +47,7 @@ Peer 提出协变量提案时，监督环用 **TypeSafe System One (Jev)** 做�
 - **慢环注入**：`scripts/aligned_slow_loop.py` 把 `.prescreen.json` 读入 `verdict["metadata"]["prescreen"]`（status/skip_suggested/plausibility/novelty/effect_size/note）。
 - **幂等/异步**：supervisor 触发是 fire-and-forget（daemon 线程），已有 success 结果则跳过，不重复付费。
 
-关键文件：`cascade/typesafe_prescreen.py`（核心模块，异常分类：超时→degraded、鉴权→error）。环境变量 `TYPESAFE_API_KEY` 在 `.env.praxist`。SDK v0.7.1 方法论：`client.system_one()`、答案字段 `.noul/.choice/.score`、模型名 `jev-latest`。
+关键文件：`cascade/typesafe_prescreen.py`（核心模块，异常分类：超时→degraded、鉴权→error）。环境变量 `TYPESAFE_API_KEY` 在 `.env.praxist`。调用方式：`requests` HTTP POST 到 Laya `/v1/systemone`（`cascade/typesafe_prescreen.py::_call_typesafe()`），URL 由 `LAYA_BASE_URL` 环境变量配置（默认 Tailscale `100.96.19.116:8000`，局域网用 `10.1.1.67:8000`）。模型名 `jev-latest`。
 
 设计权威：`docs/superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md`；状态细节见记忆 `fm-typesafe-prescreen`。
 

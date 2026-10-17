@@ -209,7 +209,7 @@ source .venv/bin/activate
 # TqSdk 凭证在 .env（真实文件，勿把密钥写入可提交文件）
 ```
 
-**可选增强（TypeSafe Jev 协变量预筛）：** 设 `TYPESAFE_API_KEY`（写入 `.env.praxist`，勿提交）后启用。无 key 或降级时 `cascade/typesafe_prescreen.py` 返回 `status=degraded`（`skip_suggested=None`），慢环不受影响。模型名 `jev-latest`。
+**可选增强（TypeSafe Jev 协变量预筛）：** 设 `TYPESAFE_API_KEY`（写入 `.env.praxist`，勿提交）+ `LAYA_BASE_URL`（默认 Tailscale `100.96.19.116:8000`，局域网 `10.1.1.67:8000`）后启用。调用方式：`requests` HTTP POST 到 Laya `/v1/systemone`（`cascade/typesafe_prescreen.py::_call_typesafe()`）。无 key 或降级时 `cascade/typesafe_prescreen.py` 返回 `status=degraded`（`skip_suggested=None`），慢环不受影响。模型名 `jev-latest`。
 
 **数据库位置：** 本仓 `db/futures_<symbol>.db`（真实目录，29 个品种 SQLite；不再是 /workspace symlink）
 
