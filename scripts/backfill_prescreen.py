@@ -12,7 +12,6 @@
 """
 import argparse
 import glob
-import hashlib
 import json
 import logging
 import os
@@ -32,7 +31,7 @@ if str(FM_ROOT) not in sys.path:
 # ── 路径常量 ────────────────────────────────────────
 STATE_FILE = FM_ROOT / "data" / "cache" / "backfill_prescreen_state.json"
 LOG_FILE = FM_ROOT / "logs" / "backfill_prescreen.log"
-SCRIPT_VERSION = "2.0.0"
+SCRIPT_VERSION = "2.0.1"
 
 # ── 优雅退出 ────────────────────────────────────────
 _shutdown = False
@@ -147,6 +146,9 @@ def should_skip(proposal_path, force, processed_set):
     - 已有 prescreen 且 status == "success" → 跳过，除非 force
     - 其它状态（degraded/error/failed）→ 不跳过，允许重试
     """
+    if force:
+        return False
+
     if proposal_path in processed_set:
         return True
 
@@ -158,9 +160,6 @@ def should_skip(proposal_path, force, processed_set):
                 return True
         except (json.JSONDecodeError, OSError):
             pass
-
-    if force:
-        return False
 
     return False
 
@@ -200,23 +199,22 @@ def extract_proposal_fields(proposal_path):
     }
 
 
-def generate_variant_id(symbol, cov_override, proposal_path):
+def generate_variant_id(symbol, cov_override):
     """生成符合现网约定的 variant_id。
 
-    格式：{symbol}_{cov_family}_{fingerprint[:12]}
-
-    cov_family 通过 resolve_cov_family 获取；
-    fingerprint 使用 proposal 内容的 MD5 前 12 位。
+    复用现网身份链: resolve_cov_family + _experiment_fp_for + build_variant_id。
+    与 sup_harvest.harvest_survivors 中 vid 生成完全一致 (spec W6.4)。
     """
-    try:
-        from cascade.cov_family import resolve_cov_family
-        family = resolve_cov_family({"cov_override": cov_override or None})
-    except Exception:
-        family = "unknown"
+    from cascade.cov_family import resolve_cov_family
+    from cascade.experiment_fingerprint import build_variant_id
+    import sup_evidence
 
-    fp_hex = hashlib.md5(proposal_path.encode()).hexdigest()[:12]
-
-    return f"{symbol}_{family}_{fp_hex}"
+    fam = resolve_cov_family({"cov_override": cov_override or None})
+    fp = sup_evidence._experiment_fp_for(symbol, cov_override or "")
+    if fam == "unknown" or fp is None:
+        # W6.4: 身份不可得 → 返回 None，调用方拒绝
+        return None
+    return build_variant_id(symbol, fam, fp)
 
 
 def extract_src_run(proposal_path):
@@ -313,7 +311,14 @@ def process_proposal(proposal_path, stats, verdict_history, covariate_menu):
             stats.inc("success")
 
             # 构造符合 QUEUE_FIELDS 的入队行
-            variant_id = generate_variant_id(symbol, cov_override, proposal_path)
+            variant_id = generate_variant_id(symbol, cov_override)
+            if variant_id is None:
+                # W6.4: 身份不可得 -> 拒绝入队，降级为 degraded
+                logging.warning(
+                    "提案 %s prescreen success 但 variant_id 不可得 (W6.4)，拒绝入队",
+                    proposal_path,
+                )
+                return "degraded", None
             src_run = extract_src_run(proposal_path)
 
             queue_row = {
@@ -321,7 +326,7 @@ def process_proposal(proposal_path, stats, verdict_history, covariate_menu):
                 "symbol": symbol,
                 "cov_override": cov_override or None,
                 "max_points": 600,
-                "stage": "prescreen",
+                "stage": "aligned",
                 "checkpoint_path": "",
                 "enqueued_at": datetime.now(timezone.utc).isoformat(),
                 "src_run": src_run,
@@ -453,12 +458,12 @@ def main():
     existing = set()
     dead = set()
     try:
-        snapshot = rl.load_snapshot(str(queue_path))
-        existing = set(snapshot.keys())
-        dead = rl.dead_variants(snapshot)
-        logging.info("队列中已有 %d 条，dead %d 条", len(existing), len(dead))
+        reg_snap = rl.load_snapshot(sp.REGISTRY)
+        existing = set(reg_snap.keys())
+        dead = rl.dead_variants(reg_snap)
+        logging.info("REGISTRY 已有 %d 条，dead %d 条", len(existing), len(dead))
     except Exception as e:
-        logging.warning("加载队列快照失败: %s", e)
+        logging.warning("加载 REGISTRY 快照失败: %s", e)
 
     start_time = time.monotonic()
     timeout_secs = args.timeout_min * 60
