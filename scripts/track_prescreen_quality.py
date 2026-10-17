@@ -75,7 +75,7 @@ def _gate_rate(verdicts: list[dict[str, Any]], strict: bool = True) -> float:
 
 
 def _analyze(verdicts: list[dict[str, Any]]) -> dict[str, Any]:
-    """计算 Jev 判断与回测结果的统计一致性指标。"""
+    """计算 Laya 判断与回测结果的统计一致性指标。"""
     # 1. 高可信 vs gate_pass 率
     high_conf = [v for v in verdicts
                  if isinstance((v.get("metadata") or {}).get("prescreen", {}).get("plausibility"), (int, float))
@@ -124,7 +124,7 @@ def _analyze(verdicts: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _verdicts(metrics: dict[str, Any], verdicts: list[dict[str, Any]]) -> list[str]:
-    """生成 Jev 判断有效性结论 (仅当样本充足)。"""
+    """生成 Laya 判断有效性结论 (仅当样本充足)。"""
     if len(verdicts) < MIN_SAMPLES:
         return [f"样本不足 ({len(verdicts)}/{MIN_SAMPLES})，不产生调度建议。"
                 f"积累到 {MIN_SAMPLES} 条带 prescreen 的 verdict 后自动生效。"]

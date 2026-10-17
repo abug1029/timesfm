@@ -38,16 +38,16 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 - 密钥只进 `.env.praxist`，不要写进 `task_FM/task.yaml`
 - **无人值守运维（2026-10-08）**：维护窗口旗标（`data/cache/maintenance.flag`，7天过期）、熔断机制（`data/cache/heal_fail.count` ≥3 触发）、孤儿 run 回收（`data/cache/active_runs.json` + flock）、D5 禁用旗标（`data/cache/d5_disabled.flag`）。诊断入口：`scripts/diagnose_three_loop.sh`。详见 runbook "无人值守运维" 章节。
 
-## TypeSafe Jev 协变量预筛（软建议模式，2026-09-22）
+## Laya System-1 协变量预筛（软建议模式，2026-09-22）
 
-Peer 提出协变量提案时，监督环用 **TypeSafe System One (Jev)** 做三问预筛（机制可信度 Noul / 新颖度 Choice / 预期效果 Score），但**只做软建议、绝不阻断慢环回测**：
+Peer 提出协变量提案时，监督环用 **Laya System-1** 做三问预筛（机制可信度 Noul / 新颖度 Choice / 预期效果 Score），但**只做软建议、绝不阻断慢环回测**：
 
 - **调度降权**：`scripts/sup_harvest.py` 的 `_apply_prescreen_score()` 读 `.prescreen.json` 调整 `_proposal_priority_score`。invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5。**用 net scoring 而非硬阻断**，slow loop 永远跑、可审计。
-- **质量门禁（Phase 3）**：`scripts/track_prescreen_quality.py` 扫描带 `metadata.prescreen` 的 verdict，验证 Jev 判断与回测一致性。样本 < 50 不产出调度建议，避免小样本误校准。
+- **质量门禁（Phase 3）**：`scripts/track_prescreen_quality.py` 扫描带 `metadata.prescreen` 的 verdict，验证 Laya 判断与回测一致性。样本 < 50 不产出调度建议，避免小样本误校准。
 - **慢环注入**：`scripts/aligned_slow_loop.py` 把 `.prescreen.json` 读入 `verdict["metadata"]["prescreen"]`（status/skip_suggested/plausibility/novelty/effect_size/note）。
 - **幂等/异步**：supervisor 触发是 fire-and-forget（daemon 线程），已有 success 结果则跳过，不重复付费。
 
-关键文件：`cascade/typesafe_prescreen.py`（核心模块，异常分类：超时→degraded、鉴权→error）。环境变量 `TYPESAFE_API_KEY` 在 `.env.praxist`。调用方式：`requests` HTTP POST 到 Laya `/v1/systemone`（`cascade/typesafe_prescreen.py::_call_typesafe()`），URL 由 `LAYA_BASE_URL` 环境变量配置（默认 Tailscale `100.96.19.116:8000`，局域网用 `10.1.1.67:8000`）。模型名 `jev-latest`。
+关键文件：`cascade/typesafe_prescreen.py`（核心模块，异常分类：超时→degraded、鉴权→error）。调用方式：`requests` HTTP POST 到 Laya `/v1/systemone`（`cascade/typesafe_prescreen.py::_call_laya()`），URL 由 `LAYA_BASE_URL` 环境变量配置（默认 Tailscale `100.96.19.116:8000`，局域网用 `10.1.1.67:8000`）。模型名 `laya-rl-agent`。
 
 设计权威：`docs/superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md`；状态细节见记忆 `fm-typesafe-prescreen`。
 
@@ -352,10 +352,10 @@ python scripts/copilot.py --three-star
 - `scripts/drift_detector.py` — 退化检测 (滑动窗口 DirAcc)
 - `scripts/confidence_tracker.py` — 置信度追踪
 
-**TypeSafe 预筛类：**
-- `scripts/validate_typesafe_prescreen.py` — 人工验证 Jev 判断与历史 proposal（需 TYPESAFE_API_KEY，无 key 优雅降级）
-- `scripts/track_prescreen_quality.py` — Jev 判断质量追踪（Phase 3，扫描带 metadata.prescreen 的 verdict，样本<50 不产出调度建议）
-- `cascade/typesafe_prescreen.py` — TypeSafe Jev 预筛核心模块（软建议模式）
+**Laya 预筛类：**
+- `scripts/validate_laya_prescreen.py` — 人工验证 Laya 判断与历史 proposal（Laya 不需要 API key）
+- `scripts/track_prescreen_quality.py` — Laya 判断质量追踪（Phase 3，扫描带 metadata.prescreen 的 verdict，样本<50 不产出调度建议）
+- `cascade/typesafe_prescreen.py` — Laya 预筛核心模块（软建议模式）
 - `scripts/residual_analyzer.py` — 残差分析
 - `scripts/covariate_advisor.py` — 协变量建议
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""验证 TypeSafe 预筛与历史 proposal 的一致性。
+"""验证 Laya 预筛与历史 proposal 的一致性。
 
 用法:
   source .venv/bin/activate
-  python scripts/validate_typesafe_prescreen.py
+  python scripts/validate_laya_prescreen.py
 """
 import json
 import sys
@@ -92,7 +92,7 @@ HISTORY_PROPOSALS = [
 def main():
     sep = "=" * 60
     print(f"\n{sep}")
-    print(f"TypeSafe 预筛人工验证 — {len(HISTORY_PROPOSALS)} 个历史 proposal")
+    print(f"Laya 预筛人工验证 — {len(HISTORY_PROPOSALS)} 个历史 proposal")
     print(f"历史裁决: {len(verdict_history)} 条")
     print(sep)
 
