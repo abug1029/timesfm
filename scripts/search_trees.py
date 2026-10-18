@@ -447,7 +447,15 @@ def render_open_trees(index, snapshot):
                 if (accuracy is not None and floor is not None
                         and NEAR_MISS_FLOOR <= accuracy < floor):
                     near = "yes"
-            lines.append("  - parent %s near_miss=%s" % (vid, near))
+            verdict_tag = ""
+            if isinstance(row, dict):
+                if row.get("gate_pass") and row.get("fdr_pass"):
+                    verdict_tag = " PASS"
+                elif row.get("gate_pass") and not row.get("fdr_pass"):
+                    verdict_tag = " hard-gate"
+                elif row.get("status", "ok") != "ok":
+                    verdict_tag = " DEAD"
+            lines.append("  - parent %s near_miss=%s%s" % (vid, near, verdict_tag))
     lines.append("本轮两份提案应为本轮扩展树的 exploit 与 falsifier。")
     lines.append("")
     return lines

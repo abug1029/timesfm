@@ -170,3 +170,48 @@ def test_end_to_end_cross_run_feedback():
         assert "m_crack" in content
         assert "v1 rejected" in content
         assert "v2 verdicted" in content
+
+
+def test_render_open_trees_verdict_annotation(tmp_path):
+    """render_open_trees should annotate member lines with verdict status."""
+    import search_trees as st
+
+    # Create a simple tree index
+    commitments_path = str(tmp_path / "search_commitments.jsonl")
+    with open(commitments_path, "w") as f:
+        f.write(json.dumps({
+            "schema": "fm.search_commitments.v1",
+            "tree_id": "tree_A", "event": "accept",
+            "symbol": "m", "family": "momentum",
+            "search_role": "root"
+        }) + "\n")
+        f.write(json.dumps({
+            "schema": "fm.search_commitments.v1",
+            "tree_id": "tree_A", "event": "accept",
+            "symbol": "m", "family": "momentum",
+            "variant_id": "vid_1", "search_role": "exploit"
+        }) + "\n")
+
+    index = st.load_tree_index(commitments_path)
+
+    # snapshot: vid_1 has a passing verdict
+    snapshot = {
+        "vid_1": {
+            "variant_id": "vid_1",
+            "status": "ok",
+            "gate_pass": True,
+            "fdr_pass": True,
+            "dir_acc": 0.15,
+            "effective_min": 0.10,
+        }
+    }
+
+    lines = st.render_open_trees(index, snapshot)
+    # Find vid_1 line
+    vid_line = None
+    for line in lines:
+        if "vid_1" in line:
+            vid_line = line
+            break
+    assert vid_line is not None, "vid_1 line not found"
+    assert "PASS" in vid_line, f"Expected PASS annotation in: {vid_line}"
