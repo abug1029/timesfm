@@ -82,6 +82,12 @@ metrics/notes；如需在 mechanism 叙述中提及旧结果，只能带
 }
 ```
 
+11. **Version fields** (v2 schema): proposal JSON may carry `version` (integer, default 1) and `version_note` (string, optional).
+    - First proposal: version=1 (may omit version field).
+    - Same proposal_id re-submitted with changes: increment version, version_note describes what changed.
+    - Exact re-submission (no changes): version unchanged.
+    - Higher versions are treated as new proposals and may be queued.
+
 ## Covariate pool (your valid menu, with mechanisms)
 {% include 'covariate_menu.inc.md' ignore missing %}
 

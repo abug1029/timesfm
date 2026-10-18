@@ -164,3 +164,11 @@ def test_higher_version_allowed():
 
             # v2 should NOT be rejected as version_dup (only v1 is in status)
             assert "version_dup" not in stats.get("reject_reasons", {}),                 "v2 should not be rejected as version_dup when only v1 is in status"
+
+
+def test_prompt_has_version_guidance():
+    """prompt_base.jinja2 should mention version fields for v2 schema."""
+    prompt_path = os.path.join(os.path.dirname(__file__), "..", "task_FM", "prompt_base.jinja2")
+    content = open(prompt_path, encoding="utf-8").read()
+    assert "version" in content.lower()
+    assert "version_note" in content or "version note" in content.lower()
