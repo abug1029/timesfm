@@ -295,26 +295,31 @@ def _build_state(
 ) -> dict[str, Any]:
     """构建 Laya System-1 的 State（英文，避免中文导致超时）。"""
     symbol_profile = _load_symbol_profile(symbol)
-    
+
+    # v3: 过滤 predicted_direction 中文 + 空壳回退
+    raw_pd = proposal.get("predicted_direction") or ""  # Handle explicit null
+    stripped_pd = _strip_chinese(raw_pd)
+    final_pd = "" if _is_shell_pd(stripped_pd) else stripped_pd
+
     # 提取关键字段，构建英文描述（不包含中文 mechanism/symbol_fit）
     proposal_summary = {
         "proposal_id": proposal.get("proposal_id", ""),
         "symbol": proposal.get("symbol", symbol),
         "cov_override": proposal.get("cov_override", ""),
         "covariate_family": proposal.get("covariate_family", ""),
-        "predicted_direction": proposal.get("predicted_direction", ""),
+        "predicted_direction": final_pd,
     }
-    
+
     return {
+        "language": "en",    # best-effort: 未证实 Laya 服务端识别此字段
         "symbol": symbol,
-        "proposal_summary": proposal_summary,  # 英文关键字段，不包含中文长文本
+        "proposal_summary": proposal_summary,
         "sector": symbol_profile.get("sector", "commodity"),
         "contract_details": symbol_profile.get("contract_details", "futures contract"),
         # 跳过中文 covariate_menu 和 recent_verdicts_summary（避免 Laya 超时）
         # "covariate_menu": covariate_menu or _load_covariate_menu(),
         # "recent_verdicts_summary": _extract_relevant_history(verdict_history, symbol),
     }
-
 
 def _get_laya_base_url() -> str:
     """获取 Laya 服务 URL。优先使用环境变量，默认局域网地址。"""
