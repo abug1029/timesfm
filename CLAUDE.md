@@ -46,8 +46,9 @@ Peer 提出协变量提案时，监督环用 **Laya System-1** 做三问预筛�
 - **质量门禁（Phase 3）**：`scripts/track_prescreen_quality.py` 扫描带 `metadata.prescreen` 的 verdict，验证 Laya 判断与回测一致性。样本 < 50 不产出调度建议，避免小样本误校准。
 - **慢环注入**：`scripts/aligned_slow_loop.py` 把 `.prescreen.json` 读入 `verdict["metadata"]["prescreen"]`（status/skip_suggested/plausibility/novelty/effect_size/note）。
 - **幂等/异步**：supervisor 触发是 fire-and-forget（daemon 线程），已有 success 结果则跳过，不重复付费。
+- **去重 pre-check**（2026-10-18）：`process_proposal()` 在 `prescreen_and_save` 前检查 `existing` 集合（REGISTRY∪QUEUE∪INPROGRESS），命中则 `stats.inc("skipped")` 跳过 Laya 调用。不扩 PrescreenStatus 枚举。
 
-关键文件：`cascade/typesafe_prescreen.py`（核心模块，异常分类：超时→degraded、鉴权→error）。调用方式：`requests` HTTP POST 到 Laya `/v1/systemone`（`cascade/typesafe_prescreen.py::_call_laya()`），URL 由 `LAYA_BASE_URL` 环境变量配置（默认 Tailscale `100.96.19.116:8000`，局域网用 `10.1.1.67:8000`）。模型名 `laya-rl-agent`。
+关键文件：`cascade/typesafe_prescreen.py`（核心模块，异常分类：超时→degraded、鉴权→error）。调用方式：`requests` HTTP POST 到 Laya `/v1/systemone`（`cascade/typesafe_prescreen.py::_call_laya()`），URL 由 `LAYA_BASE_URL` 环境变量配置（默认 Tailscale `100.96.19.116:8000`，局域网用 `10.1.1.67:8000`）。模型名 `laya-rl-agent`。payload 顶层含 `language: "en"`（best-effort）。`_build_state()` 通过 `_strip_chinese()` 双道剥离（CJK + 全角标点）+ `_is_shell_pd()` 空壳检测（阈值=12）确保 state 无东亚宽字符。
 
 设计权威：`docs/superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md`（已迁移到 Laya，规格文件待重命名）；状态细节见记忆 `fm-typesafe-prescreen`。
 
@@ -354,6 +355,7 @@ python scripts/copilot.py --three-star
 
 **Laya 预筛类：**
 - `scripts/validate_laya_prescreen.py` — 人工验证 Laya 判断与历史 proposal（Laya 不需要 API key）
+- `scripts/check_pd_chinese.py` — 门禁脚本：扫描所有 proposals 验证 _build_state() 输出无东亚宽字符（8459 scanned, 0 violations）
 - `scripts/track_prescreen_quality.py` — Laya 判断质量追踪（Phase 3，扫描带 metadata.prescreen 的 verdict，样本<50 不产出调度建议）
 - `cascade/typesafe_prescreen.py` — Laya 预筛核心模块（软建议模式）
 - `scripts/residual_analyzer.py` — 残差分析

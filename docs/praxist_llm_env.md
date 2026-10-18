@@ -53,6 +53,8 @@ set +a
 
 **2026-10-17 修复**：Laya 需要英文输入（中文 instructions 导致超时 >60s）。已将 `_call_laya()` 中的 instructions/criteria 翻译为英文，实测 6.5s 完成（之前超时）。
 
+**2026-10-18 修复**：`predicted_direction` 字段 25% 提案含中文括号注释（`_build_state()` 遗漏）。新增 `_strip_chinese()` 双道剥离 + `_is_shell_pd()` 空壳检测（阈值=12）+ `_build_state()` 集成 + `_call_laya()` payload `language: "en"`。门禁脚本 `scripts/check_pd_chinese.py`（8459 scanned, 0 violations）。详见 `docs/superpowers/specs/2026-10-18-laya-chinese-leak-fix-spec.md`。
+
 ### 启用 Laya 预筛
 
 1. 配置 `LAYA_BASE_URL` 环境变量（默认 `http://10.1.1.67:8000`）
