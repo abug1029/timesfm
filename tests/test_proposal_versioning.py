@@ -201,3 +201,33 @@ def test_version_comparison_enhanced(tmp_path):
         assert "verdicted" in lines[0]
     finally:
         sp.REGISTRY = orig
+
+
+def test_tree_member_has_version(tmp_path):
+    """_Tree.member_pid_ver should store version from commitment records."""
+    import search_trees as st
+    commitments_path = str(tmp_path / "search_commitments.jsonl")
+    with open(commitments_path, "w") as f:
+        f.write(json.dumps({
+            "tree_id": "tree_A", "event": "accept",
+            "symbol": "m", "family": "momentum",
+            "proposal_id": "m_crack", "variant_id": "vid_1",
+            "version": 2, "search_role": "root",
+            "schema": "fm.search_commitments.v1", "B": 4, "tau": 0.04
+        }) + "\n")
+    index = st.load_tree_index(commitments_path)
+    tree = index.trees["tree_A"]
+    assert tree.member_pid_ver.get("m_crack") == 2
+
+
+def test_append_commitment_carries_version(tmp_path):
+    """append_commitment should write version field when provided."""
+    import search_trees as st
+    path = str(tmp_path / "commitments.jsonl")
+    st.append_commitment(path, "accept", "tree_A",
+                         symbol="m", family="momentum",
+                         proposal_id="m_crack", variant_id="vid_1",
+                         version=3)
+    content = open(path).read().strip()
+    rec = json.loads(content)
+    assert rec["version"] == 3
