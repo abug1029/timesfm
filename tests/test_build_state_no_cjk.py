@@ -86,3 +86,35 @@ def test_build_state_handles_null_pd():
     state = _build_state(proposal, "p", None, None)
     pd = state["proposal_summary"]["predicted_direction"]
     assert pd == ""
+
+# ── Task 4: _call_laya tests ──────────────────────────
+from unittest.mock import patch, MagicMock
+import inspect
+
+def test_call_laya_payload_includes_language():
+    """_call_laya payload 顶层包含 language: en"""
+    from cascade.typesafe_prescreen import _call_laya
+    state = {
+        "language": "en",
+        "symbol": "p",
+        "proposal_summary": {"predicted_direction": "oi_up -> long"},
+    }
+    with patch('requests.post') as mock_post:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"answers": {"mechanism_plausibility": {"noul": 0.7, "confidence": 0.8}}}
+        mock_post.return_value = mock_resp
+        _call_laya(state)
+        call_kwargs = mock_post.call_args.kwargs
+        payload = call_kwargs.get('json')
+        assert payload is not None
+        assert payload.get("language") == "en"
+        assert payload.get("model") == "laya-rl-agent"
+
+def test_call_laya_timeout_signature():
+    """_call_laya 签名默认超时 60s（从 30s 统一）"""
+    from cascade.typesafe_prescreen import _call_laya
+    sig = inspect.signature(_call_laya)
+    timeout_param = sig.parameters.get('timeout')
+    assert timeout_param is not None
+    assert timeout_param.default == 60.0

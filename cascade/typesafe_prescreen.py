@@ -326,7 +326,7 @@ def _get_laya_base_url() -> str:
     return _env_nonempty("LAYA_BASE_URL") or "http://10.1.1.67:8000"
 
 
-def _call_laya(state: dict[str, Any], timeout: float = 30.0) -> Any:
+def _call_laya(state: dict[str, Any], timeout: float = 60.0) -> Any:
     """调用 Laya System-1 服务（HTTP POST /v1/systemone）。"""
     import requests
 
@@ -335,6 +335,7 @@ def _call_laya(state: dict[str, Any], timeout: float = 30.0) -> Any:
 
     payload = {
         "model": "laya-rl-agent",
+        "language": "en",    # best-effort: 未证实服务端识别，不阻塞成功率验收
         "state": state,
         "questions": {
             "mechanism_plausibility": {
