@@ -110,3 +110,87 @@ def write_proposal_status(
             os.makedirs(parent, exist_ok=True)
         with open(status_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+# ── Phase 4: 撤回机制 ──
+
+_TERMINAL_STATES = frozenset({"verdicted", "rejected"})
+
+
+def get_latest_status(status_file, proposal_id, version=None):
+    """Return the latest status record for a proposal.
+
+    version=None → latest across all versions.
+    No match → None.
+    """
+    if not os.path.exists(status_file):
+        return None
+    latest = None
+    for line in open(status_file, encoding="utf-8"):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if rec.get("proposal_id") != proposal_id:
+            continue
+        if version is not None and rec.get("version") != version:
+            continue
+        latest = rec  # append-only, last line is latest
+    return latest
+
+
+def _get_latest_status_unlocked(status_file, proposal_id, version=None):
+    """Same as get_latest_status but without locking (caller holds lock)."""
+    return get_latest_status(status_file, proposal_id, version)
+
+
+def withdraw_proposal(status_file, proposal_id, version=None, reason=""):
+    """Withdraw a proposal. Idempotent: already withdrawn → True, nonexistent → False.
+
+    version=None → withdraw the latest version of this proposal_id.
+
+    Per spec §3.4.2:
+    - draft/prescreened/queued/evaluating: append withdrawn row → True
+    - verdicted/rejected: reject withdraw → False
+    - withdrawn: idempotent → True
+    - no record: → False
+    """
+    with _status_lock(status_file):
+        latest = _get_latest_status_unlocked(status_file, proposal_id, version)
+
+        if latest is None:
+            return False
+
+        current_status = latest.get("status", "")
+        current_version = latest.get("version")
+
+        # Terminal states: reject
+        if current_status in _TERMINAL_STATES:
+            return False
+
+        # Already withdrawn: idempotent
+        if current_status == "withdrawn":
+            return True
+
+        # Write withdrawn event
+        record = {
+            "proposal_id": proposal_id,
+            "version": current_version,
+            "status": "withdrawn",
+            "run_id": latest.get("run_id", "unknown"),
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "variant_id": latest.get("variant_id"),
+        }
+        if reason:
+            record["reason"] = reason
+
+        parent = os.path.dirname(status_file)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(status_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        return True
