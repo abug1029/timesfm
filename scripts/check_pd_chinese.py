@@ -54,6 +54,7 @@ def check_proposals():
         symbol = proposal.get("symbol")
         if not symbol:
             # symbol 缺失的 proposal 跳过（_build_state 依赖 symbol 查 sector_map）
+            print(f"SKIP (no symbol): {pf}")
             skipped += 1
             continue
 
