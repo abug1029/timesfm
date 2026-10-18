@@ -191,7 +191,7 @@ def test_harvest_aborts_on_shutdown_flag(monkeypatch, tmp_path):
     (run_dir / "results" / "gen_0" / "proposals").mkdir(parents=True)
     for i in range(3):
         (run_dir / "results" / "gen_0" / "proposals" / f"jd_vor{i}.json").write_text(
-            json.dumps({"schema": "fm.hypothesis_proposal.v1", "symbol": "jd",
+            json.dumps({"schema": "fm.hypothesis_proposal.v1", "proposal_id": f"jd_vor{i}", "symbol": "jd",
                         "cov_override": "vor", "mechanism": "x" * 60}), encoding="utf-8")
 
     # Task 5 的座位门要求当前协议的 nocov 基线在位，否则一律 no_current_baseline

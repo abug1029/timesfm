@@ -35,6 +35,8 @@ from cascade.cov_family import resolve_cov_family
 import sup_evidence
 import sup_lifecycle
 import sup_paths
+from proposal_status import write_proposal_status
+from rejected_proposals import write_rejected_proposal
 
 
 def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=600):
@@ -582,11 +584,44 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     def _reject(reason):
         stats["rejected"] += 1
         stats["reject_reasons"][reason] = stats["reject_reasons"].get(reason, 0) + 1
+        # 安全写盘（P0-2）：写盘失败不得改变统计语义
+        try:
+            _run_id = os.path.basename(run_dir)  # src_run，禁止虚构 current_run_id
+            # _qs, _bd 已在循环开头重置为 None（P1-A）；若质量门已计算则填充真实值
+            write_rejected_proposal(
+                rejected_file=sup_paths.REJECTED_PROPOSALS_PATH,
+                proposal_id=_proposal_id or "no_id",
+                version=_version,
+                reject_reason=reason,
+                quality_score=_qs,
+                run_id=_run_id,
+                symbol=_symbol,
+                cov_override=_cov,
+                covariate_family=p.get("covariate_family"),
+                breakdown=_bd,
+            )
+            write_proposal_status(
+                status_file=sup_paths.PROPOSAL_STATUS_PATH,
+                proposal_id=_proposal_id or "no_id",
+                version=_version,
+                status="rejected",
+                run_id=_run_id,
+                reject_reason=reason,
+                quality_score=_qs,
+            )
+        except Exception:
+            import logging as _logging
+            _logging.getLogger("sup_harvest").warning(
+                "failed to write proposal status/rejected for %s: %s",
+                _proposal_id or "no_id", reason, exc_info=True)
 
     candidates = []
     seen_vids = set()
     run_dirs = sorted(glob.glob(os.path.join(root, "task_FM", "experiments", "run_*")),
                       key=os.path.getmtime, reverse=True)
+    # ── Phase 1 Task 5: pre-loop scope init (prevents NameError in _reject before first p) ──
+    _qs = None; _bd = None; _proposal_id = None; _version = 1
+    _symbol = None; _cov = None
     for run_dir in run_dirs:
         if sup_lifecycle._SHUTDOWN_REQUESTED:
             # 长扫描不得吃掉停机信号：立刻中止，且不返回半份候选（避免停机途中入队）
@@ -603,6 +638,13 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             except Exception:
                 _reject("unparseable_json"); continue
             stats["seen"] += 1
+            # ── Phase 1 Task 5: per-proposal scope reset (P1-A) ──
+            _qs = None  # quality_score
+            _bd = None  # quality breakdown
+            _proposal_id = p.get("proposal_id")
+            _version = int(p.get("version") or 1)
+            _symbol = p.get("symbol")
+            _cov = p.get("cov_override")
             # 批次 F (M4)：abandon 提案处理
             # peer 输出 decision="abandon" 表示反对当前假设，不入队、不加分
             if p.get("decision") == "abandon":
@@ -622,6 +664,10 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 _reject("schema_mismatch"); continue
             if _schema == "fm.hypothesis_proposal.v2" and not _check_v2_version(p):
                 _reject("schema_mismatch"); continue
+            # ── Phase 1 Task 5: explicit missing_proposal_id reject (P1-B) ──
+            if not _proposal_id:
+                _reject("missing_proposal_id")
+                continue
             symbol = str(p.get("symbol") or "").lower().strip()
             cov = str(p.get("cov_override") or "").strip()
             mechanism = str(p.get("mechanism") or "").strip()
@@ -741,6 +787,9 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 "src_run": os.path.basename(run_dir), "source": "peer_proposal",
                 # PR-B6 质量门留痕 (队列行，供宿主审查门是否过严)
                 "quality_score": round(quality_score, 4), "sector": sector,
+                # Phase 1: 绑定键（P0-1），禁止 "unknown" 哨兵（P1-B）
+                "proposal_id": _proposal_id,
+                "version": _version,
                 "_family": family, "_score": score, "_tier": tier,
                 "_proposal_path": sp}
             if search_info is not None:
@@ -748,6 +797,21 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 # off/shadow 不带（S1：off 下行形状与今日相同）
                 _cand.update(search_info)
             candidates.append(_cand)
+            # ── Phase 1 Task 5: 成功入队 → 写入 status (queued) ──
+            try:
+                write_proposal_status(
+                    status_file=sup_paths.PROPOSAL_STATUS_PATH,
+                    proposal_id=_cand["proposal_id"],
+                    version=_cand["version"],
+                    status="queued",
+                    run_id=os.path.basename(run_dir),
+                    variant_id=_cand["variant_id"],
+                    quality_score=round(quality_score, 4),
+                )
+            except Exception:
+                import logging as _logging
+                _logging.getLogger("sup_harvest").warning(
+                    "failed to write queued status for %s", _cand.get("proposal_id"), exc_info=True)
             # ── Laya 预筛触发 (fire-and-forget, 不阻塞 harvest) ──
             _prescreen_async(p, sp, symbol)
 
