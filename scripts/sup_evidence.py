@@ -296,27 +296,74 @@ def _rejection_detail_lines(rejected_path, max_lines=20):
 
 
 def _version_comparison_lines(status_path, max_lines=10):
-    """Build version comparison view for multi-version proposals."""
+    """Build version comparison view for multi-version proposals (P3.4 enhanced).
+
+    Joins proposal_status.jsonl with aligned_verdicts.jsonl to show
+    version chains with outcome: v1 rejected(reason) -> v2 verdicted(gate=X,fdr=Y)
+    """
     if not os.path.exists(status_path):
         return []
     by_prop = {}
     for raw in open(status_path, encoding="utf-8"):
         raw = raw.strip()
-        if raw:
+        if not raw:
+            continue
+        try:
+            r = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        pid = r.get("proposal_id")
+        if not pid:
+            continue
+        ver = r.get("version", "?")
+        status = r.get("status", "?")
+        rr = r.get("reject_reason")
+        vid = r.get("variant_id")
+        by_prop.setdefault(pid, []).append((ver, status, rr, vid))
+
+    # Verdict lookup
+    verdict_path = sup_paths.REGISTRY
+    verdict_map = {}
+    if os.path.exists(verdict_path):
+        for raw in open(verdict_path, encoding="utf-8"):
+            raw = raw.strip()
+            if not raw:
+                continue
             try:
-                r = json.loads(raw)
-                pid = r.get("proposal_id")
-                if pid:
-                    by_prop.setdefault(pid, set()).add(r.get("version"))
+                v = json.loads(raw)
+                vid = v.get("variant_id")
+                if vid:
+                    verdict_map[vid] = v
             except json.JSONDecodeError:
                 continue
+
     out = []
-    for pid, versions in sorted(by_prop.items()):
-        if len(versions) > 1:
-            out.append("%s: versions %s" % (pid, sorted(versions)))
-            if len(out) >= max_lines:
-                break
+    for pid, entries in sorted(by_prop.items()):
+        seen = set()
+        unique = []
+        for ver, status, rr, vid in entries:
+            key = (ver, status)
+            if key not in seen:
+                seen.add(key)
+                unique.append((ver, status, rr, vid))
+        if len(unique) < 2:
+            continue
+        parts = []
+        for ver, status, rr, vid in unique[:5]:
+            tag = status
+            if status == "rejected" and rr:
+                tag = "rejected(%s)" % rr
+            elif status == "verdicted" and vid:
+                v = verdict_map.get(vid, {})
+                gp = v.get("gate_pass")
+                fp = v.get("fdr_pass")
+                tag = "verdicted(gate=%s,fdr=%s)" % (gp, fp)
+            parts.append("v%s %s" % (ver, tag))
+        out.append("%s: %s" % (pid, " → ".join(parts)))
+        if len(out) >= max_lines:
+            break
     return out
+
 
 
 

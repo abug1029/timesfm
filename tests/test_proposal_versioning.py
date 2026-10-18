@@ -172,3 +172,32 @@ def test_prompt_has_version_guidance():
     content = open(prompt_path, encoding="utf-8").read()
     assert "version" in content.lower()
     assert "version_note" in content or "version note" in content.lower()
+
+
+def test_version_comparison_enhanced(tmp_path):
+    """_version_comparison_lines should show outcome per version."""
+    import sup_evidence as se
+    import sup_paths as sp
+
+    status_path = str(tmp_path / "proposal_status.jsonl")
+    verdicts_path = str(tmp_path / "aligned_verdicts.jsonl")
+
+    with open(status_path, "w") as f:
+        f.write(json.dumps({"proposal_id": "m_crack", "version": 1, "status": "rejected", "reject_reason": "quality_below_threshold"}) + "\n")
+        f.write(json.dumps({"proposal_id": "m_crack", "version": 2, "status": "verdicted", "variant_id": "vid_v2"}) + "\n")
+
+    with open(verdicts_path, "w") as f:
+        f.write(json.dumps({"variant_id": "vid_v2", "gate_pass": True, "fdr_pass": True}) + "\n")
+
+    orig = sp.REGISTRY
+    try:
+        sp.REGISTRY = verdicts_path
+        lines = se._version_comparison_lines(status_path)
+        assert len(lines) == 1
+        assert "m_crack" in lines[0]
+        assert "v1" in lines[0]
+        assert "v2" in lines[0]
+        assert "rejected" in lines[0]
+        assert "verdicted" in lines[0]
+    finally:
+        sp.REGISTRY = orig
