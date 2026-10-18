@@ -405,6 +405,30 @@ def _prescreen_plausibility(proposal_path):
     return p
 
 
+def _has_proposal_version_status(status_path, proposal_id, version, statuses=None):
+    """Check if proposal_id+version already has a record in proposal_status.jsonl.
+
+    statuses: optional filter set (e.g. {"rejected", "queued", "verdicted"}).
+    None = any status counts as duplicate.
+    """
+    if not os.path.exists(status_path):
+        return False
+    target = (proposal_id, version)
+    with open(status_path, encoding="utf-8") as fh:
+        for raw in fh:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                r = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if (r.get("proposal_id"), r.get("version")) == target:
+                if statuses is None or r.get("status") in statuses:
+                    return True
+    return False
+
+
 def _sector_filter_check(symbol, snapshot):
     """板块级拦截 (circuit-breaker 语义)。
 
@@ -735,6 +759,11 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             if vid in dead or vid in existing or vid in passing_ids or vid in seen_vids:
                 _reject("dedup"); continue
             seen_vids.add(vid)
+
+            # ── P3.2: proposal_id+version dedup (spec §3.5.3) ──
+            if _has_proposal_version_status(
+                    sup_paths.PROPOSAL_STATUS_PATH, _proposal_id, _version):
+                _reject("version_dup"); continue
 
             # ── PR-B6 提案质量门 (在 dedup 之后，保证既有 reject 归因不变) ──
             _snap = snapshot or {}
