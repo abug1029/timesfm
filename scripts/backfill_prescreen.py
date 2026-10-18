@@ -31,7 +31,7 @@ if str(FM_ROOT) not in sys.path:
 # ── 路径常量 ────────────────────────────────────────
 STATE_FILE = FM_ROOT / "data" / "cache" / "backfill_prescreen_state.json"
 LOG_FILE = FM_ROOT / "logs" / "backfill_prescreen.log"
-SCRIPT_VERSION = "2.0.1"
+SCRIPT_VERSION = "2.1.0"
 
 # ── 优雅退出 ────────────────────────────────────────
 _shutdown = False
@@ -262,6 +262,7 @@ class Stats:
         self.skipped = 0
         self.failed = 0
         self.enqueued = 0
+        self.degraded = 0
 
     def inc(self, field):
         with self.lock:
@@ -275,24 +276,47 @@ class Stats:
                 "failed": self.failed,
                 "enqueued": self.enqueued,
                 "skipped": self.skipped,
+                "degraded": self.degraded,
             }
 
 
-# ── 处理单个提案 ────────────────────────────────────
-def process_proposal(proposal_path, stats, verdict_history, covariate_menu):
-    """处理单个提案，返回 (status_label, queue_row_or_None)。
+# ── max_points 从 cadence 配置读取 ─────────────
+def _get_max_points():
+    """P2-4: 从 cadence 配置读取 aligned_max_points，回退 600。"""
+    try:
+        import sup_state
+        import sup_paths as _sp
+        cad = sup_state.load_goal(
+            os.path.join(_sp.FM_ROOT, "scripts", "praxist_goal.yaml")
+        ).get("cadence") or {}
+        return sup_state._cad_int(cad, "aligned_max_points")
+    except Exception:
+        return 600
 
-    成功时构造 queue row（符合 QUEUE_FIELDS）供调用方入队；
-    失败/降级时返回 (status, None)，不入队（可重试）。
+
+# ── 处理单个提案 ────────────────────────────────────
+def process_proposal(proposal_path, stats, verdict_history, covariate_menu,
+                     queue_path, dead, existing):
+    """处理单个提案，返回 status_label。
+
+    P2-5: success 且 vid 有效时立即入队（单个入队，锁保护），
+    避免批末一次性入队因崩溃窗口丢失。
     """
     fields = extract_proposal_fields(proposal_path)
     if fields is None:
         stats.inc("failed")
-        return "error", None
+        return "error"
 
     symbol = fields["symbol"]
     cov_override = fields["cov_override"]
     proposal_data = fields["proposal_data"]
+
+    # ── Phase 2: 去重 pre-check ──────────────────────────────
+    variant_id = generate_variant_id(symbol, cov_override)
+    if variant_id is not None and variant_id in existing:
+        stats.inc("skipped")
+        return "skipped"
+    # ─────────────────────────────────────────────────────────
 
     try:
         from cascade.typesafe_prescreen import prescreen_and_save
@@ -308,39 +332,61 @@ def process_proposal(proposal_path, stats, verdict_history, covariate_menu):
         status = result.get("status", "unknown")
 
         if status == "success":
-            stats.inc("success")
-
-            # 构造符合 QUEUE_FIELDS 的入队行
+            # P2-3: vid 检查通过后才计 success
             variant_id = generate_variant_id(symbol, cov_override)
             if variant_id is None:
-                # W6.4: 身份不可得 -> 拒绝入队，降级为 degraded
+                # P2-2: vid=None 时改写已写的 prescreen.json 为 error
+                prescreen_path = Path(proposal_path).with_suffix(".prescreen.json")
+                if prescreen_path.exists():
+                    try:
+                        data = json.loads(prescreen_path.read_text(encoding="utf-8"))
+                        data["status"] = "error"
+                        data["note"] = "variant_id generation failed (W6.4)"
+                        prescreen_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                        logging.info("已改写 %s 为 error（vid 不可得）", prescreen_path.name)
+                    except Exception as e:
+                        logging.error("改写 prescreen.json 失败 %s: %s", prescreen_path, e)
                 logging.warning(
-                    "提案 %s prescreen success 但 variant_id 不可得 (W6.4)，拒绝入队",
+                    "提案 %s prescreen success 但 variant_id 不可得 (W6.4)，标记 degraded",
                     proposal_path,
                 )
-                return "degraded", None
+                stats.inc("degraded")
+                return "degraded"
+
+            stats.inc("success")
             src_run = extract_src_run(proposal_path)
 
             queue_row = {
                 "variant_id": variant_id,
                 "symbol": symbol,
                 "cov_override": cov_override or None,
-                "max_points": 600,
+                "max_points": _get_max_points(),
                 "stage": "aligned",
                 "checkpoint_path": "",
                 "enqueued_at": datetime.now(timezone.utc).isoformat(),
                 "src_run": src_run,
                 "_proposal_path": str(proposal_path),
             }
-            return "success", queue_row
+
+            # P2-5: 立即入队（锁保护），避免崩溃窗口丢失
+            try:
+                import registry_lib as _rl
+                added = _rl.queue_enqueue(queue_path, [queue_row], dead, existing)
+                if added:
+                    stats.inc("enqueued")
+                    existing.add(variant_id)  # 防同批次重复
+            except Exception as e:
+                logging.error("入队失败 %s: %s", proposal_path, e)
+
+            return "success"
         else:
             stats.inc("failed")
-            return status, None
+            return status
 
     except Exception as e:
         logging.error("处理失败 %s: %s\n%s", proposal_path, e, traceback.format_exc())
         stats.inc("failed")
-        return "error", None
+        return "error"
 
 
 # ── 主函数 ──────────────────────────────────────────
@@ -444,11 +490,11 @@ def main():
     import registry_lib as rl
 
     if args.queue_path:
-        queue_path = Path(args.queue_path)
+        queue_path = str(Path(args.queue_path))
     else:
-        queue_path = Path(sp.QUEUE)
+        queue_path = sp.QUEUE
 
-    queue_path.parent.mkdir(parents=True, exist_ok=True)
+    os.makedirs(os.path.dirname(queue_path), exist_ok=True)
 
     verdict_history = load_verdict_history()
     covariate_menu = load_covariate_menu()
@@ -465,15 +511,27 @@ def main():
     except Exception as e:
         logging.warning("加载 REGISTRY 快照失败: %s", e)
 
+    # P2-1: 并入 INPROGRESS/QUEUE 中的飞行中 vid，避免重复入队
+    try:
+        in_flight = rl.in_flight_ids(sp.QUEUE, sp.INPROGRESS)
+        existing |= in_flight
+        if in_flight:
+            logging.info("并入 INPROGRESS/QUEUE 中 %d 个飞行中 vid", len(in_flight))
+    except Exception as e:
+        logging.warning("加载 INPROGRESS 失败: %s", e)
+
+    # P2-4: max_points 从 cadence 配置读取
+    max_points = _get_max_points()
+    logging.info("aligned_max_points = %d (来自 cadence 配置)", max_points)
+
     start_time = time.monotonic()
     timeout_secs = args.timeout_min * 60
-
-    queue_rows = []
 
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
             executor.submit(
-                process_proposal, p, stats, verdict_history, covariate_menu
+                process_proposal, p, stats, verdict_history, covariate_menu,
+                queue_path, dead, existing
             ): p
             for p in to_process
         }
@@ -497,16 +555,13 @@ def main():
                 break
 
             try:
-                status_label, queue_row = future.result()
+                status_label = future.result()
             except Exception as e:
                 logging.error("future 异常 %s: %s", proposal_path, e)
                 status_label = "error"
-                queue_row = None
 
             if status_label == "success":
                 processed_set.add(proposal_path)
-                if queue_row is not None:
-                    queue_rows.append(queue_row)
 
             if i % 10 == 0:
                 state["processed"] = list(processed_set)
@@ -516,19 +571,10 @@ def main():
             if i % 50 == 0 or i == len(to_process):
                 snap = stats.snapshot()
                 logging.info(
-                    "进度: %d/%d (success=%d failed=%d enqueued=%d) elapsed=%.0fs",
+                    "进度: %d/%d (success=%d failed=%d enqueued=%d degraded=%d) elapsed=%.0fs",
                     i, len(to_process), snap["success"], snap["failed"],
-                    snap["enqueued"], elapsed
+                    snap["enqueued"], snap.get("degraded", 0), elapsed
                 )
-
-    if queue_rows:
-        try:
-            added = rl.queue_enqueue(str(queue_path), queue_rows, dead, existing)
-            stats.enqueued = added
-            logging.info("入队 %d 条到 %s", added, queue_path)
-        except Exception as e:
-            logging.error("入队失败: %s", e)
-            stats.inc("failed")
 
     elapsed = time.monotonic() - start_time
     snap = stats.snapshot()
@@ -539,8 +585,9 @@ def main():
     save_state(state)
 
     logging.info("=" * 60)
-    logging.info("完成: total=%d success=%d failed=%d enqueued=%d elapsed=%.0fs",
-                 snap["total"], snap["success"], snap["failed"], snap["enqueued"], elapsed)
+    logging.info("完成: total=%d success=%d failed=%d enqueued=%d degraded=%d elapsed=%.0fs",
+                 snap["total"], snap["success"], snap["failed"], snap["enqueued"],
+                 snap.get("degraded", 0), elapsed)
     logging.info("状态文件: %s", STATE_FILE)
     logging.info("队列文件: %s", queue_path)
     logging.info("=" * 60)
