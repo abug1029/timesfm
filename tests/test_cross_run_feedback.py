@@ -215,3 +215,12 @@ def test_render_open_trees_verdict_annotation(tmp_path):
             break
     assert vid_line is not None, "vid_1 line not found"
     assert "PASS" in vid_line, f"Expected PASS annotation in: {vid_line}"
+
+
+def test_prompt_has_proposal_feedback_section():
+    """prompt_base.jinja2 should contain Proposal Feedback guidance."""
+    prompt_path = os.path.join(os.path.dirname(__file__), "..", "task_FM", "prompt_base.jinja2")
+    content = open(prompt_path, encoding="utf-8").read()
+    assert "Proposal Feedback" in content
+    assert "known_verdicts.inc.md" in content
+    assert "historical" in content.lower()

@@ -111,9 +111,17 @@ Do not re-propose）。不要用本段之外的过时「重点族」口令。
 - 引用族证据必须带分母原文（如 `momentum: 3/12 gate_pass`）；不得只引分子，不得换算成百分比。
 - `Old-protocol priors` 段是历史协议裁决的上下文注记，不构成当前协议证据；不得据此宣称已解决或复活 DEAD 变体。
 - 头部 `generated_at` / `protocol_fp8` 标明快照时间与协议指纹；引用证据时原样保留。
-{# Phase 1: 提案反馈信息（已知裁决 + 拒收计数） #}
-{# known_verdicts.inc.md 已增强（因果链 + 拒收详情 + 版本比较） #}
-{# known_rejections.inc.md 仅计数分布 #}
+{# Phase 2: Proposal Feedback — peer 参考历史裁决结果 #}
+## Proposal Feedback (cross-run)
+_above: causal chain + rejection details + version comparison from known_verdicts.inc.md_
+
+**How to use historical verdicts**:
+- `Proposal-Verdict Causal Chain`: past verdicts for same proposal_id. If `gate=False`, the hypothesis direction was validated as failing — **do not re-propose**.
+- `Recent Rejections`: quality-gate rejections with reasons. Same proposal_id reject_reason helps diagnose (e.g. quality_below_threshold = mechanism too weak).
+- `Proposal Evolution`: cross-version trajectory. If v1->v2->v3 all rejected, the hypothesis may have a fundamental issue.
+- `Version Comparison`: multi-version overview. Higher version passing = hypothesis validated after correction.
+
+**Citation discipline**: when referencing historical verdicts, include the original (e.g. `m_crack v2 gate=True fdr=True`), not just the conclusion.
 {% include 'known_verdicts.inc.md' ignore missing %}
 {% include 'known_rejections.inc.md' ignore missing %}
 
