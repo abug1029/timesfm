@@ -318,6 +318,100 @@ def _version_comparison_lines(status_path, max_lines=10):
                 break
     return out
 
+
+
+def _proposal_evolution_lines(status_path, rejected_path, verdicts_path, max_lines=15):
+    """Build proposal evolution view for multi-version proposals.
+
+    Groups proposal_status records by proposal_id, filters to proposals with
+    >= 2 versions, and shows the trajectory of each version with outcome details.
+
+    Joins:
+    - verdicted status -> aligned_verdicts via variant_id (gate_pass, fdr_pass)
+    - rejected status -> rejected_proposals via (proposal_id, version) (reject_reason)
+    """
+    if not os.path.exists(status_path):
+        return []
+
+    # Group status records by proposal_id -> version -> list of records
+    by_prop = {}
+    for raw in open(status_path, encoding="utf-8"):
+        raw = raw.strip()
+        if raw:
+            try:
+                r = json.loads(raw)
+                pid = r.get("proposal_id")
+                ver = r.get("version")
+                if pid and ver is not None:
+                    by_prop.setdefault(pid, {}).setdefault(ver, []).append(r)
+            except json.JSONDecodeError:
+                continue
+
+    # Filter to multi-version proposals
+    multi = {pid: vers for pid, vers in by_prop.items() if len(vers) >= 2}
+    if not multi:
+        return []
+
+    # Load verdicts index (variant_id -> record)
+    verdicts = {}
+    if os.path.exists(verdicts_path):
+        for raw in open(verdicts_path, encoding="utf-8"):
+            raw = raw.strip()
+            if raw:
+                try:
+                    v = json.loads(raw)
+                    vid = v.get("variant_id")
+                    if vid:
+                        verdicts[vid] = v
+                except json.JSONDecodeError:
+                    continue
+
+    # Load rejections index ((proposal_id, version) -> record)
+    rejections = {}
+    if os.path.exists(rejected_path):
+        for raw in open(rejected_path, encoding="utf-8"):
+            raw = raw.strip()
+            if raw:
+                try:
+                    r = json.loads(raw)
+                    key = (r.get("proposal_id"), r.get("version"))
+                    if key[0] and key[1] is not None:
+                        rejections[key] = r
+                except json.JSONDecodeError:
+                    continue
+
+    # State priority: verdicted=3 > rejected=2 > queued=1
+    _STATE_RANK = {"verdicted": 3, "rejected": 2, "queued": 1}
+
+    out = []
+    for pid in sorted(multi):
+        versions = multi[pid]
+        parts = []
+        for ver in sorted(versions):
+            records = versions[ver]
+            # Pick highest state record
+            best = max(records, key=lambda r: _STATE_RANK.get(r.get("status"), 0))
+            status = best.get("status", "unknown")
+
+            if status == "verdicted":
+                vid = best.get("variant_id")
+                v = verdicts.get(vid, {})
+                gp = v.get("gate_pass", "?")
+                fp = v.get("fdr_pass", "?")
+                parts.append("v%s verdicted(gate=%s,fdr=%s)" % (ver, gp, fp))
+            elif status == "rejected":
+                rej = rejections.get((pid, ver), {})
+                reason = rej.get("reject_reason", best.get("reject_reason", "?"))
+                parts.append("v%s rejected(%s)" % (ver, reason))
+            else:
+                parts.append("v%s %s" % (ver, status))
+
+        out.append("%s: %s" % (pid, " -> ".join(parts)))
+        if len(out) >= max_lines:
+            break
+    return out
+
+
 def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
                                status_map=None, queue_ids=None, root=None,
                                excluded_items=None, commitments_path=None):
@@ -520,6 +614,16 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
         lines.append("")
         lines.append("## Version Comparison")
         lines.extend(ver_lines)
+
+
+    evo_lines = _proposal_evolution_lines(
+        sup_paths.PROPOSAL_STATUS_PATH,
+        sup_paths.REJECTED_PROPOSALS_PATH,
+        sup_paths.REGISTRY)
+    if evo_lines:
+        lines.append("")
+        lines.append("## Proposal Evolution")
+        lines.extend(evo_lines)
 
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
     with open(dest_path, "w", encoding="utf-8") as f:
