@@ -1,6 +1,7 @@
 """cascade/typesafe_prescreen.py — Laya 协变量提案预筛（软建议模式）"""
 
 import json
+import re
 import logging
 import os
 import time
@@ -30,6 +31,40 @@ FM_ROOT = Path(__file__).resolve().parent.parent
 # ── 类型别名 ────────────────────────────────────────
 PrescreenStatus = Literal["success", "degraded", "error"]
 NoveltyType = Literal["novel", "extension", "redundant", "invalid"]
+
+# ── 中文字符剥离（v3: 双道剥离 CJK + 全角标点）──────────
+_ZH = re.compile(r'[\u4e00-\u9fff\u3000-\u303f]+')
+_FULLWIDTH_PUNCT = re.compile(r'[\uff01-\uff0f\uff1a-\uff20\uff3b-\uff3f\uff5b-\uff65]+')
+_PD_MIN_LEN = 12  # v3: 对齐实测 ~496 空壳（27.6%，双道 strip 后）
+
+
+def _strip_chinese(s: str) -> str:
+    """剥中文字符 + 全角标点，保留英文/数字/半角符号/空格/下划线。
+
+    双道剥离：
+      1. CJK 汉字 (U+4E00-U+9FFF) + CJK 标点 (U+3000-U+303F) -> 空格
+      2. 全角标点 (U+FF01-U+FF65 中的标点区) -> 空格
+      3. 合并连续空白
+      4. 剥首尾空格/括号/分号/逗号
+
+    注意：下划线 _ 不在任何正则中，会保留。括号内空格会保留。
+    """
+    result = _ZH.sub(' ', s)
+    result = _FULLWIDTH_PUNCT.sub(' ', result)
+    return re.sub(r'\s+', ' ', result).strip(' (;,)')
+
+
+def _is_shell_pd(stripped: str) -> bool:
+    """判定 strip 后是否为近空壳。
+
+    算法：剥除 -> , ; | ( ) + 空白 后，剩余核心长度 < _PD_MIN_LEN 视为空壳。
+    注意：下划线 _ 不在剥除字符类中，会保留并计入长度。
+
+    v3: 阈值 12。典型空壳 '-> long, -> short' -> core='longshort' len=9 < 12 -> True。
+    """
+    core = re.sub(r'[->,;|()+\s]', '', stripped)
+    return len(core) < _PD_MIN_LEN
+
 
 
 # ── 标准降级工厂 ────────────────────────────────────
