@@ -11,6 +11,22 @@ if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 del _repo_root
 
+# ── Schema 接受集合（Phase 1 Task 2）──
+# Spec §3.6: 接受 v1 和 v2；v1 的 version 默认为 1；v2 必须有合法 version
+_ACCEPTED_SCHEMAS = {
+    "fm.hypothesis_proposal.v1",
+    "fm.hypothesis_proposal.v2",
+}
+
+def _check_v2_version(p: dict) -> bool:
+    """v2 schema 必须带 version 字段且为整数 ≥1。"""
+    v = p.get("version")
+    if v is None:
+        return False
+    if not isinstance(v, int) or isinstance(v, bool):
+        return False
+    return v >= 1
+
 import registry_lib as rl
 import search_trees as st
 from cascade import experiment_fingerprint as ef
@@ -601,7 +617,10 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 else:
                     _reject("backlog_dup")
                 continue
-            if p.get("schema") != "fm.hypothesis_proposal.v1":
+            _schema = p.get("schema")
+            if _schema not in _ACCEPTED_SCHEMAS:
+                _reject("schema_mismatch"); continue
+            if _schema == "fm.hypothesis_proposal.v2" and not _check_v2_version(p):
                 _reject("schema_mismatch"); continue
             symbol = str(p.get("symbol") or "").lower().strip()
             cov = str(p.get("cov_override") or "").strip()
