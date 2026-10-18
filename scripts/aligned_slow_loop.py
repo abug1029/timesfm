@@ -20,6 +20,8 @@ from cascade.hourly_model import HourlyModel
 from cascade.statistical_tests import (
     pair_dir_ok_series_with_diagnostics, diebold_mariano_p,
 )
+from proposal_status import write_proposal_status
+import sup_paths as sp
 
 try:
     import torch
@@ -556,6 +558,22 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
     v["tier_label"] = tier_info["tier_label"]
     v["tier_breakdown"] = tier_info["tier_breakdown"]
     rl.append_verdict(registry_path, v)
+    # 新增：写入 proposal_status.jsonl (verdicted)
+    # 注意：queue 行（row）已由 Task 5 携带 proposal_id 和 version
+    try:
+        write_proposal_status(
+            status_file=sp.PROPOSAL_STATUS_PATH,
+            proposal_id=row.get("proposal_id"),
+            version=row.get("version", 1),
+            status="verdicted",
+            run_id=row.get("src_run", "unknown"),
+            variant_id=row["variant_id"],
+        )
+    except Exception:
+        import logging
+        logging.getLogger("aligned_slow_loop").warning(
+            "failed to write verdicted status for %s",
+            row.get("proposal_id", "unknown"), exc_info=True)
     _record_elapsed(row["variant_id"], elapsed_s)
     return v
 
