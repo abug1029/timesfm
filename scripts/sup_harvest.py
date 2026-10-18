@@ -747,6 +747,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 stats["cov_cross_fail"] += 1
                 _reject("cov_cross_fail"); continue
             quality_score, _quality_bd = _proposal_quality_gate(p, _snap, proposal_path=sp)
+            _qs, _bd = quality_score, _quality_bd  # P0-2: 回填到 _reject 可见的外层作用域
             if quality_score < MIN_QUALITY_SCORE:
                 stats["quality_below_threshold"] += 1
                 _reject("quality_below_threshold"); continue
