@@ -22,6 +22,7 @@ from cascade.cov_family import ALLOWED_FAMILIES
 import sup_paths
 import sup_state
 import sup_lifecycle
+from aggregate_rejection_stats import render_rejection_detail_section
 
 # 批次 B：tier 值域守卫（Q2=b，N10 语义消歧）
 VALID_TIER_VALUES = frozenset({"S", "A", "B", "C", "D"})
@@ -223,6 +224,100 @@ def _protocol_section_line(fp):
         return "protocol %s" % fp[:12]
     return "protocol (none)"
 
+
+def _proposal_verdict_causal_lines(status_path, verdicts_path, max_lines=25):
+    """Build proposal-verdict causal chain view.
+
+    Join source (P0-4): proposal_status with status=verdicted (carrying variant_id)
+    joined with aligned_verdicts on variant_id.
+    """
+    verdicted = []
+    if os.path.exists(status_path):
+        for raw in open(status_path, encoding="utf-8"):
+            raw = raw.strip()
+            if raw:
+                try:
+                    r = json.loads(raw)
+                    if r.get("status") == "verdicted" and r.get("variant_id"):
+                        verdicted.append(r)
+                except json.JSONDecodeError:
+                    continue
+
+    verdicts = {}
+    if os.path.exists(verdicts_path):
+        for raw in open(verdicts_path, encoding="utf-8"):
+            raw = raw.strip()
+            if raw:
+                try:
+                    v = json.loads(raw)
+                    if v.get("variant_id"):
+                        verdicts[v["variant_id"]] = v
+                except json.JSONDecodeError:
+                    continue
+
+    out = []
+    for vs in verdicted:
+        vid = vs["variant_id"]
+        v = verdicts.get(vid, {})
+        gp = v.get("gate_pass", "?")
+        fp = v.get("fdr_pass", "?")
+        out.append("%s (v%s) -> %s -> gate=%s fdr=%s" % (
+            vs.get("proposal_id", "?"), vs.get("version", "?"),
+            vid, gp, fp))
+        if len(out) >= max_lines:
+            break
+    return out
+
+
+def _rejection_detail_lines(rejected_path, max_lines=20):
+    """Build rejection detail rows from rejected_proposals.jsonl."""
+    if not os.path.exists(rejected_path):
+        return ["_no rejection records yet_"]
+    records = []
+    for raw in open(rejected_path, encoding="utf-8"):
+        raw = raw.strip()
+        if raw:
+            try:
+                records.append(json.loads(raw))
+            except json.JSONDecodeError:
+                continue
+    out = []
+    for r in records[:max_lines]:
+        out.append("| %s | v%s | %s | %s | %s | %s | %s |" % (
+            r.get("proposal_id", "?"),
+            r.get("version", "?"),
+            r.get("reject_reason", "?"),
+            r.get("quality_score", "N/A"),
+            r.get("symbol", "?"),
+            r.get("cov_override", "?"),
+            r.get("covariate_family", "?"),
+        ))
+    return out
+
+
+def _version_comparison_lines(status_path, max_lines=10):
+    """Build version comparison view for multi-version proposals."""
+    if not os.path.exists(status_path):
+        return []
+    by_prop = {}
+    for raw in open(status_path, encoding="utf-8"):
+        raw = raw.strip()
+        if raw:
+            try:
+                r = json.loads(raw)
+                pid = r.get("proposal_id")
+                if pid:
+                    by_prop.setdefault(pid, set()).add(r.get("version"))
+            except json.JSONDecodeError:
+                continue
+    out = []
+    for pid, versions in sorted(by_prop.items()):
+        if len(versions) > 1:
+            out.append("%s: versions %s" % (pid, sorted(versions)))
+            if len(out) >= max_lines:
+                break
+    return out
+
 def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
                                status_map=None, queue_ids=None, root=None,
                                excluded_items=None, commitments_path=None):
@@ -406,6 +501,26 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
             v.get("n"), status))
     if len(items) > len(_shown):
         lines.append("verdicts_truncated=%d" % (len(items) - len(_shown)))
+
+    # ── Phase 1 Task 9: enhanced sections (single writer P0-3) ──
+    causal_lines = _proposal_verdict_causal_lines(
+        sup_paths.PROPOSAL_STATUS_PATH, sup_paths.REGISTRY)
+    if causal_lines:
+        lines.append("")
+        lines.append("## Proposal-Verdict Causal Chain")
+        lines.extend(causal_lines)
+
+    rej_section = render_rejection_detail_section(sup_paths.REJECTED_PROPOSALS_PATH)
+    if rej_section.strip():
+        lines.append("")
+        lines.append(rej_section.rstrip())
+
+    ver_lines = _version_comparison_lines(sup_paths.PROPOSAL_STATUS_PATH)
+    if ver_lines:
+        lines.append("")
+        lines.append("## Version Comparison")
+        lines.extend(ver_lines)
+
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
     with open(dest_path, "w", encoding="utf-8") as f:
         f.write('\n'.join(lines) + '\n')
