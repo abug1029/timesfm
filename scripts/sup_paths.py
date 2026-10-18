@@ -26,3 +26,7 @@ PREREGISTRY_PATH = os.path.join(FM_ROOT, "task_FM", "config", "preregistry.jsonl
 
 # 障碍 1：拒收摘要文件路径（供 aggregate_rejection_stats.py 使用）
 REJECTIONS_INC = os.path.join(FM_ROOT, 'task_FM', 'known_rejections.inc.md')
+
+# Proposal lifecycle paths
+PROPOSAL_STATUS_PATH = os.path.join(FM_ROOT, 'data', 'cache', 'proposal_status.jsonl')
+REJECTED_PROPOSALS_PATH = os.path.join(FM_ROOT, 'data', 'cache', 'rejected_proposals.jsonl')
