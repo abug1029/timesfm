@@ -1,16 +1,16 @@
 # Laya 预筛中文泄漏修复 Changelog
 
 **日期**：2026-10-18
-**状态**：✅ 完成（全部 7 Task 审核通过）
+**状态**：✅ 完成（Phase 1–3 功能完成；21/21 测试通过；7 Task 全部审核通过）
 **Spec**：`docs/superpowers/specs/2026-10-18-laya-chinese-leak-fix-spec.md`（v3，Approved/Frozen）
 **Plan**：`docs/superpowers/plans/2026-10-18-laya-chinese-leak-fix-implementation.md`
-**审核**：3 轮 spec 审核 + 3 轮 plan 审核 + 每个 task 独立 code-reviewer
+**审核**：3 轮 spec 审核 + 3 轮 plan 审核 + 每个 task 独立 code-reviewer + changelog 审核
 
 ---
 
 ## 问题
 
-Laya 预筛 `_build_state()` 将 `predicted_direction` 原样传入 state，25%（1796/7194）提案含中文字符（括号注释），导致：
+Laya 预筛 `_build_state()` 将 `predicted_direction` 原样传入 state，25%（1796/7194，SPEC 冻结时分母；现库已增至 ~8461）提案含中文字符（括号注释），导致：
 - Laya 推理时间不稳定（接近 60s 超时边界）
 - 可能路由到 multilingual 模型（~3x 性能开销）
 - 预筛质量不一致
@@ -32,7 +32,7 @@ Jev→Laya 迁移后三轮"打地鼠"式修复（`a134dac` → `5f1d17a` → `2c
 - 新增 `_strip_chinese()`：双道剥离（CJK 汉字+标点 → 空格 → 全角标点 → 空格 → 合并空白 → strip）
 - 新增 `_is_shell_pd()`：空壳检测（阈值=12，对齐实测 ~496 空壳 27.6%）
 - 正则常量：`_ZH`（CJK）、`_FULLWIDTH_PUNCT`（全角标点）、`_PD_MIN_LEN=12`
-- 6 个单元测试
+- 11 个单元测试（6 strip + 5 shell）
 
 **Commit 2** — `813d374`：集成
 - `_build_state()` 过滤 `predicted_direction` + 空壳回退为空串
@@ -80,10 +80,10 @@ Jev→Laya 迁移后三轮"打地鼠"式修复（`a134dac` → `5f1d17a` → `2c
 
 | 测试文件 | 数量 | 覆盖 |
 |----------|------|------|
-| `tests/test_strip_chinese.py` | 6 | 基础/混合/全角/ASCII/空/纯中文 |
-| `tests/test_build_state_no_cjk.py` | 8 | CJK 剥离/空壳/短公式/language/字段保留/null |
+| `tests/test_strip_chinese.py` | 11 | 6 strip（基础/混合/全角/ASCII/空/纯中文）+ 5 shell（典型/短公式/有效/边界/空） |
+| `tests/test_build_state_no_cjk.py` | 8 | CJK 剥离/空壳/短公式/language/字段保留/null + 2 call_laya |
 | `tests/test_backfill_dedup.py` | 2 | 跳过已有/不跳过新 |
-| **总计** | **16** | 全通过 ✅ |
+| **总计** | **21** | 全通过 ✅ |
 
 ## 验收结果
 
@@ -91,8 +91,17 @@ Jev→Laya 迁移后三轮"打地鼠"式修复（`a134dac` → `5f1d17a` → `2c
 |------|------|------|
 | 东亚宽字符残留 | 0 | 0 ✅ |
 | 提案扫描数 | 动态 | 8459 (44 skipped) ✅ |
-| 测试通过率 | 100% | 16/16 ✅ |
+| 测试通过率 | 100% | 21/21 ✅ |
 | Code review | 全 PASS | 7/7 ✅ |
+
+## 回滚
+
+各 Phase 可独立 `git revert`，互不绑定：
+- **Phase 1**：`git revert e82086a 1ff4c7f ccc0e9d 813d374 0aa0fce`（倒序）— 移除 strip/shell/language/timeout/门禁
+- **Phase 2**：`git revert ca636e7` — 移除 backfill 去重 pre-check
+- **Phase 3**：`git revert 71c7146` — 移除 prompt English only 约束
+
+strip 函数与 prompt 修改互不依赖；prompt 修复为长期生效，strip 为存量数据处理。
 
 ## 不做的事
 
@@ -106,6 +115,7 @@ Jev→Laya 迁移后三轮"打地鼠"式修复（`a134dac` → `5f1d17a` → `2c
 - 等下一代 peer 重跑后，prompt English only 约束生效，新生成 proposal 不再有中文 `predicted_direction`
 - 已有 1796 条中文 PD 提案由下游 `_strip_chinese()` 处理
 - GitHub origin push 失败（token 过期），需手动更新；备份机已同步
+- `sup_harvest._prescreen_async` 去重 = SPEC Phase 2b，本期 out-of-scope（仅 backfill 去重已落地）
 
 ---
 
