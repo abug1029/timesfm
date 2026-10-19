@@ -644,7 +644,6 @@ def main(argv=None):
                         _proposal_id, _version, row.get("variant_id"),
                     )
                     # Ack to done so it doesnt stay in inprogress
-                    import registry_lib as rl
                     done_path = os.path.join(os.path.dirname(args.checkpoint_dir), "aligned_pending.done.jsonl")
                     rl.queue_ack(args.queue, args.inprogress, row, done_path)
                     continue
