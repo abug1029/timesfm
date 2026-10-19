@@ -573,9 +573,9 @@ def main():
             if i % 50 == 0 or i == len(to_process):
                 snap = stats.snapshot()
                 logging.info(
-                    "进度: %d/%d (success=%d failed=%d enqueued=%d degraded=%d) elapsed=%.0fs",
+                    "进度: %d/%d (success=%d failed=%d enqueued=%d skipped=%d degraded=%d) elapsed=%.0fs",
                     i, len(to_process), snap["success"], snap["failed"],
-                    snap["enqueued"], snap.get("degraded", 0), elapsed
+                    snap["enqueued"], snap.get("skipped", 0), snap.get("degraded", 0), elapsed
                 )
 
     elapsed = time.monotonic() - start_time

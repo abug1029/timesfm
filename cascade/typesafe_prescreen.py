@@ -297,7 +297,7 @@ def _build_state(
     symbol_profile = _load_symbol_profile(symbol)
 
     # v3: 过滤 predicted_direction 中文 + 空壳回退
-    raw_pd = proposal.get("predicted_direction") or ""  # Handle explicit null
+    raw_pd = str(proposal.get("predicted_direction") or "")  # Handle explicit null, force string
     stripped_pd = _strip_chinese(raw_pd)
     final_pd = "" if _is_shell_pd(stripped_pd) else stripped_pd
 
