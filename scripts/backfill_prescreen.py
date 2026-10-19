@@ -169,6 +169,11 @@ def extract_proposal_fields(proposal_path):
     """从 proposal JSON 提取 symbol, cov_override, proposal_id。
 
     返回 dict 或 None（解析失败时）。
+    支持多种 schema 格式：
+    - cov_override 字段（标准）
+    - new_covariate.name（新协变量提案）
+    - covariate 字段（部分 schema）
+    - covariate_family + covariate_variant（构造协变量名）
     """
     try:
         data = json.loads(Path(proposal_path).read_text(encoding="utf-8"))
@@ -181,13 +186,25 @@ def extract_proposal_fields(proposal_path):
         logging.warning("提案 %s 缺少 symbol 字段，跳过", proposal_path)
         return None
 
+    # 优先级 1: cov_override 字段
     cov_override = data.get("cov_override") or ""
 
-    # 新协变量提案用 new_covariate.name
+    # 优先级 2: 新协变量提案用 new_covariate.name
     if not cov_override:
         new_cov = data.get("new_covariate")
         if isinstance(new_cov, dict):
             cov_override = new_cov.get("name", "")
+
+    # 优先级 3: covariate 字段（部分 schema 使用）
+    if not cov_override:
+        cov_override = data.get("covariate") or ""
+
+    # 优先级 4: 从 covariate_family + covariate_variant 构造
+    if not cov_override:
+        family = data.get("covariate_family") or ""
+        variant = data.get("covariate_variant") or ""
+        if family and variant:
+            cov_override = f"{family}_{variant}"
 
     proposal_id = data.get("proposal_id", Path(proposal_path).stem)
 
