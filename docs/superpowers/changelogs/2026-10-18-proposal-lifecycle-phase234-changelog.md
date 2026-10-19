@@ -21,13 +21,14 @@ Phase 1 建立了提案状态显式管理（事件日志 + 拒收详情 + 因果
 | Task | 描述 | Commit | Review |
 |------|------|--------|--------|
 | P2.1 | `_proposal_evolution_lines()` 演化视图 | `fce4016` | PASS |
-| P2.2 | `render_open_trees` 裁决状态标注 | `89560b5` | PASS |
-| P2.3 | `prompt_base.jinja2` Proposal Feedback 节 | `3fd6d8e` | PASS |
+| P2.2 (对应 SPEC P2.3) | `render_open_trees` 裁决状态标注 | `89560b5` | PASS |
+| P2.3 (对应 SPEC P2.4) | `prompt_base.jinja2` Proposal Feedback 节 | `3fd6d8e` | PASS |
 
 **关键交付**：
 - `_proposal_evolution_lines()` 展示多版本提案演化轨迹（v1 rejected → v2 verdicted）
 - 搜索树 member 行追加 PASS/hard-gate/DEAD 标注
 - Peer prompt 新增 "Proposal Feedback (cross-run)" 指引节
+- 因果链（`_proposal_verdict_causal_lines`）实际在 Phase 1 (`db494d4`) 创建；Phase 2 增量是演化视图（`_proposal_evolution_lines`）
 
 ### Phase 3：版本控制 + 关系追踪（4 Tasks, 4 commits）
 
@@ -50,7 +51,7 @@ Phase 1 建立了提案状态显式管理（事件日志 + 拒收详情 + 因果
 | Task | 描述 | Commit | Review |
 |------|------|--------|--------|
 | T1+T4 | `withdraw_proposal()` + 测试 | `1c645a8` | PASS |
-| T2 | 慢环 withdrawn 检查 + queue_ack | `f1a2911` | BLOCK → PASS |
+| T2 | 慢环 withdrawn 检查 + queue_ack | `f1a2911` | BLOCK(重复 logging + 缺 queue_ack) → fix → PASS |
 
 **关键交付**：
 - `withdraw_proposal()` 幂等撤回（终态拒绝，withdrawn 幂等）
@@ -63,7 +64,7 @@ Phase 1 建立了提案状态显式管理（事件日志 + 拒收详情 + 因果
 ## 关键设计决策
 
 1. **Dedup 顺序**：variant_id → proposal_id+version（spec §3.5.3），确保实验身份优先
-2. **version=None 语义**：撤回最新版本（harvest dedup 保证同一 proposal_id 只有一个活跃 version）
+2. **version=None 语义**：撤回最新版本（harvest dedup 保证同一 proposal_id 只有一个活跃 version）。**注意**：此行为偏离 Frozen SPEC §3.4.1 字面（SPEC: 撤回所有 version；代码: 撤回最新版本）。以 Phase4 plan 决定为准，建议回写 SPEC 补丁。
 3. **Withdrawn queue 处理**：queue_ack 到 done.jsonl（审计保留），不删除原行
 4. **Evaluating withdrawn**：best-effort，verdict 文件仍 append（append-only），但 proposal_status 不追加 verdicted 行
 5. **Version 比较增强**：join aligned_verdicts 展示裁决结果，不只是版本号列表
@@ -80,7 +81,7 @@ Phase 1 建立了提案状态显式管理（事件日志 + 拒收详情 + 因果
 | `test_proposal_withdraw.py` | 9 | 幂等 + 终态拒绝 + 各状态撤回 + version=None |
 | **新增总计** | **24** | |
 
-**回归测试**：Phase 1 的 16 个测试 + 搜索树 23 个测试全部 PASS
+**回归测试**：Phase 1 相关的 22 个测试 + 搜索树 22/23 PASS（`test_root_replay_channel_harvest_level` 预存失败，见 commit `154b87e`）
 
 ---
 
@@ -96,9 +97,29 @@ Phase 1 建立了提案状态显式管理（事件日志 + 拒收详情 + 因果
 
 ---
 
+## 回滚
+
+按依赖逆序 revert：
+```bash
+git revert f1a2911 1c645a8 154b87e f9f9237 8d6b857 d64ea51 3fd6d8e 89560b5 fce4016
+```
+
+数据面：`proposal_status.jsonl` 中的 `withdrawn` 行为审计不可丢弃数据，revert 后这些行保留（append-only 文件不截断）。`rejected_proposals.jsonl` 同理。
+
+## 残留风险 / 后续
+
+| 项 | 状态 | 后续 |
+|----|------|------|
+| P4 慢环 withdrawn 集成测 | 代码已接线、缺自动化测 | 建议补 `test_slow_loop_withdrawn_skip` + `test_verdict_not_appended_for_withdrawn` |
+| `version=None` vs SPEC §3.4.1 | 代码撤最新版本，SPEC 写撤全部 | 建议回写 SPEC 补丁，统一语义 |
+| 搜索树预存测试失败 | `test_root_replay_channel_harvest_level` 预存 fail | 独立排查，非本次引入 |
+| Phase 2/3/4 plan 无外部 audit | 仅自评 PASS | 如需更高信心，可补 plan audit |
+
+---
+
 ## 验收结果
 
-所有 Phase 2/3/4 spec §5 验收标准均已满足：
+所有 Phase 2/3/4 spec §5 验收标准均已满足（`version=None` 行为偏离 Frozen SPEC §3.4.1 字面，见"关键设计决策"第 2 条 + "残留风险 / 后续"节）：
 
 | Phase | 验收标准 | 状态 |
 |-------|---------|------|
@@ -110,6 +131,6 @@ Phase 1 建立了提案状态显式管理（事件日志 + 拒收详情 + 因果
 | P3 | 同 proposal_id+version 重提被 version_dup 拒绝 | ✅ |
 | P3 | 搜索树追踪包含 version 信息 | ✅ |
 | P4 | withdraw_proposal() 幂等 | ✅ |
-| P4 | 已撤回 queued 不被慢环 claim | ✅ |
-| P4 | evaluating withdrawn best-effort | ✅ |
+| P4 | 已撤回 queued claim 后立即 ack-skip（不进入评估） | 代码 ✅ / 自动化集成测 ❌（后续补） |
+| P4 | evaluating withdrawn best-effort | 代码 ✅ / 自动化集成测 ❌（后续补） |
 | P4 | rejected/verdicted 不接受撤回 | ✅ |
