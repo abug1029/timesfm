@@ -10,7 +10,7 @@
 
 **Laya 服务在 2026-10-19 运行期间无 HTTP 503 错误**。实际错误分为两类：
 1. 8 个 Laya 内部异常（非 HTTP 503）
-2. 44 个 JSON 解析错误（源文件损坏）
+2. 43 个 JSON 解析错误（源文件损坏）
 
 ---
 
@@ -25,7 +25,7 @@
 | WARNING | 50 | W6.4 + symlink + 缺少 symbol |
 | **HTTP 503** | **0** | **无** |
 | Laya 内部异常 | 8 | "Laya 预筛未预期异常，防御性降级" |
-| JSON 解析错误 | 44 | "无法解析提案: Expecting ',' delimiter" |
+| JSON 解析错误 | 43 | "无法解析提案: Expecting ',' delimiter" |
 
 ### 重试日志（backfill_retry_.log）
 
@@ -36,7 +36,7 @@
 | WARNING | 45 | W6.4 variant_id 缺失 |
 | **HTTP 503** | **0** | **无** |
 | Laya 内部异常 | 8 | 同上 |
-| JSON 解析错误 | 44 | 同上 |
+| JSON 解析错误 | 43 | 同上 |
 
 ---
 
@@ -58,19 +58,21 @@
 - `ss_calendar_cyclical.json`: predicted_direction = 1 (int)
 - `cj_ao_accel.json`: predicted_direction = 1 (int)
 
+**注**: 同名提案多 run，int PD 仅 run_2026-10-18_23-28-46 下 8 份
+
 **状态**: 已在 commit `7cf8517` 中修复（P1 修复：强制 str() 转换）。
 
-### 2. JSON 解析错误（44 个）
+### 2. JSON 解析错误（43 个）
 
 **错误信息**: `无法解析提案 ...: Expecting ',' delimiter: line X column Y`
 
 **根因**: 源提案 JSON 文件中存在语法错误，主要是未转义的中文引号（如 "政策敏感"）导致 JSON 解析器在预期逗号位置遇到意外字符。
 
-**受影响提案**（44 个，跨多个 run）:
+**受影响提案**（43 个，跨多个 run）:
 - 主要集中在 `cj_ccl.json`（出现 6 次，不同 run）
 - 其他: `eg_oi`, `sr_nvi`, `jm_bb_squeeze`, `cf_bb_squeeze`, `i_calendar_cyclical`, `ss_ccl`, `px_calendar_cyclical`, `i_inventory`, `rb_ccl`, `m_vor`, `jm_crack_spread_zscore`, `cj_oi_gated_momentum`, `eg_bb_squeeze`, `eg_oi_gated_momentum`, `sr_calendar_cyclical` 等
 
-**状态**: 其中 37 个已在 Task B（JSON 修复）中自动修复。剩余 7 个复杂损坏需人工检查。
+**状态**: 其中 36 个已在 Task B（JSON 修复）中自动修复。剩余 7 个复杂损坏需人工检查。
 
 ### 3. W6.4 WARNING（variant_id 不可得）
 
@@ -121,6 +123,6 @@ P2 修复 agent（`a577a50f28031e207`）在报告中声称：
 
 - [x] P1 修复：predicted_direction 类型转换（已提交 `7cf8517`）
 - [x] P2 修复：多 schema cov_override 提取（已提交 `fd41c60`）
-- [x] JSON 修复：37 个文件自动修复（Task B 完成）
+- [x] JSON 修复：36 个文件自动修复（Task B 完成）
 - [ ] 人工检查：7 个复杂损坏的 JSON 文件
 - [ ] 持续监控：Laya 服务稳定性（当前健康）
