@@ -43,14 +43,16 @@
 
 进度日志不显示 skipped 计数，看起来像 6147 个提案没有处理。实际是去重预检查正确跳过了已在 REGISTRY 中的提案（已被慢环处理过）。
 
-### 107 个真正失败
+### 54 failed + 45 degraded 拆解
 
-| 类型 | 数量 | 根因 | 修复 |
-|------|------|------|------|
-| JSON 解析错误 | 54 | 源文件损坏（Extra data / 未转义中文引号） | 42 个自动修复，12 个需手动 |
-| TypeError | 8 | predicted_direction 是 int 不是 string | P1 修复：强制 str() |
-| variant_id=None | 45 | cov_override 缺失或 schema 不匹配 | P2 修复：多 schema 提取 |
-| 空文件 | 1 | cj_crack_spread_slope.json 0 字节 | P3 修复：基于同类重建 |
+| 类型 | 数量 | 说明 |
+|------|------|------|
+| JSON 解析失败 | 43 | `[ERROR] 无法解析提案` |
+| TypeError（PD 为 int） | 8 | `_strip_chinese` 期望 str |
+| ReadTimeout | 1 | Laya API 超时 |
+| 缺 symbol | 2 | `[WARNING] 缺少 symbol 字段` |
+| W6.4 vid 不可得 | 45 | degraded（非 failed） |
+| REGISTRY 跳过 | 6147 | 已处理过 |
 
 ## 代码变更（3 commits，4 files，+28/-5）
 
@@ -88,26 +90,20 @@
 
 ## 数据修复
 
-### JSON 文件修复（42 个）
+### JSON 文件修复（36 个）
 
 | 损坏类型 | 数量 | 修复方式 |
 |---------|------|---------|
 | Extra data（多 JSON 对象） | 5 | 提取首个有效对象 |
-| 未转义中文引号 | 37 | 迭代转义问题引号 |
-| 空文件 | 1 | 跳过（需重新生成） |
+| 未转义中文引号 | 31 | 迭代转义问题引号 |
 
 备份位置: `task_FM/experiments/_corrupted_backups/`
 工具脚本: `Tools/scan_corrupted_proposals.py`, `Tools/fix_corrupted_proposals.py`
 
-### 空文件重建（1 个）
-
-`cj_crack_spread_slope.json`（0 字节 -> 1.2K）：基于同类提案推断结构，13 个必需字段完整。
-
 ## 不做的事
 
-1. **不修复 Laya 503 错误**：API 可用性问题，非代码缺陷，需监控 Laya 服务稳定性
-2. **不统一提案 schema**：45 个 degraded 通过增强提取逻辑解决，不需要强制所有提案用同一 schema
-3. **不处理 12 个未修复的 JSON 文件**：自动修复无法处理的复杂损坏，需人工检查
+1. **不统一提案 schema**：45 个 degraded 通过增强提取逻辑解决，不需要强制所有提案用同一 schema
+2. **不处理 7 个未修复的 JSON 文件**：自动修复无法处理的复杂损坏，需人工检查
 
 ## 验证
 
@@ -120,6 +116,6 @@
 
 ## 待办
 
-- [ ] 监控 Laya API 稳定性（374 个 503 错误）
-- [ ] 人工检查 12 个复杂损坏的 JSON 文件
+- [ ] 监控超时/客户端断开/检查点切换
+- [ ] 人工检查 7 个复杂损坏的 JSON 文件
 - [ ] 考虑提案 schema 标准化（长期）
