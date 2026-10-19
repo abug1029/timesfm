@@ -80,7 +80,7 @@ def load_state():
     return {
         "processed": [],
         "last_run": None,
-        "stats": {"total": 0, "success": 0, "failed": 0, "enqueued": 0, "skipped": 0},
+        "stats": {"total": 0, "success": 0, "failed": 0, "enqueued": 0, "skipped": 0, "invalid_input": 0},
         "version": SCRIPT_VERSION,
     }
 
@@ -280,6 +280,7 @@ class Stats:
         self.failed = 0
         self.enqueued = 0
         self.degraded = 0
+        self.invalid_input = 0
 
     def inc(self, field):
         with self.lock:
@@ -294,6 +295,7 @@ class Stats:
                 "enqueued": self.enqueued,
                 "skipped": self.skipped,
                 "degraded": self.degraded,
+                "invalid_input": self.invalid_input,
             }
 
 
@@ -321,7 +323,7 @@ def process_proposal(proposal_path, stats, verdict_history, covariate_menu,
     """
     fields = extract_proposal_fields(proposal_path)
     if fields is None:
-        stats.inc("failed")
+        stats.inc("invalid_input")
         return "error"
 
     symbol = fields["symbol"]
@@ -437,7 +439,7 @@ def main():
         state = {
             "processed": [],
             "last_run": None,
-            "stats": {"total": 0, "success": 0, "failed": 0, "enqueued": 0, "skipped": 0},
+            "stats": {"total": 0, "success": 0, "failed": 0, "enqueued": 0, "skipped": 0, "invalid_input": 0},
             "version": SCRIPT_VERSION,
         }
 
@@ -590,9 +592,9 @@ def main():
             if i % 50 == 0 or i == len(to_process):
                 snap = stats.snapshot()
                 logging.info(
-                    "进度: %d/%d (success=%d failed=%d enqueued=%d skipped=%d degraded=%d) elapsed=%.0fs",
+                    "进度: %d/%d (success=%d failed=%d enqueued=%d skipped=%d degraded=%d invalid=%d) elapsed=%.0fs",
                     i, len(to_process), snap["success"], snap["failed"],
-                    snap["enqueued"], snap.get("skipped", 0), snap.get("degraded", 0), elapsed
+                    snap["enqueued"], snap.get("skipped", 0), snap.get("degraded", 0), snap.get("invalid_input", 0), elapsed
                 )
 
     elapsed = time.monotonic() - start_time
@@ -604,9 +606,9 @@ def main():
     save_state(state)
 
     logging.info("=" * 60)
-    logging.info("完成: total=%d success=%d failed=%d enqueued=%d degraded=%d elapsed=%.0fs",
+    logging.info("完成: total=%d success=%d failed=%d enqueued=%d skipped=%d degraded=%d invalid=%d elapsed=%.0fs",
                  snap["total"], snap["success"], snap["failed"], snap["enqueued"],
-                 snap.get("degraded", 0), elapsed)
+                 snap.get("skipped", 0), snap.get("degraded", 0), snap.get("invalid_input", 0), elapsed)
     logging.info("状态文件: %s", STATE_FILE)
     logging.info("队列文件: %s", queue_path)
     logging.info("=" * 60)
