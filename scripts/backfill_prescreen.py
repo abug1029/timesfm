@@ -365,6 +365,8 @@ def process_proposal(proposal_path, stats, verdict_history, covariate_menu,
                 "checkpoint_path": "",
                 "enqueued_at": datetime.now(timezone.utc).isoformat(),
                 "src_run": src_run,
+                "proposal_id": fields["proposal_id"],
+                "version": int(proposal_data.get("version") or 1),
                 "_proposal_path": str(proposal_path),
             }
 
