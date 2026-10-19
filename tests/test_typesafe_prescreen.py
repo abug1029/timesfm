@@ -244,7 +244,7 @@ class TestPrescreenProposalMock:
     def test_laya_unreachable_returns_degraded(self, monkeypatch):
         monkeypatch.setattr("cascade.typesafe_prescreen._get_laya_base_url", lambda: "http://192.0.2.1:9999")
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
-        assert result["status"] == "error"
+        assert result["status"] == "degraded"
         assert result["skip_suggested"] is None
 
     def test_api_timeout_returns_degraded(self, monkeypatch):

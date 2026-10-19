@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
+from requests.exceptions import Timeout as RequestsTimeout
 from data.config import _env_nonempty
 
 logger = logging.getLogger(__name__)
@@ -414,7 +415,7 @@ def _prescreen_impl(
 
     try:
         result = _call_laya(state, timeout=60.0)
-    except (TimeoutError, TypeSafeTimeoutError) as e:
+    except (TimeoutError, TypeSafeTimeoutError, RequestsTimeout) as e:
         _record_timeout()
         logger.warning("Laya API 超时: %s", e)
         return _fallback_result(proposal, symbol, status="degraded", note="Laya API 超时")
