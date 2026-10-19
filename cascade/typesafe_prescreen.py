@@ -50,6 +50,10 @@ def _strip_chinese(s: str) -> str:
 
     注意：下划线 _ 不在任何正则中，会保留。括号内空格会保留。
     """
+    if s is None:
+        return ""
+    if not isinstance(s, str):
+        s = str(s)
     result = _ZH.sub(' ', s)
     result = _FULLWIDTH_PUNCT.sub(' ', result)
     return re.sub(r'\s+', ' ', result).strip(' (;,)')
@@ -377,7 +381,14 @@ def _call_laya(state: dict[str, Any], timeout: float = 60.0) -> Any:
 
     headers = {"Content-Type": "application/json"}
 
-    response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+    retryable = (429, 500, 502, 503, 504)
+    response = None
+    for attempt in range(4):
+        response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        if response.status_code not in retryable or attempt == 3:
+            break
+        import time as _time
+        _time.sleep(min(2 ** attempt, 10))
     response.raise_for_status()
 
     result_data = response.json()
@@ -461,7 +472,8 @@ def prescreen_proposal(
     try:
         return _prescreen_impl(proposal, symbol, verdict_history, covariate_menu)
     except Exception as e:
-        logger.exception("Laya 预筛未预期异常，防御性降级")
+        proposal_id = proposal.get("proposal_id", "?")
+        logger.exception(f"prescreen 异常 {proposal_id}: {e}")
         return _fallback_result(
             proposal, symbol,
             status="error",
