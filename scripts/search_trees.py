@@ -459,7 +459,9 @@ def render_open_trees(index, snapshot):
                     near = "yes"
             verdict_tag = ""
             if isinstance(row, dict):
-                if row.get("gate_pass") and row.get("fdr_pass"):
+                if row.get("gate_pass") is False:
+                    verdict_tag = " DEAD"
+                elif row.get("gate_pass") and row.get("fdr_pass"):
                     verdict_tag = " PASS"
                 elif row.get("gate_pass") and not row.get("fdr_pass"):
                     verdict_tag = " hard-gate"

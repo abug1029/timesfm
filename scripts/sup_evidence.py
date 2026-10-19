@@ -427,8 +427,7 @@ def _proposal_evolution_lines(status_path, rejected_path, verdicts_path, max_lin
                 except json.JSONDecodeError:
                     continue
 
-    # State priority: verdicted=3 > rejected=2 > queued=1
-    _STATE_RANK = {"verdicted": 3, "rejected": 2, "queued": 1}
+    # Take the LAST (most recent) status per version (file is append-only)
 
     out = []
     for pid in sorted(multi):
@@ -436,8 +435,8 @@ def _proposal_evolution_lines(status_path, rejected_path, verdicts_path, max_lin
         parts = []
         for ver in sorted(versions):
             records = versions[ver]
-            # Pick highest state record
-            best = max(records, key=lambda r: _STATE_RANK.get(r.get("status"), 0))
+            # Pick most recent status record
+            best = records[-1]  # Last record is most recent
             status = best.get("status", "unknown")
 
             if status == "verdicted":

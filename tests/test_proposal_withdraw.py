@@ -67,17 +67,44 @@ def test_withdraw_verdicted_rejected(tmp_path):
 
 
 def test_withdraw_version_none(tmp_path):
-    """version=None withdraws the latest version."""
+    """version=None withdraws ALL non-terminal versions (SPEC 3.4.1)."""
     path = str(tmp_path / "status.jsonl")
     _write_status(path, [
         {"proposal_id": "p1", "version": 1, "status": "queued", "run_id": "r1"},
         {"proposal_id": "p1", "version": 2, "status": "queued", "run_id": "r2"},
     ])
     assert ps.withdraw_proposal(path, "p1") is True
-    # Verify the withdrawn record is for version 2 (latest)
-    latest = ps.get_latest_status(path, "p1")
-    assert latest["status"] == "withdrawn"
-    assert latest["version"] == 2
+    # Both versions should now be withdrawn
+    v1_latest = ps.get_latest_status(path, "p1", version=1)
+    assert v1_latest["status"] == "withdrawn"
+    v2_latest = ps.get_latest_status(path, "p1", version=2)
+    assert v2_latest["status"] == "withdrawn"
+
+
+def test_withdraw_version_none_skips_terminal(tmp_path):
+    """version=None skips terminal states, only withdraws non-terminal."""
+    path = str(tmp_path / "status.jsonl")
+    _write_status(path, [
+        {"proposal_id": "p1", "version": 1, "status": "verdicted", "run_id": "r1"},
+        {"proposal_id": "p1", "version": 2, "status": "queued", "run_id": "r2"},
+    ])
+    assert ps.withdraw_proposal(path, "p1") is True  # at least one withdrawn
+    # v1 stays verdicted (terminal)
+    v1_latest = ps.get_latest_status(path, "p1", version=1)
+    assert v1_latest["status"] == "verdicted"
+    # v2 is withdrawn
+    v2_latest = ps.get_latest_status(path, "p1", version=2)
+    assert v2_latest["status"] == "withdrawn"
+
+
+def test_withdraw_version_none_all_terminal(tmp_path):
+    """version=None returns False when all versions are terminal."""
+    path = str(tmp_path / "status.jsonl")
+    _write_status(path, [
+        {"proposal_id": "p1", "version": 1, "status": "verdicted", "run_id": "r1"},
+        {"proposal_id": "p1", "version": 2, "status": "rejected", "run_id": "r2"},
+    ])
+    assert ps.withdraw_proposal(path, "p1") is False
 
 
 def test_get_latest_status(tmp_path):

@@ -664,7 +664,8 @@ def _commit_search_accepts(rows, dead=None, existing=None):
             family=r.get("search_family") or "",
             proposal_id=r.get("search_proposal_id") or "",
             variant_id=vid, search_role=r.get("search_role") or "",
-            search_parent_id=r.get("search_parent_id") or "")
+            search_parent_id=r.get("search_parent_id") or "",
+            version=r.get("version"))
         n += 1
     return n
 

@@ -148,49 +148,86 @@ def _get_latest_status_unlocked(status_file, proposal_id, version=None):
 
 
 def withdraw_proposal(status_file, proposal_id, version=None, reason=""):
-    """Withdraw a proposal. Idempotent: already withdrawn → True, nonexistent → False.
+    """Withdraw a proposal. Idempotent: already withdrawn -> True, nonexistent -> False.
 
-    version=None → withdraw the latest version of this proposal_id.
+    version=None -> withdraw ALL non-terminal versions of this proposal_id (SPEC 3.4.1).
 
-    Per spec §3.4.2:
-    - draft/prescreened/queued/evaluating: append withdrawn row → True
-    - verdicted/rejected: reject withdraw → False
-    - withdrawn: idempotent → True
-    - no record: → False
+    Per spec 3.4.2:
+    - draft/prescreened/queued/evaluating: append withdrawn row -> True
+    - verdicted/rejected: reject withdraw -> False
+    - withdrawn: idempotent -> True
+    - no record: -> False
     """
     with _status_lock(status_file):
-        latest = _get_latest_status_unlocked(status_file, proposal_id, version)
+        if version is not None:
+            # Single version withdraw
+            latest = _get_latest_status_unlocked(status_file, proposal_id, version)
+            if latest is None:
+                return False
+            return _do_withdraw_one_unlocked(status_file, latest, reason)
 
-        if latest is None:
+        # version=None: withdraw ALL non-terminal versions (SPEC 3.4.1)
+        if not os.path.exists(status_file):
+            return False
+        # Collect latest status per version
+        version_statuses = {}
+        for line in open(status_file, encoding="utf-8"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("proposal_id") != proposal_id:
+                continue
+            ver = rec.get("version")
+            version_statuses[ver] = rec  # last write wins
+
+        if not version_statuses:
             return False
 
-        current_status = latest.get("status", "")
-        current_version = latest.get("version")
+        any_withdrawn = False
+        for ver, latest in version_statuses.items():
+            status = latest.get("status", "")
+            if status in _TERMINAL_STATES:
+                continue
+            if status == "withdrawn":
+                continue  # already withdrawn, skip
+            _do_withdraw_one_unlocked(status_file, latest, reason)
+            any_withdrawn = True
 
-        # Terminal states: reject
-        if current_status in _TERMINAL_STATES:
-            return False
+        return any_withdrawn
 
-        # Already withdrawn: idempotent
-        if current_status == "withdrawn":
-            return True
 
-        # Write withdrawn event
-        record = {
-            "proposal_id": proposal_id,
-            "version": current_version,
-            "status": "withdrawn",
-            "run_id": latest.get("run_id", "unknown"),
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "variant_id": latest.get("variant_id"),
-        }
-        if reason:
-            record["reason"] = reason
+def _do_withdraw_one_unlocked(status_file, latest, reason):
+    """Write a single withdrawn record. Caller must hold the status lock."""
+    current_status = latest.get("status", "")
+    current_version = latest.get("version")
 
-        parent = os.path.dirname(status_file)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(status_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    # Terminal states: reject
+    if current_status in _TERMINAL_STATES:
+        return False
 
+    # Already withdrawn: idempotent
+    if current_status == "withdrawn":
         return True
+
+    record = {
+        "proposal_id": latest.get("proposal_id"),
+        "version": current_version,
+        "status": "withdrawn",
+        "run_id": latest.get("run_id", "unknown"),
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "variant_id": latest.get("variant_id"),
+    }
+    if reason:
+        record["reason"] = reason
+
+    parent = os.path.dirname(status_file)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(status_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    return True

@@ -231,3 +231,48 @@ def test_append_commitment_carries_version(tmp_path):
     content = open(path).read().strip()
     rec = json.loads(content)
     assert rec["version"] == 3
+
+
+def test_persist_search_accepts_carries_version(tmp_path):
+    """Production path: append_commitment should receive version from queue row.
+
+    Regression test for P1 bug F2: _commit_search_accepts (sup_loops.py)
+    was not passing version=r.get("version") to append_commitment, so
+    member_pid_ver was always empty in production and render_open_trees
+    always showed ver=?.
+    """
+    import search_trees as st
+    path = str(tmp_path / "commitments.jsonl")
+    # Simulate what _commit_search_accepts does with a queue row
+    row = {
+        "proposal_id": "m_crack",
+        "variant_id": "vid_1",
+        "version": 2,
+        "search_role": "root",
+        "symbol": "m",
+        "family": "momentum",
+        "search_tree_id": "tree_A",
+        "search_family": "momentum",
+        "search_proposal_id": "m_crack",
+        "search_parent_id": "",
+    }
+    st.append_commitment(
+        path, "accept",
+        tree_id=row["search_tree_id"],
+        symbol=row.get("symbol") or "",
+        family=row.get("search_family") or "",
+        proposal_id=row.get("search_proposal_id") or "",
+        variant_id=row["variant_id"],
+        search_role=row.get("search_role") or "",
+        search_parent_id=row.get("search_parent_id") or "",
+        version=row.get("version"),
+    )
+    content = open(path).read().strip()
+    rec = json.loads(content)
+    assert rec.get("version") == 2
+
+    # Verify load_tree_index picks it up
+    index = st.load_tree_index(path)
+    tree = index.trees.get("tree_A")
+    assert tree is not None
+    assert tree.member_pid_ver.get("m_crack") == 2

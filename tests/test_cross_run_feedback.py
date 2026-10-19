@@ -224,3 +224,39 @@ def test_prompt_has_proposal_feedback_section():
     assert "Proposal Feedback" in content
     assert "known_verdicts.inc.md" in content
     assert "historical" in content.lower()
+
+
+def test_evolution_prefers_withdrawn(tmp_path):
+    """Evolution should show withdrawn when a version was queued then withdrawn."""
+    import sup_evidence as se
+    status_path = str(tmp_path / "status.jsonl")
+    rejected_path = str(tmp_path / "rejected.jsonl")
+    verdicts_path = str(tmp_path / "verdicts.jsonl")
+
+    with open(status_path, "w") as f:
+        f.write(json.dumps({"proposal_id": "p1", "version": 1, "status": "queued", "variant_id": "v1"}) + "\n")
+        f.write(json.dumps({"proposal_id": "p1", "version": 1, "status": "withdrawn", "variant_id": "v1"}) + "\n")
+        f.write(json.dumps({"proposal_id": "p1", "version": 2, "status": "queued", "variant_id": "v2"}) + "\n")
+
+    lines = se._proposal_evolution_lines(status_path, rejected_path, verdicts_path)
+    assert len(lines) == 1
+    assert "withdrawn" in lines[0], f"Expected 'withdrawn' in: {lines[0]}"
+
+
+def test_render_open_trees_dead_annotation(tmp_path):
+    """gate_pass=False should be annotated as DEAD."""
+    import search_trees as st
+    commitments_path = str(tmp_path / "commitments.jsonl")
+    schema = "fm.search_commitments.v1"
+    with open(commitments_path, "w") as f:
+        f.write(json.dumps({"schema": schema, "tree_id": "t1", "event": "accept", "symbol": "m", "family": "momentum", "search_role": "root"}) + "\n")
+        f.write(json.dumps({"schema": schema, "tree_id": "t1", "event": "accept", "symbol": "m", "family": "momentum", "variant_id": "vid_dead", "search_role": "exploit"}) + "\n")
+    index = st.load_tree_index(commitments_path)
+    snapshot = {"vid_dead": {"variant_id": "vid_dead", "status": "ok", "gate_pass": False, "dir_acc": -0.05}}
+    lines = st.render_open_trees(index, snapshot)
+    for line in lines:
+        if "vid_dead" in line:
+            assert "DEAD" in line, f"Expected DEAD in: {line}"
+            break
+    else:
+        pytest.fail("vid_dead line not found")
