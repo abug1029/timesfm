@@ -39,12 +39,12 @@ aligned_slow_loop.py
   → write_proposal_status(verdicted)
 ```
 
-### 已知缺口（residual）
+### 已知缺口
 
-| 项 | 说明 | 影响 |
+| 项 | 说明 | 状态 |
 |----|------|------|
-| backfill queue 行缺 `proposal_id`/`version` | `queue_row` 无 lifecycle 字段 | 慢环 withdrawn 检查对该行跳过（不崩溃），但撤回链失效 |
-| workers=2 理由 | 限流保护 Laya（HTTP I/O bound，非 CPU bound） | 保守选择，脚本默认 5 |
+| ~~backfill queue 行缺 `proposal_id`/`version`~~ | ~~慢环 withdrawn 检查失效~~ | **已修复** `48f4dc4` |
+| workers=2 理由 | 限流保护 Laya（HTTP I/O bound，脚本默认 5） | 保守选择 |
 
 ---
 
