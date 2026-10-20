@@ -450,6 +450,72 @@ def _prescreen_plausibility(proposal_path):
     return p
 
 
+
+SHORT_WINDOW_RESULTS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "cache", "short_window_results.jsonl")
+
+
+def _short_window_check(symbol, cov_override, proposal_path):
+    """短窗回测检查 (Phase 2 Task 2)。
+
+    1) 先查缓存 (data/cache/short_window_results.jsonl)
+    2) 缓存未命中则同步跑一次短窗回测 (默认 150 点)
+    3) 返回结果 dict 或 None (回测失败时 fail-open)
+
+    此函数是同步的——harvest 循环中调用会阻塞，但短窗本身比慢环快得多
+    (150 vs 588 点)。未来可改为异步 prescreen 模式。
+    """
+    vid = "{}_{}".format(symbol.lower().strip(), cov_override.strip())
+    cached = _load_short_window_cache(vid)
+    if cached is not None:
+        return cached
+
+    # 同步跑一次
+    try:
+        import short_window_backtest as swb
+        result = swb.short_window_backtest(
+            symbol=symbol.lower().strip(),
+            cov_override=cov_override.strip(),
+            window_size=150,
+        )
+        # 追加到缓存
+        _append_short_window_cache(result)
+        return result
+    except ImportError:
+        logging.warning("short_window_backtest module not available, fail-open")
+        return None
+    except Exception as e:
+        logging.warning("short_window_check failed for %s %s: %s", symbol, cov_override, e)
+        return None  # fail-open: 不阻塞收割
+
+
+def _load_short_window_cache(variant_id):
+    """从缓存文件读取该 variant_id 的短窗结果。"""
+    if not os.path.exists(SHORT_WINDOW_RESULTS_PATH):
+        return None
+    try:
+        with open(SHORT_WINDOW_RESULTS_PATH, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    rec = json.loads(line)
+                    if rec.get("variant_id") == variant_id:
+                        return rec
+    except (json.JSONDecodeError, OSError):
+        pass
+    return None
+
+
+def _append_short_window_cache(result):
+    """追加单条短窗结果到缓存。"""
+    os.makedirs(os.path.dirname(SHORT_WINDOW_RESULTS_PATH), exist_ok=True)
+    try:
+        with open(SHORT_WINDOW_RESULTS_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(result, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def _has_proposal_version_status(status_path, proposal_id, version, statuses=None):
     """Check if proposal_id+version already has a record in proposal_status.jsonl.
 
@@ -629,7 +695,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
              # spec 2026-10-05 §6.1：档位随收割留档（off|shadow|enforce）
              "search_policy": search_policy,
              # PR-B6 质量门计数（键名与 reject_reasons 一致，防止两套计数漂移）
-             "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0,
+             "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0, "short_window_fail": 0,
              # T2 (2026-10-05): success 门分类计数（放行侧也计数，供观察口径是否过宽）
              "success_gate_states": {}}
     _sg_cache = {}  # T2: 单次 harvest 内复用评估窗锚与行级 eval_end_ts
@@ -837,6 +903,12 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             if _sg_reason is not None:
                 _reject(_sg_reason); continue
 
+            # Phase 2 Task 2: short-window empirical pre-screen
+            _sw_result = _short_window_check(symbol, cov, sp)
+            if _sw_result is not None and not _sw_result.get("pass"):
+                stats["short_window_fail"] += 1
+                _reject("short_window_fail"); continue
+
             family = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or "other"
             repeat_counts = _cross_run_repeat_counts()
             score = _proposal_priority_score(p, cov, symbol, snapshot or {},
@@ -868,6 +940,9 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 "version": _version,
                 "_family": family, "_score": score, "_tier": tier,
                 "_proposal_path": sp}
+            if _sw_result is not None:
+                _cand["short_window_dir_acc"] = _sw_result.get("dir_acc")
+                _cand["short_window_n"] = _sw_result.get("n")
             if search_info is not None:
                 # P2.2 (spec §6.2): enforce 档队列行携带树三字段（2.3 落账依据）；
                 # off/shadow 不带（S1：off 下行形状与今日相同）
