@@ -7,6 +7,7 @@ import sys
 import time
 import traceback
 import uuid
+import logging
 from datetime import datetime, timedelta, timezone
 
 _repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -623,6 +624,11 @@ def _harvest_rows(goal):
     in_flight = rl.in_flight_ids(sup_paths.QUEUE, sup_paths.INPROGRESS)
     historical = set(snap_now.keys())
     existing = in_flight | historical
+    # ── SPEC v3.1 §5.1: Pre-harvest cleanup (primary defense against duplicates) ──
+    n_pruned = sup_harvest._prune_duplicate_proposals(sup_paths.FM_ROOT)
+    if n_pruned:
+        logging.getLogger("sup_loops").info("pruned %d duplicate proposal files", n_pruned)
+
     pool = sup_evidence.load_covariate_pool()
     rows, pstats = sup_harvest.harvest_proposals(
         sup_paths.FM_ROOT, snap_now, dead, existing, pool,

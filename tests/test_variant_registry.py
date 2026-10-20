@@ -92,3 +92,54 @@ class TestVariantRegistry:
         reg2 = VariantRegistry(tmp_registry)
         count = reg2.load()
         assert count == 100
+
+    def test_cross_instance_same_stem_single_line(self, tmp_registry):
+        """4 线程各用独立实例注册同一 stem → JSONL 仅 1 行。"""
+        barrier = threading.Barrier(4)
+        results = []
+
+        def worker(run_id):
+            r = VariantRegistry(tmp_registry)
+            r.load()
+            barrier.wait()
+            results.append(r.try_register("shared_stem", run_id))
+
+        threads = [
+            threading.Thread(target=worker, args=(f"run_{i}",))
+            for i in range(4)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # 恰好一个线程拿到 True
+        assert sum(1 for ok in results if ok) == 1
+
+        # 磁盘上只有 1 行
+        lines = [l for l in open(tmp_registry, encoding="utf-8").readlines() if l.strip()]
+        assert len(lines) == 1
+        rec = json.loads(lines[0])
+        assert rec["stem"] == "shared_stem"
+
+        # 新实例 load 返回唯一 stem 数 = 1
+        reg3 = VariantRegistry(tmp_registry)
+        assert reg3.load() == 1
+
+    def test_try_register_returns_false_if_exists(self, tmp_registry):
+        reg = VariantRegistry(tmp_registry)
+        reg.load()
+        assert reg.try_register("x", "run_1") is True
+        assert reg.try_register("x", "run_2") is False
+        assert len(reg) == 1
+
+    def test_load_deduplicates_repeated_lines(self, tmp_registry):
+        """即便盘上有重复行，load 返回唯一 stem 数。"""
+        with open(tmp_registry, "w", encoding="utf-8") as f:
+            f.write('{"stem": "a", "first_seen": "t1", "run_id": "r1"}\n')
+            f.write('{"stem": "a", "first_seen": "t2", "run_id": "r2"}\n')
+            f.write('{"stem": "b", "first_seen": "t3", "run_id": "r3"}\n')
+        reg = VariantRegistry(tmp_registry)
+        assert reg.load() == 2  # 唯一 stem 数，非行数
+        assert reg.has_stem("a")
+        assert reg.has_stem("b")

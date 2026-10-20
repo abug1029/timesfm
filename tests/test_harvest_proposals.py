@@ -208,16 +208,16 @@ def test_priority_symbols_disabled_keeps_score_order(tmproot, monkeypatch):
     assert called["n"] == 0
 
 def test_new_covariate_dedup_across_harvests(tmproot):
-    """同一 new_cov 被后续 cycle 重扫: registry 拦截 (SPEC v3.1 5.1), 不到 backlog 层。"""
+    """同一 new_cov 被后续 cycle 重扫: pre-harvest 清理移除重复文件，不到 backlog 层。"""
     _make_run(tmproot, {"schema": "fm.hypothesis_proposal.v1", "symbol": "m",
                         "cov_override": None,
                         "new_covariate": {"name": "term_spread", "formula": "...",
                                           "mechanism": LONGM, "family": "structure"}},
               filename="new_cov_term_spread.json")
-    _harvest(tmproot)
-    rows2, stats2 = _harvest(tmproot)  # 第二 cycle 重扫同一 run
-    # SPEC v3.1 5.1: registry 拦截重复 stem, 不再到达 backlog 去重层
-    assert stats2["registry_hit"] >= 1
+    rows1, stats1 = _harvest(tmproot)
+    # 第二 cycle 重扫同一 run: pre-harvest 已清理掉重复文件
+    rows2, stats2 = _harvest(tmproot)
+    # 文件已被 pre-harvest 移除，harvest 看不到重复
     assert stats2["backlog"] == 0
     recs = [json.loads(l) for l in open(S.BACKLOG_PATH, encoding="utf-8") if l.strip()]
     assert [r["name"] for r in recs].count("term_spread") == 1

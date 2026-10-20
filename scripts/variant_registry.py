@@ -50,37 +50,42 @@ class VariantRegistry:
         self._stems: dict[str, dict] = {}
 
     def load(self) -> int:
-        """加载已有 registry，返回已加载的 stem 数量。"""
+        """加载已有 registry，返回唯一 stem 数量。"""
         if not os.path.exists(self.registry_path):
             return 0
-        count = 0
         with _registry_lock(self.registry_path):
-            for line in open(self.registry_path, encoding="utf-8"):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                    stem = rec.get("stem")
-                    if stem:
-                        self._stems[stem] = rec
-                        count += 1
-                except json.JSONDecodeError:
-                    continue
-        return count
+            self._reload_from_disk_unlocked()
+        return len(self._stems)
+
+    def _reload_from_disk_unlocked(self) -> None:
+        """从磁盘重读全部 stem 到 _stems（调用方须持锁）。"""
+        if not os.path.exists(self.registry_path):
+            return
+        for line in open(self.registry_path, encoding="utf-8"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                stem = rec.get("stem")
+                if stem and stem not in self._stems:
+                    self._stems[stem] = rec
+            except json.JSONDecodeError:
+                continue
 
     def has_stem(self, stem: str) -> bool:
         """检查 stem 是否已注册。"""
         return stem in self._stems
 
     def register(self, stem: str, run_id: str, ts: Optional[str] = None) -> None:
-        """注册新 stem（append-only，幂等）。"""
+        """注册新 stem（跨实例幂等：锁内重读磁盘）。"""
         if stem in self._stems:
             return
         if ts is None:
             ts = datetime.now(timezone.utc).isoformat()
         record = {"stem": stem, "first_seen": ts, "run_id": run_id}
         with _registry_lock(self.registry_path):
+            self._reload_from_disk_unlocked()
             if stem in self._stems:
                 return
             parent = os.path.dirname(self.registry_path)
@@ -89,6 +94,25 @@ class VariantRegistry:
             with open(self.registry_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
             self._stems[stem] = record
+
+    def try_register(self, stem: str, run_id: str, ts: Optional[str] = None) -> bool:
+        """尝试注册；返回 True 表示首次占位成功，False 表示已存在。"""
+        if stem in self._stems:
+            return False
+        if ts is None:
+            ts = datetime.now(timezone.utc).isoformat()
+        record = {"stem": stem, "first_seen": ts, "run_id": run_id}
+        with _registry_lock(self.registry_path):
+            self._reload_from_disk_unlocked()
+            if stem in self._stems:
+                return False
+            parent = os.path.dirname(self.registry_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(self.registry_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            self._stems[stem] = record
+            return True
 
     def get_stems(self) -> set[str]:
         """返回所有已注册的 stem 集合。"""
