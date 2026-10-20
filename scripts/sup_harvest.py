@@ -11,6 +11,14 @@ if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 del _repo_root
 
+# --- Quality predictor (optional: ML-based gate_pass probability) ---
+try:
+    from quality_predictor import score_proposal_for_harvest as _ml_score
+    _HAS_ML_PREDICTOR = True
+except ImportError:
+    _HAS_ML_PREDICTOR = False
+    _ml_score = None
+
 # ── Schema 接受集合（Phase 1 Task 2）──
 # Spec §3.6: 接受 v1 和 v2；v1 的 version 默认为 1；v2 必须有合法 version
 _ACCEPTED_SCHEMAS = {
@@ -36,6 +44,7 @@ import sup_evidence
 import sup_lifecycle
 import sup_paths
 from proposal_status import write_proposal_status
+from proposal_validator import validate_proposal_dict
 from rejected_proposals import write_rejected_proposal
 from variant_registry import VariantRegistry
 
@@ -651,6 +660,13 @@ def _proposal_quality_gate(prop, snapshot, proposal_path=None):
     plaus = _prescreen_plausibility(proposal_path)
     bd["prescreen"] = 10.0 * plaus if plaus is not None else 0.0
 
+    # +5 * ML quality predictor probability (if model available)
+    if _HAS_ML_PREDICTOR and proposal_path is not None and _ml_score is not None:
+        ml_prob, _ = _ml_score(prop)
+        bd["ml_quality"] = 5.0 * ml_prob
+    else:
+        bd["ml_quality"] = 0.0
+
     # -20 该协变量在其他品种最近 N 次全失败
     cov_recent = _recent_ok_verdicts(
         snap,
@@ -695,7 +711,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
              # spec 2026-10-05 §6.1：档位随收割留档（off|shadow|enforce）
              "search_policy": search_policy,
              # PR-B6 质量门计数（键名与 reject_reasons 一致，防止两套计数漂移）
-             "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0, "short_window_fail": 0,
+             "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0, "short_window_fail": 0, "validation_error": 0,
              # T2 (2026-10-05): success 门分类计数（放行侧也计数，供观察口径是否过宽）
              "success_gate_states": {}}
     _sg_cache = {}  # T2: 单次 harvest 内复用评估窗锚与行级 eval_end_ts
@@ -800,6 +816,28 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 _reject("schema_mismatch"); continue
             if _schema == "fm.hypothesis_proposal.v2" and not _check_v2_version(p):
                 _reject("schema_mismatch"); continue
+
+            # -- Phase 2 Task 3: proposal structure validation (pre-write gate) --
+            _vresult = validate_proposal_dict(p)
+            if not _vresult["valid"]:
+                # Classify reject reason (compatible with existing attribution)
+                for _err in _vresult["errors"]:
+                    _kind = _err.split(":")[0]
+                    if _kind == "missing_required":
+                        _reject("missing_required_fields")
+                        break
+                    elif _kind == "type_error":
+                        _reject("field_type_error")
+                        break
+                    elif _kind == "chinese_field":
+                        _reject("chinese_field_value")
+                        break
+                    else:
+                        _reject("proposal_validation_error")
+                        break
+                continue
+
+
             # ── Phase 1 Task 5: explicit missing_proposal_id reject (P1-B) ──
             if not _proposal_id:
                 _reject("missing_proposal_id")
