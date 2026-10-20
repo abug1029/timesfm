@@ -4,6 +4,8 @@ Uses empirical frequency-based scoring trained on historical aligned verdicts.
 Primary signal: cov_override pass rate with Laplace smoothing.
 Fallback chain: cov_override -> (symbol, cov_family) -> cov_family -> symbol -> global.
 
+Serialization: JSON (cross-process safe; avoids pickle module-namespace mismatch).
+
 CLI:
   python3 scripts/quality_predictor.py train --proposals task_FM/experiments --verdicts task_FM/config/aligned_verdicts.jsonl
   python3 scripts/quality_predictor.py predict --proposals task_FM/experiments --output predictions.jsonl
@@ -15,13 +17,13 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import logging
 import os
-import pickle
 import random
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+logger = logging.getLogger(__name__)
 
 
 def _resolve_cov_family(cov_override: str) -> str:
@@ -45,7 +47,7 @@ def _smoothed_rate(pass_count: int, total: int) -> float:
     return (pass_count + 1) / (total + 2)
 
 
-# ── FrequencyModel ────────────────────────────────────────────────────────
+# -- FrequencyModel ---------------------------------------------------------
 
 class _FrequencyModel:
     """Empirical pass rate lookup with smoothing and hierarchical fallback."""
@@ -88,7 +90,6 @@ class _FrequencyModel:
         if not cov_family or cov_family == "unknown":
             cov_family = _resolve_cov_family(cov_override)
 
-        # Get individual rates
         p_cov, t_cov = self.cov_rates.get(cov_override, (0, 0))
         cov_rate = _smoothed_rate(p_cov, t_cov) if t_cov >= 3 else None
 
@@ -102,7 +103,6 @@ class _FrequencyModel:
         p_sym, t_sym = self.sym_rates.get(symbol, (0, 0))
         sym_rate = _smoothed_rate(p_sym, t_sym) if t_sym >= 3 else None
 
-        # Weighted combination (prefer more specific rates)
         # Optimized weights via leave-one-out grid search: cov=0.4, sf=0.5, fam=0.1
         if cov_rate is not None and sf_rate is not None:
             return 0.4 * cov_rate + 0.5 * sf_rate + 0.1 * fam_rate
@@ -120,22 +120,46 @@ class _FrequencyModel:
             return _smoothed_rate(self.global_pass, self.global_total)
         return 0.5
 
+    # -- JSON serialization (cross-process safe) ----------------------------
+    def to_dict(self) -> dict:
+        """Serialize to a JSON-compatible dict. Tuples become 2-element lists."""
+        return {
+            "cov_rates": {k: list(v) for k, v in self.cov_rates.items()},
+            # symfam key (sym, fam) -> "sym|fam"; restore with split("|", 1)
+            "symfam_rates": {"|".join(k): list(v) for k, v in self.symfam_rates.items()},
+            "fam_rates": {k: list(v) for k, v in self.fam_rates.items()},
+            "sym_rates": {k: list(v) for k, v in self.sym_rates.items()},
+            "global_pass": self.global_pass,
+            "global_total": self.global_total,
+        }
 
-# ── QualityPredictor ─────────────────────────────────────────────────────
+    @classmethod
+    def from_dict(cls, data: dict) -> "_FrequencyModel":
+        m = cls()
+        m.cov_rates = {k: tuple(v) for k, v in data.get("cov_rates", {}).items()}
+        m.symfam_rates = {tuple(k.split("|", 1)): tuple(v) for k, v in data.get("symfam_rates", {}).items()}
+        m.fam_rates = {k: tuple(v) for k, v in data.get("fam_rates", {}).items()}
+        m.sym_rates = {k: tuple(v) for k, v in data.get("sym_rates", {}).items()}
+        m.global_pass = int(data.get("global_pass", 0))
+        m.global_total = int(data.get("global_total", 0))
+        return m
+
+
+# -- QualityPredictor -------------------------------------------------------
+
+_DEFAULT_MODEL_PATH = os.path.join(_REPO_ROOT, "models", "quality_model.json")
+
 
 class QualityPredictor:
     """Predict gate_pass probability for FM-a proposals."""
 
     def __init__(self, model_path: Optional[str] = None):
-        self.model_path = model_path or os.path.join(_REPO_ROOT, "models", "quality_model.pkl")
+        self.model_path = model_path or _DEFAULT_MODEL_PATH
         self.freq_model: Optional[_FrequencyModel] = None
         self.threshold: float = 0.5
 
     def extract_features_from_dict(self, proposal: dict, verdict: Optional[dict] = None) -> dict:
-        """Extract features and predicted probability from a proposal dict.
-
-        Returns dict with gate_pass_prob, confidence, and feature details.
-        """
+        """Extract features and predicted probability from a proposal dict."""
         if self.freq_model is None:
             return None
 
@@ -183,18 +207,15 @@ class QualityPredictor:
         **kwargs,
     ) -> Dict[str, float]:
         """Train the model from verdicts. kwargs accepted for API compatibility."""
-        # Load verdicts
         verdicts: Dict[str, dict] = {}
         with open(verdicts_path) as f:
             for line in f:
                 v = json.loads(line)
                 verdicts[v["variant_id"]] = v
 
-        # Build frequency model
         self.freq_model = _FrequencyModel()
         self.freq_model.fit(list(verdicts.values()))
 
-        # Find optimal threshold via cross-validation on the training data
         probs, labels = [], []
         for vid, v in verdicts.items():
             sym = v.get("symbol") or "unknown"
@@ -202,13 +223,11 @@ class QualityPredictor:
             fam = v.get("cov_family") or "unknown"
             if fam == "unknown":
                 fam = _resolve_cov_family(cov)
-            # Leave-one-out style: compute rate without this sample
             p_cov, t_cov = self.freq_model.cov_rates.get(cov, (0, 0))
             prob = _smoothed_rate(p_cov - (1 if v.get("gate_pass") else 0), t_cov - 1) if t_cov > 1 else _smoothed_rate(p_cov, t_cov)
             probs.append(prob)
             labels.append(1 if v.get("gate_pass") else 0)
 
-        # Find threshold that maximizes accuracy
         best_acc = 0
         best_thr = 0.5
         for thr_int in range(20, 60):
@@ -226,7 +245,6 @@ class QualityPredictor:
                 best_thr = thr
         self.threshold = best_thr
 
-        # Full model metrics (using all data, not leave-one-out)
         probs_full = []
         labels_full = []
         for vid, v in verdicts.items():
@@ -319,12 +337,10 @@ class QualityPredictor:
         train_idx = set(indices[:split])
         test_idx = indices[split:]
 
-        # Build frequency model on training data only
         train_verdicts = [all_verdicts[i] for i in train_idx]
         freq_model = _FrequencyModel()
         freq_model.fit(train_verdicts)
 
-        # Find threshold on training data (leave-one-out)
         probs, labels = [], []
         for i in train_idx:
             v = all_verdicts[i]
@@ -354,7 +370,6 @@ class QualityPredictor:
                 best_acc = acc
                 best_thr = thr
 
-        # Evaluate on test data
         test_probs, test_labels = [], []
         for i in test_idx:
             v = all_verdicts[i]
@@ -372,7 +387,6 @@ class QualityPredictor:
         metrics["n_train"] = len(train_verdicts)
         metrics["threshold"] = best_thr
 
-        # Also compute AUC (threshold-independent)
         auc = _approx_auc(test_probs, test_labels)
         metrics["auc"] = round(auc, 4)
 
@@ -380,26 +394,34 @@ class QualityPredictor:
 
     def _save(self):
         os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
-        with open(self.model_path, "wb") as f:
-            pickle.dump({
-                "freq_model": self.freq_model,
-                "threshold": self.threshold,
-            }, f)
+        payload = {
+            "version": 1,
+            "freq_model": self.freq_model.to_dict(),
+            "threshold": self.threshold,
+        }
+        # Atomic write: write to tmp then rename to avoid partial reads
+        tmp_path = self.model_path + ".tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(payload, f)
+        os.replace(tmp_path, self.model_path)
 
     def _load(self) -> bool:
         if not os.path.exists(self.model_path):
+            logger.info("quality_model file missing: %s", self.model_path)
             return False
         try:
-            with open(self.model_path, "rb") as f:
-                data = pickle.load(f)
-            self.freq_model = data["freq_model"]
-            self.threshold = data.get("threshold", 0.5)
+            with open(self.model_path) as f:
+                data = json.load(f)
+            self.freq_model = _FrequencyModel.from_dict(data["freq_model"])
+            self.threshold = float(data.get("threshold", 0.5))
             return True
-        except Exception:
+        except Exception as exc:
+            logger.error("failed to load quality_model from %s: %s", self.model_path, exc)
+            self.freq_model = None
             return False
 
 
-# ── Metrics ──────────────────────────────────────────────────────────────
+# -- Metrics ----------------------------------------------------------------
 
 def _compute_metrics_at_threshold(
     probs: List[float], labels: List[int], threshold: float = 0.5
@@ -435,22 +457,20 @@ def _approx_auc(probs: List[float], labels: List[int]) -> float:
     for p in pos:
         for q in neg:
             if p > q: concordant += 1
-            elif p == q: tied += 0.5
+            elif p == q: tied = tied + 0.5
     return (concordant + tied) / (len(pos) * len(neg))
 
 
-# ── Harvest integration ──────────────────────────────────────────────────
+# -- Harvest integration ----------------------------------------------------
 
 def score_proposal_for_harvest(
     proposal: dict,
     predictor: Optional["QualityPredictor"] = None,
-    threshold: float = 0.5,
 ) -> Tuple[float, dict]:
     """Score a proposal for harvest priority. Returns (score, prediction_dict)."""
     if predictor is None:
-        model_path = os.path.join(_REPO_ROOT, "models", "quality_model.pkl")
-        if os.path.exists(model_path):
-            predictor = QualityPredictor(model_path)
+        if os.path.exists(_DEFAULT_MODEL_PATH):
+            predictor = QualityPredictor(_DEFAULT_MODEL_PATH)
         else:
             return (0.5, {})
     pred = predictor.predict_from_dict(proposal)
@@ -459,7 +479,7 @@ def score_proposal_for_harvest(
     return (pred["gate_pass_prob"], pred)
 
 
-# ── CLI ──────────────────────────────────────────────────────────────────
+# -- CLI --------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(description="FM-a Quality Predictor")

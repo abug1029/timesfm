@@ -15,6 +15,39 @@ Predicts the probability that a proposal will pass the aligned verdict gate (`ga
    - Global rate
 3. **Optimal weights**: cov_override=0.4 + symfam=0.5 + fam=0.1, determined by leave-one-out grid search.
 
+## Serialization format
+
+Model is persisted as **JSON** at `models/quality_model.json`.
+
+JSON was chosen over pickle to avoid the cross-process class-reference bug:
+when `_FrequencyModel` was trained via CLI (`__main__._FrequencyModel`) but
+loaded from `sup_harvest.py` (`quality_predictor._FrequencyModel`), pickle
+silently failed the import and the predictor always returned 0.5 (no quality
+discrimination). JSON is module-independent and human-readable.
+
+The payload shape:
+
+```json
+{
+  "version": 1,
+  "freq_model": {
+    "cov_rates": {"rsi6": [5, 5], ...},
+    "symfam_rates": {"rb|momentum": [4, 5], ...},
+    "fam_rates": {"momentum": [10, 15], ...},
+    "sym_rates": {"rb": [6, 10], ...},
+    "global_pass": 100,
+    "global_total": 200
+  },
+  "threshold": 0.47
+}
+```
+
+Tuple values are serialized as 2-element lists. The `(symbol, cov_family)`
+composite key uses `"sym|fam"` encoding (split on first `|` to decode).
+
+Writes are atomic: save writes to `.tmp` then `os.replace` to avoid partial
+reads from a concurrent loader.
+
 ## Model performance (665 verdicts, 33% base pass rate)
 
 | Metric | Training | Test (20% holdout) |
@@ -31,7 +64,7 @@ The model trades precision for recall: it's conservative at identifying likely p
 ## CLI usage
 
 ```bash
-# Train the model (writes models/quality_model.pkl)
+# Train the model (writes models/quality_model.json)
 python3 scripts/quality_predictor.py train
 
 # Predict unverified proposals (sorted by quality descending)
@@ -53,6 +86,6 @@ The quality predictor is automatically loaded by `scripts/sup_harvest.py` if ava
 | File | Purpose |
 |------|---------|
 | `scripts/quality_predictor.py` | Main predictor module + CLI |
-| `tests/test_quality_predictor.py` | 21 unit tests |
-| `models/quality_model.pkl` | Trained model (gitignored) |
+| `tests/test_quality_predictor.py` | Unit tests + cross-process serialization test |
+| `models/quality_model.json` | Trained model (gitignored) |
 | `scripts/sup_harvest.py` | Modified: adds ML quality bonus |
