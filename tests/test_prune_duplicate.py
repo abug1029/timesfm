@@ -1,10 +1,12 @@
 """Unit test for _prune_duplicate_proposals function.
 
 Tests:
-1. First harvest: pre-harvest registers stems, no files pruned
-2. Second harvest of same files: duplicates pruned
-3. New file in second run: kept and registered
+1. First harvest: prune does NOT register, no files pruned (empty registry)
+2. After simulated harvest registration: duplicates pruned on second prune
+3. New file alongside registered stem: only registered one pruned
 4. Empty directory: no errors
+5. run_id extraction
+6. Prune does not register stems (new test for P1-1 fix)
 """
 import json
 import os
@@ -45,8 +47,25 @@ def _make_default_prop(stem, symbol="m", cov="vor"):
     }
 
 
+def _simulate_harvest_registration(reg_path, stems):
+    """Simulate what harvest does after queuing: write stems to registry."""
+    from datetime import datetime, timezone
+    with open(reg_path, "a", encoding="utf-8") as f:
+        for stem in stems:
+            rec = {"stem": stem, "first_seen": datetime.now(timezone.utc).isoformat(),
+                   "run_id": "run_T"}
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
+def _file_exists(root, stem):
+    """Check if a proposal file exists."""
+    return os.path.exists(
+        os.path.join(root, "task_FM", "experiments", "run_T",
+                     "results", "gen_0", "peer0", "proposals", f"{stem}.json"))
+
+
 def test_prune_first_run_no_prune(tmp_path, monkeypatch):
-    """First run: registry is empty, all files kept, all stems registered."""
+    """First run: registry is empty, prune does NOT register, no files pruned."""
     reg_path = str(tmp_path / "variant_registry.jsonl")
     monkeypatch.setattr(sup_paths, "VARIANT_REGISTRY_PATH", reg_path)
 
@@ -56,50 +75,62 @@ def test_prune_first_run_no_prune(tmp_path, monkeypatch):
     n_pruned = S._prune_duplicate_proposals(str(tmp_path))
 
     assert n_pruned == 0
-    # Verify both stems are now registered
-    assert S._run_id_from_path(os.path.join(str(tmp_path), "task_FM/experiments/run_T/results/gen_0/peer0/proposals/m_vor.json")) == "run_T"
-    assert S._run_id_from_path("some/other/path/file.json") == "unknown"
+    # Files still exist (prune does NOT register)
+    assert _file_exists(str(tmp_path), "m_vor")
+    assert _file_exists(str(tmp_path), "ss_ccl")
+    # Registry is empty (prune does NOT register)
+    assert not os.path.exists(reg_path)
+
+
+def test_prune_does_not_register_stems(tmp_path, monkeypatch):
+    """P1-1: prune must NOT register any stems."""
+    reg_path = str(tmp_path / "variant_registry.jsonl")
+    monkeypatch.setattr(sup_paths, "VARIANT_REGISTRY_PATH", reg_path)
+
+    _make_proposal_file(str(tmp_path), "m_vor", _make_default_prop("m_vor"))
+
+    S._prune_duplicate_proposals(str(tmp_path))
+
+    # Registry should not exist (prune does NOT call try_register or register)
+    assert not os.path.exists(reg_path)
 
 
 def test_prune_second_run_removes_duplicates(tmp_path, monkeypatch):
-    """Second run: same stems already registered, files pruned."""
+    """After harvest registration: prune removes duplicate files."""
     reg_path = str(tmp_path / "variant_registry.jsonl")
     monkeypatch.setattr(sup_paths, "VARIANT_REGISTRY_PATH", reg_path)
 
-    # First run: register stems
+    # Create proposal file
     _make_proposal_file(str(tmp_path), "m_vor", _make_default_prop("m_vor"))
-    n1 = S._prune_duplicate_proposals(str(tmp_path))
-    assert n1 == 0
 
-    # Second run: same file still exists, should be pruned
-    n2 = S._prune_duplicate_proposals(str(tmp_path))
-    assert n2 == 1
+    # Simulate harvest having registered this stem (what harvest does after queue)
+    _simulate_harvest_registration(reg_path, ["m_vor"])
+
+    # Now prune should remove the file (stem is already registered)
+    n = S._prune_duplicate_proposals(str(tmp_path))
+    assert n == 1
     # File should be gone
-    assert not os.path.exists(
-        os.path.join(str(tmp_path), "task_FM", "experiments", "run_T",
-                     "results", "gen_0", "peer0", "proposals", "m_vor.json")
-    )
+    assert not _file_exists(str(tmp_path), "m_vor")
 
 
 def test_prune_mixed_run(tmp_path, monkeypatch):
-    """Second run with one existing and one new file: only existing pruned."""
+    """Prune with one registered and one new stem: only registered one pruned."""
     reg_path = str(tmp_path / "variant_registry.jsonl")
     monkeypatch.setattr(sup_paths, "VARIANT_REGISTRY_PATH", reg_path)
 
-    # First run: register m_vor
-    _make_proposal_file(str(tmp_path), "m_vor", _make_default_prop("m_vor"))
-    S._prune_duplicate_proposals(str(tmp_path))
+    # Simulate harvest having registered m_vor
+    _simulate_harvest_registration(reg_path, ["m_vor"])
 
-    # Second run: add a new file alongside the old one
+    # Create files: one already registered, one new
+    _make_proposal_file(str(tmp_path), "m_vor", _make_default_prop("m_vor"))
     _make_proposal_file(str(tmp_path), "rb_oi", _make_default_prop("rb_oi", "rb", "oi"))
 
     n = S._prune_duplicate_proposals(str(tmp_path))
     assert n == 1  # m_vor pruned
-    # rb_oi should still exist (new stem, kept and registered)
-    assert os.path.exists(
-        os.path.join(str(tmp_path), "task_FM", "experiments", "run_T",
-                     "results", "gen_0", "peer0", "proposals", "rb_oi.json")
-    )
+    # rb_oi should still exist (new stem, not in registry)
+    assert _file_exists(str(tmp_path), "rb_oi")
+    # m_vor should be gone
+    assert not _file_exists(str(tmp_path), "m_vor")
 
 
 def test_prune_empty_dir(tmp_path, monkeypatch):

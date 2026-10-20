@@ -41,10 +41,13 @@ SPEC §5.1 要求「写盘前钩子」（peer 生成提案后、写盘前查询 
 
 **差异原因**：praxist 外部框架限制，FM_a 无法修改 praxist 内部写盘逻辑。
 
-**效果等价**：Pre-harvest Cleanup 在 harvest 前删除重复文件，harvest 不会重复处理。
+**过渡方案声明**：Pre-harvest Cleanup 不是写盘前拦截，而是写后删除。
+praxist 外部框架限制使得 FM_a 无法在 peer 写盘前查询 registry。
+本实现接受此限制，在 harvest 启动前删除重复文件。
+此方案待 praxist 支持写盘前钩子后闭合 C1。
 
 **取舍**：
-- 优点：实现简单、不依赖 praxist、效果等价
+- 优点：实现简单、不依赖 praxist
 - 缺点：有额外磁盘 IO（先写后删）、不符合 SPEC §5.1 字面要求
 
 ## 四、测试结果
@@ -54,8 +57,8 @@ SPEC §5.1 要求「写盘前钩子」（peer 生成提案后、写盘前查询 
 | test_variant_registry.py | 7 | pass |
 | test_harvest_proposals.py | 39 | pass |
 | test_harvest_status_integration.py | 4 | pass |
-| test_pre_harvest_cleanup.py | 4 | pass（新增） |
-| **总计** | **54** | **全通过** |
+| test_prune_duplicate.py | 6 | pass（含 P1-1 修复后新增 2 测试） |
+| **总计** | **59** | **全通过** |
 
 ## 五、交付物
 
@@ -63,7 +66,7 @@ SPEC §5.1 要求「写盘前钩子」（peer 生成提案后、写盘前查询 
 - `scripts/backfill_variant_registry.py`（新增）
 - `scripts/sup_harvest.py`（修改：_prune_duplicate_proposals）
 - `scripts/sup_loops.py`（修改：harvest 前调用 cleanup）
-- `tests/test_pre_harvest_cleanup.py`（新增，4 个测试）
+- `tests/test_prune_duplicate.py`（新增，6 个测试，P1-1 修复后更新）
 
 ---
 

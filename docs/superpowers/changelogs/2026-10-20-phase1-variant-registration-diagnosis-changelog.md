@@ -15,7 +15,7 @@
 
 | Task | 目标 | 结果 | 状态 |
 |------|------|------|------|
-| Task 1 | variant 登记（防重复落盘） | 54/54 tests pass，实现为 Pre-harvest Cleanup 而非 SPEC 要求的写盘前钩子 | ⚠️ 有条件完成 |
+| Task 1 | variant 登记（防重复落盘） | 59/59 tests pass，实现为 Pre-harvest Cleanup 而非 SPEC 要求的写盘前钩子 | ⚠️ 有条件完成 |
 | Task 2 | 清理磁盘冗余（归档重复文件） | 冗余率 89.2% → 0.0%, code-review PASS | ✅ 完成 |
 | Task 3 | 诊断低效 symbol/family 根因 | 诊断报告完成, code-review PASS | ✅ 完成 |
 
@@ -82,10 +82,11 @@ harvest_proposals() 正常扫描（重复文件已被删除）
 **差异原因**：
 1. **praxist 外部框架限制**：提案生成由 praxist 外部框架控制，FM_a 无法修改 praxist 内部的写盘逻辑
 2. **实现成本**：在 praxist 外部框架中添加写盘前钩子需要修改 praxist 源码，超出 FM_a 项目范围
-3. **效果等价**：Pre-harvest Cleanup 在 harvest 前删除重复文件，效果与写盘前拦截等价（harvest 不会重复处理）
+3. **过渡方案**：Pre-harvest Cleanup 不是写盘前拦截，而是写后删除。
+   重复文件先由 praxist 落盘，后被 harvest 启动前清理删除。
 
 **取舍**：
-- 优点：实现简单、不依赖 praxist 内部逻辑、效果等价
+- 优点：实现简单、不依赖 praxist 内部逻辑
 - 缺点：有额外磁盘 IO（先写后删）、不符合 SPEC §5.1 字面要求
 - 风险：若 praxist 未来改变写盘策略，Pre-harvest Cleanup 可能失效
 
@@ -110,11 +111,11 @@ harvest_proposals() 正常扫描（重复文件已被删除）
 - harvest 不再需要检查 registry（重复文件已被删除）
 
 ### 测试结果
-- **54/54 tests pass**（返工后）
+- **59/59 tests pass**（返工后）
 - `test_variant_registry.py`: 7/7（加载、注册、幂等性、持久化、JSONL 格式、并发安全）
 - `test_harvest_proposals.py`: 39/39（测试隔离修复）
 - `test_harvest_status_integration.py`: 4/4（测试隔离修复）
-- `test_pre_harvest_cleanup.py`: 4/4（新增，Pre-harvest Cleanup 测试）
+- `test_prune_duplicate.py`: 6/6（含 P1-1 修复后新增测试）
 
 ### Code Review
 - **PASS**（返工后）
@@ -130,6 +131,7 @@ harvest_proposals() 正常扫描（重复文件已被删除）
 | 磁盘 IO | 正常 | 额外 IO（先写后删） |
 
 ### 交付物
+- **Registry 文件**：`data/cache/variant_registry.jsonl`（JSONL 格式，侧车锁 `.lock`）
 - `scripts/variant_registry.py` (新增)
 - `scripts/sup_paths.py` (修改)
 - `scripts/sup_harvest.py` (修改，新增 `_prune_duplicate_proposals`)
@@ -138,7 +140,7 @@ harvest_proposals() 正常扫描（重复文件已被删除）
 - `tests/test_variant_registry.py` (新增，7 个测试)
 - `tests/test_harvest_proposals.py` (修改)
 - `tests/test_harvest_status_integration.py` (修改)
-- `tests/test_pre_harvest_cleanup.py` (新增，4 个测试)
+- `tests/test_prune_duplicate.py` (新增，6 个测试)
 - `docs/VARIANT_REGISTRY_IMPLEMENTATION.md` (实现说明)
 
 ---
@@ -210,7 +212,8 @@ harvest_proposals() 正常扫描（重复文件已被删除）
 ### 1. Pre-harvest Cleanup vs 写盘前钩子（与 SPEC §5.1 差异）
 **决策**: 采用 Pre-harvest Cleanup 替代 SPEC §5.1 要求的写盘前钩子。
 
-**理由**: praxist 外部框架限制，FM_a 无法修改 praxist 内部写盘逻辑；效果等价。
+**理由**: praxist 外部框架限制，FM_a 无法修改 praxist 内部写盘逻辑。
+此方案为过渡方案，待 praxist 支持写盘前钩子后再闭合 C1。
 
 **差异已记录于**：本文档 Task 1 节、`docs/VARIANT_REGISTRY_IMPLEMENTATION.md`
 
@@ -230,7 +233,7 @@ harvest_proposals() 正常扫描（重复文件已被删除）
 - [x] Task 3 完成：低效 symbol/family 诊断报告
 - [x] 所有 Task code review PASS
 - [x] Changelog 记录
-- [x] 62/62 tests pass
+- [x] 59/59 tests pass
 - **Task 1 实现方案与 SPEC §5.1 存在差异（已诚实记录）**
 
 ### 禁止事项验证

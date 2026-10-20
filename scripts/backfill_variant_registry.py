@@ -112,14 +112,16 @@ def main():
             "run_id": rec["run_id"],
         })
 
-    # 单次锁内批量追加，避免 N 次重读磁盘
+    # P1-5: 使用 try_register 逐条注册，避免并发双执行产生重复行
     parent = os.path.dirname(registry_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    with _registry_lock(registry_path):
-        with open(registry_path, "a", encoding="utf-8") as f:
-            for rec in records:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    reg = VariantRegistry(registry_path)
+    reg.load()
+    actually_added = 0
+    for rec in records:
+        if reg.try_register(rec["stem"], rec["run_id"], rec["first_seen"]):
+            actually_added += 1
 
     # 验证：重读并对比
     reg2 = VariantRegistry(registry_path)
@@ -127,7 +129,7 @@ def main():
     final_stems = reg2.get_stems()
     live_set = set(live)
     missing = live_set - final_stems
-    print(f"[exec] wrote {len(records)} records")
+    print(f"[exec] wrote {actually_added} records ({len(records) - actually_added} were duplicates)")
     print(f"[exec] registry unique stems after backfill: {len(final_stems)}")
     print(f"[exec] live stems not in registry: {len(missing)}")
     if missing:

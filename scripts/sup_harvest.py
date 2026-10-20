@@ -42,17 +42,9 @@ from variant_registry import VariantRegistry
 def _prune_duplicate_proposals(root: str) -> int:
     """Pre-harvest cleanup: remove proposal files whose stems are already registered.
 
-    This is the primary defense against duplicate proposal files (SPEC v3.1 §5.1).
-    Unlike the harvest-time check (which only prevents re-processing), this removes
-    the file before harvest ever sees it — preventing wasted parsing, status writes,
-    and rejected-proposal records.
-
-    Mechanism:
-    - Load the variant registry
-    - Scan all proposal files across runs
-    - For each file, try_register the stem atomically:
-      - First-time stem → registered, file kept (harvest will process it)
-      - Already registered → file deleted (duplicate, no need to re-process)
+    This is a FILE dedup step only -- it does NOT call try_register.
+    Stem registration happens in harvest_proposals after a proposal passes all
+    quality gates and is written with status="queued" (P1-1 fix).
 
     Returns the number of pruned (deleted) files.
     """
@@ -63,14 +55,25 @@ def _prune_duplicate_proposals(root: str) -> int:
                            "results", "**", "proposals", "*.json")
     for sp in glob.glob(pattern, recursive=True):
         stem = Path(sp).stem
-        if not reg.try_register(stem, _run_id_from_path(sp)):
-            # Already registered → duplicate, remove
+        if reg.has_stem(stem):
+            # Already registered by a prior harvest -> duplicate file, remove
             try:
                 os.remove(sp)
                 pruned += 1
             except OSError:
                 logging.getLogger(__name__).debug("failed to remove duplicate proposal %s", sp, exc_info=True)
     return pruned
+
+
+def _register_proposal_stem(stem: str, run_id: str) -> None:
+    """Register a proposal stem in the variant registry.
+
+    Called after a proposal passes all quality gates and is queued.
+    This ensures only proposals that survive the full harvest pipeline
+    become permanent registry entries (P1-1 fix).
+    """
+    reg = VariantRegistry(sup_paths.VARIANT_REGISTRY_PATH)
+    reg.register(stem, run_id)
 
 
 def _run_id_from_path(filepath: str) -> str:
@@ -885,6 +888,8 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 import logging as _logging
                 _logging.getLogger("sup_harvest").warning(
                     "failed to write queued status for %s", _cand.get("proposal_id"), exc_info=True)
+            # ── P1-1: 成功入队 → 注册 stem（仅通过质量门的提案才占位）──
+            _register_proposal_stem(Path(sp).stem, os.path.basename(run_dir))
             # ── Laya 预筛触发 (fire-and-forget, 不阻塞 harvest) ──
             _prescreen_async(p, sp, symbol)
 

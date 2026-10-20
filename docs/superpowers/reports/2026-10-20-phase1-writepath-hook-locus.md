@@ -39,20 +39,21 @@ Peer LLM (Anthropic API)
 | 主钩子 | `_harvest_rows()` 中 `harvest_proposals()` 之前 | `sup_loops.py:627-629` |
 | 实现 | `_prune_duplicate_proposals()` | `sup_harvest.py:42-76` |
 | 辅助 | `_run_id_from_path()` | `sup_harvest.py:79-85` |
-| 安全网 | `harvest_proposals()` 内的 `has_stem()` 检查 | `sup_harvest.py:708` |
+| 去重安全网 | `harvest_proposals()` 内 `vid in existing` 检查 | 保留，防止并发竞态 |
 
 ---
 
 ## 2. 挂接方式
 
-### 选择：try_register + 删除（Pre-harvest Cleanup）
+### 选择：文件去重 + 写后注册（P1-1 修复后）
 
 **机制**：
 1. `_prune_duplicate_proposals(root)` 扫描所有 `proposals/*.json` 文件
-2. 对每个文件，调用 `VariantRegistry.try_register(stem, run_id)`
-   - 首次出现 → `try_register` 返回 True，注册 stem，保留文件（harvest 会处理）
-   - 已存在 → `try_register` 返回 False，删除文件（重复，无需重新处理）
-3. 然后 `harvest_proposals()` 正常扫描剩余文件
+   - 仅检查 `has_stem()`，不做注册
+   - stem 已注册 → 删除文件（重复）
+   - stem 未注册 → 保留文件（交由 harvest 评估）
+2. `harvest_proposals()` 正常扫描剩余文件
+3. 提案通过所有质量门并写入 `status="queued"` 后，调用 `_register_proposal_stem()` 注册
 
 **取舍理由**：
 - ✅ 原子性：`try_register` 使用 `fcntl.flock` 侧车锁，跨进程安全
@@ -72,7 +73,7 @@ Peer LLM (Anthropic API)
 
 | 职责 | Before | After |
 |------|--------|-------|
-| 注册 stem | `_vreg.register()` 在解析后 | ❌ 不再注册（由 pre-harvest 完成） |
+| 注册 stem | `_vreg.register()` 在解析后 | ✅ 仅在提案通过质量门并入队后注册 |
 | 检查重复 | `_vreg.has_stem()` 跳过已注册 | ✅ 保留作为安全网 |
 | 写 rejected/status | 是 | 是（不变） |
 | 入队 | 是 | 是（不变） |
@@ -83,8 +84,9 @@ Peer LLM (Anthropic API)
 
 | 时机 | Before | After |
 |------|--------|-------|
-| Pre-harvest | 无 | `try_register()` 原子注册 |
+| Pre-harvest | 无 | ❌ 不注册，仅文件去重 |
 | Harvest parse | `register()` 解析后 | ❌ 移除 |
+| Harvest queue (成功入队) | 无 | ✅ `_register_proposal_stem()` |
 | Backfill | `backfill_variant_registry.py` | 不变（一次性回填历史文件） |
 
 ---
