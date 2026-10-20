@@ -30,3 +30,4 @@ REJECTIONS_INC = os.path.join(FM_ROOT, 'task_FM', 'known_rejections.inc.md')
 # ── 提案生命周期管理（Phase 1）──
 PROPOSAL_STATUS_PATH = os.path.join(FM_ROOT, "data", "cache", "proposal_status.jsonl")
 REJECTED_PROPOSALS_PATH = os.path.join(FM_ROOT, "data", "cache", "rejected_proposals.jsonl")
+VARIANT_REGISTRY_PATH = os.path.join(FM_ROOT, "data", "cache", "variant_registry.jsonl")

@@ -73,6 +73,10 @@ def tmproot(tmp_path, monkeypatch):
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
     monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
+    # SPEC v3.1 5.1: variant registry 隔离到 tmp
+    monkeypatch.setattr(sup_paths, "PROPOSAL_STATUS_PATH", str(tmp_path / "proposal_status.jsonl"))
+    monkeypatch.setattr(sup_paths, "REJECTED_PROPOSALS_PATH", str(tmp_path / "rejected_proposals.jsonl"))
+    monkeypatch.setattr(sup_paths, "VARIANT_REGISTRY_PATH", str(tmp_path / "variant_registry.jsonl"))
     # W6.4: 固定实验指纹, 测试 vid 确定性 (真实 fp 由生产路径覆盖)
     monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
     monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
@@ -204,7 +208,7 @@ def test_priority_symbols_disabled_keeps_score_order(tmproot, monkeypatch):
     assert called["n"] == 0
 
 def test_new_covariate_dedup_across_harvests(tmproot):
-    """同一 new_cov 被后续 cycle 重扫 (harvest 每 cycle glob 所有 run) 只入 backlog 一次。"""
+    """同一 new_cov 被后续 cycle 重扫: registry 拦截 (SPEC v3.1 5.1), 不到 backlog 层。"""
     _make_run(tmproot, {"schema": "fm.hypothesis_proposal.v1", "symbol": "m",
                         "cov_override": None,
                         "new_covariate": {"name": "term_spread", "formula": "...",
@@ -212,8 +216,9 @@ def test_new_covariate_dedup_across_harvests(tmproot):
               filename="new_cov_term_spread.json")
     _harvest(tmproot)
     rows2, stats2 = _harvest(tmproot)  # 第二 cycle 重扫同一 run
+    # SPEC v3.1 5.1: registry 拦截重复 stem, 不再到达 backlog 去重层
+    assert stats2["registry_hit"] >= 1
     assert stats2["backlog"] == 0
-    assert "backlog_dup" in stats2["reject_reasons"]
     recs = [json.loads(l) for l in open(S.BACKLOG_PATH, encoding="utf-8") if l.strip()]
     assert [r["name"] for r in recs].count("term_spread") == 1
 

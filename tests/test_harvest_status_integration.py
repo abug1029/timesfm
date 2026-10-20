@@ -37,6 +37,7 @@ def _patch_harvest_deps(mock_sp, mock_ev, mock_lc, mock_st, mock_ef, tmpdir):
     """配置 harvest_proposals 所需的 mock（对齐现有测试 helper，P1-D 修订）。"""
     mock_sp.PROPOSAL_STATUS_PATH = os.path.join(tmpdir, "proposal_status.jsonl")
     mock_sp.REJECTED_PROPOSALS_PATH = os.path.join(tmpdir, "rejected_proposals.jsonl")
+    mock_sp.VARIANT_REGISTRY_PATH = os.path.join(tmpdir, "variant_registry.jsonl")
     mock_sp.SEARCH_COMMITMENTS_PATH = os.path.join(tmpdir, "search_commits.json")
     mock_sp.RETEST_GATE_N = 50
     mock_ev._load_evaluator.return_value = None

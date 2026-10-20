@@ -37,6 +37,7 @@ import sup_lifecycle
 import sup_paths
 from proposal_status import write_proposal_status
 from rejected_proposals import write_rejected_proposal
+from variant_registry import VariantRegistry
 
 
 def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=600):
@@ -579,6 +580,9 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     n_cache = {}
     ev = sup_evidence._load_evaluator()
     status_map = sup_evidence.load_symbol_status()
+    # ── 写盘前全局 variant 登记（SPEC v3.1 §5.1）──
+    _vreg = VariantRegistry(sup_paths.VARIANT_REGISTRY_PATH)
+    _vreg.load()
     stats = {"seen": 0, "rejected": 0, "backlog": 0, "selected": 0,
              "reject_reasons": {},
              # spec 2026-10-05 §6.1：档位随收割留档（off|shadow|enforce）
@@ -586,7 +590,9 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
              # PR-B6 质量门计数（键名与 reject_reasons 一致，防止两套计数漂移）
              "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0,
              # T2 (2026-10-05): success 门分类计数（放行侧也计数，供观察口径是否过宽）
-             "success_gate_states": {}}
+             "success_gate_states": {},
+             # SPEC v3.1 §5.1: variant registry 命中统计
+             "registry_hit": 0}
     _sg_cache = {}  # T2: 单次 harvest 内复用评估窗锚与行级 eval_end_ts
     passing_ids = {v["variant_id"] for v in rl.pass_variants(snapshot or {})}
     archived = getattr(ev, "ARCHIVED_COVARIATES", {}) if ev else {}
@@ -656,12 +662,19 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             if sup_lifecycle._SHUTDOWN_REQUESTED:
                 stats["aborted_by_shutdown"] = True
                 return [], stats
+            # ── SPEC v3.1 §5.1: 写盘前 variant 登记检查 ──
+            _stem = Path(sp).stem
+            if _vreg.has_stem(_stem):
+                stats["registry_hit"] += 1
+                continue
             try:
                 with open(sp, encoding="utf-8") as f:
                     p = json.load(f)
             except Exception:
                 _reject("unparseable_json"); continue
             stats["seen"] += 1
+            # ── SPEC v3.1 §5.1: 解析成功后立即注册 stem（无论后续入队或拒绝）──
+            _vreg.register(_stem, os.path.basename(run_dir))
             # ── Phase 1 Task 5: per-proposal scope reset (P1-A) ──
             _qs = None  # quality_score
             _bd = None  # quality breakdown
