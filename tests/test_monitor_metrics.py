@@ -150,7 +150,7 @@ class TestCheckRedLines:
         """Unknown model files trigger a CRITICAL alert."""
         models_dir = tmp_path / "models"
         models_dir.mkdir()
-        (models_dir / "quality_model.pkl").touch()
+        (models_dir / "quality_model.json").touch()
         (models_dir / "suspicious_new_model.bin").touch()
 
         with patch("monitor_metrics._REPO_ROOT", tmp_path):
@@ -175,7 +175,7 @@ class TestCheckRedLines:
         """Clean state produces no alerts."""
         models_dir = tmp_path / "models"
         models_dir.mkdir()
-        (models_dir / "quality_model.pkl").touch()
+        (models_dir / "quality_model.json").touch()
 
         empty_registry = tmp_path / "registry.jsonl"
         empty_registry.write_text("")

@@ -4,13 +4,13 @@
 **基于**: SPEC v3.1 Phase 2-3  
 **前置**: Phase 1 完成（含返工修复）  
 **执行时间**: 2026-10-20 14:00 - 18:00 CST（4 小时）  
-**状态**: ✅ 完成
+**状态**: ⚠️ CONDITIONAL (~56%) — 6 Task 代码 + 110 单测已提交；T2/T3/T4 钩入 harvest（T4 缺模型，已修复）；T1/T5/T6 未形成闭环
 
 ---
 
 ## 一、执行摘要
 
-成功完成 SPEC v3.1 Phase 2-3 全部 6 个 Task，实现质量提升和智能化目标。
+实现 SPEC v3.1 Phase 2-3 的 6 个 Task 的脚本与单测（110 项通过），但 **T1/T5 未接入 peer 主路径**、**T4 生产缺模型（已修复）**、**T6 未挂自动化**。不得对外宣称验收完成。
 
 ### 关键成果
 
@@ -64,10 +64,10 @@
 
 **实现**:
 - `short_window_backtest.py` (483 行): 100-200 时间点回测，dir_acc > 0.50 阈值
-- harvest 集成：`_short_window_check()` 在 prescreen 后、入队前调用
+- harvest 集成：`_short_window_check()` 在 quality 门后、**异步 Laya 前**、入队前调用（**非** "prescreen 后"）
 - 缓存机制：`short_window_results.jsonl` + `_load_short_window_cache()`
 
-**预期效果**: 减少 50%+ 无效深度验证（588 时间点）
+**预期效果**: 拦截短窗样本不足（dir_acc 无统计显著）的协变量；**"减少 50%+" 暂无实证数据**（缓存仅 11 条：3 pass / 8 fail）
 
 **测试**: 7/7 pass  
 **Code review**: PASS (3 MEDIUM / 5 LOW)
@@ -88,7 +88,7 @@
 **测试**: 26/26 pass  
 **Code review**: PASS (1 MEDIUM / 2 LOW)
 
-**限制**: peer 集成缺失（praxist 外部框架限制），需在 praxist 侧集成
+**集成状态**: harvest 侧已集成（`validate_proposal_dict` 在入队前调用并拒稿）；**peer 写盘前仍无卫生检查**（changelog 原写 "peer 集成缺失" 低估了 harvest 侧的实际集成）
 
 ---
 
@@ -254,5 +254,5 @@
 
 ---
 
-**Phase 2-3 状态**: ✅ **完成**  
-**下一步**: 推送备份 → 应用生成策略到 peer 生成 → 持续监控优化
+**Phase 2-3 状态**: ⚠️ **CONDITIONAL (~56%)** — 代码与单测已入库，T4 模型已补，但 T1/T5/T6 未闭环  
+**下一步**: ① peer/外环接入 GenerationStrategy；② 多样性奖励接入适应度；③ 挂 cron 每日 collect + 周报；④ 补短窗减量实证

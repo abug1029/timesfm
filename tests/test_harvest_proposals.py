@@ -22,8 +22,10 @@ import sup_evidence
 import sup_harvest
 import praxist_supervisor as S  # noqa: E402
 
-LONGM = ("波动率范围(VOR)压缩后突破：该品种在低波区积蓄动能后常随放量突破，"
-         "此微观结构机制在所选品种上有明确的持仓与季节性支撑，低波蓄能后的方向最可信。")
+LONGM = ("Volatility range (VOR) compression breakout: the instrument accumulates energy in low-volatility zones, "
+         "often followed by a volume-driven breakout. This micro-structure mechanism is supported by clear "
+         "position-holding patterns and seasonal support on the selected instrument, making the direction "
+         "after low-vol accumulation most reliable.")
 
 
 def _make_run(root, proposal, filename=None):
@@ -50,8 +52,9 @@ def _make_run(root, proposal, filename=None):
 def _prop(symbol="m", cov="vor", **over):
     p = {"schema": "fm.hypothesis_proposal.v1", "symbol": symbol,
          "cov_override": cov, "covariate_family": over.pop("family", "volatility"),
-         "mechanism": LONGM, "symbol_fit": "该品种适配该协变量",
+         "mechanism": LONGM, "symbol_fit": "This covariate fits the symbol trading pattern",
          "kill_condition": "ev<0", "promote_condition": "gate",
+         "predicted_direction": "up",
          "proposal_id": over.pop("proposal_id", "%s_%s" % (symbol, cov))}
     p.update(over)
     return p
@@ -114,7 +117,7 @@ def test_symbol_without_current_nocov_baseline_gets_no_seat(tmproot):
 
 
 def test_short_mechanism_rejected(tmproot):
-    _make_run(tmproot, _prop(symbol="ss", cov="ccl", mechanism="太短"))
+    _make_run(tmproot, _prop(symbol="ss", cov="ccl", mechanism="too short"))
     rows, stats = _harvest(tmproot)
     assert stats["selected"] == 0
     assert "mechanism_too_short" in stats["reject_reasons"]
@@ -656,3 +659,40 @@ def test_retest_plan_ignores_other_protocols(tmp_path, monkeypatch):
         "cadence": {"retest_min_new_points": 1, "aligned_max_points": 600},
     })
     assert [item[0]["variant_id"] for item in plan] == ["current_jd"]
+
+
+class TestProposalValidationGates:
+    """Phase 2 Task 3: 提案结构验证门禁集成测试。"""
+
+    def test_missing_required_fields_rejected(self, tmproot):
+        """缺少必填字段 → missing_required_fields 拒绝。"""
+        _make_run(tmproot, {
+            "schema": "fm.hypothesis_proposal.v1",
+            "symbol": "m",
+            "cov_override": "vol",
+            "proposal_id": "test-missing",
+        })
+        rows, stats = _harvest(tmproot)
+        assert stats["reject_reasons"].get("missing_required_fields") == 1
+
+    def test_field_type_error_rejected(self, tmproot):
+        """字段类型错误 → field_type_error 拒绝。"""
+        _make_run(tmproot, _prop(symbol=123))
+        rows, stats = _harvest(tmproot)
+        assert stats["reject_reasons"].get("field_type_error") == 1
+
+    def test_chinese_field_value_rejected(self, tmproot):
+        """中文字段值 → chinese_field_value 拒绝。"""
+        _make_run(tmproot, _prop(symbol_fit="中文测试"))
+        rows, stats = _harvest(tmproot)
+        assert stats["reject_reasons"].get("chinese_field_value") == 1
+
+    def test_english_proposal_passes_validation(self, tmproot):
+        """全英文提案通过结构验证，进入后续管道。"""
+        _make_run(tmproot, _prop())
+        rows, stats = _harvest(tmproot)
+        # 结构验证通过，不应有 validation 相关的拒绝
+        assert "missing_required_fields" not in stats.get("reject_reasons", {})
+        assert "field_type_error" not in stats.get("reject_reasons", {})
+        assert "chinese_field_value" not in stats.get("reject_reasons", {})
+

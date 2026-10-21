@@ -206,41 +206,6 @@ def test_empty_proposals_entropy():
 
 
 # ---------------------------------------------------------------------------
-# Test 8: diversity bonus integration (simulated)
-# ---------------------------------------------------------------------------
-
-def test_diversity_bonus_integration():
-    """Simulate diversity bonus: unexplored combos get higher score."""
-    # This tests the conceptual integration, not the actual generation_strategy
-    proposals = [
-        _make_proposal("ta", "calendar"),
-        _make_proposal("ta", "calendar"),
-        _make_proposal("cf", "momentum"),
-    ]
-    cov, _, _, _ = compute_combination_coverage(proposals)
-
-    # Simulate diversity bonus logic
-    explored = {("ta", "calendar"), ("cf", "momentum")}
-    quality_score = 0.6
-    diversity_bonus = 0.5
-
-    # Unexplored combo gets bonus
-    unexplored_combo = ("m", "inventory")
-    assert unexplored_combo not in explored
-    adjusted_score_unexplored = quality_score + diversity_bonus
-    assert adjusted_score_unexplored == 1.1
-
-    # Explored combo gets no bonus
-    explored_combo = ("ta", "calendar")
-    assert explored_combo in explored
-    adjusted_score_explored = quality_score + 0.0
-    assert adjusted_score_explored == 0.6
-
-    # Unexplored should rank higher
-    assert adjusted_score_unexplored > adjusted_score_explored
-
-
-# ---------------------------------------------------------------------------
 # Run all
 # ---------------------------------------------------------------------------
 
@@ -256,5 +221,4 @@ if __name__ == "__main__":
     test_diversity_report()
     test_empty_proposals()
     test_empty_proposals_entropy()
-    test_diversity_bonus_integration()
     print("All tests passed!")

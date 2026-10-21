@@ -31,3 +31,6 @@ REJECTIONS_INC = os.path.join(FM_ROOT, 'task_FM', 'known_rejections.inc.md')
 PROPOSAL_STATUS_PATH = os.path.join(FM_ROOT, "data", "cache", "proposal_status.jsonl")
 REJECTED_PROPOSALS_PATH = os.path.join(FM_ROOT, "data", "cache", "rejected_proposals.jsonl")
 VARIANT_REGISTRY_PATH = os.path.join(FM_ROOT, "data", "cache", "variant_registry.jsonl")
+
+# 短窗回测缓存路径 (Phase 2 Task 2)
+SHORT_WINDOW_RESULTS_PATH = os.path.join(FM_ROOT, "data", "cache", "short_window_results.jsonl")

@@ -335,6 +335,36 @@ class GenerationStrategy:
             "exploration_rate": self.exploration_rate,
         }
 
+    def load_bandit_feedback(self, feedback_path=None):
+        """Load feedback from harvest and update bandit arms (P1-1 integration).
+
+        Reads data/cache/bandit_feedback.jsonl lines and calls bandit.update()
+        for each (symbol, family, reward) entry.
+        Returns number of feedback lines processed.
+        """
+        if feedback_path is None:
+            _repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            feedback_path = os.path.join(_repo_root, "data", "cache", "bandit_feedback.jsonl")
+
+        if not os.path.exists(feedback_path):
+            return 0
+
+        n = 0
+        with open(feedback_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    arm = (entry["symbol"], entry["family"])
+                    reward = float(entry["reward"])
+                    self.bandit.update(arm, reward)
+                    n += 1
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    continue
+        return n
+
 
 # ---------------------------------------------------------------------------
 # Multi-Armed Bandit

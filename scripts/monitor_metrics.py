@@ -5,6 +5,11 @@ Usage:
     python scripts/monitor_metrics.py collect [--output FILE]
     python scripts/monitor_metrics.py report  [--date YYYY-MM-DD] [--output FILE]
     python scripts/monitor_metrics.py check-redlines
+
+Automation (P1-3 fix):
+    # crontab - daily collect at 02:00, weekly report on Monday 03:00
+    0 2 * * * cd /home/abug/timesfm && PYTHONIOENCODING=utf-8 .venv/bin/python scripts/monitor_metrics.py collect >> logs/monitor_collect.log 2>&1
+    0 3 * * 1 cd /home/abug/timesfm && PYTHONIOENCODING=utf-8 .venv/bin/python scripts/generate_weekly_report.py >> logs/weekly_report.log 2>&1
 """
 from __future__ import annotations
 
@@ -43,7 +48,7 @@ LABELS = {
 
 # Known model files (structural invariant - any new file is suspicious)
 KNOWN_MODEL_FILES = {
-    "quality_model.pkl",
+    "quality_model.json",
     "operational_thr.json",
     "regime_kmeans_1h.pkl.bak",
     "backup-2.5-200m-pytorch",

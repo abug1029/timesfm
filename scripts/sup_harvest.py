@@ -48,6 +48,9 @@ from proposal_validator import validate_proposal_dict
 from rejected_proposals import write_rejected_proposal
 from variant_registry import VariantRegistry
 
+# -- Bandit feedback file (P1-1: generation outer-loop learning) --
+_BANDIT_FEEDBACK_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "cache", "bandit_feedback.jsonl")
+
 def _prune_duplicate_proposals(root: str) -> int:
     """Pre-harvest cleanup: remove proposal files whose stems are already registered.
 
@@ -83,6 +86,29 @@ def _register_proposal_stem(stem: str, run_id: str) -> None:
     """
     reg = VariantRegistry(sup_paths.VARIANT_REGISTRY_PATH)
     reg.register(stem, run_id)
+
+
+def _write_bandit_feedback(symbol: str, family: str, has_historical_pass: bool) -> None:
+    """Write bandit feedback line after successful proposal enqueue (P1-1).
+
+    Recorded: (symbol, family, reward, enqueued_at).
+    Reward = 1.0 if this covariate has historical gate_pass, else 0.0.
+    GenerationStrategy reads this file to update its MultiArmedBandit.
+    """
+    try:
+        os.makedirs(os.path.dirname(_BANDIT_FEEDBACK_PATH), exist_ok=True)
+        line = json.dumps({
+            "symbol": symbol,
+            "family": family,
+            "reward": 1.0 if has_historical_pass else 0.0,
+            "enqueued_at": sup_lifecycle._now_iso(),
+        }) + "\n"
+        with open(_BANDIT_FEEDBACK_PATH, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        import logging as _logging
+        _logging.getLogger("sup_harvest").warning(
+            "failed to write bandit feedback for %s/%s", symbol, family, exc_info=True)
 
 
 def _run_id_from_path(filepath: str) -> str:
@@ -1003,6 +1029,8 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                     "failed to write queued status for %s", _cand.get("proposal_id"), exc_info=True)
             # ── P1-1: 成功入队 → 注册 stem（仅通过质量门的提案才占位）──
             _register_proposal_stem(Path(sp).stem, os.path.basename(run_dir))
+            # ── P1-1: 成功入队 → 写入 bandit 反馈 ──
+            _write_bandit_feedback(symbol, family, _cov_pass_n > 0)
             # ── Laya 预筛触发 (fire-and-forget, 不阻塞 harvest) ──
             _prescreen_async(p, sp, symbol)
 

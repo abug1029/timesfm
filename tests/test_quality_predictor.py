@@ -269,9 +269,12 @@ class TestHarvestIntegration(_PredictorTestBase):
         self.assertIn("gate_pass_prob", details)
 
     def test_harvest_no_model(self):
-        """Test harvest scoring when no model exists."""
+        """Test harvest scoring when predictor has no loaded model."""
+        from quality_predictor import QualityPredictor
         proposal = {"symbol": "rb", "cov_override": "rsi6", "cov_family": "momentum"}
-        score, details = score_proposal_for_harvest(proposal, predictor=None)
+        # Pass an explicit predictor that has no model loaded -> returns (0.5, {})
+        empty_predictor = QualityPredictor(model_path="/nonexistent/quality_model.json")
+        score, details = score_proposal_for_harvest(proposal, predictor=empty_predictor)
         self.assertEqual(score, 0.5)
         self.assertEqual(details, {})
 
