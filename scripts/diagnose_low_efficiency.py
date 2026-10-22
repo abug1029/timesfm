@@ -392,7 +392,7 @@ def generate_report(verdicts, sym_analyses, fam_analyses, baseline_checks):
     R.append("### 4.3 禁止事项")
     R.append("")
     R.append("- 未诊断前直接暂停 symbol/family 生成")
-    R.append("- 训练/微调 Laya")
+    R.append("- 对 Laya 进行参数调整")
     R.append("- 基于小样本（n<10）下'低效'结论")
     R.append("- 混淆口径（扇出 vs unique）")
     R.append("")

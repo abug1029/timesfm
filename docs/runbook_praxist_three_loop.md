@@ -327,6 +327,60 @@ bash scripts/diagnose_three_loop.sh
 | prescreen 超时 >60s | **Laya 需要英文输入**：`state` 和 `instructions` 必须是英文，中文会导致 Laya 处理超时（实测 >60s）。2026-10-17 已将 `_call_laya()` 中的 instructions/criteria 翻译为英文，实测 6.5s 完成。 |
 | `[degraded] KB PF all null` 启动警告 | 已知退化，不影响核心功能。L1 ECONOMIC_VERDICT.json 缺失（2026-07-25 产物未版本化后被清理），KB 处于 `schemes_snapshot_no_L1` 模式。PF ratio gate 事实休眠（v23 不产出 PF）。详见 `docs/superpowers/specs/2026-09-20-kb-pf-degraded-fix-spec.md` |
 
+## 持续监控与指标采集（2026-10-20，Phase 3 Task 6）
+
+**监控脚本**（提案评估优化系统 Phase 3 产物）：
+
+- `scripts/monitor_metrics.py` — 每日指标采集 + 红线告警 + 报告生成
+  - 6 个核心指标：冗余率、唯一 variant 覆盖率、gate pass 率、高质量率、prescreen 成功率、组合覆盖率
+  - 红线检查：Laya 权重更新、队列重复 variant、扇出口径混用
+  - 报告格式：JSON / Markdown
+  - 历史趋势：`data/cache/metrics_history/`（按日期存储）
+
+- `scripts/generate_weekly_report.py` — 周报生成（趋势分析 + 建议）
+
+**手动运行**：
+```bash
+# 采集今日指标
+.venv/bin/python scripts/monitor_metrics.py collect --output metrics.json
+
+# 生成 Markdown 报告
+.venv/bin/python scripts/monitor_metrics.py report --format markdown --output report.md
+
+# 检查红线
+.venv/bin/python scripts/monitor_metrics.py check-redlines
+
+# 生成周报（最近 7 天）
+.venv/bin/python scripts/generate_weekly_report.py --days 7 --output weekly.md
+```
+
+**自动化配置**（已部署，crontab 条目）：
+```bash
+# 每日 02:00 采集指标
+0 2 * * * mkdir -p /home/abug/timesfm/logs && flock -n /tmp/tfm_mon.lock timeout 1800s bash -c 'cd /home/abug/timesfm && PYTHONIOENCODING=utf-8 .venv/bin/python scripts/monitor_metrics.py collect' >> logs/monitor_metrics.log 2>&1
+
+# 每周一 03:00 生成周报
+0 3 * * 1 cd /home/abug/timesfm && PYTHONIOENCODING=utf-8 .venv/bin/python scripts/generate_weekly_report.py --days 7 >> logs/weekly_report.log 2>&1
+```
+
+**当前系统状态**（2026-10-21 实时监控）：
+- ✅ 冗余率: 0.0% (目标 <10%)
+- ✅ 组合覆盖率: 66.2% (目标 >30%)
+- ❌ 唯一 variant 覆盖率: 18.5% (目标 >80%)
+- ❌ Gate pass 率: 34.1% (目标 >50%)
+- ❌ 高质量率: 28.3% (目标 >40%)
+- ❌ Prescreen 成功率: 28.3% (目标 >80%)
+
+**整体状态**: ⚠️ WARNING (4/6 指标低于目标)
+
+**相关文档**：
+- `docs/superpowers/changelogs/2026-10-22-phase2-3-praxist-integration-changelog.md` — Praxist 集成 changelog（~68%）
+- `docs/superpowers/changelogs/2026-10-20-phase2-3-execution-changelog.md` — Phase 2-3 执行 changelog
+- `docs/superpowers/reports/2026-10-21-phase2-3-integration-barriers-analysis.md` — 集成障碍分析
+- `docs/superpowers/reports/monitoring_example.md` — 监控示例报告
+
+---
+
 ## 相关文件
 
 - `docs/praxist.md` — 架构概览（本体 vs 三环、现行合同、现场快照）
@@ -337,6 +391,14 @@ bash scripts/diagnose_three_loop.sh
 - `scripts/mem_guard.py` — 全局 flock≤2 + MemAvailable 门 + RSS shed（RLIMIT_AS 默认 OFF）
 - `scripts/praxist_mem_guard_hook.py` / `install_praxist_mem_guard_hook.py` — protected_pids 强制挂钩
 - `scripts/registry_lib.py` — 队列 / verdict / snapshot
+- `scripts/monitor_metrics.py` — 每日指标采集 + 红线告警（Phase 3 Task 6）
+- `scripts/generate_weekly_report.py` — 周报生成（Phase 3 Task 6）
+- `scripts/quality_predictor.py` — 质量预测器（Phase 3 Task 4）
+- `scripts/short_window_backtest.py` — 短窗回测预筛（Phase 2 Task 2）
+- `scripts/proposal_validator.py` — 提案卫生验证（Phase 2 Task 3）
+- `scripts/generation_strategy.py` — 生成策略外环（Phase 2 Task 1）
+- `scripts/diversity_metrics.py` — 多样性指标（Phase 3 Task 5）
+- `scripts/variant_registry.py` — variant 登记（Phase 1 Task 1）
 - `scripts/goal_dsl.py` — success_condition 求值（AST 白名单）
 - `scripts/praxist_assets_archive.py` — 快/慢环资产归档（含已知 `/workspace` 硬编码噪音）
 - `docs/spec_hypothesis_driven_fast_loop_20260908.md` — 方案 A 设计（peer 机制化假设作者）

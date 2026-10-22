@@ -77,6 +77,55 @@ spec v15 的 §8.3 八项出口条件已全部核验。**新增三个模块是�
 
 权威文档：spec `docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（v15）· 核验记录 `docs/superpowers/reports/2026-09-29-stage3-verification-record.md` · family 边界 `docs/family_boundary_rules.md`
 
+## 提案评估优化系统（Phase 1-3，2026-10-20/21，SPEC v3.1）
+
+基于 SPEC v3.1 实施的提案评估系统全面优化，Phase 1-3 库代码完成 + Praxist 集成 ~68%（有条件集成，审计 2026-10-22）。51 tests pass。
+
+**Phase 1（variant 登记 + 磁盘归档 + 低效诊断）**：
+- `scripts/variant_registry.py` — VariantRegistry 类（JSON 序列化，跨实例幂等）
+- `scripts/sup_harvest.py::_prune_duplicate_proposals()` — harvest 前删除重复文件
+- `scripts/backfill_variant_registry.py` — 回填脚本
+- `data/cache/variant_registry.jsonl` — 1318 stems 注册表
+- **效果**：冗余率 89.2% → 0.0%，释放 7.4 MB
+
+**Phase 2（生成策略 + 短窗回测 + 提案卫生）**：
+- `scripts/generation_strategy.py` — 生成策略外环（规则配额/UCB/Thompson/精英保留）
+- `scripts/short_window_backtest.py` — 短窗回测（100-200 时间点，dir_acc > 0.50）
+- `scripts/proposal_validator.py` — 提案卫生验证（JSON/类型/中英门禁）
+- `data/cache/bandit_feedback.jsonl` — bandit 反馈（harvest 入队后写入）
+- `data/cache/short_window_results.jsonl` — 短窗回测缓存
+- **集成**：harvest 已集成短窗预筛、质量预测、提案卫生、bandit 反馈
+- **状态**：evaluator Step 0 预检已接入 run.py -> proposal_gate。harvest 双闸（主+备）。Peer 仍走 proposals->harvest 旁路（C3 未拆）
+
+**Phase 3（质量预测 + 多样性 + 监控）**：
+- `scripts/quality_predictor.py` — 质量预测器（FrequencyModel，JSON 序列化）
+- `models/quality_model.json` — 训练好的模型（accuracy=72.4%, threshold=0.48）
+- `scripts/diversity_metrics.py` — 多样性指标（symbol/family 熵、组合覆盖率、新颖度）
+- `scripts/monitor_metrics.py` — 每日监控（6 个核心指标 + 红线告警）
+- `scripts/generate_weekly_report.py` — 周报生成
+- `data/cache/metrics_history/` — 指标历史
+- **集成**：harvest 调用 `score_proposal_for_harvest()` 作为质量分加成（+5*ml_prob）
+- **状态**：crontab 已配置（每日 02:00 collect 落盘 metrics_history/ + 周一 03:00 周报）。diversity_alert 已接入 monitor_metrics + sup_harvest。B3 on_generation_close 已挂 evaluator
+
+**当前系统状态**（2026-10-21 实时监控）：
+- ✅ 冗余率: 0.0% (目标 <10%)
+- ✅ 组合覆盖率: 66.2% (目标 >30%)
+- ❌ 唯一 variant 覆盖率: 18.5% (目标 >80%)
+- ❌ Gate pass 率: 34.1% (目标 >50%)
+- ❌ 高质量率: 28.3% (目标 >40%)
+- ❌ Prescreen 成功率: 28.3% (目标 >80%)
+
+**Praxist 集成**（2026-10-21/22）：通过 task 合同 + evaluator Step 0 实现有条件集成 ~68%。详见 `docs/superpowers/specs/2026-10-21-phase2-3-praxist-integration-spec.md`。剩余未闭环：B3 接入 Praxist 原生 generation_boundary、C3 旁路拆除。
+
+**关键文件索引**：
+- 实现：`scripts/generation_strategy.py` / `short_window_backtest.py` / `proposal_validator.py` / `quality_predictor.py` / `diversity_metrics.py` / `diversity_alert.py` / `monitor_metrics.py` / `variant_registry.py` / `synthesize_agenda_from_feedback.py` / `import_legacy_proposals.py`
+- 集成：`scripts/sup_harvest.py`（短窗/质量预测/提案卫生/bandit 反馈/diversity_alert） | `scripts/hooks/on_generation_close.py`（B3 hook） | `task_FM/.praxist/plugins/proposal_gate/`（Step 0）
+- 数据：`data/cache/variant_registry.jsonl` / `bandit_feedback.jsonl` / `short_window_results.jsonl` / `metrics_history/`
+- 模型：`models/quality_model.json`
+- 文档：`docs/superpowers/changelogs/2026-10-22-phase2-3-praxist-integration-changelog.md`（Praxist 集成） / `docs/superpowers/specs/2026-10-21-phase2-3-praxist-integration-spec.md` / `docs/superpowers/specs/proposal-gate-rules.md` / `docs/superpowers/specs/feedback-agenda-schema.md` / `docs/superpowers/changelogs/2026-10-20-phase2-3-execution-changelog.md` / `docs/diversity-metrics-guide.md` / `docs/quality_predictor.md` / `docs/VARIANT_REGISTRY_IMPLEMENTATION.md`
+
+**记忆**：[fm-proposal-evaluation-optimization-phase1-3](memory/fm-proposal-evaluation-optimization-phase1-3.md)
+
 ## 目录结构
 
 > **运行环境（2026-09-09 起）**：WSL2 Ubuntu-22.04，仓库根 `<FM_ROOT>`（GitHub `abug1029/timesfm`），venv `.venv`（Python 3.11）。下文 Windows `D:\FlyBuddy\...` 路径为历史遗留，已不适用；宿主事实见 `docs/host_environment_assessment.md` 顶部迁移表，PRAXIST 运维见 `docs/runbook_praxist_three_loop.md`。
