@@ -309,3 +309,81 @@
 - **Tests**: `tests/test_proposal_validator.py`
 - **关联修复**: `docs/superpowers/specs/2026-10-18-laya-chinese-leak-fix-spec.md`
 - **评估优化**: `docs/superpowers/specs/2026-10-19-proposals-evaluation-optimization-spec.md`（stem / variant_id 口径）
+
+---
+
+## §7 Step 0 预检的接入方式与风险（2026-10-22 审计补充）
+
+**当前实现**：evaluator Step 0 预检通过 `task_FM/evaluations/fm_eval/run.py` 手工 `import proposal_gate.validate` 实现，**不是** Praxist 原生 plugin hook。
+
+**原因**：Praxist 0.5.0 的 task-local plugin 体系不支持 `evaluator_pre` 阶段的自动 hook 触发。`plugin.yaml` 中的 `kind: task_project` 和 `hooks.stage: evaluator_pre` 在 Praxist 0.5.0 中不是合法值。
+
+**风险**：
+- 若 `run.py` 被替换或升级（如上游更新 evaluator 入口），Step 0 预检会**静默丢失**
+- 新 evaluator 入口必须手工重新接入 `proposal_gate.validate.validate_proposal()`
+
+**缓解**：
+- `tests/test_a3_evaluator_integration.py::TestStep0Wiring::test_run_py_rejects_dirty_proposal` 会检测 Step 0 是否生效
+- 升级 `run.py` 时必须跑此测试
+
+**未来路径**：若 Praxist 上游支持 evaluator pre-hook 或 task-local plugin 的阶段化触发，应迁移到原生合同。
+
+---
+
+## §8 旁路写现状（2026-10-22 审计补充）
+
+**当前状态**：Peer 仍通过 `proposals/` 目录写入提案文件，`sup_harvest.py` 仍是主消费路径。这是 **peer→proposals→harvest** 旁路架构，**未拆除**。
+
+**原因**：Peer 的 `role.yaml` / `skill.md` 明文指定写盘路径为 `results/gen_<N>/<peer_id>/proposals/`。改变此行为需要修改 peer prompt/role 配置，属于 Praxist 上游合同层调整。
+
+**双闸并存**：
+- **主闸**：evaluator Step 0（`run.py` → `proposal_gate.validate`）— 拦截非法候选，exit 3
+- **备闸**：`sup_harvest.py` 中的 `validate_proposal_dict()` — harvest 时二次验证
+
+**未来路径**：C3 旁路拆除需要：
+1. Peer 改为通过 `share_finding` 直接写 `findings/`（Praxist 原生路径）
+2. 或 Peer 改为通过 evaluator 入口（`run.py --candidate`）提交候选
+3. 拆除 `sup_harvest.py` 的提案文件扫描逻辑
+
+---
+
+## §B3 Generation Close Hook — 代际关闭议程合成
+
+### B3-1 为什么 B3 不在 eval run.py 中触发
+
+**当前状态**：B3 hook（`scripts/hooks/on_generation_close.py` + `scripts/synthesize_agenda_from_feedback.py`）
+已从 `task_FM/evaluations/fm_eval/run.py` 的 `main()` 末尾**移除**。
+
+**原因**：`run.py` 的 `main()` 在**每个 peer 的每次 evaluation 后**执行一次（cohort_size 次/gen），
+而 agenda 合成应该在**整个 generation 结束后**执行一次。在 eval 内触发是语义错误。
+
+**Praxist 原生替代**：`generation_boundary.py` 中的 `complete_generation_boundary()` 由
+`generation_loop.py` 在所有 peer 完成后调用（line 632/678），其中 `PIAgent.run()` 负责：
+1. 读取 findings + frontier + prior agenda
+2. 通过 LLM 合成下一代研究议程
+3. 写入 `<run_dir>/agendas/research_agenda_gen{N+1}.yaml`
+
+这是 Praxist 原生、正确时机的代际议程合成机制。
+
+### B3-2 B3 hook 脚本保留原因
+
+`scripts/hooks/on_generation_close.py` 和 `scripts/synthesize_agenda_from_feedback.py` **保留**，
+作为独立工具（bandit-based 轻量议程合成），但不通过 eval 入口自动触发。
+
+**触发方式**：
+- 手动运行：`python scripts/synthesize_agenda_from_feedback.py`
+- 或：从外部脚本/定时任务调用 `on_generation_close(load_feedback())`
+
+### B3-3 Praxist 不支持 task-level generation close hook
+
+经审计确认：
+- `task_FM/task.yaml` **没有** `generation_close_policy` 或 `pi_agent` 配置节
+- Praxist 0.5.0 的 task-local plugin **不支持** hook 注册机制
+  （`proposal_gate/plugin.yaml` 已明确：`hooks section removed -- not supported`）
+- `generation_boundary.py` 的 `complete_generation_boundary()` 无外部回调扩展点
+- `praxist_validate_task.py` 检查的 `generation_close_policy` 针对旧 `config/praxist_task.yaml`
+  合同格式，不适用于当前 `task_FM/task.yaml`
+
+**结论**：Praxist 不提供 task 级别的 generation close hook 配置。
+agenda 合成完全由 Praxist 内置 PIAgent 在 `generation_loop.py` 中原生处理。
+

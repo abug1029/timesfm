@@ -65,6 +65,12 @@ def load_existing_variant_ids():
                 continue
     return ids
 
+def _stable_fingerprint(p):
+    """Build a 64-char hex fingerprint from proposal content (ponytail: stdlib hashlib)."""
+    import hashlib
+    raw = json.dumps(p, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
 def normalize_proposal(p):
     """Normalize proposal to standard format."""
     symbol = p.get('symbol', '').lower()
@@ -72,7 +78,9 @@ def normalize_proposal(p):
     # resolve_cov_family expects a verdict dict
     verdict = {'symbol': symbol, 'cov_override': cov}
     fam = resolve_cov_family(verdict)
-    fp = p.get('fingerprint', 'legacy')
+    fp = p.get('fingerprint')
+    if not fp or len(fp) != 64:
+        fp = _stable_fingerprint(p)
     variant_id = build_variant_id(symbol, fam, fp)
     return {
         'variant_id': variant_id,
@@ -139,22 +147,60 @@ def main():
     """Main entry point."""
     import argparse
     parser = argparse.ArgumentParser(description='Import legacy proposals')
-    parser.add_argument('--proposals-dir', type=str, default=str(Path(FM_ROOT) / 'task_FM' / 'proposals'),
-                        help='Directory containing proposal JSON files')
+    default_dir = Path(FM_ROOT) / 'task_FM' / 'proposals'
+    parser.add_argument('--proposals-dir', type=str, default=None,
+                        help='Directory containing proposal JSON files (default: auto-discover under results/)')
     parser.add_argument('--dry-run', action='store_true', help='Validate without writing')
     args = parser.parse_args()
 
-    proposals_dir = Path(args.proposals_dir)
-    if not proposals_dir.exists():
-        log.error(f'Proposals directory not found: {proposals_dir}')
+    if args.proposals_dir:
+        proposals_dirs = [Path(args.proposals_dir)]
+    elif default_dir.exists():
+        proposals_dirs = [default_dir]
+    else:
+        # Auto-discover: find all proposals/ dirs under results/
+        results_root = Path(FM_ROOT) / 'results'
+        proposals_dirs = sorted(results_root.glob('**/proposals')) if results_root.exists() else []
+
+    if not proposals_dirs:
+        log.error(f'No proposals directory found. Use --proposals-dir or create {default_dir}')
         sys.exit(1)
 
-    prop_files = list(proposals_dir.glob('*.json'))
-    log.info(f'Found {len(prop_files)} proposal files in {proposals_dir}')
+    # Collect all JSON files across discovered dirs
+    prop_files = []
+    for d in proposals_dirs:
+        if not d.exists():
+            log.error(f'Proposals directory not found: {d}')
+            sys.exit(1)
+        prop_files.extend(d.glob('*.json'))
+    log.info(f'Found {len(prop_files)} proposal files across {len(proposals_dirs)} director(y/ies)')
 
     if args.dry_run:
-        log.info('DRY RUN - no writes')
+        log.info('DRY RUN - validate only, no writes')
         existing_ids = set()
+        total_valid, total_invalid, total_skipped = 0, 0, 0
+        for prop_file in prop_files:
+            try:
+                with open(prop_file, 'r', encoding='utf-8') as f:
+                    proposal = json.load(f)
+            except (json.JSONDecodeError, OSError) as e:
+                log.error(f'INVALID (read error) {prop_file}: {e}')
+                total_invalid += 1
+                continue
+            try:
+                normalized = normalize_proposal(proposal)
+            except Exception as e:
+                log.error(f'INVALID (normalize) {prop_file}: {e}')
+                total_invalid += 1
+                continue
+            validation = validate_proposal_dict(proposal)
+            if not validation.get('valid'):
+                log.warning(f'INVALID {prop_file}: {validation.get("validation_signal") or validation.get("errors", "unknown")}')
+                total_invalid += 1
+            else:
+                log.info(f'VALID {prop_file} -> {normalized["variant_id"]}')
+                total_valid += 1
+        log.info(f'DRY RUN complete: {total_valid} valid, {total_invalid} invalid, {total_skipped} skipped')
     else:
         lock_fd = acquire_lock()
         try:

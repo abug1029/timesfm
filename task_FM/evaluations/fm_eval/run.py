@@ -71,14 +71,11 @@ def main():
     _write(result["summary"], a.output_dir)
     print(json.dumps(result["summary"], ensure_ascii=False, indent=2))
 
-    # B3: Generation close hook — synthesize next agenda from feedback
-    try:
-        from scripts.hooks.on_generation_close import on_generation_close
-        from scripts.synthesize_agenda_from_feedback import load_feedback
-        _feedback = load_feedback()
-        on_generation_close(_feedback)
-    except Exception as e:
-        print(f"[eval] generation_close hook skipped: {e}", file=sys.stderr)
+    # NOTE: B3 generation-close hook intentionally NOT called here.
+    # This evaluation runs once PER PEER, not once per generation.
+    # Praxist native PIAgent (generation_boundary.py) handles agenda
+    # synthesis at the correct boundary -- after ALL peers complete a gen.
+    # See: docs/superpowers/specs/proposal-gate-rules.md section B3
 
 
 def _variant_name(cand):
