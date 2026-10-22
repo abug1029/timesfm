@@ -105,7 +105,7 @@ spec v15 的 §8.3 八项出口条件已全部核验。**新增三个模块是�
 - `scripts/generate_weekly_report.py` — 周报生成
 - `data/cache/metrics_history/` — 指标历史
 - **集成**：harvest 调用 `score_proposal_for_harvest()` 作为质量分加成（+5*ml_prob）
-- **状态**：crontab 已配置（每日 02:00 collect 落盘 metrics_history/ + 周一 03:00 周报）。diversity_alert 已接入 monitor_metrics + sup_harvest。B3 on_generation_close 已挂 evaluator
+- **状态**：crontab 已配置（每日 02:00 collect 落盘 metrics_history/ + 周一 03:00 周报）。diversity_alert 已接入 monitor_metrics + sup_harvest。B3 on_generation_close 通过 cron 每 2 小时触发（Praxist 不提供 task-level generation close hook）
 
 **当前系统状态**（2026-10-21 实时监控）：
 - ✅ 冗余率: 0.0% (目标 <10%)
@@ -115,7 +115,7 @@ spec v15 的 §8.3 八项出口条件已全部核验。**新增三个模块是�
 - ❌ 高质量率: 28.3% (目标 >40%)
 - ❌ Prescreen 成功率: 28.3% (目标 >80%)
 
-**Praxist 集成**（2026-10-21/22）：通过 task 合同 + evaluator Step 0 实现有条件集成 ~68%。详见 `docs/superpowers/specs/2026-10-21-phase2-3-praxist-integration-spec.md`。剩余未闭环：B3 接入 Praxist 原生 generation_boundary、C3 旁路拆除。
+**Praxist 集成**（2026-10-21/22）：通过 task 合同 + evaluator Step 0 实现有条件集成 ~68%。详见 `docs/superpowers/specs/2026-10-21-phase2-3-praxist-integration-spec.md`。剩余未闭环：C3 旁路拆除（peer→proposals→harvest 仍主路径）。
 
 **关键文件索引**：
 - 实现：`scripts/generation_strategy.py` / `short_window_backtest.py` / `proposal_validator.py` / `quality_predictor.py` / `diversity_metrics.py` / `diversity_alert.py` / `monitor_metrics.py` / `variant_registry.py` / `synthesize_agenda_from_feedback.py` / `import_legacy_proposals.py`

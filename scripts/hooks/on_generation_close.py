@@ -1,12 +1,22 @@
-"""B3 Generation Close hook: synthesize research agenda from feedback and write next-gen agenda."""
+"""B3 Generation Close hook: synthesize research agenda from feedback and write next-gen agenda.
+
+Production trigger: cron every 2 hours (see crontab), or standalone CLI:
+    python scripts/hooks/on_generation_close.py
+    python scripts/hooks/on_generation_close.py --feedback-path data/cache/bandit_feedback.jsonl
+"""
 import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from synthesize_agenda_from_feedback import synthesize_agenda
+# Derive task_FM root relative to this script (scripts/hooks/ -> repo root -> task_FM/)
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _SCRIPT_DIR.parent.parent
+_TASK_FM_ROOT = _REPO_ROOT / "task_FM"
 
-AGENDAS_DIR = Path("/home/abug/timesfm/task_FM/agendas")
+sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+from synthesize_agenda_from_feedback import synthesize_agenda, load_feedback
+
+AGENDAS_DIR = _TASK_FM_ROOT / "agendas"
 
 
 def on_generation_close(feedback: list) -> dict:
@@ -46,3 +56,19 @@ def render_peer_prompt(agenda: dict) -> str:
     total = sum(weights.values()) or 1
     parts = [f"{k}: {v / total * 100:.0f}%" for k, v in sorted(weights.items())]
     return f"Generation quota: {', '.join(parts)}"
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Synthesize next-gen agenda from bandit feedback")
+    parser.add_argument("--feedback-path", default="data/cache/bandit_feedback.jsonl",
+                        help="Path to bandit feedback JSONL (relative to repo root)")
+    args = parser.parse_args()
+
+    feedback_path = _REPO_ROOT / args.feedback_path
+    feedback = load_feedback(str(feedback_path))
+    if not feedback:
+        print(f"No feedback records at {feedback_path}. Nothing to synthesize.")
+        sys.exit(0)
+    result = on_generation_close(feedback)
+    print(f"Agenda synthesized: {result}")

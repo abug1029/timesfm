@@ -17,8 +17,8 @@
 | R2 | `required_fields` | 必填字段齐全 | Step 0 预检 | **硬门** | ✅ 已实现 |
 | R3 | `type_checks` | 关键字段类型正确 | Step 0 预检 | **硬门** | ✅ 已实现 |
 | R4 | `chinese_gate` | 中英门禁（mechanism/symbol_fit） | Step 0 预检 | **硬门** | ✅ 已实现 |
-| R5 | `laya_prohibited_words` | Laya 禁用词检测 | Step 0 预检 | **硬门（P0 红线）** | ❌ 待实现 |
-| R6 | `stem_variant_id_consistency` | stem / variant_id 口径一致 | Step 0 预检 | **硬门** | ❌ 待实现 |
+| R5 | `laya_prohibited_words` | Laya 禁用词检测 | Step 0 预检 | **硬门（P0 红线）** | ✅ 已实现 |
+| R6 | `stem_variant_id_consistency` | stem / variant_id 口径一致 | Step 0 预检 | **硬门** | ✅ 已实现 |
 
 ---
 
@@ -145,7 +145,7 @@
 
 ---
 
-### R5 — Laya 禁用词检测 (`laya_prohibited_words`) ⚠️ 待实现
+### R5 — Laya 禁用词检测 (`laya_prohibited_words`) ✅ 已实现
 
 **描述**: 提案全文（所有字符串字段）禁止包含 Laya 相关禁用词，以固化「Laya 只是判断、不可学习」红线。
 
@@ -165,7 +165,7 @@
 
 **错误码**: `laya_prohibited_word:<matched_word>:in_field:<field_path>`
 
-**对应测试**: ❌ **待实现**
+**对应测试**: ✅ **已实现**（`test_proposal_gate_plugin.py`）
 - 需新增 `tests/test_laya_prohibited_words.py`（Spec §4.4 验收项）
 - CI 每次提交自动扫描，违规即 fail
 
@@ -175,7 +175,7 @@
 
 ---
 
-### R6 — stem / variant_id 口径一致 (`stem_variant_id_consistency`) ⚠️ 待实现
+### R6 — stem / variant_id 口径一致 (`stem_variant_id_consistency`) ✅ 已实现
 
 **描述**: `variant_id` 必须与提案内容的标准化 stem（`symbol + _ + cov_override`）一致，防止身份链断裂。
 
@@ -185,7 +185,7 @@
 
 **错误码**: `variant_id_mismatch:expected_<expected_stem>:got_<actual_variant_id>`
 
-**对应测试**: ❌ **待实现**
+**对应测试**: ✅ **已实现**（`test_proposal_gate_plugin.py`）
 - 需新增 `tests/test_variant_id_consistency.py`
 
 **实现位置**: 待迁入 `scripts/proposal_validator.py` 或 `audit_rules/`
@@ -202,8 +202,8 @@
 | R2 `required_fields` | `TestMissingFields` | 5 | ✅ 已实现 |
 | R3 `type_checks` | `TestTypeErrors` | 4 | ✅ 已实现 |
 | R4 `chinese_gate` | `TestChineseDetection` + `TestContainsChinese` | 11 | ✅ 已实现 |
-| R5 `laya_prohibited_words` | `test_laya_prohibited_words.py` | 0 | ❌ 待实现 |
-| R6 `stem_variant_id_consistency` | `test_variant_id_consistency.py` | 0 | ❌ 待实现 |
+| R5 `laya_prohibited_words` | `test_proposal_gate_plugin.py` | 11 | ✅ 已实现 |
+| R6 `stem_variant_id_consistency` | `test_proposal_gate_plugin.py` | 2 | ✅ 已实现 |
 | **合计** | — | **22** | 16/22 已实现 |
 
 **有效提案通过测试**:

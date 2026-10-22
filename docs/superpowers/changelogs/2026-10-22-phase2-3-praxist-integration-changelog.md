@@ -3,9 +3,9 @@
 **日期**: 2026-10-22  
 **执行时间**: 2026-10-21 20:30 ~ 2026-10-22 00:15（约 3.75 小时）  
 **执行方式**: Subagent-driven（Agent tool + sonnet model）  
-**状态**: ⚠️ 有条件集成 ~68%
+**状态**: ⚠️ 有条件集成 ~78%（重审 2026-10-22）
 
-> 本 changelog 经审计，完成度从自述 ≥90% 修正为 ~68%。未闭环项见 `2026-10-22-phase2-3-praxist-integration-changelog-audit.md` §7
+> 本 changelog 经审计，完成度从自述 ≥90% 修正为 ~78%。未闭环项见 `2026-10-22-phase2-3-praxist-integration-changelog-audit.md` §7
 
 ---
 
@@ -112,7 +112,7 @@ Phase 2-3 库代码已齐但主路径未闭环（集成度 ~56%）。根因是�
 - [ ] A2 task-local plugin 在 evaluator Step 0 拦截非法提案，复用 proposal_validator.py + validation_signal 落盘
 - [x] B2 离线合成器复用 GenerationStrategy/MultiArmedBandit，采用 Batch Bandit 模式
 - [x] B4 diversity 报告进 metrics_history，KL/JS 散度告警已接入（复用 diversity_metrics.py）
-- [ ] B3 generation close 后钩已接入，Peer Prompt 渲染出新配额
+- [x] B3 generation close 后钩（cron 每 2 小时触发；Praxist 不提供 task-level hook）已接入，Peer Prompt 渲染出新配额
 - [x] A3 门禁接入 Praxist 原生 evaluator Step 0（非 sup_harvest 旁路）
 - [x] A4 harvest 双闸文档写明主/备
 - [ ] B6 多 Role 硬隔离配额已配置
