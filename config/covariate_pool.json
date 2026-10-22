@@ -123,13 +123,6 @@
     {
       "name": "oi_gated_momentum",
       "family": "momentum"
-    },
-    {
-      "name": "pmi",
-      "family": "macro_sentiment",
-      "description": "Official Manufacturing PMI (monthly, linearly interpolated to daily)",
-      "source": "official_monthly",
-      "frequency": "monthly_interpolated_daily"
     }
   ]
 }

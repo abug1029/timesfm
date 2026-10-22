@@ -132,8 +132,7 @@ def _prop(symbol="m", cov="vor", **over):
          "cov_override": cov,
          "covariate_family": over.pop("family", "volatility"),
          "mechanism": LONGM, "symbol_fit": "该品种适配该协变量",
-         "kill_condition": "ev<0", "promote_condition": "gate",
-         "proposal_id": over.pop("proposal_id", "%s_%s" % (symbol, cov))}
+         "kill_condition": "ev<0", "promote_condition": "gate"}
     p.update(over)
     return p
 

@@ -96,8 +96,7 @@ def _finite(value):
 
 class _Tree:
     __slots__ = ("tree_id", "symbol", "family", "member_vids",
-                 "member_pid_vid", "member_pid_ver",
-                 "accept_ts", "stop_reason")
+                 "member_pid_vid", "accept_ts", "stop_reason")
 
     def __init__(self, tree_id, symbol, family, accept_ts):
         self.tree_id = tree_id
@@ -105,7 +104,6 @@ class _Tree:
         self.family = family
         self.member_vids = set()
         self.member_pid_vid = {}    # proposal_id -> vid（M1 重放通道，2.4）
-        self.member_pid_ver = {}  # P3.5: proposal_id -> version
         self.accept_ts = accept_ts
         self.stop_reason = ""
 
@@ -144,9 +142,6 @@ def _apply_record(index, rec):
         pid = str(rec.get("proposal_id") or "")
         if pid:
             tree.member_pid_vid[pid] = vid
-            ver = rec.get("version")
-            if ver is not None:
-                tree.member_pid_ver[pid] = int(ver)
     elif event in ("stop", "promote"):
         index.stopped.add(tid)
         tree = index.trees.get(tid)
@@ -445,11 +440,6 @@ def render_open_trees(index, snapshot):
             continue
         for vid in sorted(tree.member_vids):
             row = snap.get(vid)
-            ver = "?"
-            for pid, mvid in tree.member_pid_vid.items():
-                if mvid == vid:
-                    ver = tree.member_pid_ver.get(pid, "?")
-                    break
             near = "no"
             if isinstance(row, dict) and row.get("status", "ok") == "ok":
                 accuracy = _finite(row.get("dir_acc"))
@@ -457,17 +447,7 @@ def render_open_trees(index, snapshot):
                 if (accuracy is not None and floor is not None
                         and NEAR_MISS_FLOOR <= accuracy < floor):
                     near = "yes"
-            verdict_tag = ""
-            if isinstance(row, dict):
-                if row.get("gate_pass") is False:
-                    verdict_tag = " DEAD"
-                elif row.get("gate_pass") and row.get("fdr_pass"):
-                    verdict_tag = " PASS"
-                elif row.get("gate_pass") and not row.get("fdr_pass"):
-                    verdict_tag = " hard-gate"
-                elif row.get("status", "ok") != "ok":
-                    verdict_tag = " DEAD"
-            lines.append("  - parent %s ver=%s near_miss=%s%s" % (vid, ver, near, verdict_tag))
+            lines.append("  - parent %s near_miss=%s" % (vid, near))
     lines.append("本轮两份提案应为本轮扩展树的 exploit 与 falsifier。")
     lines.append("")
     return lines
@@ -476,7 +456,7 @@ def render_open_trees(index, snapshot):
 def append_commitment(path, event, tree_id, symbol="", family="",
                       proposal_id="", variant_id="", search_role="",
                       search_parent_id="", stop_reason=None,
-                      delta_post=None, n_required=None, version=None):
+                      delta_post=None, n_required=None):
     """向 search_commitments.jsonl 追加一条事件行（append-only，spec §6.7）。
 
     - event ∈ {accept, stop, promote} 且 tree_id 非空，否则 ValueError
@@ -514,8 +494,6 @@ def append_commitment(path, event, tree_id, symbol="", family="",
         rec["delta_post"] = delta_post
     if n_required is not None:
         rec["n_required"] = int(n_required)
-    if version is not None:
-        rec["version"] = int(version)
     parent_dir = os.path.dirname(str(path or ""))
     if parent_dir:
         os.makedirs(parent_dir, exist_ok=True)

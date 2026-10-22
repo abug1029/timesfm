@@ -7,7 +7,6 @@ import sys
 import time
 import traceback
 import uuid
-import logging
 from datetime import datetime, timedelta, timezone
 
 _repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,7 +26,6 @@ except ImportError:
 
 import sup_env
 import sup_evidence
-import aggregate_rejection_stats
 import sup_family
 import sup_harvest
 import sup_lifecycle
@@ -624,11 +622,6 @@ def _harvest_rows(goal):
     in_flight = rl.in_flight_ids(sup_paths.QUEUE, sup_paths.INPROGRESS)
     historical = set(snap_now.keys())
     existing = in_flight | historical
-    # ── SPEC v3.1 §5.1: Pre-harvest cleanup (primary defense against duplicates) ──
-    n_pruned = sup_harvest._prune_duplicate_proposals(sup_paths.FM_ROOT)
-    if n_pruned:
-        logging.getLogger("sup_loops").info("pruned %d duplicate proposal files", n_pruned)
-
     pool = sup_evidence.load_covariate_pool()
     rows, pstats = sup_harvest.harvest_proposals(
         sup_paths.FM_ROOT, snap_now, dead, existing, pool,
@@ -670,8 +663,7 @@ def _commit_search_accepts(rows, dead=None, existing=None):
             family=r.get("search_family") or "",
             proposal_id=r.get("search_proposal_id") or "",
             variant_id=vid, search_role=r.get("search_role") or "",
-            search_parent_id=r.get("search_parent_id") or "",
-            version=r.get("version"))
+            search_parent_id=r.get("search_parent_id") or "")
         n += 1
     return n
 
@@ -1065,7 +1057,6 @@ def _maybe_finish_slow(goal, log):
         root=sup_paths.FM_ROOT,
         excluded_items=_excl,
     )
-    aggregate_rejection_stats.main()  # M3: 刷新拒收摘要
     sup_harvest.materialize_covariate_menu(sup_evidence.load_covariate_pool(), sup_paths.MENU_INC)
     gate_ok, _ = quota_gate(goal)
     fresh = sup_state.load_state()
@@ -1079,11 +1070,6 @@ def _maybe_finish_slow(goal, log):
         archive_slow_cycle(fresh, goal)
     except Exception as e:
         sup_lifecycle._log_decision(log, "assets_archive_error", f"slow: {e}")
-    try:
-        import sup_memory_bridge
-        sup_memory_bridge.run(run_dir=fresh.get("last_run_dir"))
-    except Exception as e:
-        sup_lifecycle._log_decision(log, "memory_bridge_error", f"slow: {e}")
     return True
 
 def _main_locked(args):
@@ -1168,13 +1154,6 @@ def _main_locked(args):
             proposed_ids=sup_evidence.collect_proposed_variant_ids(sup_paths.FM_ROOT),
             root=sup_paths.FM_ROOT,
             **_mb_kwargs)
-        aggregate_rejection_stats.main()  # M3: 刷新拒收摘要
-        # SPEC FR-2：bridge 在 materialize_known_verdicts() 和 aggregate_rejection_stats.main() 之后调用
-        try:
-            import sup_memory_bridge
-            sup_memory_bridge.run(run_dir=st.get("last_run_dir"))
-        except Exception as e:
-            sup_lifecycle._log_decision(log, "memory_bridge_error", f"main: {e}")
         if ok:
             rec = sup_lifecycle._log_decision(log, "goal_reached", "; ".join(why) or "all conditions met")
             write_stop_report("goal_reached", snap, why, rec["reason"])

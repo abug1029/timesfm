@@ -1873,35 +1873,3 @@
 {"ts": "2026-10-14T16:06:46.647531", "action": "proposal_scan", "reason": "seen=6281 rejected=6187 backlog=0 reasons={'quality_below_threshold': 229, 'schema_mismatch': 688, 'dedup': 5217, 'unparseable_json': 11, 'symbol_not_allowed': 1, 'backlog_dup': 10, 'cov_not_in_active_pool': 28, 'missing_symbol_or_cov': 3}", "refs": []}
 {"ts": "2026-10-14T16:06:46.647917", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 5491, 'search_tree_busy': 66}", "refs": []}
 {"ts": "2026-10-14T16:06:46.648725", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["px_term_structure_c3a75892ec62", "sh_inventory_1797f44d9e8c", "fg_momentum_519a91c63129"]}
-{"ts": "2026-10-18T21:28:23.010043", "action": "confirmation_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd_volatility_2e5481952352"]}
-{"ts": "2026-10-18T21:28:23.011722", "action": "confirmation_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr_momentum_00311a387479"]}
-{"ts": "2026-10-18T21:28:23.054340", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
-{"ts": "2026-10-18T21:34:27.679043", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "redispatch_throttle"]}
-{"ts": "2026-10-18T21:34:27.679244", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "redispatch_throttle"]}
-{"ts": "2026-10-18T21:34:27.877467", "action": "batch_fdr_promote", "reason": "batch=batch_1dea36d9 promoted=2", "refs": []}
-{"ts": "2026-10-18T21:34:38.271843", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
-{"ts": "2026-10-18T21:34:56.016786", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
-{"ts": "2026-10-18T23:11:09.822557", "action": "proposal_scan", "reason": "seen=8503 rejected=8425 backlog=0 reasons={'quality_below_threshold': 289, 'dedup': 6775, 'unparseable_json': 43, 'schema_mismatch': 1270, 'cov_not_in_active_pool': 30, 'symbol_not_allowed': 4, 'missing_symbol_or_cov': 4, 'backlog_dup': 10}", "refs": []}
-{"ts": "2026-10-18T23:11:09.822828", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 6905, 'search_tree_busy': 274}", "refs": []}
-{"ts": "2026-10-18T23:11:09.823440", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["sh_momentum_6c061b9460c4", "y_term_structure_e258b1ee50b2", "px_inventory_702f2024cc4b"]}
-{"ts": "2026-10-18T23:11:10.351995", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
-{"ts": "2026-10-18T23:28:27.982661", "action": "batch_fdr_promote", "reason": "batch=batch_76c40732 promoted=3", "refs": []}
-{"ts": "2026-10-18T23:28:36.574610", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
-{"ts": "2026-10-18T23:28:51.094260", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
-{"ts": "2026-10-20T12:20:48.473391", "action": "harvest_empty", "reason": "finished run produced 0 valid proposals (need results/**/proposals/*.json; reject_reasons={})", "refs": []}
-{"ts": "2026-10-20T12:20:50.718736", "action": "confirmation_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd_volatility_2e5481952352"]}
-{"ts": "2026-10-20T12:20:50.722476", "action": "confirmation_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr_momentum_3fdb468baa95"]}
-{"ts": "2026-10-20T12:27:23.611426", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "not_ready"]}
-{"ts": "2026-10-20T12:27:23.611800", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "not_ready"]}
-{"ts": "2026-10-20T12:56:31.828064", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "not_ready"]}
-{"ts": "2026-10-20T12:56:31.829470", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "not_ready"]}
-{"ts": "2026-10-20T12:56:31.845412", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
-{"ts": "2026-10-20T13:21:26.033521", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
-{"ts": "2026-10-20T13:47:36.299705", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
-{"ts": "2026-10-20T13:53:42.632481", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
-{"ts": "2026-10-20T19:02:56.369286", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "not_ready"]}
-{"ts": "2026-10-20T19:02:56.370968", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "not_ready"]}
-{"ts": "2026-10-21T01:03:10.152044", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "not_ready"]}
-{"ts": "2026-10-21T01:03:10.152398", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "not_ready"]}
-{"ts": "2026-10-21T07:06:42.298790", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "not_ready"]}
-{"ts": "2026-10-21T07:06:42.299062", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "not_ready"]}

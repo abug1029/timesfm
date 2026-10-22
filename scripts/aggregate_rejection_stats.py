@@ -28,13 +28,9 @@ from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FM_ROOT = os.path.dirname(HERE)
-
-# Reuse canonical path from sup_paths (single source of truth)
-sys.path.insert(0, HERE)
-import sup_paths  # noqa: E402
 DECISIONS_LOG = os.path.join(FM_ROOT, ".omc", "supervisor_decisions.jsonl")
 SUPERVISOR_STATE = os.path.join(FM_ROOT, "data", "cache", "supervisor_state.json")
-OUTPUT_FILE = sup_paths.REJECTIONS_INC  # canonical path from sup_paths
+OUTPUT_FILE = os.path.join(FM_ROOT, "task_FM", "known_rejections.inc.md")
 
 
 def parse_reject_reasons(reason_str):
@@ -217,37 +213,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-def render_rejection_detail_section(rejected_path: str) -> str:
-    """从 rejected_proposals.jsonl 生成 per-proposal 拒收详情 Markdown 节。
-    供 materialize_known_verdicts（Task 9）调用。
-    不写任何文件。
-    """
-    if not os.path.exists(rejected_path):
-        return '\n_no rejection records yet_\n'
-
-    records = []
-    for line in open(rejected_path, encoding='utf-8'):
-        line = line.strip()
-        if line:
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-
-    lines = []
-    lines.append('\n### Rejection Details (per-proposal)\n')
-    lines.append('| proposal_id | version | reason | quality_score | symbol | cov_override | family |')
-    lines.append('|---|---|---|---|---|---|---|')
-    for r in records:
-        lines.append('| %s | v%s | %s | %s | %s | %s | %s |' % (
-            r.get('proposal_id', '?'),
-            r.get('version', '?'),
-            r.get('reject_reason', '?'),
-            r.get('quality_score', 'N/A'),
-            r.get('symbol', '?'),
-            r.get('cov_override', '?'),
-            r.get('covariate_family', '?'),
-        ))
-    return '\n'.join(lines) + '\n'

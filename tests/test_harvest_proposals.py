@@ -22,10 +22,8 @@ import sup_evidence
 import sup_harvest
 import praxist_supervisor as S  # noqa: E402
 
-LONGM = ("Volatility range (VOR) compression breakout: the instrument accumulates energy in low-volatility zones, "
-         "often followed by a volume-driven breakout. This micro-structure mechanism is supported by clear "
-         "position-holding patterns and seasonal support on the selected instrument, making the direction "
-         "after low-vol accumulation most reliable.")
+LONGM = ("波动率范围(VOR)压缩后突破：该品种在低波区积蓄动能后常随放量突破，"
+         "此微观结构机制在所选品种上有明确的持仓与季节性支撑，低波蓄能后的方向最可信。")
 
 
 def _make_run(root, proposal, filename=None):
@@ -52,10 +50,8 @@ def _make_run(root, proposal, filename=None):
 def _prop(symbol="m", cov="vor", **over):
     p = {"schema": "fm.hypothesis_proposal.v1", "symbol": symbol,
          "cov_override": cov, "covariate_family": over.pop("family", "volatility"),
-         "mechanism": LONGM, "symbol_fit": "This covariate fits the symbol trading pattern",
-         "kill_condition": "ev<0", "promote_condition": "gate",
-         "predicted_direction": "up",
-         "proposal_id": over.pop("proposal_id", "%s_%s" % (symbol, cov))}
+         "mechanism": LONGM, "symbol_fit": "该品种适配该协变量",
+         "kill_condition": "ev<0", "promote_condition": "gate"}
     p.update(over)
     return p
 
@@ -76,10 +72,6 @@ def tmproot(tmp_path, monkeypatch):
     status_path.write_text(
         '{"schema": "fm.symbol_status.v1", "symbols": {}}', encoding="utf-8")
     monkeypatch.setattr(sup_paths, "SYMBOL_STATUS_PATH", str(status_path))
-    # SPEC v3.1 5.1: variant registry 隔离到 tmp
-    monkeypatch.setattr(sup_paths, "PROPOSAL_STATUS_PATH", str(tmp_path / "proposal_status.jsonl"))
-    monkeypatch.setattr(sup_paths, "REJECTED_PROPOSALS_PATH", str(tmp_path / "rejected_proposals.jsonl"))
-    monkeypatch.setattr(sup_paths, "VARIANT_REGISTRY_PATH", str(tmp_path / "variant_registry.jsonl"))
     # W6.4: 固定实验指纹, 测试 vid 确定性 (真实 fp 由生产路径覆盖)
     monkeypatch.setattr(sup_evidence, "_experiment_fp_for", lambda s, c: FP_TEST)
     monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "current-protocol")
@@ -117,7 +109,7 @@ def test_symbol_without_current_nocov_baseline_gets_no_seat(tmproot):
 
 
 def test_short_mechanism_rejected(tmproot):
-    _make_run(tmproot, _prop(symbol="ss", cov="ccl", mechanism="too short"))
+    _make_run(tmproot, _prop(symbol="ss", cov="ccl", mechanism="太短"))
     rows, stats = _harvest(tmproot)
     assert stats["selected"] == 0
     assert "mechanism_too_short" in stats["reject_reasons"]
@@ -211,17 +203,16 @@ def test_priority_symbols_disabled_keeps_score_order(tmproot, monkeypatch):
     assert called["n"] == 0
 
 def test_new_covariate_dedup_across_harvests(tmproot):
-    """同一 new_cov 被后续 cycle 重扫: pre-harvest 清理移除重复文件，不到 backlog 层。"""
+    """同一 new_cov 被后续 cycle 重扫 (harvest 每 cycle glob 所有 run) 只入 backlog 一次。"""
     _make_run(tmproot, {"schema": "fm.hypothesis_proposal.v1", "symbol": "m",
                         "cov_override": None,
                         "new_covariate": {"name": "term_spread", "formula": "...",
                                           "mechanism": LONGM, "family": "structure"}},
               filename="new_cov_term_spread.json")
-    rows1, stats1 = _harvest(tmproot)
-    # 第二 cycle 重扫同一 run: pre-harvest 已清理掉重复文件
-    rows2, stats2 = _harvest(tmproot)
-    # 文件已被 pre-harvest 移除，harvest 看不到重复
+    _harvest(tmproot)
+    rows2, stats2 = _harvest(tmproot)  # 第二 cycle 重扫同一 run
     assert stats2["backlog"] == 0
+    assert "backlog_dup" in stats2["reject_reasons"]
     recs = [json.loads(l) for l in open(S.BACKLOG_PATH, encoding="utf-8") if l.strip()]
     assert [r["name"] for r in recs].count("term_spread") == 1
 
@@ -659,40 +650,3 @@ def test_retest_plan_ignores_other_protocols(tmp_path, monkeypatch):
         "cadence": {"retest_min_new_points": 1, "aligned_max_points": 600},
     })
     assert [item[0]["variant_id"] for item in plan] == ["current_jd"]
-
-
-class TestProposalValidationGates:
-    """Phase 2 Task 3: 提案结构验证门禁集成测试。"""
-
-    def test_missing_required_fields_rejected(self, tmproot):
-        """缺少必填字段 → missing_required_fields 拒绝。"""
-        _make_run(tmproot, {
-            "schema": "fm.hypothesis_proposal.v1",
-            "symbol": "m",
-            "cov_override": "vol",
-            "proposal_id": "test-missing",
-        })
-        rows, stats = _harvest(tmproot)
-        assert stats["reject_reasons"].get("missing_required_fields") == 1
-
-    def test_field_type_error_rejected(self, tmproot):
-        """字段类型错误 → field_type_error 拒绝。"""
-        _make_run(tmproot, _prop(symbol=123))
-        rows, stats = _harvest(tmproot)
-        assert stats["reject_reasons"].get("field_type_error") == 1
-
-    def test_chinese_field_value_rejected(self, tmproot):
-        """中文字段值 → chinese_field_value 拒绝。"""
-        _make_run(tmproot, _prop(symbol_fit="中文测试"))
-        rows, stats = _harvest(tmproot)
-        assert stats["reject_reasons"].get("chinese_field_value") == 1
-
-    def test_english_proposal_passes_validation(self, tmproot):
-        """全英文提案通过结构验证，进入后续管道。"""
-        _make_run(tmproot, _prop())
-        rows, stats = _harvest(tmproot)
-        # 结构验证通过，不应有 validation 相关的拒绝
-        assert "missing_required_fields" not in stats.get("reject_reasons", {})
-        assert "field_type_error" not in stats.get("reject_reasons", {})
-        assert "chinese_field_value" not in stats.get("reject_reasons", {})
-

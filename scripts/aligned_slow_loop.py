@@ -20,8 +20,6 @@ from cascade.hourly_model import HourlyModel
 from cascade.statistical_tests import (
     pair_dir_ok_series_with_diagnostics, diebold_mariano_p,
 )
-from proposal_status import write_proposal_status
-import sup_paths as sp
 
 try:
     import torch
@@ -32,15 +30,6 @@ except ImportError:
 _MODELS = None
 
 _METRICS_PATH = os.path.join(FM_ROOT, "data", "cache", "slow_loop_metrics.jsonl")
-def _check_withdrawn(proposal_id, version):
-    """Check if proposal is withdrawn. Returns withdrawn record or None."""
-    from proposal_status import get_latest_status
-    import sup_paths as _sp
-    rec = get_latest_status(_sp.PROPOSAL_STATUS_PATH, proposal_id, version)
-    if rec and rec.get("status") == "withdrawn":
-        return rec
-    return None
-
 
 def _get_models():
     global _MODELS
@@ -508,7 +497,7 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
     v["git_rev"] = _git_rev()
     # T2/PR-B5: 消融批次标记落 verdict，供对照表按口径分组
     v["ablation_mode"] = row.get("ablation_mode") or "full"
-    # ── Laya 预筛伴随文件注入 ──────────────────────────────
+    # ── TypeSafe 预筛伴随文件注入 ──────────────────────
     _proposal_path = row.get("_proposal_path") or row.get("proposal_path")
     if _proposal_path:
         from pathlib import Path as _Path
@@ -567,33 +556,6 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
     v["tier_label"] = tier_info["tier_label"]
     v["tier_breakdown"] = tier_info["tier_breakdown"]
     rl.append_verdict(registry_path, v)
-    # 新增：写入 proposal_status.jsonl (verdicted)
-    # 注意：queue 行（row）已由 Task 5 携带 proposal_id 和 version
-    # ── Phase 4: skip verdicted status for withdrawn proposals ──
-    _skip_verdict_status = False
-    if row.get("proposal_id"):
-        _chk = _check_withdrawn(row["proposal_id"], row.get("version", 1))
-        if _chk is not None:
-            _skip_verdict_status = True
-            logging.warning(
-                "verdict for withdrawn proposal %s v%s; skipping verdicted status",
-                row["proposal_id"], row.get("version", 1),
-            )
-    if not _skip_verdict_status:
-        try:
-            write_proposal_status(
-                status_file=sp.PROPOSAL_STATUS_PATH,
-                proposal_id=row.get("proposal_id"),
-                version=row.get("version", 1),
-                status="verdicted",
-                run_id=row.get("src_run", "unknown"),
-                variant_id=row["variant_id"],
-            )
-        except Exception:
-            import logging
-            logging.getLogger("aligned_slow_loop").warning(
-                "failed to write verdicted status for %s",
-                row.get("proposal_id", "unknown"), exc_info=True)
     _record_elapsed(row["variant_id"], elapsed_s)
     return v
 
@@ -633,20 +595,6 @@ def main(argv=None):
             if row is None:
                 print("queue empty; done")
                 return 0
-            # ── Phase 4: withdrawn check before eval ──
-            _proposal_id = row.get("proposal_id")
-            _version = row.get("version", 1)
-            if _proposal_id:
-                _wd = _check_withdrawn(_proposal_id, _version)
-                if _wd is not None:
-                    logging.warning(
-                        "proposal %s v%s withdrawn before eval; skipping %s",
-                        _proposal_id, _version, row.get("variant_id"),
-                    )
-                    # Ack to done so it doesnt stay in inprogress
-                    done_path = os.path.join(os.path.dirname(args.checkpoint_dir), "aligned_pending.done.jsonl")
-                    rl.queue_ack(args.queue, args.inprogress, row, done_path)
-                    continue
             # Cheap RSS hygiene between candidates (no tight RLIMIT_AS).
             try:
                 check_and_shed()

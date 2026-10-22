@@ -11,30 +11,6 @@ if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 del _repo_root
 
-# --- Quality predictor (optional: ML-based gate_pass probability) ---
-try:
-    from quality_predictor import score_proposal_for_harvest as _ml_score
-    _HAS_ML_PREDICTOR = True
-except ImportError:
-    _HAS_ML_PREDICTOR = False
-    _ml_score = None
-
-# ── Schema 接受集合（Phase 1 Task 2）──
-# Spec §3.6: 接受 v1 和 v2；v1 的 version 默认为 1；v2 必须有合法 version
-_ACCEPTED_SCHEMAS = {
-    "fm.hypothesis_proposal.v1",
-    "fm.hypothesis_proposal.v2",
-}
-
-def _check_v2_version(p: dict) -> bool:
-    """v2 schema 必须带 version 字段且为整数 ≥1。"""
-    v = p.get("version")
-    if v is None:
-        return False
-    if not isinstance(v, int) or isinstance(v, bool):
-        return False
-    return v >= 1
-
 import registry_lib as rl
 import search_trees as st
 from cascade import experiment_fingerprint as ef
@@ -43,81 +19,7 @@ from cascade.cov_family import resolve_cov_family
 import sup_evidence
 import sup_lifecycle
 import sup_paths
-from proposal_status import write_proposal_status
-from proposal_validator import validate_proposal_dict
-from rejected_proposals import write_rejected_proposal
-from variant_registry import VariantRegistry
 
-# -- Bandit feedback file (P1-1: generation outer-loop learning) --
-_BANDIT_FEEDBACK_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "cache", "bandit_feedback.jsonl")
-
-def _prune_duplicate_proposals(root: str) -> int:
-    """Pre-harvest cleanup: remove proposal files whose stems are already registered.
-
-    This is a FILE dedup step only -- it does NOT call try_register.
-    Stem registration happens in harvest_proposals after a proposal passes all
-    quality gates and is written with status="queued" (P1-1 fix).
-
-    Returns the number of pruned (deleted) files.
-    """
-    reg = VariantRegistry(sup_paths.VARIANT_REGISTRY_PATH)
-    reg.load()
-    pruned = 0
-    pattern = os.path.join(root, "task_FM", "experiments", "run_*",
-                           "results", "**", "proposals", "*.json")
-    for sp in glob.glob(pattern, recursive=True):
-        stem = Path(sp).stem
-        if reg.has_stem(stem):
-            # Already registered by a prior harvest -> duplicate file, remove
-            try:
-                os.remove(sp)
-                pruned += 1
-            except OSError:
-                logging.getLogger(__name__).debug("failed to remove duplicate proposal %s", sp, exc_info=True)
-    return pruned
-
-
-def _register_proposal_stem(stem: str, run_id: str) -> None:
-    """Register a proposal stem in the variant registry.
-
-    Called after a proposal passes all quality gates and is queued.
-    This ensures only proposals that survive the full harvest pipeline
-    become permanent registry entries (P1-1 fix).
-    """
-    reg = VariantRegistry(sup_paths.VARIANT_REGISTRY_PATH)
-    reg.register(stem, run_id)
-
-
-def _write_bandit_feedback(symbol: str, family: str, has_historical_pass: bool) -> None:
-    """Write bandit feedback line after successful proposal enqueue (P1-1).
-
-    Recorded: (symbol, family, reward, enqueued_at).
-    Reward = 1.0 if this covariate has historical gate_pass, else 0.0.
-    GenerationStrategy reads this file to update its MultiArmedBandit.
-    """
-    try:
-        os.makedirs(os.path.dirname(_BANDIT_FEEDBACK_PATH), exist_ok=True)
-        line = json.dumps({
-            "symbol": symbol,
-            "family": family,
-            "reward": 1.0 if has_historical_pass else 0.0,
-            "enqueued_at": sup_lifecycle._now_iso(),
-        }) + "\n"
-        with open(_BANDIT_FEEDBACK_PATH, "a", encoding="utf-8") as f:
-            f.write(line)
-    except Exception:
-        import logging as _logging
-        _logging.getLogger("sup_harvest").warning(
-            "failed to write bandit feedback for %s/%s", symbol, family, exc_info=True)
-
-
-def _run_id_from_path(filepath: str) -> str:
-    """Extract run_id from a proposal file path (nearest run_* ancestor)."""
-    parts = Path(filepath).parts
-    for part in parts:
-        if part.startswith("run_"):
-            return part
-    return "unknown"
 
 def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=600):
     """Pick up to top_k diagnostic survivors, preferring symbol×cov diversity.
@@ -222,7 +124,7 @@ def _cross_run_repeat_counts(root=None, max_runs=20):
     return counts
 
 def _apply_prescreen_score(score, proposal_path):
-    """Laya prescreen score adjustment (Phase 2)."""
+    """TypeSafe Jev prescreen score adjustment (Phase 2)."""
     if not proposal_path:
         return score
     ps_path = str(Path(proposal_path).with_suffix(".prescreen.json"))
@@ -258,7 +160,7 @@ def _apply_prescreen_score(score, proposal_path):
     return score
 
 def _prescreen_async(p, proposal_path, symbol):
-    """Fire-and-forget Laya prescreen (daemon thread, 不阻塞 harvest)。
+    """Fire-and-forget TypeSafe Jev prescreen (daemon thread, 不阻塞 harvest)。
 
     prescreen 是软建议伴随元数据，不应拖慢 supervisor 收割循环。
     - daemon=True: 进程退出时自动杀死，不阻塞 shutdown
@@ -272,7 +174,7 @@ def _prescreen_async(p, proposal_path, symbol):
     try:
         from cascade.typesafe_prescreen import prescreen_and_save
     except Exception as _e:
-        logging.warning("Laya 预筛导入失败 (%s): %s", proposal_path, _e)
+        logging.warning("TypeSafe 预筛导入失败 (%s): %s", proposal_path, _e)
         return
 
     _existing_ps = str(Path(proposal_path).with_suffix(".prescreen.json"))
@@ -306,7 +208,7 @@ def _prescreen_async(p, proposal_path, symbol):
                 covariate_menu=_menu,
             )
         except Exception as _e:
-            logging.warning("Laya 预筛异步调用失败 (%s): %s", proposal_path, _e)
+            logging.warning("TypeSafe 预筛异步调用失败 (%s): %s", proposal_path, _e)
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -485,96 +387,6 @@ def _prescreen_plausibility(proposal_path):
     return p
 
 
-
-SHORT_WINDOW_RESULTS_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "cache", "short_window_results.jsonl")
-
-
-def _short_window_check(symbol, cov_override, proposal_path):
-    """短窗回测检查 (Phase 2 Task 2)。
-
-    1) 先查缓存 (data/cache/short_window_results.jsonl)
-    2) 缓存未命中则同步跑一次短窗回测 (默认 150 点)
-    3) 返回结果 dict 或 None (回测失败时 fail-open)
-
-    此函数是同步的——harvest 循环中调用会阻塞，但短窗本身比慢环快得多
-    (150 vs 588 点)。未来可改为异步 prescreen 模式。
-    """
-    vid = "{}_{}".format(symbol.lower().strip(), cov_override.strip())
-    cached = _load_short_window_cache(vid)
-    if cached is not None:
-        return cached
-
-    # 同步跑一次
-    try:
-        import short_window_backtest as swb
-        result = swb.short_window_backtest(
-            symbol=symbol.lower().strip(),
-            cov_override=cov_override.strip(),
-            window_size=150,
-        )
-        # 追加到缓存
-        _append_short_window_cache(result)
-        return result
-    except ImportError:
-        logging.warning("short_window_backtest module not available, fail-open")
-        return None
-    except Exception as e:
-        logging.warning("short_window_check failed for %s %s: %s", symbol, cov_override, e)
-        return None  # fail-open: 不阻塞收割
-
-
-def _load_short_window_cache(variant_id):
-    """从缓存文件读取该 variant_id 的短窗结果。"""
-    if not os.path.exists(SHORT_WINDOW_RESULTS_PATH):
-        return None
-    try:
-        with open(SHORT_WINDOW_RESULTS_PATH, encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    rec = json.loads(line)
-                    if rec.get("variant_id") == variant_id:
-                        return rec
-    except (json.JSONDecodeError, OSError):
-        pass
-    return None
-
-
-def _append_short_window_cache(result):
-    """追加单条短窗结果到缓存。"""
-    os.makedirs(os.path.dirname(SHORT_WINDOW_RESULTS_PATH), exist_ok=True)
-    try:
-        with open(SHORT_WINDOW_RESULTS_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(result, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
-
-
-def _has_proposal_version_status(status_path, proposal_id, version, statuses=None):
-    """Check if proposal_id+version already has a record in proposal_status.jsonl.
-
-    statuses: optional filter set (e.g. {"rejected", "queued", "verdicted"}).
-    None = any status counts as duplicate.
-    """
-    if not os.path.exists(status_path):
-        return False
-    target = (proposal_id, version)
-    with open(status_path, encoding="utf-8") as fh:
-        for raw in fh:
-            raw = raw.strip()
-            if not raw:
-                continue
-            try:
-                r = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            if (r.get("proposal_id"), r.get("version")) == target:
-                if statuses is None or r.get("status") in statuses:
-                    return True
-    return False
-
-
 def _sector_filter_check(symbol, snapshot):
     """板块级拦截 (circuit-breaker 语义)。
 
@@ -686,13 +498,6 @@ def _proposal_quality_gate(prop, snapshot, proposal_path=None):
     plaus = _prescreen_plausibility(proposal_path)
     bd["prescreen"] = 10.0 * plaus if plaus is not None else 0.0
 
-    # +5 * ML quality predictor probability (if model available)
-    if _HAS_ML_PREDICTOR and proposal_path is not None and _ml_score is not None:
-        ml_prob, _ = _ml_score(prop)
-        bd["ml_quality"] = 5.0 * ml_prob
-    else:
-        bd["ml_quality"] = 0.0
-
     # -20 该协变量在其他品种最近 N 次全失败
     cov_recent = _recent_ok_verdicts(
         snap,
@@ -737,7 +542,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
              # spec 2026-10-05 §6.1：档位随收割留档（off|shadow|enforce）
              "search_policy": search_policy,
              # PR-B6 质量门计数（键名与 reject_reasons 一致，防止两套计数漂移）
-             "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0, "short_window_fail": 0, "validation_error": 0,
+             "quality_below_threshold": 0, "sector_blocked": 0, "cov_cross_fail": 0,
              # T2 (2026-10-05): success 门分类计数（放行侧也计数，供观察口径是否过宽）
              "success_gate_states": {}}
     _sg_cache = {}  # T2: 单次 harvest 内复用评估窗锚与行级 eval_end_ts
@@ -761,44 +566,11 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     def _reject(reason):
         stats["rejected"] += 1
         stats["reject_reasons"][reason] = stats["reject_reasons"].get(reason, 0) + 1
-        # 安全写盘（P0-2）：写盘失败不得改变统计语义
-        try:
-            _run_id = os.path.basename(run_dir)  # src_run，禁止虚构 current_run_id
-            # _qs, _bd 已在循环开头重置为 None（P1-A）；若质量门已计算则填充真实值
-            write_rejected_proposal(
-                rejected_file=sup_paths.REJECTED_PROPOSALS_PATH,
-                proposal_id=_proposal_id or "no_id",
-                version=_version,
-                reject_reason=reason,
-                quality_score=_qs,
-                run_id=_run_id,
-                symbol=_symbol,
-                cov_override=_cov,
-                covariate_family=p.get("covariate_family"),
-                breakdown=_bd,
-            )
-            write_proposal_status(
-                status_file=sup_paths.PROPOSAL_STATUS_PATH,
-                proposal_id=_proposal_id or "no_id",
-                version=_version,
-                status="rejected",
-                run_id=_run_id,
-                reject_reason=reason,
-                quality_score=_qs,
-            )
-        except Exception:
-            import logging as _logging
-            _logging.getLogger("sup_harvest").warning(
-                "failed to write proposal status/rejected for %s: %s",
-                _proposal_id or "no_id", reason, exc_info=True)
 
     candidates = []
     seen_vids = set()
     run_dirs = sorted(glob.glob(os.path.join(root, "task_FM", "experiments", "run_*")),
                       key=os.path.getmtime, reverse=True)
-    # ── Phase 1 Task 5: pre-loop scope init (prevents NameError in _reject before first p) ──
-    _qs = None; _bd = None; _proposal_id = None; _version = 1
-    _symbol = None; _cov = None
     for run_dir in run_dirs:
         if sup_lifecycle._SHUTDOWN_REQUESTED:
             # 长扫描不得吃掉停机信号：立刻中止，且不返回半份候选（避免停机途中入队）
@@ -815,14 +587,6 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             except Exception:
                 _reject("unparseable_json"); continue
             stats["seen"] += 1
-            # ── SPEC v3.1 §5.1: 注册已在 pre-harvest 完成，harvest 仅读 registry 作安全网 ──
-            # ── Phase 1 Task 5: per-proposal scope reset (P1-A) ──
-            _qs = None  # quality_score
-            _bd = None  # quality breakdown
-            _proposal_id = p.get("proposal_id")
-            _version = int(p.get("version") or 1)
-            _symbol = p.get("symbol")
-            _cov = p.get("cov_override")
             # 批次 F (M4)：abandon 提案处理
             # peer 输出 decision="abandon" 表示反对当前假设，不入队、不加分
             if p.get("decision") == "abandon":
@@ -837,37 +601,8 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 else:
                     _reject("backlog_dup")
                 continue
-            _schema = p.get("schema")
-            if _schema not in _ACCEPTED_SCHEMAS:
+            if p.get("schema") != "fm.hypothesis_proposal.v1":
                 _reject("schema_mismatch"); continue
-            if _schema == "fm.hypothesis_proposal.v2" and not _check_v2_version(p):
-                _reject("schema_mismatch"); continue
-
-            # -- Phase 2 Task 3: proposal structure validation (pre-write gate) --
-            _vresult = validate_proposal_dict(p)
-            if not _vresult["valid"]:
-                # Classify reject reason (compatible with existing attribution)
-                for _err in _vresult["errors"]:
-                    _kind = _err.split(":")[0]
-                    if _kind == "missing_required":
-                        _reject("missing_required_fields")
-                        break
-                    elif _kind == "type_error":
-                        _reject("field_type_error")
-                        break
-                    elif _kind == "chinese_field":
-                        _reject("chinese_field_value")
-                        break
-                    else:
-                        _reject("proposal_validation_error")
-                        break
-                continue
-
-
-            # ── Phase 1 Task 5: explicit missing_proposal_id reject (P1-B) ──
-            if not _proposal_id:
-                _reject("missing_proposal_id")
-                continue
             symbol = str(p.get("symbol") or "").lower().strip()
             cov = str(p.get("cov_override") or "").strip()
             mechanism = str(p.get("mechanism") or "").strip()
@@ -936,11 +671,6 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 _reject("dedup"); continue
             seen_vids.add(vid)
 
-            # ── P3.2: proposal_id+version dedup (spec §3.5.3) ──
-            if _has_proposal_version_status(
-                    sup_paths.PROPOSAL_STATUS_PATH, _proposal_id, _version):
-                _reject("version_dup"); continue
-
             # ── PR-B6 提案质量门 (在 dedup 之后，保证既有 reject 归因不变) ──
             _snap = snapshot or {}
             sec_blocked, sector, _sec_failed = _sector_filter_check(symbol, _snap)
@@ -952,7 +682,6 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 stats["cov_cross_fail"] += 1
                 _reject("cov_cross_fail"); continue
             quality_score, _quality_bd = _proposal_quality_gate(p, _snap, proposal_path=sp)
-            _qs, _bd = quality_score, _quality_bd  # P0-2: 回填到 _reject 可见的外层作用域
             if quality_score < MIN_QUALITY_SCORE:
                 stats["quality_below_threshold"] += 1
                 _reject("quality_below_threshold"); continue
@@ -966,12 +695,6 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 stats["success_gate_states"].get(_sg_state, 0) + 1
             if _sg_reason is not None:
                 _reject(_sg_reason); continue
-
-            # Phase 2 Task 2: short-window empirical pre-screen
-            _sw_result = _short_window_check(symbol, cov, sp)
-            if _sw_result is not None and not _sw_result.get("pass"):
-                stats["short_window_fail"] += 1
-                _reject("short_window_fail"); continue
 
             family = (pool.get(cov, {}) or {}).get("family") or p.get("covariate_family") or "other"
             repeat_counts = _cross_run_repeat_counts()
@@ -999,39 +722,14 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 "src_run": os.path.basename(run_dir), "source": "peer_proposal",
                 # PR-B6 质量门留痕 (队列行，供宿主审查门是否过严)
                 "quality_score": round(quality_score, 4), "sector": sector,
-                # Phase 1: 绑定键（P0-1），禁止 "unknown" 哨兵（P1-B）
-                "proposal_id": _proposal_id,
-                "version": _version,
                 "_family": family, "_score": score, "_tier": tier,
                 "_proposal_path": sp}
-            if _sw_result is not None:
-                _cand["short_window_dir_acc"] = _sw_result.get("dir_acc")
-                _cand["short_window_n"] = _sw_result.get("n")
             if search_info is not None:
                 # P2.2 (spec §6.2): enforce 档队列行携带树三字段（2.3 落账依据）；
                 # off/shadow 不带（S1：off 下行形状与今日相同）
                 _cand.update(search_info)
             candidates.append(_cand)
-            # ── Phase 1 Task 5: 成功入队 → 写入 status (queued) ──
-            try:
-                write_proposal_status(
-                    status_file=sup_paths.PROPOSAL_STATUS_PATH,
-                    proposal_id=_cand["proposal_id"],
-                    version=_cand["version"],
-                    status="queued",
-                    run_id=os.path.basename(run_dir),
-                    variant_id=_cand["variant_id"],
-                    quality_score=round(quality_score, 4),
-                )
-            except Exception:
-                import logging as _logging
-                _logging.getLogger("sup_harvest").warning(
-                    "failed to write queued status for %s", _cand.get("proposal_id"), exc_info=True)
-            # ── P1-1: 成功入队 → 注册 stem（仅通过质量门的提案才占位）──
-            _register_proposal_stem(Path(sp).stem, os.path.basename(run_dir))
-            # ── P1-1: 成功入队 → 写入 bandit 反馈 ──
-            _write_bandit_feedback(symbol, family, _cov_pass_n > 0)
-            # ── Laya 预筛触发 (fire-and-forget, 不阻塞 harvest) ──
+            # ── TypeSafe 预筛触发 (fire-and-forget, 不阻塞 harvest) ──
             _prescreen_async(p, sp, symbol)
 
     candidates.sort(key=lambda r: (r["_tier"], -r["_score"], r["_family"], r["variant_id"]))
@@ -1055,17 +753,6 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     for r in selected:
         r.pop("_family", None); r.pop("_score", None); r.pop("_tier", None)
     stats["selected"] = len(selected)
-
-    # ── Diversity alert: compare feedback family distribution vs uniform ──
-    try:
-        from diversity_alert import compute_diversity_alert
-        with open(_BANDIT_FEEDBACK_PATH, encoding="utf-8") as f:
-            feedback = [json.loads(line) for line in f if line.strip()]
-        da = compute_diversity_alert(feedback)
-        stats["diversity_alert"] = da
-    except Exception as e:
-        stats["diversity_alert"] = {"error": str(e)}
-
     return selected, stats
 
 def materialize_covariate_menu(pool, dest_path):

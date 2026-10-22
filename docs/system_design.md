@@ -887,7 +887,7 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
 | 符号失败惩罚加陡 | 8+ 失败 -50 分起，3-7 次 -8/次 |
 | DEAD 族拒绝 | 4+ ok 0 pass 族识别为 family_dead，harvest 先于 no_failure_delta |
 | DEAD/HOLD 过滤 | harvest 拒绝 DEAD/HOLD 品种入队（symbol_status.json 2026-09-28 起已清空，当前无品种被过滤） |
-| **Laya 预筛**（软建议） | harvest 时 fire-and-forget 调 Laya 三问写 `<proposal>.prescreen.json`；`_apply_prescreen_score` 据此做 ± 调度分（invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5）。**不阻断慢环回测**；Laya 未启用或降级时静默跳过。详见 `cascade/typesafe_prescreen.py` |
+| **TypeSafe Jev 预筛**（软建议） | harvest 时 fire-and-forget 调 TypeSafe 三问写 `<proposal>.prescreen.json`；`_apply_prescreen_score` 据此做 ± 调度分（invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5）。**不阻断慢环回测**；缺 `TYPESAFE_API_KEY` 或降级时静默跳过。详见 `cascade/typesafe_prescreen.py` |
 
 ### 11.3 关键文件
 

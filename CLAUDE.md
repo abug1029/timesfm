@@ -38,19 +38,18 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 - 密钥只进 `.env.praxist`，不要写进 `task_FM/task.yaml`
 - **无人值守运维（2026-10-08）**：维护窗口旗标（`data/cache/maintenance.flag`，7天过期）、熔断机制（`data/cache/heal_fail.count` ≥3 触发）、孤儿 run 回收（`data/cache/active_runs.json` + flock）、D5 禁用旗标（`data/cache/d5_disabled.flag`）。诊断入口：`scripts/diagnose_three_loop.sh`。详见 runbook "无人值守运维" 章节。
 
-## Laya System-1 协变量预筛（软建议模式，2026-09-22）
+## TypeSafe Jev 协变量预筛（软建议模式，2026-09-22）
 
-Peer 提出协变量提案时，监督环用 **Laya System-1** 做三问预筛（机制可信度 Noul / 新颖度 Choice / 预期效果 Score），但**只做软建议、绝不阻断慢环回测**：
+Peer 提出协变量提案时，监督环用 **TypeSafe System One (Jev)** 做三问预筛（机制可信度 Noul / 新颖度 Choice / 预期效果 Score），但**只做软建议、绝不阻断慢环回测**：
 
 - **调度降权**：`scripts/sup_harvest.py` 的 `_apply_prescreen_score()` 读 `.prescreen.json` 调整 `_proposal_priority_score`。invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5。**用 net scoring 而非硬阻断**，slow loop 永远跑、可审计。
-- **质量门禁（Phase 3）**：`scripts/track_prescreen_quality.py` 扫描带 `metadata.prescreen` 的 verdict，验证 Laya 判断与回测一致性。样本 < 50 不产出调度建议，避免小样本误校准。
+- **质量门禁（Phase 3）**：`scripts/track_prescreen_quality.py` 扫描带 `metadata.prescreen` 的 verdict，验证 Jev 判断与回测一致性。样本 < 50 不产出调度建议，避免小样本误校准。
 - **慢环注入**：`scripts/aligned_slow_loop.py` 把 `.prescreen.json` 读入 `verdict["metadata"]["prescreen"]`（status/skip_suggested/plausibility/novelty/effect_size/note）。
 - **幂等/异步**：supervisor 触发是 fire-and-forget（daemon 线程），已有 success 结果则跳过，不重复付费。
-- **去重 pre-check**（2026-10-18）：`process_proposal()` 在 `prescreen_and_save` 前检查 `existing` 集合（REGISTRY∪QUEUE∪INPROGRESS），命中则 `stats.inc("skipped")` 跳过 Laya 调用。不扩 PrescreenStatus 枚举。
 
-关键文件：`cascade/typesafe_prescreen.py`（核心模块，异常分类：超时→degraded、鉴权→error）。调用方式：`requests` HTTP POST 到 Laya `/v1/systemone`（`cascade/typesafe_prescreen.py::_call_laya()`），URL 由 `LAYA_BASE_URL` 环境变量配置（默认 Tailscale `100.96.19.116:8000`，局域网用 `10.1.1.67:8000`）。模型名 `laya-rl-agent`。payload 顶层含 `language: "en"`（best-effort）。`_build_state()` 通过 `_strip_chinese()` 双道剥离（CJK + 全角标点）+ `_is_shell_pd()` 空壳检测（阈值=12）确保 state 无东亚宽字符。
+关键文件：`cascade/typesafe_prescreen.py`（核心模块，异常分类：超时→degraded、鉴权→error）。环境变量 `TYPESAFE_API_KEY` 在 `.env.praxist`。SDK v0.7.1 方法论：`client.system_one()`、答案字段 `.noul/.choice/.score`、模型名 `jev-latest`。
 
-设计权威：`docs/superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md`（已迁移到 Laya，规格文件待重命名）；状态细节见记忆 `fm-typesafe-prescreen`。
+设计权威：`docs/superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md`；状态细节见记忆 `fm-typesafe-prescreen`。
 
 ## Stage 3 协变量可信度（2026-09-29 结案，commit `381f31e`）
 
@@ -76,55 +75,6 @@ spec v15 的 §8.3 八项出口条件已全部核验。**新增三个模块是�
 历史 `aligned_verdicts.jsonl` 里混着两种 vid 格式：旧行 `{symbol}_{cov}`（如 `cf_rsi6`），新行 `{symbol}_{family}_{fp12}`（如 `lh_momentum_e5272a12ce30`）。**读历史行时不要假设格式统一**；总行数是活计数，实时 `wc -l`。
 
 权威文档：spec `docs/superpowers/specs/2026-09-24-covariate-research-credibility-design.md`（v15）· 核验记录 `docs/superpowers/reports/2026-09-29-stage3-verification-record.md` · family 边界 `docs/family_boundary_rules.md`
-
-## 提案评估优化系统（Phase 1-3，2026-10-20/21，SPEC v3.1）
-
-基于 SPEC v3.1 实施的提案评估系统全面优化，Phase 1-3 库代码完成 + Praxist 集成 ~68%（有条件集成，审计 2026-10-22）。51 tests pass。
-
-**Phase 1（variant 登记 + 磁盘归档 + 低效诊断）**：
-- `scripts/variant_registry.py` — VariantRegistry 类（JSON 序列化，跨实例幂等）
-- `scripts/sup_harvest.py::_prune_duplicate_proposals()` — harvest 前删除重复文件
-- `scripts/backfill_variant_registry.py` — 回填脚本
-- `data/cache/variant_registry.jsonl` — 1318 stems 注册表
-- **效果**：冗余率 89.2% → 0.0%，释放 7.4 MB
-
-**Phase 2（生成策略 + 短窗回测 + 提案卫生）**：
-- `scripts/generation_strategy.py` — 生成策略外环（规则配额/UCB/Thompson/精英保留）
-- `scripts/short_window_backtest.py` — 短窗回测（100-200 时间点，dir_acc > 0.50）
-- `scripts/proposal_validator.py` — 提案卫生验证（JSON/类型/中英门禁）
-- `data/cache/bandit_feedback.jsonl` — bandit 反馈（harvest 入队后写入）
-- `data/cache/short_window_results.jsonl` — 短窗回测缓存
-- **集成**：harvest 已集成短窗预筛、质量预测、提案卫生、bandit 反馈
-- **状态**：evaluator Step 0 预检已接入 run.py -> proposal_gate。harvest 双闸（主+备）。Peer 仍走 proposals->harvest 旁路（C3 未拆）
-
-**Phase 3（质量预测 + 多样性 + 监控）**：
-- `scripts/quality_predictor.py` — 质量预测器（FrequencyModel，JSON 序列化）
-- `models/quality_model.json` — 训练好的模型（accuracy=72.4%, threshold=0.48）
-- `scripts/diversity_metrics.py` — 多样性指标（symbol/family 熵、组合覆盖率、新颖度）
-- `scripts/monitor_metrics.py` — 每日监控（6 个核心指标 + 红线告警）
-- `scripts/generate_weekly_report.py` — 周报生成
-- `data/cache/metrics_history/` — 指标历史
-- **集成**：harvest 调用 `score_proposal_for_harvest()` 作为质量分加成（+5*ml_prob）
-- **状态**：crontab 已配置（每日 02:00 collect 落盘 metrics_history/ + 周一 03:00 周报）。diversity_alert 已接入 monitor_metrics + sup_harvest。B3 on_generation_close 通过 cron 每 2 小时触发（Praxist 不提供 task-level generation close hook）
-
-**当前系统状态**（2026-10-21 实时监控）：
-- ✅ 冗余率: 0.0% (目标 <10%)
-- ✅ 组合覆盖率: 66.2% (目标 >30%)
-- ❌ 唯一 variant 覆盖率: 18.5% (目标 >80%)
-- ❌ Gate pass 率: 34.1% (目标 >50%)
-- ❌ 高质量率: 28.3% (目标 >40%)
-- ❌ Prescreen 成功率: 28.3% (目标 >80%)
-
-**Praxist 集成**（2026-10-21/22）：通过 task 合同 + evaluator Step 0 实现有条件集成 ~68%。详见 `docs/superpowers/specs/2026-10-21-phase2-3-praxist-integration-spec.md`。剩余未闭环：C3 旁路拆除（peer→proposals→harvest 仍主路径）。
-
-**关键文件索引**：
-- 实现：`scripts/generation_strategy.py` / `short_window_backtest.py` / `proposal_validator.py` / `quality_predictor.py` / `diversity_metrics.py` / `diversity_alert.py` / `monitor_metrics.py` / `variant_registry.py` / `synthesize_agenda_from_feedback.py` / `import_legacy_proposals.py`
-- 集成：`scripts/sup_harvest.py`（短窗/质量预测/提案卫生/bandit 反馈/diversity_alert） | `scripts/hooks/on_generation_close.py`（B3 hook） | `task_FM/.praxist/plugins/proposal_gate/`（Step 0）
-- 数据：`data/cache/variant_registry.jsonl` / `bandit_feedback.jsonl` / `short_window_results.jsonl` / `metrics_history/`
-- 模型：`models/quality_model.json`
-- 文档：`docs/superpowers/changelogs/2026-10-22-phase2-3-praxist-integration-changelog.md`（Praxist 集成） / `docs/superpowers/specs/2026-10-21-phase2-3-praxist-integration-spec.md` / `docs/superpowers/specs/proposal-gate-rules.md` / `docs/superpowers/specs/feedback-agenda-schema.md` / `docs/superpowers/changelogs/2026-10-20-phase2-3-execution-changelog.md` / `docs/diversity-metrics-guide.md` / `docs/quality_predictor.md` / `docs/VARIANT_REGISTRY_IMPLEMENTATION.md`
-
-**记忆**：[fm-proposal-evaluation-optimization-phase1-3](memory/fm-proposal-evaluation-optimization-phase1-3.md)
 
 ## 目录结构
 
@@ -402,11 +352,10 @@ python scripts/copilot.py --three-star
 - `scripts/drift_detector.py` — 退化检测 (滑动窗口 DirAcc)
 - `scripts/confidence_tracker.py` — 置信度追踪
 
-**Laya 预筛类：**
-- `scripts/validate_laya_prescreen.py` — 人工验证 Laya 判断与历史 proposal（Laya 不需要 API key）
-- `scripts/check_pd_chinese.py` — 门禁脚本：扫描所有 proposals 验证 _build_state() 输出无东亚宽字符（8459 scanned, 0 violations）
-- `scripts/track_prescreen_quality.py` — Laya 判断质量追踪（Phase 3，扫描带 metadata.prescreen 的 verdict，样本<50 不产出调度建议）
-- `cascade/typesafe_prescreen.py` — Laya 预筛核心模块（软建议模式）
+**TypeSafe 预筛类：**
+- `scripts/validate_typesafe_prescreen.py` — 人工验证 Jev 判断与历史 proposal（需 TYPESAFE_API_KEY，无 key 优雅降级）
+- `scripts/track_prescreen_quality.py` — Jev 判断质量追踪（Phase 3，扫描带 metadata.prescreen 的 verdict，样本<50 不产出调度建议）
+- `cascade/typesafe_prescreen.py` — TypeSafe Jev 预筛核心模块（软建议模式）
 - `scripts/residual_analyzer.py` — 残差分析
 - `scripts/covariate_advisor.py` — 协变量建议
 

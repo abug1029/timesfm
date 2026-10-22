@@ -65,7 +65,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 | 服务 | 用途 | 变量 |
 |------|------|------|
 | 文华财经 TqSdk | 行情采集 | `.env` |
-| Laya System-1 | 协变量预筛（软建议） | `LAYA_BASE_URL`（默认 `http://10.1.1.67:8000`） |
+| TypeSafe System One (Jev) | 协变量预筛（软建议） | `TYPESAFE_API_KEY`（在 `.env.praxist`） |
 | LLM 主路 | peer 假设生成 | Ark |
 | LLM 备路 | 429 failover | DashScope（Anthropic 兼容端点） |
 

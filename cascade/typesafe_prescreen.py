@@ -1,7 +1,6 @@
-"""cascade/typesafe_prescreen.py — Laya 协变量提案预筛（软建议模式）"""
+"""cascade/typesafe_prescreen.py — TypeSafe 协变量提案预筛（软建议模式）"""
 
 import json
-import re
 import logging
 import os
 import time
@@ -9,20 +8,24 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from requests.exceptions import Timeout as RequestsTimeout
 from data.config import _env_nonempty
 
 logger = logging.getLogger(__name__)
 
-# ── 异常类（本地兜底）──────────────────────────────────
+# ── 异常类兼容导入 ──────────────────────────────────
+try:
+    from typesafe_sdk import (
+        TypeSafeAuthenticationError as AuthenticationError,
+        TypeSafeAPITimeoutError as TypeSafeTimeoutError,
+    )
+except ImportError:
+    class AuthenticationError(Exception):
+        """TypeSafe SDK 鉴权失败异常（本地兜底）"""
+        pass
 
-class AuthenticationError(Exception):
-    """Laya 鉴权失败异常（本地兜底）"""
-    pass
-
-class TypeSafeTimeoutError(TimeoutError):
-    """Laya 超时异常（本地兜底，保留类名兼容调用方）"""
-    pass
+    class TypeSafeTimeoutError(TimeoutError):
+        """TypeSafe SDK 超时异常（本地兜底）"""
+        pass
 
 
 # ── 项目根路径 ──────────────────────────────────────
@@ -33,51 +36,13 @@ FM_ROOT = Path(__file__).resolve().parent.parent
 PrescreenStatus = Literal["success", "degraded", "error"]
 NoveltyType = Literal["novel", "extension", "redundant", "invalid"]
 
-# ── 中文字符剥离（v3: 双道剥离 CJK + 全角标点）──────────
-_ZH = re.compile(r'[\u4e00-\u9fff\u3000-\u303f]+')
-_FULLWIDTH_PUNCT = re.compile(r'[\uff01-\uff0f\uff1a-\uff20\uff3b-\uff3f\uff5b-\uff65]+')
-_PD_MIN_LEN = 12  # v3: 对齐实测 ~496 空壳（27.6%，双道 strip 后）
-
-
-def _strip_chinese(s: str) -> str:
-    """剥中文字符 + 全角标点，保留英文/数字/半角符号/空格/下划线。
-
-    双道剥离：
-      1. CJK 汉字 (U+4E00-U+9FFF) + CJK 标点 (U+3000-U+303F) -> 空格
-      2. 全角标点 (U+FF01-U+FF65 中的标点区) -> 空格
-      3. 合并连续空白
-      4. 剥首尾空格/括号/分号/逗号
-
-    注意：下划线 _ 不在任何正则中，会保留。括号内空格会保留。
-    """
-    if s is None:
-        return ""
-    if not isinstance(s, str):
-        s = str(s)
-    result = _ZH.sub(' ', s)
-    result = _FULLWIDTH_PUNCT.sub(' ', result)
-    return re.sub(r'\s+', ' ', result).strip(' (;,)')
-
-
-def _is_shell_pd(stripped: str) -> bool:
-    """判定 strip 后是否为近空壳。
-
-    算法：剥除 -> , ; | ( ) + 空白 后，剩余核心长度 < _PD_MIN_LEN 视为空壳。
-    注意：下划线 _ 不在剥除字符类中，会保留并计入长度。
-
-    v3: 阈值 12。典型空壳 '-> long, -> short' -> core='longshort' len=9 < 12 -> True。
-    """
-    core = re.sub(r'[->,;|()+\s]', '', stripped)
-    return len(core) < _PD_MIN_LEN
-
-
 
 # ── 标准降级工厂 ────────────────────────────────────
 def _fallback_result(
     proposal: dict[str, Any],
     symbol: str,
     status: PrescreenStatus = "degraded",
-    note: str = "Laya 未启用或降级",
+    note: str = "TypeSafe 未启用或降级",
 ) -> dict[str, Any]:
     """标准降级对象。skip_suggested 永远为 None，防止统计污染。"""
     return {
@@ -233,7 +198,7 @@ def _record_timeout():
     _consecutive_timeouts += 1
     if _consecutive_timeouts >= 3:
         _circuit_until = time.time() + 600
-        logger.warning("Laya prescreen: 连续 3 次超时，开启 10 分钟短路降级")
+        logger.warning("TypeSafe prescreen: 连续 3 次超时，开启 10 分钟短路降级")
 
 
 def _record_success():
@@ -250,10 +215,10 @@ def _reset_circuit_state() -> None:
     _circuit_until = None
 
 
-# ── Laya 原始答案序列化 ──────────────────────────────
+# ── SDK 原始答案序列化 ──────────────────────────────
 
 def _serialize_raw_answers(answers: dict) -> dict[str, Any]:
-    """将 Laya 原始答案序列化为纯 dict，保留 reasoning/置信度元数据。"""
+    """将 SDK 原始答案序列化为纯 dict，保留 reasoning/置信度元数据。"""
     out = {}
     for qid, ans in answers.items():
         entry: dict[str, Any] = {}
@@ -265,23 +230,23 @@ def _serialize_raw_answers(answers: dict) -> dict[str, Any]:
             entry["score"] = ans.score
         if hasattr(ans, "confidence"):
             entry["confidence"] = ans.confidence
+        # SDK v0.7.1 的 Noul/Choice/Score answer 均无 reasoning 字段, 故不序列化
         out[qid] = entry
     return out
 
 
 # ── 内部辅助 ────────────────────────────────────────
 
+def _get_typesafe_api_key() -> str | None:
+    return _env_nonempty("TYPESAFE_API_KEY")
+
+
 def _load_symbol_profile(symbol: str) -> dict[str, str]:
-    """加载品种画像（板块 + 合约详情，英文）。"""
-    from config.sector_map import sector_of
+    """加载品种画像（板块 + 合约详情）。"""
+    from config.sector_map import sector_of, SECTOR_NAMES
     sector = sector_of(symbol)
-    # 英文板块名（避免中文导致 Laya 超时）
-    sector_en = {
-        "black": "black", "nonferrous": "nonferrous", "precious": "precious",
-        "energy": "energy", "chemical": "chemical", "agricultural": "agricultural",
-        "soft": "soft", "forestry": "forestry", "livestock": "livestock",
-    }.get(sector, sector)
-    return {"sector": sector_en, "contract_details": f"{symbol} futures ({sector_en} sector)"}
+    sector_name = SECTOR_NAMES.get(sector, sector)
+    return {"sector": sector_name, "contract_details": f"{symbol} ({sector_name})"}
 
 
 def _load_covariate_menu() -> dict[str, Any]:
@@ -298,101 +263,80 @@ def _build_state(
     verdict_history: list[dict[str, Any]] | None,
     covariate_menu: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """构建 Laya System-1 的 State（英文，避免中文导致超时）。"""
+    """构建 TypeSafe judge 的 State。"""
     symbol_profile = _load_symbol_profile(symbol)
-
-    # v3: 过滤 predicted_direction 中文 + 空壳回退
-    raw_pd = str(proposal.get("predicted_direction") or "")  # Handle explicit null, force string
-    stripped_pd = _strip_chinese(raw_pd)
-    final_pd = "" if _is_shell_pd(stripped_pd) else stripped_pd
-
-    # 提取关键字段，构建英文描述（不包含中文 mechanism/symbol_fit）
-    proposal_summary = {
-        "proposal_id": proposal.get("proposal_id", ""),
-        "symbol": proposal.get("symbol", symbol),
-        "cov_override": proposal.get("cov_override", ""),
-        "covariate_family": proposal.get("covariate_family", ""),
-        "predicted_direction": final_pd,
-    }
-
     return {
-        "language": "en",    # best-effort: 未证实 Laya 服务端识别此字段
         "symbol": symbol,
-        "proposal_summary": proposal_summary,
-        "sector": symbol_profile.get("sector", "commodity"),
-        "contract_details": symbol_profile.get("contract_details", "futures contract"),
-        # 跳过中文 covariate_menu 和 recent_verdicts_summary（避免 Laya 超时）
-        # "covariate_menu": covariate_menu or _load_covariate_menu(),
-        # "recent_verdicts_summary": _extract_relevant_history(verdict_history, symbol),
+        "proposal": proposal,
+        "sector": symbol_profile.get("sector", "未知"),
+        "contract_details": symbol_profile.get("contract_details", ""),
+        "covariate_menu": covariate_menu or _load_covariate_menu(),
+        "recent_verdicts_summary": _extract_relevant_history(verdict_history, symbol),
     }
+
 
 def _get_laya_base_url() -> str:
-    """获取 Laya 服务 URL。优先使用环境变量，默认局域网地址。"""
-    return _env_nonempty("LAYA_BASE_URL") or "http://10.1.1.67:8000"
+    """获取 Laya 服务 URL。优先使用环境变量，默认 Tailscale 地址。"""
+    return _env_nonempty("LAYA_BASE_URL") or "http://100.96.19.116:8000"
 
 
-def _call_laya(state: dict[str, Any], timeout: float = 60.0) -> Any:
-    """调用 Laya System-1 服务（HTTP POST /v1/systemone）。"""
+def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -> Any:
+    """调用 Laya 服务（替代 TypeSafe SDK）。Laya 使用相同的 /v1/systemone 协议。"""
     import requests
 
     base_url = _get_laya_base_url()
     url = f"{base_url}/v1/systemone"
 
+    # 构建请求 payload（兼容 TypeSafe SDK 格式）
     payload = {
-        "model": "laya-rl-agent",
-        "language": "en",    # best-effort: 未证实服务端识别，不阻塞成功率验收
+        "model": "jev-latest",
         "state": state,
         "questions": {
             "mechanism_plausibility": {
                 "type": "noul",
                 "instructions": (
-                    f"Based on the characteristics of {state.get('symbol', 'this')} futures "
-                    f"({state.get('sector', 'commodity')} sector, {state.get('contract_details', 'contract')}), "
-                    f"is the mechanism explanation of this covariate proposal plausible and supported by economic logic?"
+                    f"基于 {state['symbol']} 的品种特征（{state['sector']}板块，"
+                    f"{state['contract_details']}），该协变量提案的机制解释是否合理"
+                    f"且有经济逻辑支撑？"
                 ),
             },
             "novelty_vs_redundancy": {
                 "type": "choice",
                 "instructions": (
-                    f"How does this proposal relate to existing covariates for {state.get('symbol', 'this')}? "
-                    f"(see covariate_menu and recent_verdicts_summary)"
+                    f"该提案与 {state['symbol']} 已有协变量的关系"
+                    f"（见 covariate_menu 和 recent_verdicts_summary）"
                 ),
                 "criteria": {
-                    "novel": "Entirely new mechanism, orthogonal to existing covariates",
-                    "extension": "Known mechanism with new parameters or new product adaptation",
-                    "redundant": "Highly overlapping with existing covariates (mechanism or correlation >0.8)",
-                    "invalid": "Mechanism does not exist or logic is flawed",
+                    "novel": "全新机制，与现有协变量正交",
+                    "extension": "已知机制的新参数或新品种适配",
+                    "redundant": "与现有协变量高度重叠（机制或数值相关性>0.8）",
+                    "invalid": "机制不存在或逻辑错误",
                 },
             },
             "expected_effect_size": {
                 "type": "score",
-                "instructions": (
-                    f"Expected information contribution of this covariate to {state.get('symbol', 'this')} prediction quality"
-                ),
+                "instructions": f"预期该协变量对 {state['symbol']} 预测质量的信息量贡献",
                 "criteria": [
-                    "No new information (pure noise or fully captured)",
-                    "Weak new information (highly correlated with existing covariates, limited marginal contribution)",
-                    "Moderate new information (independent signal dimension, possible interaction effects)",
-                    "Strong new information (orthogonal dimension, high expected independent contribution)",
+                    "无新增信息（纯噪声或已完全捕获）",
+                    "微弱新增信息（与现有协变量高度相关，边际贡献有限）",
+                    "中等新增信息（独立信号维度，可能有交互效应）",
+                    "强新增信息（正交维度，高预期独立贡献）",
                 ],
             },
         },
     }
 
+    # Laya 不需要 API key，但保留 header 以兼容
     headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
-    retryable = (429, 500, 502, 503, 504)
-    response = None
-    for attempt in range(4):
-        response = requests.post(url, json=payload, headers=headers, timeout=timeout)
-        if response.status_code not in retryable or attempt == 3:
-            break
-        import time as _time
-        _time.sleep(min(2 ** attempt, 10))
+    response = requests.post(url, json=payload, headers=headers, timeout=timeout)
     response.raise_for_status()
 
     result_data = response.json()
 
+    # 将 Laya 响应转换为兼容 TypeSafe SDK 的对象
     class MockAnswer:
         def __init__(self, data):
             self.noul = data.get("noul")
@@ -419,23 +363,27 @@ def _prescreen_impl(
     covariate_menu: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """预筛核心实现。异常分类：超时→degraded，鉴权→error，其他→error。"""
+    api_key = _get_typesafe_api_key()
+    if not api_key:
+        return _fallback_result(proposal, symbol, note="TypeSafe 未启用")
+
     if _check_circuit():
-        return _fallback_result(proposal, symbol, note="Laya 短路降级中")
+        return _fallback_result(proposal, symbol, note="TypeSafe 短路降级中")
 
     state = _build_state(proposal, symbol, verdict_history, covariate_menu)
 
     try:
-        result = _call_laya(state, timeout=60.0)
-    except (TimeoutError, TypeSafeTimeoutError, RequestsTimeout) as e:
+        result = _call_typesafe(state, api_key, timeout=5.0)
+    except (TimeoutError, TypeSafeTimeoutError) as e:
         _record_timeout()
-        logger.warning("Laya API 超时: %s", e)
-        return _fallback_result(proposal, symbol, status="degraded", note="Laya API 超时")
+        logger.warning("TypeSafe API 超时: %s", e)
+        return _fallback_result(proposal, symbol, status="degraded", note="TypeSafe API 超时")
     except AuthenticationError as e:
-        logger.error("Laya API 鉴权失败: %s", e)
-        return _fallback_result(proposal, symbol, status="error", note="Laya API 鉴权失败")
+        logger.error("TypeSafe API 鉴权失败: %s", e)
+        return _fallback_result(proposal, symbol, status="error", note="TypeSafe API 鉴权失败")
     except Exception as e:
-        logger.exception("Laya API 调用失败: %s", e)
-        return _fallback_result(proposal, symbol, status="error", note=f"Laya API 返回异常: {e}")
+        logger.exception("TypeSafe API 调用失败: %s", e)
+        return _fallback_result(proposal, symbol, status="error", note=f"TypeSafe API 返回异常: {e}")
 
     answers = result.answers
     plausibility = answers["mechanism_plausibility"].noul
@@ -468,12 +416,11 @@ def prescreen_proposal(
     verdict_history: list[dict[str, Any]] | None = None,
     covariate_menu: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Laya 预筛一个协变量提案。全量异常保护。"""
+    """TypeSafe 预筛一个协变量提案。全量异常保护。"""
     try:
         return _prescreen_impl(proposal, symbol, verdict_history, covariate_menu)
     except Exception as e:
-        proposal_id = proposal.get("proposal_id", "?")
-        logger.exception(f"prescreen 异常 {proposal_id}: {e}")
+        logger.exception("TypeSafe 预筛未预期异常，防御性降级")
         return _fallback_result(
             proposal, symbol,
             status="error",

@@ -16,7 +16,7 @@
 | `task_FM/task.yaml` | 修改 — TYPESAFE_API_KEY 环境变量 |
 | `scripts/aligned_slow_loop.py` | 修改 — prescreen metadata 注入 |
 | `scripts/praxist_supervisor.py` | 修改 — prescreen 触发端调用 |
-| `scripts/validate_laya_prescreen.py` | 新增 — 人工验证脚本 |
+| `scripts/validate_typesafe_prescreen.py` | 新增 — 人工验证脚本 |
 
 ### 测试结果
 - 41 tests passed, 0 failed
@@ -77,7 +77,7 @@
 - 12 新测试
 
 **commit 98651b4** — Phase 3: Jev 判断质量追踪器
-- scripts/backfill_prescreen.py: 扫描带 prescreen 的 verdict
+- scripts/track_prescreen_quality.py: 扫描带 prescreen 的 verdict
 - 指标: 高可信过门率/skip过门率/novelty dir_acc区分度/effect_size分桶
 - 门禁 50 样本, 不足不产出调度建议
 - 输出 reports/research/prescreen_quality_report.md

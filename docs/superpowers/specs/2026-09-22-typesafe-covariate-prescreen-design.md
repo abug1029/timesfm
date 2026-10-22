@@ -5,28 +5,7 @@
 > **作者**: Claude (architectural brainstorming)
 > **来源**: TypeSafe × FM_a 集成探索 — P0 层位
 
----> **已迁移**: 本文档描述原始 TypeSafe/Jev 设计（2026-09-22），
-实际实现已于 2026-10-17 迁移到 Laya System-1。
-> 当前实现见 `cascade/typesafe_prescreen.py` 和 `docs/praxist_llm_env.md`。
-> 
-> 关键变更：
-> - 调用方式：TypeSafe SDK -> Laya HTTP POST
-> - 模型：`jev-latest` -> `laya-rl-agent`
-> - API Key：需要 -> 不需要
-> - State 语言：中文/英文混合 -> 必须英文
-> - 超时：5s -> 60s
-
-
-> **已迁移**: 本文档描述原始 TypeSafe/Jev 设计（2026-09-22），实际实现已于 2026-10-17 迁移到 Laya System-1。
-> 当前实现见  和 。
-> 
-> 关键变更：
-> - 调用方式：TypeSafe SDK → Laya HTTP POST
-> - 模型： → 
-> - API Key：需要 → 不需要
-> - State 语言：中文/英文混合 → 必须英文
-> - 超时：5s → 60s
-
+---
 
 ## 1. 动机
 

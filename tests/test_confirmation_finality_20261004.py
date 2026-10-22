@@ -255,7 +255,7 @@ def test_harvest_outer_loop_shutdown_returns_empty(monkeypatch, tmp_path):
         d = tmp_path / "task_FM" / "experiments" / name / "results" / "gen_0" / "proposals"
         d.mkdir(parents=True)
         (d / "jd_vor.json").write_text(
-            json.dumps({"schema": "fm.hypothesis_proposal.v1", "proposal_id": "jd_vor", "symbol": "jd",
+            json.dumps({"schema": "fm.hypothesis_proposal.v1", "symbol": "jd",
                         "cov_override": "vor", "mechanism": "x" * 60}), encoding="utf-8")
 
     # 对照组：未置标志时必须能产出候选（否则下面的断言空转）

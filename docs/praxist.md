@@ -90,25 +90,6 @@ CLI：`praxist start|resume|stop|status|monitor|doctor|resolve`。本仓入口�
 
 总线全是只追加文件。一个 **cycle** = 一次已结束的 Praxist run + harvest（有入队则再把慢环抽干）。不是 5 分钟 poll。`phase` ∈ `{fast, slow, wait_quota}`；慢环没抽干时禁止开下一轮快环。
 
-### 信息流与语言
-
-```
-S1 监督环（0 token）
-  ↓ 启动 praxist（CLI argv）
-S2 快环（Praxist peer agents，Claude SDK）
-  ↓ 读取：prompt 模板（英文）+ known_verdicts.inc.md（中文）+ covariate_menu.inc.md（中文）
-  ↓ 输出：proposal JSON（中文字段：mechanism、symbol_fit、kill_condition 等）
-S1 监督环收割（sup_harvest.py::harvest_proposals）
-  ↓ 调用 Laya 预筛（cascade/typesafe_prescreen.py）— 需翻译成英文
-  ↓ 入队慢环
-S3 慢环（aligned_slow_loop.py）
-  ↓ walk-forward 回测 → 写 verdict（中文）到 aligned_verdicts.jsonl
-S1 监督环物化（sup_evidence.py::materialize_known_verdicts）
-  ↓ 更新 known_verdicts.inc.md → 下一轮 S2 读取
-```
-
-**关键**：peer 在**快环**（S2），不是慢环。慢环只做回测验证。
-
 ### 快环（2026-09-08 方案 A 起）
 
 Peer **是假设作者，不是评估器**。禁止跑 `evaluations/fm_eval/run.py`，禁止加载 TimesFM。n=3~6 的诊断 PF 统计上不可信（实测 ss+ccl 诊断 PF=10.1，慢环真相 1.02），还浪费一次模型加载。
@@ -126,7 +107,7 @@ Peer 第一件事：至少写 2 份假设到
 1. 用 `scripts/praxist_goal.yaml` 的 DSL 判定成功 / 预算
 2. 配额窗够才 `praxist start` / `resume`；429 则 stop。同提供商、同 model id 解封后 **resume 同一 run**；failover 且 model id 不同时允许新 `run_dir`
 3. run 结束后 `harvest_proposals`：校验（含 DEAD/HOLD、`failure_delta`）→ 去重 → 分层选座 → 入慢环队列
-4. **Laya 预筛**（可选，软建议）：连 peer 提案同时 `_prescreen_async`（fire-and-forget）调 Laya System-1 三问（机制可信度/新颖度/预期效果），写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度分（invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5）。**永远不阻断慢环回测**；Laya 未启用或降级时静默跳过。降权因异步滞后一轮生效。详见 `cascade/typesafe_prescreen.py`。
+4. **TypeSafe Jev 预筛**（可选，软建议）：连 peer 提案同时 `_prescreen_async`（fire-and-forget）调 TypeSafe System One 三问（机制可信度/新颖度/预期效果），写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度分（invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5）。**永远不阻断慢环回测**；无 `TYPESAFE_API_KEY` 或降级时静默跳过。降权因异步滞后一轮生效。详见 `cascade/typesafe_prescreen.py` 与记忆 `fm-typesafe-prescreen`。
 5. 有货立刻拉慢环
 5. 物化 `known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose）与 `covariate_menu.inc.md`，喂给下一代。提示词先读证据，不要优先波动率族。
 

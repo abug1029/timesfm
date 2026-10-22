@@ -143,7 +143,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 - 非 dry-run 每轮会 `scripts/sup_evidence.py` 的 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`（品种表不截断；Effective clues 从 snapshot 现场算过门族/近门/弱族；禁止再提案最多 80 条；`verdicts_truncated=<N>` 行标记被截断的裁决计数——2026-09-28 M4）。
 - `prompt_base.jinja2`：先读证据再写提案；`{% include 'known_verdicts.inc.md' ignore missing %}` 与 `covariate_menu.inc.md`。**不要**再写「优先波动率族」。
 - **红线：** 只有 `aligned_slow_loop.py` 可写 `aligned_verdicts.jsonl`。
-- **Laya 预筛（2026-09-22，可选增强）：** harvest 每个合格提案 `_prescreen_async`（fire-and-forget daemon 线程）调 Laya 三问，原子写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度降权/奖励；**永远不阻断慢环回测**。Laya 未启用、超时、降级时静默跳过（`skip_suggested=None`）。降权因异步滞后一轮收割生效。慢环读同一文件注入 `verdict.metadata.prescreen`。验证：`python scripts/validate_laya_prescreen.py`；质量门禁：`python scripts/backfill_prescreen.py`。
+- **TypeSafe Jev 预筛（2026-09-22，可选增强）：** harvest 每个合格提案 `_prescreen_async`（fire-and-forget daemon 线程）调 TypeSafe 三问，原子写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度降权/奖励；**永远不阻断慢环回测**。缺 `TYPESAFE_API_KEY`、超时、降级时静默跳过（`skip_suggested=None`）。降权因异步滞后一轮收割生效。慢环读同一文件注入 `verdict.metadata.prescreen`。验证：`python scripts/validate_typesafe_prescreen.py`；质量门禁：`python scripts/track_prescreen_quality.py`。
 - materializer 三态已区分 `v2_pass` / `hard-gate-but-losing` / 变体级 `DEAD`。过硬门但未过 FDR **不是** already solved。`dir_acc` 略低于 0.52 仍 `gate_pass=True` 是品种自适应门槛，不是 bug。
 
 ### 当前 goal（以 `scripts/praxist_goal.yaml` 为准）
@@ -323,63 +323,8 @@ bash scripts/diagnose_three_loop.sh
 | `assets_archive_error: Permission denied: '/workspace'` | 旧 Grok 盒硬编码路径残留在 `praxist_assets_archive.py`，已 catch 非阻塞；每 cycle ~2 次，待改为仓库相对路径 |
 | 事件流出现 uptime 极短的 `supervisor_stopped/unexpected_exit` | 2026-09-09 前是 import 副作用假事件（当库 import 触发 atexit）；已修为仅 `main()` 武装 handler。pytest 污染走 `_patch_paths` 隔离（EVENTS_PATH 等落 tmp） |
 | `sample_retest_enqueued` 事件后队列没跑 | 确认当时 `phase=slow`；复测行走同一慢环，与普通候选无差别 |
-| prescreen 事件 `[WARN]...失败` / 提案无 `.prescreen.json` | **非故障**：Laya 未启用或 API 超时/降级时预筛静默跳过（软建议模式）。若需启用，配置 `LAYA_BASE_URL` 环境变量（模型 `laya-rl-agent`）。幂等守卫保证已有 `status=success` 结果不重复付费调用 |
-| prescreen 超时 >60s | **Laya 需要英文输入**：`state` 和 `instructions` 必须是英文，中文会导致 Laya 处理超时（实测 >60s）。2026-10-17 已将 `_call_laya()` 中的 instructions/criteria 翻译为英文，实测 6.5s 完成。 |
+| prescreen 事件 `[WARN]...失败` / 提案无 `.prescreen.json` | **非故障**：缺 `TYPESAFE_API_KEY` 或 API 超时/降级时预筛静默跳过（软建议模式）。若需启用，在 `.env.praxist` 设 `TYPESAFE_API_KEY`（模型 `jev-latest`）。幂等守卫保证已有 `status=success` 结果不重复付费 |
 | `[degraded] KB PF all null` 启动警告 | 已知退化，不影响核心功能。L1 ECONOMIC_VERDICT.json 缺失（2026-07-25 产物未版本化后被清理），KB 处于 `schemes_snapshot_no_L1` 模式。PF ratio gate 事实休眠（v23 不产出 PF）。详见 `docs/superpowers/specs/2026-09-20-kb-pf-degraded-fix-spec.md` |
-
-## 持续监控与指标采集（2026-10-20，Phase 3 Task 6）
-
-**监控脚本**（提案评估优化系统 Phase 3 产物）：
-
-- `scripts/monitor_metrics.py` — 每日指标采集 + 红线告警 + 报告生成
-  - 6 个核心指标：冗余率、唯一 variant 覆盖率、gate pass 率、高质量率、prescreen 成功率、组合覆盖率
-  - 红线检查：Laya 权重更新、队列重复 variant、扇出口径混用
-  - 报告格式：JSON / Markdown
-  - 历史趋势：`data/cache/metrics_history/`（按日期存储）
-
-- `scripts/generate_weekly_report.py` — 周报生成（趋势分析 + 建议）
-
-**手动运行**：
-```bash
-# 采集今日指标
-.venv/bin/python scripts/monitor_metrics.py collect --output metrics.json
-
-# 生成 Markdown 报告
-.venv/bin/python scripts/monitor_metrics.py report --format markdown --output report.md
-
-# 检查红线
-.venv/bin/python scripts/monitor_metrics.py check-redlines
-
-# 生成周报（最近 7 天）
-.venv/bin/python scripts/generate_weekly_report.py --days 7 --output weekly.md
-```
-
-**自动化配置**（已部署，crontab 条目）：
-```bash
-# 每日 02:00 采集指标
-0 2 * * * mkdir -p /home/abug/timesfm/logs && flock -n /tmp/tfm_mon.lock timeout 1800s bash -c 'cd /home/abug/timesfm && PYTHONIOENCODING=utf-8 .venv/bin/python scripts/monitor_metrics.py collect' >> logs/monitor_metrics.log 2>&1
-
-# 每周一 03:00 生成周报
-0 3 * * 1 cd /home/abug/timesfm && PYTHONIOENCODING=utf-8 .venv/bin/python scripts/generate_weekly_report.py --days 7 >> logs/weekly_report.log 2>&1
-```
-
-**当前系统状态**（2026-10-21 实时监控）：
-- ✅ 冗余率: 0.0% (目标 <10%)
-- ✅ 组合覆盖率: 66.2% (目标 >30%)
-- ❌ 唯一 variant 覆盖率: 18.5% (目标 >80%)
-- ❌ Gate pass 率: 34.1% (目标 >50%)
-- ❌ 高质量率: 28.3% (目标 >40%)
-- ❌ Prescreen 成功率: 28.3% (目标 >80%)
-
-**整体状态**: ⚠️ WARNING (4/6 指标低于目标)
-
-**相关文档**：
-- `docs/superpowers/changelogs/2026-10-22-phase2-3-praxist-integration-changelog.md` — Praxist 集成 changelog（~68%）
-- `docs/superpowers/changelogs/2026-10-20-phase2-3-execution-changelog.md` — Phase 2-3 执行 changelog
-- `docs/superpowers/reports/2026-10-21-phase2-3-integration-barriers-analysis.md` — 集成障碍分析
-- `docs/superpowers/reports/monitoring_example.md` — 监控示例报告
-
----
 
 ## 相关文件
 
@@ -391,14 +336,6 @@ bash scripts/diagnose_three_loop.sh
 - `scripts/mem_guard.py` — 全局 flock≤2 + MemAvailable 门 + RSS shed（RLIMIT_AS 默认 OFF）
 - `scripts/praxist_mem_guard_hook.py` / `install_praxist_mem_guard_hook.py` — protected_pids 强制挂钩
 - `scripts/registry_lib.py` — 队列 / verdict / snapshot
-- `scripts/monitor_metrics.py` — 每日指标采集 + 红线告警（Phase 3 Task 6）
-- `scripts/generate_weekly_report.py` — 周报生成（Phase 3 Task 6）
-- `scripts/quality_predictor.py` — 质量预测器（Phase 3 Task 4）
-- `scripts/short_window_backtest.py` — 短窗回测预筛（Phase 2 Task 2）
-- `scripts/proposal_validator.py` — 提案卫生验证（Phase 2 Task 3）
-- `scripts/generation_strategy.py` — 生成策略外环（Phase 2 Task 1）
-- `scripts/diversity_metrics.py` — 多样性指标（Phase 3 Task 5）
-- `scripts/variant_registry.py` — variant 登记（Phase 1 Task 1）
 - `scripts/goal_dsl.py` — success_condition 求值（AST 白名单）
 - `scripts/praxist_assets_archive.py` — 快/慢环资产归档（含已知 `/workspace` 硬编码噪音）
 - `docs/spec_hypothesis_driven_fast_loop_20260908.md` — 方案 A 设计（peer 机制化假设作者）
