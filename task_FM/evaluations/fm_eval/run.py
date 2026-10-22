@@ -51,9 +51,34 @@ def main():
                "variant_name": _variant_name(cand)}
         _write(out, a.output_dir)
         sys.exit(2)
+
+    # Step 0: proposal hygiene pre-gate (fail-fast, no compute wasted)
+    _plugin_dir = os.path.join(FM_ROOT, "task_FM", ".praxist", "plugins")
+    if _plugin_dir not in sys.path:
+        sys.path.insert(0, _plugin_dir)
+    try:
+        from proposal_gate.validate import validate_proposal as _step0_validate
+        _gate = _step0_validate(cand)
+        if not _gate["valid"]:
+            _out = {"status": "invalid_proposal", "reason": _gate["reason"],
+                    "variant_name": _variant_name(cand)}
+            _write(_out, a.output_dir)
+            sys.exit(3)
+    except ImportError:
+        pass  # plugin not available, skip Step 0
+
     result = do_evaluate(cand)
     _write(result["summary"], a.output_dir)
     print(json.dumps(result["summary"], ensure_ascii=False, indent=2))
+
+    # B3: Generation close hook — synthesize next agenda from feedback
+    try:
+        from scripts.hooks.on_generation_close import on_generation_close
+        from scripts.synthesize_agenda_from_feedback import load_feedback
+        _feedback = load_feedback()
+        on_generation_close(_feedback)
+    except Exception as e:
+        print(f"[eval] generation_close hook skipped: {e}", file=sys.stderr)
 
 
 def _variant_name(cand):

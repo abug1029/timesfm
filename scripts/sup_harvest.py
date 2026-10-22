@@ -1055,6 +1055,17 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
     for r in selected:
         r.pop("_family", None); r.pop("_score", None); r.pop("_tier", None)
     stats["selected"] = len(selected)
+
+    # ── Diversity alert: compare feedback family distribution vs uniform ──
+    try:
+        from diversity_alert import compute_diversity_alert
+        with open(_BANDIT_FEEDBACK_PATH, encoding="utf-8") as f:
+            feedback = [json.loads(line) for line in f if line.strip()]
+        da = compute_diversity_alert(feedback)
+        stats["diversity_alert"] = da
+    except Exception as e:
+        stats["diversity_alert"] = {"error": str(e)}
+
     return selected, stats
 
 def materialize_covariate_menu(pool, dest_path):

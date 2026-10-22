@@ -19,6 +19,7 @@ import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from diversity_alert import compute_diversity_alert
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 VERDICTS_PATH = _REPO_ROOT / "task_FM" / "config" / "aligned_verdicts.jsonl"
@@ -173,6 +174,9 @@ def collect_daily_metrics(date_str: str | None = None) -> dict:
     # 6. Combination coverage
     combo_coverage = _compute_combination_coverage(verdicts)
 
+    # 7. Diversity alert: KL divergence of cov_family distribution from uniform
+    diversity_alert = compute_diversity_alert(verdicts, key="cov_family")
+
     metrics = {
         "date": date_str,
         "redundancy_rate": round(redundancy_rate, 4),
@@ -181,6 +185,7 @@ def collect_daily_metrics(date_str: str | None = None) -> dict:
         "high_quality_rate": round(high_quality_rate, 4),
         "prescreen_success_rate": round(prescreen_success, 4),
         "combination_coverage": round(combo_coverage, 4),
+        "diversity_alert": diversity_alert,
         "raw_counts": {
             "total_verdicts": len(verdicts),
             "gate_pass": gate_pass_count,
@@ -337,10 +342,15 @@ def main():
         metrics["alerts"] = check_red_lines(metrics)
         out = json.dumps(metrics, indent=2, ensure_ascii=False)
         if args.output:
-            Path(args.output).write_text(out, encoding="utf-8")
-            print(f"Written to {args.output}")
+            out_path = Path(args.output)
         else:
-            print(out)
+            # Default: persist to metrics_history/ for cron continuity
+            history_dir = _REPO_ROOT / "data" / "cache" / "metrics_history"
+            history_dir.mkdir(parents=True, exist_ok=True)
+            date_str = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            out_path = history_dir / f"metrics_{date_str}.json"
+        out_path.write_text(out, encoding="utf-8")
+        print(f"Written to {out_path}")
 
     elif args.command == "report":
         metrics = collect_daily_metrics(date_str=args.date)
