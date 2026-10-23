@@ -497,7 +497,7 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
     v["git_rev"] = _git_rev()
     # T2/PR-B5: 消融批次标记落 verdict，供对照表按口径分组
     v["ablation_mode"] = row.get("ablation_mode") or "full"
-    # ── TypeSafe 预筛伴随文件注入 ──────────────────────
+    # ── Laya 预筛伴随文件注入 ──────────────────────
     _proposal_path = row.get("_proposal_path") or row.get("proposal_path")
     if _proposal_path:
         from pathlib import Path as _Path

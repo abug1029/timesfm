@@ -106,10 +106,10 @@ def test_prescreen_import_failure_logs_on_harvest_module(monkeypatch):
             seen.append(args)
 
     monkeypatch.setattr(sup_harvest, "logging", FakeLog())
-    monkeypatch.setitem(sys.modules, "cascade.typesafe_prescreen", None)
+    monkeypatch.setitem(sys.modules, "cascade.laya_prescreen", None)
     sup_harvest._prescreen_async({}, "/tmp/no-such.json", "rb")
     assert seen
-    assert "TypeSafe" in seen[0][0]
+    assert "Laya" in seen[0][0]
 
 
 def test_family_for_stays_nested_over_pool():

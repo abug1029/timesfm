@@ -15,7 +15,7 @@ class TestSlowLoopPrescreenInjection:
 
     def test_injection_with_valid_prescreen(self, tmp_path):
         """有效的 prescreen 文件被正确注入到 verdict metadata"""
-        from cascade.typesafe_prescreen import write_prescreen_result
+        from cascade.laya_prescreen import write_prescreen_result
 
         proposal_path = str(tmp_path / "proposals" / "p_001.json")
         prescreen_data = {

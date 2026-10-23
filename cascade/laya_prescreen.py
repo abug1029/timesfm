@@ -1,4 +1,4 @@
-"""cascade/typesafe_prescreen.py — TypeSafe 协变量提案预筛（软建议模式）"""
+"""cascade/laya_prescreen.py — Laya 协变量提案预筛（软建议模式）"""
 
 import json
 import logging
@@ -16,15 +16,15 @@ logger = logging.getLogger(__name__)
 try:
     from typesafe_sdk import (
         TypeSafeAuthenticationError as AuthenticationError,
-        TypeSafeAPITimeoutError as TypeSafeTimeoutError,
+        TypeSafeAPITimeoutError as LayaTimeoutError,
     )
 except ImportError:
     class AuthenticationError(Exception):
-        """TypeSafe SDK 鉴权失败异常（本地兜底）"""
+        """Laya SDK 鉴权失败异常（本地兜底）"""
         pass
 
-    class TypeSafeTimeoutError(TimeoutError):
-        """TypeSafe SDK 超时异常（本地兜底）"""
+    class LayaTimeoutError(TimeoutError):
+        """Laya SDK 超时异常（本地兜底）"""
         pass
 
 
@@ -42,7 +42,7 @@ def _fallback_result(
     proposal: dict[str, Any],
     symbol: str,
     status: PrescreenStatus = "degraded",
-    note: str = "TypeSafe 未启用或降级",
+    note: str = "Laya 未启用或降级",
 ) -> dict[str, Any]:
     """标准降级对象。skip_suggested 永远为 None，防止统计污染。"""
     return {
@@ -238,7 +238,7 @@ def _serialize_raw_answers(answers: dict) -> dict[str, Any]:
 
 # ── 内部辅助 ────────────────────────────────────────
 
-def _get_typesafe_api_key() -> str | None:
+def _get_laya_api_key() -> str | None:
     return _env_nonempty("TYPESAFE_API_KEY")
 
 
@@ -264,7 +264,7 @@ def _build_state(
     verdict_history: list[dict[str, Any]] | None,
     covariate_menu: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """构建 TypeSafe judge 的 State。"""
+    """构建 Laya judge 的 State。"""
     symbol_profile = _load_symbol_profile(symbol)
     return {
         "symbol": symbol,
@@ -284,14 +284,14 @@ def _get_laya_endpoints() -> list[str]:
     return ["http://10.1.1.67:8000", "http://100.96.19.116:8000"]
 
 
-def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -> Any:
-    """调用 Laya 服务（替代 TypeSafe SDK）。双地址 failover，两个都不可达才报错。"""
+def _call_laya(state: dict[str, Any], api_key: str, timeout: float = 30.0) -> Any:
+    """调用 Laya 服务。双地址 failover，两个都不可达才报错。"""
     import requests
 
     endpoints = _get_laya_endpoints()
     last_error: Exception | None = None
 
-    # 构建请求 payload（兼容 TypeSafe SDK 格式）
+    # 构建请求 payload
     payload = {
         "model": "laya-rl-agent",
         "state": state,
@@ -346,7 +346,7 @@ def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -
             global _laya_rr_idx
             _laya_rr_idx = (_laya_rr_idx + attempt + 1) % len(endpoints)
 
-            # 将 Laya 响应转换为兼容 TypeSafe SDK 的对象
+            # 将 Laya 响应转换为标准 answer 对象
             class MockAnswer:
                 def __init__(self, data):
                     self.noul = data.get("noul")
@@ -378,27 +378,27 @@ def _prescreen_impl(
     covariate_menu: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """预筛核心实现。异常分类：超时→degraded，鉴权→error，其他→error。"""
-    api_key = _get_typesafe_api_key()
+    api_key = _get_laya_api_key()
     if not api_key:
-        return _fallback_result(proposal, symbol, note="TypeSafe 未启用")
+        return _fallback_result(proposal, symbol, note="Laya 未启用")
 
     if _check_circuit():
-        return _fallback_result(proposal, symbol, note="TypeSafe 短路降级中")
+        return _fallback_result(proposal, symbol, note="Laya 短路降级中")
 
     state = _build_state(proposal, symbol, verdict_history, covariate_menu)
 
     try:
-        result = _call_typesafe(state, api_key, timeout=5.0)
-    except (TimeoutError, TypeSafeTimeoutError) as e:
+        result = _call_laya(state, api_key, timeout=5.0)
+    except (TimeoutError, LayaTimeoutError) as e:
         _record_timeout()
-        logger.warning("TypeSafe API 超时: %s", e)
-        return _fallback_result(proposal, symbol, status="degraded", note="TypeSafe API 超时")
+        logger.warning("Laya API 超时: %s", e)
+        return _fallback_result(proposal, symbol, status="degraded", note="Laya API 超时")
     except AuthenticationError as e:
-        logger.error("TypeSafe API 鉴权失败: %s", e)
-        return _fallback_result(proposal, symbol, status="error", note="TypeSafe API 鉴权失败")
+        logger.error("Laya API 鉴权失败: %s", e)
+        return _fallback_result(proposal, symbol, status="error", note="Laya API 鉴权失败")
     except Exception as e:
-        logger.exception("TypeSafe API 调用失败: %s", e)
-        return _fallback_result(proposal, symbol, status="error", note=f"TypeSafe API 返回异常: {e}")
+        logger.exception("Laya API 调用失败: %s", e)
+        return _fallback_result(proposal, symbol, status="error", note=f"Laya API 返回异常: {e}")
 
     answers = result.answers
     plausibility = answers["mechanism_plausibility"].noul
@@ -431,11 +431,11 @@ def prescreen_proposal(
     verdict_history: list[dict[str, Any]] | None = None,
     covariate_menu: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """TypeSafe 预筛一个协变量提案。全量异常保护。"""
+    """Laya 预筛一个协变量提案。全量异常保护。"""
     try:
         return _prescreen_impl(proposal, symbol, verdict_history, covariate_menu)
     except Exception as e:
-        logger.exception("TypeSafe 预筛未预期异常，防御性降级")
+        logger.exception("Laya 预筛未预期异常，防御性降级")
         return _fallback_result(
             proposal, symbol,
             status="error",

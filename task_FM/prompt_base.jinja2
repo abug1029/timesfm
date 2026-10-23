@@ -28,13 +28,13 @@ cat > {{ results_dir | default("<run_dir>/results") }}/gen_{{ gen_id | default(0
   "symbol": "p",
   "cov_override": "oi",
   "covariate_family": "positioning",
-  "mechanism": "棕榈油套保盘与进口窗口使持仓量(oi)能领先现货紧缺：增仓伴随涨价时产业多头进场，该机制在 p 上有进口到港与压榨利润支撑...(≥40字,禁模板)",
-  "symbol_fit": "为何是 p: 棕榈油进口依赖度高，持仓变化反映贸易商库存预期，比纯波动率压缩更贴供需。",
+  "mechanism": "Open interest changes confirm price trends for palm oil as commercial hedgers and import window dynamics lead spot shortages; rising OI with rising prices signals industrial longs entering, a mechanism amplified by crushing margins on p...",
+  "symbol_fit": "Why p: palm oil import dependency means OI changes reflect trader inventory expectations, more fundamental than pure volatility compression.",
   "predicted_direction": "oi_up_with_price -> long",
-  "kill_condition": "aligned dir_acc 低于该品种 adaptive effective_min 即放弃",
-  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)",
-  "failure_delta": "仅当本 symbol 或本 cov 已有 gate_pass=False 时必填：点名失败 variant_id，写清这次机制差在哪（≥20字）",
-  "success_delta": "仅当本 symbol 与本 cov 组合已有 gate_pass=True 且窗口未平移时必填：写清相对上次成功的增量（≥20字）"
+  "kill_condition": "aligned dir_acc below this symbol adaptive effective_min => abandon",
+  "promote_condition": "aligned gate_pass AND fdr_pass (DirAcc gate)",
+  "failure_delta": "Required if this symbol or cov already has gate_pass=False: name the failed variant_id and explain what differs this time (>=20 chars)",
+  "success_delta": "Required if this symbol+cov combo already has gate_pass=True and window unchanged: explain the incremental change (>=20 chars)"
 }
 JSON
 ```
@@ -81,6 +81,34 @@ metrics/notes；如需在 mechanism 叙述中提及旧结果，只能带
   "tree_id": "<tree_id from 未停止的树>"
 }
 ```
+
+
+## CRITICAL: English-Only Output Constraint
+
+ALL proposal text fields MUST be written in English. This is a hard constraint, not a suggestion.
+
+Forbidden in ANY proposal field:
+- Chinese characters (任何中文字符)
+- Japanese characters (日本語)
+- Korean characters (한국어)
+
+Required language: English only for:
+- mechanism (>=40 chars, English)
+- symbol_fit (English)
+- predicted_direction (English)
+- kill_condition (English)
+- promote_condition (English)
+- failure_delta / success_delta (English)
+- All other text fields
+
+Rationale: Downstream systems (Laya prescreen, evaluator, audit trail) require English-only input.
+Chinese text in proposals will be REJECTED at the evaluator Step 0 gate.
+
+Example (CORRECT):
+  mechanism: "Open interest changes confirm price trends for sugar futures as commercial hedgers..."
+
+Example (WRONG - will be rejected):
+  mechanism: "白糖作为软商品，其持仓量变化若与价格同向则反映套保单与投机资金共振..."
 
 ## Covariate pool (your valid menu, with mechanisms)
 {% include 'covariate_menu.inc.md' ignore missing %}
