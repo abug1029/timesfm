@@ -143,7 +143,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 - 非 dry-run 每轮会 `scripts/sup_evidence.py` 的 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`（品种表不截断；Effective clues 从 snapshot 现场算过门族/近门/弱族；禁止再提案最多 80 条；`verdicts_truncated=<N>` 行标记被截断的裁决计数——2026-09-28 M4）。
 - `prompt_base.jinja2`：先读证据再写提案；`{% include 'known_verdicts.inc.md' ignore missing %}` 与 `covariate_menu.inc.md`。**不要**再写「优先波动率族」。
 - **红线：** 只有 `aligned_slow_loop.py` 可写 `aligned_verdicts.jsonl`。
-- **TypeSafe Jev 预筛（2026-09-22，可选增强）：** harvest 每个合格提案 `_prescreen_async`（fire-and-forget daemon 线程）调 TypeSafe 三问，原子写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度降权/奖励；**永远不阻断慢环回测**。缺 `TYPESAFE_API_KEY`、超时、降级时静默跳过（`skip_suggested=None`）。降权因异步滞后一轮收割生效。慢环读同一文件注入 `verdict.metadata.prescreen`。验证：`python scripts/validate_typesafe_prescreen.py`；质量门禁：`python scripts/track_prescreen_quality.py`。
+- **Laya 预筛（可选增强）：** harvest 每个合格提案 `_prescreen_async`（fire-and-forget daemon 线程）调 Laya 三问，原子写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度降权/奖励；**永远不阻断慢环回测**。双端点（`10.1.1.67:8000` + `100.96.19.116:8000`）都不可达、超时、降级时静默跳过（`skip_suggested=None`）。降权因异步滞后一轮收割生效。慢环读同一文件注入 `verdict.metadata.prescreen`。验证：`python scripts/validate_laya_prescreen.py`；质量门禁：`python scripts/track_prescreen_quality.py`。
 - materializer 三态已区分 `v2_pass` / `hard-gate-but-losing` / 变体级 `DEAD`。过硬门但未过 FDR **不是** already solved。`dir_acc` 略低于 0.52 仍 `gate_pass=True` 是品种自适应门槛，不是 bug。
 
 ### 当前 goal（以 `scripts/praxist_goal.yaml` 为准）
@@ -323,7 +323,7 @@ bash scripts/diagnose_three_loop.sh
 | `assets_archive_error: Permission denied: '/workspace'` | 旧 Grok 盒硬编码路径残留在 `praxist_assets_archive.py`，已 catch 非阻塞；每 cycle ~2 次，待改为仓库相对路径 |
 | 事件流出现 uptime 极短的 `supervisor_stopped/unexpected_exit` | 2026-09-09 前是 import 副作用假事件（当库 import 触发 atexit）；已修为仅 `main()` 武装 handler。pytest 污染走 `_patch_paths` 隔离（EVENTS_PATH 等落 tmp） |
 | `sample_retest_enqueued` 事件后队列没跑 | 确认当时 `phase=slow`；复测行走同一慢环，与普通候选无差别 |
-| prescreen 事件 `[WARN]...失败` / 提案无 `.prescreen.json` | **非故障**：缺 `TYPESAFE_API_KEY` 或 API 超时/降级时预筛静默跳过（软建议模式）。若需启用，在 `.env.praxist` 设 `TYPESAFE_API_KEY`（模型 `jev-latest`）。幂等守卫保证已有 `status=success` 结果不重复付费 |
+| prescreen 事件 `[WARN]...失败` / 提案无 `.prescreen.json` | **非故障**：缺 `TYPESAFE_API_KEY` 或 API 超时/降级时预筛静默跳过（软建议模式）。若需启用，在 `.env.praxist` 设 `LAYA_BASE_URL`（模型 `laya-rl-agent`，强制 `language: en`）。幂等守卫保证已有 `status=success` 结果不重复付费 |
 | `[degraded] KB PF all null` 启动警告 | 已知退化，不影响核心功能。L1 ECONOMIC_VERDICT.json 缺失（2026-07-25 产物未版本化后被清理），KB 处于 `schemes_snapshot_no_L1` 模式。PF ratio gate 事实休眠（v23 不产出 PF）。详见 `docs/superpowers/specs/2026-09-20-kb-pf-degraded-fix-spec.md` |
 
 ## 相关文件
