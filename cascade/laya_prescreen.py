@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import time
+
+import requests
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -26,6 +28,11 @@ except ImportError:
     class LayaTimeoutError(TimeoutError):
         """Laya SDK 超时异常（本地兜底）"""
         pass
+
+
+class LayaUnavailableError(Exception):
+    """Laya 服务不可用（503 / 队列满）。触发熔断，不试第二端点。"""
+    pass
 
 
 # ── 项目根路径 ──────────────────────────────────────
@@ -209,6 +216,17 @@ def _record_success():
     _circuit_until = None
 
 
+def _record_failure(reason: str) -> None:
+    """统一 failure 入口。503 / timeout / ConnectionError 都走这里。"""
+    global _consecutive_timeouts, _circuit_until
+    _consecutive_timeouts += 1
+    if _consecutive_timeouts >= 3:
+        _circuit_until = time.time() + 600
+        logger.warning("Laya prescreen: 连续 3 次 failure（%s），开启 10 分钟短路降级", reason)
+    else:
+        logger.warning("Laya prescreen failure (%s): consecutive=%d", reason, _consecutive_timeouts)
+
+
 def _reset_circuit_state() -> None:
     """仅供单元测试重置模块级熔断状态。"""
     global _consecutive_timeouts, _circuit_until
@@ -286,7 +304,6 @@ def _get_laya_endpoints() -> list[str]:
 
 def _call_laya(state: dict[str, Any], api_key: str, timeout: float = 30.0) -> Any:
     """调用 Laya 服务。双地址 failover，两个都不可达才报错。"""
-    import requests
 
     endpoints = _get_laya_endpoints()
     last_error: Exception | None = None
@@ -362,11 +379,25 @@ def _call_laya(state: dict[str, Any], api_key: str, timeout: float = 30.0) -> An
                     }
 
             return MockResult(result_data)
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 503:
+                # 503 = 共享队列满，不试第二端点
+                raise LayaUnavailableError(f"503 from {endpoint}") from e
+            last_error = e
+            logger.warning("Laya endpoint %s HTTP error (non-503): %s", endpoint, e)
+            continue
+        except requests.Timeout as e:
+            last_error = e
+            logger.warning("Laya endpoint %s timeout: %s", endpoint, e)
+            continue
         except Exception as e:
             last_error = e
             logger.warning("Laya endpoint %s failed: %s", endpoint, e)
             continue
 
+    # 双端点皆失败：timeout 升为 LayaTimeoutError，否则 ConnectionError
+    if isinstance(last_error, requests.Timeout):
+        raise LayaTimeoutError(f"All Laya endpoints timed out: {last_error}") from last_error
     raise ConnectionError(f"All Laya endpoints unreachable: {last_error}")
 
 
@@ -389,15 +420,25 @@ def _prescreen_impl(
 
     try:
         result = _call_laya(state, api_key, timeout=5.0)
-    except (TimeoutError, LayaTimeoutError) as e:
-        _record_timeout()
-        logger.warning("Laya API 超时: %s", e)
-        return _fallback_result(proposal, symbol, status="degraded", note="Laya API 超时")
+    except LayaUnavailableError as e:
+        _record_failure("503_unavailable")
+        logger.warning("Laya 503: %s", e)
+        return _fallback_result(proposal, symbol, status="degraded", note=f"Laya 503 不可用: {e}")
+    except (TimeoutError, LayaTimeoutError, requests.Timeout) as e:
+        # 保留裸 TimeoutError 防回归（现有测试 mock 抛裸 TimeoutError）
+        _record_failure("timeout")
+        logger.warning("Laya timeout: %s", e)
+        return _fallback_result(proposal, symbol, status="degraded", note=f"Laya API 超时: {e}")
+    except ConnectionError as e:
+        _record_failure("connection_error")
+        logger.warning("Laya connection error: %s", e)
+        return _fallback_result(proposal, symbol, status="degraded", note=f"Laya 连接失败: {e}")
     except AuthenticationError as e:
-        logger.error("Laya API 鉴权失败: %s", e)
-        return _fallback_result(proposal, symbol, status="error", note="Laya API 鉴权失败")
+        logger.error("Laya auth error: %s", e)
+        return _fallback_result(proposal, symbol, status="error", note=f"Laya API 鉴权失败: {e}")
     except Exception as e:
-        logger.exception("Laya API 调用失败: %s", e)
+        _record_failure("unknown")
+        logger.exception("Laya unknown failure: %s", e)
         return _fallback_result(proposal, symbol, status="error", note=f"Laya API 返回异常: {e}")
 
     answers = result.answers
