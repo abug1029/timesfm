@@ -609,8 +609,13 @@ def _should_skip_prescreen() -> bool:
         if len(_latency_window) < _MIN_SAMPLES:
             return False
         sorted_latencies = sorted(_latency_window)
-        # n=10 时 p80 ≈ sorted[-3] (第 3 高)；n=5 时 p80 ≈ sorted[-2]
-        idx = max(0, len(sorted_latencies) - 3)
+        # p80 索引：n>=10 取倒数第 3（sorted[-3]，80th 近似）；
+        # 热身期 n<10 用 int(n*0.8)-1，使 n=5→sorted[3]（严格 80th）
+        n = len(sorted_latencies)
+        if n >= 10:
+            idx = n - 3
+        else:
+            idx = int(n * 0.8) - 1
         p80 = sorted_latencies[idx]
         # 滞后逻辑：> 20s 跳过，< 15s 恢复；中间地带保持当前状态
         if p80 > _P80_THRESHOLD_SKIP:
