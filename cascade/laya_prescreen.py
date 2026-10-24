@@ -475,29 +475,38 @@ def _prescreen_impl(
     if _check_circuit():
         return _fallback_result(proposal, symbol, note="Laya 短路降级中")
 
+    if _should_skip_prescreen():
+        return _fallback_result(proposal, symbol, status="degraded", note="queue_congestion_skip (p80 > 20s)")
+
     state = _build_state(proposal, symbol, verdict_history, covariate_menu)
 
     try:
+        start_t = time.time()
         result = _call_laya(state, api_key, timeout=_TIMEOUT_PRIMARY)
     except LayaUnavailableError as e:
         _record_failure("503_unavailable")
         logger.warning("Laya 503: %s", e)
+        _record_latency(time.time() - start_t)
         return _fallback_result(proposal, symbol, status="degraded", note=f"Laya 503 不可用: {e}")
     except (TimeoutError, LayaTimeoutError, requests.Timeout) as e:
         # 保留裸 TimeoutError 防回归（现有测试 mock 抛裸 TimeoutError）
         _record_failure("timeout")
         logger.warning("Laya timeout: %s", e)
+        _record_latency(time.time() - start_t)
         return _fallback_result(proposal, symbol, status="degraded", note=f"Laya API 超时: {e}")
     except ConnectionError as e:
         _record_failure("connection_error")
         logger.warning("Laya connection error: %s", e)
+        _record_latency(time.time() - start_t)
         return _fallback_result(proposal, symbol, status="degraded", note=f"Laya 连接失败: {e}")
     except AuthenticationError as e:
         logger.error("Laya auth error: %s", e)
+        _record_latency(time.time() - start_t)
         return _fallback_result(proposal, symbol, status="error", note=f"Laya API 鉴权失败: {e}")
     except Exception as e:
         _record_failure("unknown")
         logger.exception("Laya unknown failure: %s", e)
+        _record_latency(time.time() - start_t)
         return _fallback_result(proposal, symbol, status="error", note=f"Laya API 返回异常: {e}")
 
     answers = result.answers
@@ -506,6 +515,7 @@ def _prescreen_impl(
     novelty: NoveltyType = str(raw_novelty).strip().lower()  # type: ignore[assignment]
     effect_size = int(answers["expected_effect_size"].score)
 
+    _record_latency(time.time() - start_t)
     _record_success()
 
     skip = compute_skip_suggested(plausibility, novelty, effect_size)
@@ -574,3 +584,39 @@ def prescreen_and_save(
     except Exception as e:
         logger.error("prescreen 结果原子落盘失败 (%s): %s", proposal_path, e)
     return result
+
+
+# ── 队列感知退避（滑动窗口 p80）────────────────────
+_latency_window: list[float] = []  # 最近 10 次调用延迟
+_LATENCY_WINDOW_SIZE = 10
+_P80_THRESHOLD_SKIP = 20.0  # p80 > 20s 时跳过
+_P80_THRESHOLD_RECOVER = 15.0  # p80 < 15s 时恢复（滞后防抖）
+_MIN_SAMPLES = 5
+_latency_lock = threading.Lock()  # 线程安全
+
+
+def _record_latency(latency: float) -> None:
+    """记录单次调用延迟（秒）。窗口满时弹出最旧的。线程安全。"""
+    with _latency_lock:
+        _latency_window.append(latency)
+        if len(_latency_window) > _LATENCY_WINDOW_SIZE:
+            _latency_window.pop(0)
+
+
+def _should_skip_prescreen() -> bool:
+    """队列感知：p80 > 20s 时跳过；p80 < 15s 时恢复。样本 < 5 时不启用。"""
+    with _latency_lock:
+        if len(_latency_window) < _MIN_SAMPLES:
+            return False
+        sorted_latencies = sorted(_latency_window)
+        # n=10 时 p80 ≈ sorted[-3] (第 3 高)；n=5 时 p80 ≈ sorted[-2]
+        idx = max(0, len(sorted_latencies) - 3)
+        p80 = sorted_latencies[idx]
+        # 滞后逻辑：> 20s 跳过，< 15s 恢复；中间地带保持当前状态
+        if p80 > _P80_THRESHOLD_SKIP:
+            return True
+        if p80 < _P80_THRESHOLD_RECOVER:
+            return False
+        # 中间地带（15s <= p80 <= 20s）：保持当前状态（不切换）
+        # 简化实现：默认不跳过（保守）
+        return False
