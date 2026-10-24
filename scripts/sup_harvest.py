@@ -124,7 +124,7 @@ def _cross_run_repeat_counts(root=None, max_runs=20):
     return counts
 
 def _apply_prescreen_score(score, proposal_path):
-    """Laya prescreen score adjustment (Phase 2)."""
+    """TypeSafe Jev prescreen score adjustment (Phase 2)."""
     if not proposal_path:
         return score
     ps_path = str(Path(proposal_path).with_suffix(".prescreen.json"))
@@ -160,7 +160,7 @@ def _apply_prescreen_score(score, proposal_path):
     return score
 
 def _prescreen_async(p, proposal_path, symbol):
-    """Fire-and-forget Laya prescreen (daemon thread, 不阻塞 harvest)。
+    """Fire-and-forget TypeSafe Jev prescreen (daemon thread, 不阻塞 harvest)。
 
     prescreen 是软建议伴随元数据，不应拖慢 supervisor 收割循环。
     - daemon=True: 进程退出时自动杀死，不阻塞 shutdown
@@ -172,9 +172,9 @@ def _prescreen_async(p, proposal_path, symbol):
     """
     # 幂等守卫 (WARN-3): 已有成功 prescreen 结果则不再重复调用
     try:
-        from cascade.laya_prescreen import prescreen_and_save
+        from cascade.typesafe_prescreen import prescreen_and_save
     except Exception as _e:
-        logging.warning("Laya 预筛导入失败 (%s): %s", proposal_path, _e)
+        logging.warning("TypeSafe 预筛导入失败 (%s): %s", proposal_path, _e)
         return
 
     _existing_ps = str(Path(proposal_path).with_suffix(".prescreen.json"))
@@ -208,7 +208,7 @@ def _prescreen_async(p, proposal_path, symbol):
                 covariate_menu=_menu,
             )
         except Exception as _e:
-            logging.warning("Laya 预筛异步调用失败 (%s): %s", proposal_path, _e)
+            logging.warning("TypeSafe 预筛异步调用失败 (%s): %s", proposal_path, _e)
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -729,7 +729,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 # off/shadow 不带（S1：off 下行形状与今日相同）
                 _cand.update(search_info)
             candidates.append(_cand)
-            # ── Laya 预筛触发 (fire-and-forget, 不阻塞 harvest) ──
+            # ── TypeSafe 预筛触发 (fire-and-forget, 不阻塞 harvest) ──
             _prescreen_async(p, sp, symbol)
 
     candidates.sort(key=lambda r: (r["_tier"], -r["_score"], r["_family"], r["variant_id"]))

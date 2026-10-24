@@ -20,11 +20,11 @@ Write each proposal with a heredoc (`cat > path <<'JSON' ... JSON`) or the Write
   "symbol": "m",
   "cov_override": "vor",
   "covariate_family": "volatility",
-  "mechanism": ">=40 chars, specific microstructure/economic mechanism. Must extend the covariate menu mechanism to THIS symbol. English only.",
-  "symbol_fit": "Why this covariate fits THIS symbol (positioning/calendar/structure). English only.",
-  "predicted_direction": "e.g. low_vol_compression -> long_breakout (English only)",
-  "kill_condition": "aligned dir_acc < 0.52 or endpoint_mape unchanged => abandon (falsifiable, English)",
-  "promote_condition": "aligned gate_pass AND fdr_pass (DirAcc gate, English)"
+  "mechanism": ">=40字, 具体的微观结构/经济机制, 禁模板。必须把协变量菜单的机制延伸到该品种。",
+  "symbol_fit": "为什么这个协变量适配该品种(positioning/calendar/structure)。",
+  "predicted_direction": "e.g. low_vol_compression -> long_breakout",
+  "kill_condition": "aligned dir_acc<0.52 或 endpoint_mape 未改善即放弃 (可证伪)",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)"
 }
 ```
 
@@ -51,14 +51,6 @@ mechanism, proposal_id}.
 - Peer-written `/tmp/*eval*.py`, `standalone_eval.py`, or `run_eval_v*.py` (hardcap
   will TERM the newest extra TimesFM; dual-resident OOMs this host)
 - Continuing inline when the eval flock is full (wait for the slot)
-
-
-## CRITICAL: English-Only Output Constraint
-
-ALL proposal fields MUST be written in English. No Chinese/Japanese/Korean characters allowed.
-
-Downstream systems (Laya prescreen, evaluator, audit trail) require English-only input.
-Chinese text in proposals will be REJECTED.
 
 ## Proposal scope
 - symbol: {m, ss, sr, cj, jd, lh, eg, rb} + the evaluator's 2-star set

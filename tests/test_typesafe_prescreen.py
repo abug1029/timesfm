@@ -1,4 +1,4 @@
-"""tests/test_laya_prescreen.py"""
+"""tests/test_typesafe_prescreen.py"""
 import json
 import os
 import sys
@@ -10,7 +10,7 @@ import pytest
 FM_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(FM_ROOT))
 
-from cascade.laya_prescreen import (
+from cascade.typesafe_prescreen import (
     compute_skip_suggested,
     generate_note,
     _fallback_result,
@@ -23,8 +23,6 @@ from cascade.laya_prescreen import (
     prescreen_and_save,
     write_prescreen_result,
     AuthenticationError,
-    CircuitBreaker,
-    _circuit_breaker,
 )
 
 
@@ -91,7 +89,7 @@ class TestFallbackResult:
 
 class TestExtractRelevantHistory:
     def test_empty_history(self):
-        assert _extract_relevant_history(None, "ss") == "No verdict history available"
+        assert _extract_relevant_history(None, "ss") == "无历史裁决记录"
 
     def test_symbol_history_only(self):
         history = [
@@ -99,7 +97,7 @@ class TestExtractRelevantHistory:
              "cov_family": "momentum", "dir_acc": 0.53, "decided_at": "2026-09-01T00:00:00"},
         ]
         result = _extract_relevant_history(history, "ss")
-        assert "[ss] gate-passed covariates" in result
+        assert "[ss] 已过门协变量" in result
         assert "rsi_state" in result
 
     def test_none_decided_at_safe(self):
@@ -145,26 +143,16 @@ class TestCircuitBreaker:
         assert _check_circuit() is True
 
     def test_half_open_resets_on_expire(self, monkeypatch):
-        """到期后进入 HALF_OPEN，允许 1 个探针；后续仍跳过直到探针成功。"""
-        _circuit_breaker.record_failure()
-        _circuit_breaker.record_failure()
-        _circuit_breaker.record_failure()
-        assert _circuit_breaker.state == CircuitBreaker.OPEN
-        
-        # 模拟时间流逝（超过 duration）
-        fake_now = time.time() + 301
+        """短路期满后自动重置，允许试探。"""
+        _record_timeout()
+        _record_timeout()
+        _record_timeout()
+        assert _check_circuit() is True
+
+        fake_now = time.time() + 601
         monkeypatch.setattr(time, "time", lambda: fake_now)
-        
-        # 第一次 should_skip → HALF_OPEN + 放行探针
-        assert _circuit_breaker.should_skip() is False
-        assert _circuit_breaker.state == CircuitBreaker.HALF_OPEN
-        # 后续跳过（探针进行中）
-        assert _circuit_breaker.should_skip() is True
-        
-        # 探针成功 → CLOSED
-        _circuit_breaker.record_success()
-        assert _circuit_breaker.state == CircuitBreaker.CLOSED
-        assert _circuit_breaker.should_skip() is False
+        assert _check_circuit() is False
+        _reset_circuit_state()
 
     def test_resets_on_success(self):
         _record_timeout()
@@ -223,7 +211,7 @@ class TestPrescreenProposalMock:
 
     def test_plausible_proposal_passes(self, monkeypatch):
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya",
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe",
                            lambda *a, **k: _make_mock_result(0.85, "novel", 3))
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["status"] == "success"
@@ -232,28 +220,28 @@ class TestPrescreenProposalMock:
 
     def test_implausible_proposal_skipped(self, monkeypatch):
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya",
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe",
                            lambda *a, **k: _make_mock_result(0.2, "novel", 1))
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["skip_suggested"] is True
 
     def test_redundant_proposal_skipped(self, monkeypatch):
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya",
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe",
                            lambda *a, **k: _make_mock_result(0.6, "redundant", 1))
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["skip_suggested"] is True
 
     def test_invalid_mechanism_skipped(self, monkeypatch):
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya",
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe",
                            lambda *a, **k: _make_mock_result(0.7, "invalid", 3))
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["skip_suggested"] is True
 
     def test_zero_effect_low_plausibility_skipped(self, monkeypatch):
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya",
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe",
                            lambda *a, **k: _make_mock_result(0.5, "extension", 0))
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["skip_suggested"] is True
@@ -269,7 +257,7 @@ class TestPrescreenProposalMock:
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
         def raise_timeout(*a, **k):
             raise TimeoutError("simulated timeout")
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya", raise_timeout)
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe", raise_timeout)
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["status"] == "degraded"
         assert result["skip_suggested"] is None
@@ -278,10 +266,11 @@ class TestPrescreenProposalMock:
     def test_auth_error_returns_error(self, monkeypatch):
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
         def raise_auth(*a, **k):
-            # 本地兜底 AuthenticationError 是简单 Exception 子类
-            e = AuthenticationError("401 Unauthorized")
+            # 构造真实 SDK TypeSafeAuthenticationError (需 status/body/headers)
+            e = AuthenticationError(
+                401, {"error": "unauthorized"}, {}, message="401 Unauthorized")
             raise e
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya", raise_auth)
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe", raise_auth)
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["status"] == "error"
         assert result["skip_suggested"] is None
@@ -294,7 +283,7 @@ class TestPrescreenProposalMock:
         def raise_timeout(*a, **k):
             call_count[0] += 1
             raise TimeoutError("simulated")
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya", raise_timeout)
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe", raise_timeout)
 
         for _ in range(3):
             prescreen_proposal(SAMPLE_PROPOSAL, "JD")
@@ -309,7 +298,7 @@ class TestPrescreenProposalMock:
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
         def raise_internal(*a, **k):
             return MockJudgeResult({})  # answers 为空，解包会 AttributeError
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya", raise_internal)
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe", raise_internal)
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["status"] == "error"
         assert result["skip_suggested"] is None
@@ -317,7 +306,7 @@ class TestPrescreenProposalMock:
     def test_novelty_normalisation(self, monkeypatch):
         """Choice 返回值归一化：大小写/空白不敏感"""
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya",
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe",
                            lambda *a, **k: _make_mock_result(0.6, "  REDUNDANT ", 1))
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["novelty"] == "redundant"
@@ -326,7 +315,7 @@ class TestPrescreenProposalMock:
     def test_raw_answers_preserved(self, monkeypatch):
         """raw_answers 保留 SDK 原始序列化"""
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya",
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe",
                            lambda *a, **k: _make_mock_result(0.85, "novel", 3))
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert "mechanism_plausibility" in result["raw_answers"]
@@ -347,7 +336,7 @@ class TestAtomicWrite:
 class TestPrescreenAndSaveFacade:
     def test_facade_calls_both(self, monkeypatch, tmp_path):
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-        monkeypatch.setattr("cascade.laya_prescreen._call_laya",
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe",
                            lambda *a, **k: _make_mock_result(0.7, "extension", 2))
         proposal_path = str(tmp_path / "p_001.json")
         result = prescreen_and_save(SAMPLE_PROPOSAL, proposal_path, "JD")

@@ -8,7 +8,7 @@
   - decay    (0-30): 远端衰减比
   - mape     (0-20): 端点 MAPE
   - n_eff    (0-10): 有效样本量
-  - prescreen(0-5):  Laya 预筛 plausibility
+  - prescreen(0-5):  TypeSafe 预筛 plausibility
 
 口径（D2，2026-10-08）: verdict 上的评级**唯一承载字段是 tier**（本模块产出）。
 历史文档里的 star 字段在裁决 schema 中自始不存在，不要再据它写代码或口径。

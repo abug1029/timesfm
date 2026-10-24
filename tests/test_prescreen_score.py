@@ -190,7 +190,7 @@ class TestPrescreenAsync:
             import builtins
             real_import = builtins.__import__
             def broken(name, *a, **k):
-                if name == "cascade.laya_prescreen":
+                if name == "cascade.typesafe_prescreen":
                     raise ImportError("simulated")
                 return real_import(name, *a, **k)
             builtins.__import__ = broken
@@ -257,7 +257,7 @@ class TestPrescreenAsync:
         """WARN-3: 非 success (degraded/损坏) 结果允许重试, 启动线程."""
         import threading
         from scripts.praxist_supervisor import _prescreen_async
-        import cascade.laya_prescreen as tp
+        import cascade.typesafe_prescreen as tp
         # 允许导入; 打桩 prescreen_and_save 避免真实网络
         calls = []
         tp.prescreen_and_save = lambda *a, **k: calls.append(k) or {}
