@@ -1211,9 +1211,9 @@ def _archive_baseline_before_regen(points_path):
 
 # 步② C 漂移上界：基线末端落后数据末端超过此小时数 → 重锚重生。
 # 依据 2026-10-07 裁定 C 验收语义（unmatched 收敛到拉取滞后 1-3 点）+
-# 实测边缘漂移案例 14 天；7 天既捕获假期级漂移，又避免 2-3 天重启节奏下
-# 每次启动全品种重生（33 品种 × ~1.5 分钟回测 ≈ 50 分钟）。
-_BASELINE_STALENESS_MAX_H = 168
+# 实测边缘漂移案例 14 天；14 天捕获假期级漂移，避免每次重启全品种重生
+# （33 品种 × ~5-10 分钟回测 ≈ 2-4 小时）。
+_BASELINE_STALENESS_MAX_H = 336
 
 # ensure_baselines 只在 supervisor 启动的 pre-flight 跑一次，进程内字典活不到
 # 下一次启动。停滞品种落到 data/cache（gitignore），下次启动只有数据末端
