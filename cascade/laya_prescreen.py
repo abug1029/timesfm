@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+import threading
 
 import requests
 from datetime import datetime, timezone
@@ -182,56 +183,107 @@ def _extract_relevant_history(
     return "\n".join(lines) if lines else "无历史裁决记录"
 
 
-# ── 轻量熔断（连续超时退避 + 半开自愈）─────────────
-_consecutive_timeouts = 0
-_circuit_until: float | None = None
+# ── 三态熔断器（CLOSED→OPEN→HALF_OPEN + 探针锁）─────────────
+class CircuitBreaker:
+    """三态熔断器：CLOSED → OPEN → HALF_OPEN。HALF_OPEN 仅允许 1 个探针。"""
+    
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+    
+    def __init__(self, threshold: int = 3, duration: float = 300.0):
+        self.state = self.CLOSED
+        self.failure_count = 0
+        self.threshold = threshold
+        self.duration = duration
+        self.last_failure_time: float | None = None
+        self._half_open_probe_in_flight = False
+        self._lock = threading.Lock()
+    
+    def record_success(self) -> None:
+        with self._lock:
+            self.failure_count = 0
+            self.state = self.CLOSED
+            self._half_open_probe_in_flight = False
+    
+    def record_failure(self) -> None:
+        with self._lock:
+            self.failure_count += 1
+            self.last_failure_time = time.time()
+            if self.failure_count >= self.threshold:
+                self.state = self.OPEN
+            self._half_open_probe_in_flight = False
+    
+    def should_skip(self) -> bool:
+        """返回 True 表示应跳过。HALF_OPEN 仅允许 1 个探针。"""
+        with self._lock:
+            if self.state == self.CLOSED:
+                return False
+            if self.state == self.OPEN:
+                if self.last_failure_time and (time.time() - self.last_failure_time) > self.duration:
+                    if not self._half_open_probe_in_flight:
+                        self.state = self.HALF_OPEN
+                        self._half_open_probe_in_flight = True
+                        return False  # 放行 1 个探针
+                    return True  # 探针进行中，其他跳过
+                return True  # OPEN 中，跳过
+            if self.state == self.HALF_OPEN:
+                if self._half_open_probe_in_flight:
+                    return True  # 探针进行中
+                return False  # 防御性
+            return False
+
+
+# 从环境变量读取配置（显式解析 bool，非恒真）
+def _parse_bool_env(name: str, default: bool) -> bool:
+    """显式解析环境变量：0/false/off/no → False；1/true/on/yes → True；其他 → default。"""
+    val = os.environ.get(name, "").strip().lower()
+    if val in ("0", "false", "off", "no"):
+        return False
+    if val in ("1", "true", "on", "yes"):
+        return True
+    return default
+
+
+_cb_enabled = _parse_bool_env("LAYA_CIRCUIT_BREAKER_ENABLED", default=True)
+_cb_threshold = int(os.environ.get("LAYA_CIRCUIT_BREAKER_THRESHOLD", "3"))
+_cb_duration = float(os.environ.get("LAYA_CIRCUIT_BREAKER_DURATION", "300"))
+
+_circuit_breaker = CircuitBreaker(threshold=_cb_threshold, duration=_cb_duration)
 _laya_rr_idx: int = 0  # round-robin 索引
 
 
+# 兼容旧调用：_check_circuit / _record_timeout / _record_success 委托给 _circuit_breaker
 def _check_circuit() -> bool:
     """检查是否处于短路降级状态。返回 True 表示应跳过 API 调用。"""
-    global _circuit_until, _consecutive_timeouts
-    now = time.time()
-    if _circuit_until:
-        if now < _circuit_until:
-            return True
-        _circuit_until = None
-        _consecutive_timeouts = 0
-    return False
+    if not _cb_enabled:
+        return False
+    return _circuit_breaker.should_skip()
 
 
-def _record_timeout():
-    """记录一次超时。连续 3 次超时后开启 10 分钟短路。"""
-    global _consecutive_timeouts, _circuit_until
-    _consecutive_timeouts += 1
-    if _consecutive_timeouts >= 3:
-        _circuit_until = time.time() + 600
-        logger.warning("Laya prescreen: 连续 3 次超时，开启 10 分钟短路降级")
+def _record_timeout() -> None:
+    """兼容旧名；新代码统一走 _record_failure。"""
+    _circuit_breaker.record_failure()
 
 
-def _record_success():
+def _record_success() -> None:
     """成功调用重置计数器并解除短路。"""
-    global _consecutive_timeouts, _circuit_until
-    _consecutive_timeouts = 0
-    _circuit_until = None
+    _circuit_breaker.record_success()
 
 
 def _record_failure(reason: str) -> None:
     """统一 failure 入口。503 / timeout / ConnectionError 都走这里。"""
-    global _consecutive_timeouts, _circuit_until
-    _consecutive_timeouts += 1
-    if _consecutive_timeouts >= 3:
-        _circuit_until = time.time() + 600
-        logger.warning("Laya prescreen: 连续 3 次 failure（%s），开启 10 分钟短路降级", reason)
-    else:
-        logger.warning("Laya prescreen failure (%s): consecutive=%d", reason, _consecutive_timeouts)
+    _circuit_breaker.record_failure()
+    logger.warning("Laya prescreen failure: %s", reason)
 
 
 def _reset_circuit_state() -> None:
     """仅供单元测试重置模块级熔断状态。"""
-    global _consecutive_timeouts, _circuit_until
-    _consecutive_timeouts = 0
-    _circuit_until = None
+    with _circuit_breaker._lock:
+        _circuit_breaker.failure_count = 0
+        _circuit_breaker.state = CircuitBreaker.CLOSED
+        _circuit_breaker._half_open_probe_in_flight = False
+        _circuit_breaker.last_failure_time = None
 
 
 # ── SDK 原始答案序列化 ──────────────────────────────

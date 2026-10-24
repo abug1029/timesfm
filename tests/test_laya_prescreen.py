@@ -23,6 +23,8 @@ from cascade.laya_prescreen import (
     prescreen_and_save,
     write_prescreen_result,
     AuthenticationError,
+    CircuitBreaker,
+    _circuit_breaker,
 )
 
 
@@ -143,16 +145,26 @@ class TestCircuitBreaker:
         assert _check_circuit() is True
 
     def test_half_open_resets_on_expire(self, monkeypatch):
-        """短路期满后自动重置，允许试探。"""
-        _record_timeout()
-        _record_timeout()
-        _record_timeout()
-        assert _check_circuit() is True
-
-        fake_now = time.time() + 601
+        """到期后进入 HALF_OPEN，允许 1 个探针；后续仍跳过直到探针成功。"""
+        _circuit_breaker.record_failure()
+        _circuit_breaker.record_failure()
+        _circuit_breaker.record_failure()
+        assert _circuit_breaker.state == CircuitBreaker.OPEN
+        
+        # 模拟时间流逝（超过 duration）
+        fake_now = time.time() + 301
         monkeypatch.setattr(time, "time", lambda: fake_now)
-        assert _check_circuit() is False
-        _reset_circuit_state()
+        
+        # 第一次 should_skip → HALF_OPEN + 放行探针
+        assert _circuit_breaker.should_skip() is False
+        assert _circuit_breaker.state == CircuitBreaker.HALF_OPEN
+        # 后续跳过（探针进行中）
+        assert _circuit_breaker.should_skip() is True
+        
+        # 探针成功 → CLOSED
+        _circuit_breaker.record_success()
+        assert _circuit_breaker.state == CircuitBreaker.CLOSED
+        assert _circuit_breaker.should_skip() is False
 
     def test_resets_on_success(self):
         _record_timeout()
