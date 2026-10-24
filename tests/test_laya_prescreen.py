@@ -91,7 +91,7 @@ class TestFallbackResult:
 
 class TestExtractRelevantHistory:
     def test_empty_history(self):
-        assert _extract_relevant_history(None, "ss") == "无历史裁决记录"
+        assert _extract_relevant_history(None, "ss") == "No verdict history available"
 
     def test_symbol_history_only(self):
         history = [
@@ -99,7 +99,7 @@ class TestExtractRelevantHistory:
              "cov_family": "momentum", "dir_acc": 0.53, "decided_at": "2026-09-01T00:00:00"},
         ]
         result = _extract_relevant_history(history, "ss")
-        assert "[ss] 已过门协变量" in result
+        assert "[ss] gate-passed covariates" in result
         assert "rsi_state" in result
 
     def test_none_decided_at_safe(self):

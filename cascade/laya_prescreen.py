@@ -124,12 +124,12 @@ def _extract_relevant_history(
     max_entries: int = 5,
     max_cross_entries: int = 5,
 ) -> str:
-    """两段式历史摘要：当前品种过门记录 + 同板块经典先验基底。"""
-    from config.sector_map import sector_of, SECTORS, SECTOR_NAMES
+    """Two-section history summary: symbol gate-pass records + sector peer priors. (English only)"""
+    from config.sector_map import sector_of, SECTORS, SECTOR_NAMES_EN
 
     lines = []
 
-    # 第一段：当前品种历史过门记录
+    # Section 1: current symbol gate-pass records
     if verdict_history:
         relevant = [
             v for v in verdict_history
@@ -141,19 +141,19 @@ def _extract_relevant_history(
                 key=lambda v: v.get("decided_at") or "",
                 reverse=True,
             )[:max_entries]
-            lines.append(f"[{symbol}] 已过门协变量 ({len(relevant)} 条，显示最近 {len(recent)} 条):")
+            lines.append(f"[{symbol}] gate-passed covariates ({len(relevant)} total, showing {len(recent)} most recent):")
             for v in recent:
-                cov = v.get("cov_override", "默认协变量")
+                cov = v.get("cov_override", "default")
                 family = v.get("cov_family", "unknown")
                 da = v.get("dir_acc", 0.0)
-                lines.append(f"  - {cov} (族: {family}, dir_acc={da:.3f})")
+                lines.append(f"  - {cov} (family: {family}, dir_acc={da:.3f})")
         else:
-            lines.append(f"[{symbol}] 暂无过门裁决记录")
+            lines.append(f"[{symbol}] no gate-pass records yet")
 
-    # 第二段：同板块已过门协变量族（跨品种迁移先验）
+    # Section 2: cross-symbol sector peer priors
     if verdict_history:
         sector = sector_of(symbol)
-        # 守卫：未知板块不提取跨品种先验，防止串扰污染
+        # Guard: skip cross-symbol priors for unknown sector to prevent contamination
         if sector and sector != "other":
             sector_symbols = SECTORS.get(sector, [])
             peer_symbols = [s for s in sector_symbols if s != symbol]
@@ -175,18 +175,16 @@ def _extract_relevant_history(
                         break
 
             if cross_unique:
-                sector_name = SECTOR_NAMES.get(sector, sector)
-                lines.append(f"同板块（{sector_name}）已过门协变量族（跨品种迁移先验）:")
+                sector_en = SECTOR_NAMES_EN.get(sector, sector)
+                lines.append(f"Sector peers ({sector_en}) gate-passed covariate families (cross-symbol priors):")
                 for v in cross_unique:
                     sym = v.get("symbol", "?")
                     fam = v.get("cov_family", "unknown")
                     da = v.get("dir_acc", 0.0)
                     lines.append(f"  - {sym}/{fam} (dir_acc={da:.3f})")
 
-    return "\n".join(lines) if lines else "无历史裁决记录"
+    return "\n".join(lines) if lines else "No verdict history available"
 
-
-# ── 三态熔断器（CLOSED→OPEN→HALF_OPEN + 探针锁）─────────────
 class CircuitBreaker:
     """三态熔断器：CLOSED → OPEN → HALF_OPEN。HALF_OPEN 仅允许 1 个探针。"""
     
@@ -337,12 +335,17 @@ def _build_state(
     verdict_history: list[dict[str, Any]] | None,
     covariate_menu: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """构建 Laya judge 的 State。"""
+    """Build Laya judge State (English-only for sector + history to avoid checkpoint switch)."""
+    from config.sector_map import sector_of, SECTOR_NAMES_EN
+
     symbol_profile = _load_symbol_profile(symbol)
+    sector_key = sector_of(symbol)  # English key e.g. "black_metals"
+    sector_en = SECTOR_NAMES_EN.get(sector_key, "unknown")
+
     return {
         "symbol": symbol,
         "proposal": proposal,
-        "sector": symbol_profile.get("sector", "未知"),
+        "sector": sector_en,  # English only
         "contract_details": symbol_profile.get("contract_details", ""),
         "covariate_menu": covariate_menu or _load_covariate_menu(),
         "recent_verdicts_summary": _extract_relevant_history(verdict_history, symbol),

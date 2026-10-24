@@ -54,3 +54,13 @@ def chem_symbols() -> set[str]:
 
 def agri_symbols() -> set[str]:
     return set(SECTORS["agri"])
+
+# English display names — Laya state injection only.
+# DO NOT touch SECTOR_NAMES above (Chinese values used by display/other modules).
+SECTOR_NAMES_EN = {
+    "black_metals": "ferrous",
+    "energy_chem": "energy_chemical",
+    "agri": "agricultural",
+    "non_ferrous": "non_ferrous",
+    "other": "unknown",
+}
