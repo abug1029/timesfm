@@ -36,6 +36,9 @@ class LayaUnavailableError(Exception):
     pass
 
 
+# ── Timeout 分档（P0-3）──────────────────────────────
+_TIMEOUT_PRIMARY = 10.0  # 覆盖 6.4s 推理 + 3s 网络缓冲
+_TIMEOUT_FALLBACK = 5.0  # 副端点快速探测
 # ── 项目根路径 ──────────────────────────────────────
 FM_ROOT = Path(__file__).resolve().parent.parent
 
@@ -354,7 +357,7 @@ def _get_laya_endpoints() -> list[str]:
     return ["http://10.1.1.67:8000", "http://100.96.19.116:8000"]
 
 
-def _call_laya(state: dict[str, Any], api_key: str, timeout: float = 30.0) -> Any:
+def _call_laya(state: dict[str, Any], api_key: str, timeout: float = _TIMEOUT_PRIMARY) -> Any:
     """调用 Laya 服务。双地址 failover，两个都不可达才报错。"""
 
     endpoints = _get_laya_endpoints()
@@ -406,8 +409,9 @@ def _call_laya(state: dict[str, Any], api_key: str, timeout: float = 30.0) -> An
 
     for attempt, endpoint in enumerate(endpoints):
         url = f"{endpoint}/v1/systemone"
+        t = _TIMEOUT_PRIMARY if attempt == 0 else _TIMEOUT_FALLBACK
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            response = requests.post(url, json=payload, headers=headers, timeout=t)
             response.raise_for_status()
             result_data = response.json()
 
@@ -471,7 +475,7 @@ def _prescreen_impl(
     state = _build_state(proposal, symbol, verdict_history, covariate_menu)
 
     try:
-        result = _call_laya(state, api_key, timeout=5.0)
+        result = _call_laya(state, api_key, timeout=_TIMEOUT_PRIMARY)
     except LayaUnavailableError as e:
         _record_failure("503_unavailable")
         logger.warning("Laya 503: %s", e)
