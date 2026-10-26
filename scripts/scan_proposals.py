@@ -47,3 +47,12 @@ def _extract_src_run(path: Path) -> str:
         if part.startswith("run_"):
             return part
     return "unknown"
+
+
+def deduplicate_proposals(proposals: list[ProposalInfo]) -> list[ProposalInfo]:
+    """Deduplicate proposals by variant_id, keeping the one with latest mtime."""
+    seen = {}
+    for prop in proposals:
+        if prop.variant_id not in seen or prop.mtime > seen[prop.variant_id].mtime:
+            seen[prop.variant_id] = prop
+    return list(seen.values())
