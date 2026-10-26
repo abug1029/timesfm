@@ -1,0 +1,15 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "sr_rsi24",
+  "symbol": "sr",
+  "cov_override": "rsi24",
+  "covariate_family": "momentum",
+  "mechanism": "白糖作为农产品有明确榨季周期，RSI(24)长周期超买超卖能有效捕捉季节性供需错配驱动的价格反转：榨季开榨期供应集中释放易形成超卖区域，而青黄不接期消费刚性支撑易形成超买区域。24周期参数匹配白糖季节性周期长度，极端读数后均值回归概率高。",
+  "symbol_fit": "为何是sr: 白糖(sr)在momentum家族已实现12/12全过门的优异表现(best=1.000)，验证趋势/均值回归机制在农产品上的有效性；rsi24作为长周期均值回归工具与白糖季节性供需结构高度契合。",
+  "predicted_direction": "rsi24_extreme_low -> long (seasonal_mean_reversion)",
+  "kill_condition": "aligned dir_acc低于sr品种adaptive effective_min(0.520)即放弃，或rsi24与价格呈现趋势跟随而非均值回归特征",
+  "promote_condition": "aligned gate_pass且fdr_pass(DirAcc口径)，验证H_g1_03农产品均值回归机制",
+  "search_role": "exploit",
+  "search_parent_id": "sr_momentum_family_12_12_pass",
+  "tree_id": "H_g1_03_agricultural_mean_reversion"
+}

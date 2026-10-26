@@ -1,0 +1,13 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "ss_rsi6",
+  "symbol": "ss",
+  "cov_override": "rsi6",
+  "covariate_family": "momentum",
+  "mechanism": "RSI(6)捕捉不锈钢周内情绪极端：周初钢厂报价后投机盘过度追涨/杀跌，RSI6超买超卖信号在ss上因现货-期货基差日频刷新而更敏感，日频情绪极端后均值回归。",
+  "symbol_fit": "为何是ss: 不锈钢现货基差日度波动大，周内情绪驱动明显，短周期RSI对超买超卖反应快于长周期；交割品为201/304混兑使情绪放大。",
+  "predicted_direction": "rsi6_overbought -> short, rsi6_oversold -> long",
+  "kill_condition": "aligned dir_acc < ss adaptive effective_min (约0.52) 即放弃",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)",
+  "failure_delta": ""
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "ss_crack_spread_slope",
+  "symbol": "ss",
+  "cov_override": "crack_spread_slope",
+  "covariate_family": "term_structure",
+  "mechanism": "产业链利润价差斜率(crack_spread_slope)利润扩张/收缩动量仅对crushing/refining产业链品种有意义。不锈钢(ss)为镍铬合金加工材，无大豆 crushing 或原油 refining 的利润结构，crack_spread_slope对ss应为无效信号。若ss_crack_spread_slope过门，则证伪'crack_spread_slope仅产业链品种有效'假说；若不过门则支持机制边界。",
+  "symbol_fit": "为何是ss: 不锈钢产业链(镍矿-镍铁-不锈钢)与 crushing/refining 利润结构完全不同，无压榨利润或裂解利润概念。ss_term_structure已有hard-gate-but-losing记录，测试crack_spread_slope在金属品种的失效边界，验证协变量菜单机制说明的准确性。",
+  "predicted_direction": "mechanism_inapplicable -> no_predictive_power",
+  "kill_condition": "aligned dir_acc >= 0.52 则证伪crack_spread机制边界假说；dir_acc < 0.50 支持'仅产业链品种'机制声明",
+  "promote_condition": "aligned dir_acc < 0.50 支持term_structure家族中crack_spread子类存在品种边界限制"
+}

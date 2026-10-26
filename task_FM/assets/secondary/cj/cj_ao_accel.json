@@ -1,0 +1,13 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "cj_ao_accel",
+  "symbol": "cj",
+  "cov_override": "ao_accel",
+  "covariate_family": "momentum",
+  "mechanism": "红枣(cj)作为小品种农产品，流动性不足导致价格动量的二阶变化(ao_accel)无法反映真实趋势启动。低持仓量下，Awesome Oscillator加速度信号被噪声主导，与H_g1_03阈值假说一致：机构深度不足的散户市场使动量加速度信号失效。",
+  "symbol_fit": "cj持仓量低、散户参与度高，缺乏足够机构资金流支撑动量持续性。作为falsifier测试：若ao_accel在cj失败，验证positioning类信号存在流动性阈值效应；若意外通过，则质疑阈值假说的普适性。",
+  "predicted_direction": "ao_accel_up -> long, ao_accel_down -> short",
+  "kill_condition": "aligned dir_acc >= 0.520 (cj品种effective_min) 且表现优于高流动性品种对照组",
+  "promote_condition": "aligned gate_pass=False 验证H_g1_03阈值假说，或gate_pass=True挑战假说",
+  "failure_delta": "cj已有5个ok verdicts但0 passes，包括cj_calendar_cyclical、inventory、momentum、term_structure均失败。本次ao_accel作为falsifier测试H_g1_03：若动量加速度信号(需机构深度)在cj失败，支持流动性阈值假说；机制差异在于明确测试低流动性对二阶动量信号的破坏效应。"
+}

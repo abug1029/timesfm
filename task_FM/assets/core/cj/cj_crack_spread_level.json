@@ -1,0 +1,15 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "cj_crack_spread_level",
+  "symbol": "cj",
+  "cov_override": "crack_spread_level",
+  "covariate_family": "term_structure",
+  "mechanism": "红枣(cj)作为非产业链品种(无压榨/裂解环节)，crack_spread_level对其应无预测力或产生噪声信号。该测试直接检验term_structure机制的边界条件：若crack_spread_level在cj上表现与产业链品种(m/y/p)相当，则证明该协变量并非真正捕捉产业链利润，而是捕捉了伪相关或通用波动。H_g2_02假说若成立，cj不应受益于产业链结构指标。",
+  "symbol_fit": "为何是cj: 红枣是典型非产业链农产品，无上下游压榨裂解关系。若crack_spread_level在cj上过门，则证伪该指标的产业特定机制，暗示此前产业链品种的过门可能是样本选择偏误或伪相关。",
+  "predicted_direction": "crack_spread_extreme -> no_signal_expected (预期无显著信号)",
+  "kill_condition": "aligned gate_pass=True (若非产业链品种过门，则crack_spread_level机制非产业特定)",
+  "promote_condition": "aligned gate_pass=False AND dir_acc near random (证伪产业链指标的普适性声称)",
+  "search_role": "falsifier",
+  "search_parent_id": "H_g2_02",
+  "tree_id": "liquidity_stratified_term_structure"
+}

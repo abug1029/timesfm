@@ -1,0 +1,13 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "m_ccl",
+  "symbol": "m",
+  "cov_override": "ccl",
+  "covariate_family": "inventory",
+  "mechanism": "豆粕m作为饲料原料，产业链套保盘与投机资金博弈激烈。CCL(仓差线)捕捉主力资金净持仓变化，当主力多头增仓伴随价格上涨时，反映贸易商对未来现货紧张的预期，持仓方向变化领先现货价格。该机制与m品种的高持仓、高投机特性匹配。",
+  "symbol_fit": "为何是m: 豆粕进口依赖度高，产业链套保需求强，持仓量变化能反映进口到港预期与库存周期，CCL比纯动量更能捕捉产业资金的方向性押注。",
+  "predicted_direction": "ccl_up_with_price -> long",
+  "kill_condition": "aligned dir_acc 低于该品种 adaptive effective_min (约0.520) 即放弃",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)",
+  "search_role": "root"
+}

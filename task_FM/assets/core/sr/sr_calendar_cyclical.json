@@ -1,0 +1,12 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "sr_calendar_cyclical",
+  "symbol": "sr",
+  "cov_override": "calendar_cyclical",
+  "covariate_family": "calendar",
+  "mechanism": "白糖作为农产品具有显著季节性：北半球榨季10月-次年3月供应集中，而夏季饮料需求旺季在6-8月。日历周期捕捉这种跨季供需错配，交割月前季节性紧平衡往往提前反映在基差结构中。SR的仓单注册节奏与甜菜/甘蔗轮换种植周期进一步强化季节性定价规律。",
+  "symbol_fit": "为何是sr: 白糖是全球贸易量最大的软商品，中国既产甜菜糖又进口原糖，内外价差与季节性到港形成独特日历效应。相比黑色系物流约束，农产品的种植-收获-消费季节更稳定可预测，日历周期对sr比工业品种更纯粹。",
+  "predicted_direction": "榨季前(9月)contango收窄+低库存 → long; 新糖上市(11-1月)库存压力+back结构 → short",
+  "kill_condition": "aligned dir_acc < 0.50 或季节性方向与价格走势持续背离即放弃",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)，确认季节性因子经BH-FDR存活"
+}

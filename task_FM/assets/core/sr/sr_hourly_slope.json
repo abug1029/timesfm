@@ -1,0 +1,12 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "sr_hourly_slope",
+  "symbol": "sr",
+  "cov_override": "hourly_slope",
+  "covariate_family": "momentum",
+  "mechanism": "白糖(sr)小时级别价格斜率动量：sr受进口配额/抛储政策突发冲击，短周期斜率能快速捕捉政策预期变化后的价格漂移。与reversal_shadow均值回归机制互补，趋势形成初期斜率领先于影线反转信号，适合政策announcement后的趋势跟随。",
+  "symbol_fit": "为何是sr: 白糖政策敏感度高，短周期动能对突发政策反应快于长周期指标。hourly_slope比rsi_state更灵敏，比reversal_shadow更适合趋势延续场景，与已验证的sr_vwap_deviation(dir_acc=0.521)形成动量-反转互补。",
+  "predicted_direction": "positive_hourly_slope -> long",
+  "kill_condition": "aligned dir_acc < 0.52 或与sr既有momentum信号相关性>0.7(非独立)时放弃",
+  "promote_condition": "aligned gate_pass 且与sr_reversal_shadow_gated残差独立，验证短周期动量在政策敏感品种有效性"
+}

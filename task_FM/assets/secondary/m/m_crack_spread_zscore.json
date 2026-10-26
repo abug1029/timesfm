@@ -1,0 +1,12 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "m_crack_spread_zscore",
+  "symbol": "m",
+  "cov_override": "crack_spread_zscore",
+  "covariate_family": "term_structure",
+  "mechanism": "豆粕(M)作为压榨产业链核心，其定价与大豆压榨利润(裂解价差)紧密联动。crack_spread_zscore衡量利润相对历史中枢的极端偏离，当压榨利润处于历史低位(Z<-2)时预期均值回归，油厂挺价意愿增强；当利润过高(Z>2)时预期回落，豆粕价格承压。该机制将商品期货的期限结构理论延伸至产业链利润结构。",
+  "symbol_fit": "M是大豆压榨的直接产出，与Y(豆油)形成压榨套利组合。压榨利润受大豆进口成本、豆粕需求(养殖)、豆油需求三方博弈，极端利润偏离具有统计可预测性，适合Z-score捕捉均值回归。与纯动量信号形成互补。",
+  "predicted_direction": "crack_zscore_extreme_low -> long, crack_zscore_extreme_high -> short",
+  "kill_condition": "aligned dir_acc < 0.52 或利润结构与价格方向无关：证伪压榨利润对豆粕价格的传导机制",
+  "promote_condition": "aligned gate_pass 且 dir_acc >= 0.52：证明产业链利润结构是独立于动量/日历的有效预测源，支持term_structure家族扩展"
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "m_hourly_slope",
+  "symbol": "m",
+  "cov_override": "hourly_slope",
+  "covariate_family": "momentum",
+  "mechanism": "豆粕小时级别价格斜率捕捉日内动量微观结构：m为高频交易活跃品种，小时斜率能比日度指标更早识别趋势启动点。豆粕产业链套保盘在开盘时段集中入场，小时粒度可捕捉主力建仓方向与散户追涨的时序差异，提升方向预测精度。",
+  "symbol_fit": "为何是m: m在momentum族5/26有基础且出现多个near-miss(0.515-0.519贴近阈值)，豆粕作为饲料原料受外盘美盘影响大，小时粒度能更好同步芝加哥期货盘前信息；granularity升级是从失败/近门到过关的潜在路径。",
+  "predicted_direction": "hourly_slope_positive -> long",
+  "kill_condition": "hourly_slope dir_acc <= 日度momentum最佳表现(0.519)即证明granularity无增量",
+  "promote_condition": "aligned gate_pass 且 dir_acc >= 0.52，验证小时粒度对近门品种的改进价值"
+}

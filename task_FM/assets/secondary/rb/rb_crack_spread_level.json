@@ -1,0 +1,15 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "rb_crack_spread_level",
+  "symbol": "rb",
+  "cov_override": "crack_spread_level",
+  "covariate_family": "term_structure",
+  "mechanism": "裂解价差水平(crack_spread_level)在螺纹钢(rb)上的适用性边界测试：螺纹钢无压榨/裂解产业链结构，该协变量应无预测力。若gate_pass=False，支持期限结构机制的行业链特异性假说(H_g2_04)。",
+  "symbol_fit": "rb为建筑钢材，与油脂压榨/石油裂解产业链无关，是检验crack_spread机制边界条件的理想 falsification 标的。",
+  "predicted_direction": "no_predictive_power_expected",
+  "kill_condition": "aligned dir_acc >= 0.52（意外通过将证伪行业链特异性假说，此为预期结果而非失败）",
+  "promote_condition": "aligned gate_pass=False 且 dir_acc <= 0.505，确认crack_spread在非产业链品种上失效，支持机制边界假说",
+  "search_role": "falsifier",
+  "search_parent_id": "",
+  "tree_id": "term_structure_specificity_H_g2_04"
+}

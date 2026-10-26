@@ -1,0 +1,12 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "sr_ao_accel",
+  "symbol": "sr",
+  "cov_override": "ao_accel",
+  "covariate_family": "momentum",
+  "mechanism": "Falsification test: momentum family claims 75/156 gate_pass across symbols, but SR shows 0/12 failures. If ao_accel (trend acceleration) fails on SR, it falsifies the universal momentum hypothesis and confirms SR's unique microstructure (sugar import quotas and state reserves) decouples price from technical momentum.",
+  "symbol_fit": "SR is sugar with government price controls and quota-based imports; momentum signals should fail because policy interventions create discontinuous price jumps uncorrelated with trend acceleration. This tests if momentum works only on market-driven commodities.",
+  "predicted_direction": "trend_acceleration -> direction_uncertain (mechanism predicts failure)",
+  "kill_condition": "aligned dir_acc < 0.50 confirms mechanism specificity claim is false; dir_acc >= 0.52 falsifies the falsification (momentum does work on SR)",
+  "promote_condition": "gate_pass=True would falsify this falsification attempt and promote momentum-as-universal; gate_pass=False supports mechanism-specificity"
+}

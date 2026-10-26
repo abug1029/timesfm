@@ -1,0 +1,13 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "rb_vor",
+  "symbol": "rb",
+  "cov_override": "vor",
+  "covariate_family": "volatility",
+  "mechanism": "螺纹钢rb在政策干预与产业博弈中呈现波动率周期特征：波动率压缩至极低水平后往往伴随政策预期变化或季节性需求释放的突破行情。VOR(波动率范围)识别真实波幅相对历史的压缩/扩张状态，低波压缩后的扩张方向跟随政策-库存-需求的共振方向。",
+  "symbol_fit": "rb是政策敏感型建材，波动率压缩突破机制比动量更适合：限产政策、地产调控、基建刺激等政策节点创造波动率 regime shift，而VOR能捕捉政策真空期的蓄力与政策发布期的释放。",
+  "predicted_direction": "low_vol_compression -> breakout_direction_follow",
+  "kill_condition": "aligned dir_acc < rb品种adaptive effective_min(0.517) 即放弃",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc口径)，且dir_acc > 0.520",
+  "search_role": "root"
+}

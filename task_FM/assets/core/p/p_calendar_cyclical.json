@@ -1,0 +1,12 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "p_calendar_cyclical",
+  "symbol": "p",
+  "cov_override": "calendar_cyclical",
+  "covariate_family": "calendar",
+  "mechanism": "棕榈油产量具有明显的季节性周期：马来西亚和印尼在每年2-4月出现产量季节性低点（斋月+降雨），而下半年进入高产期。交割月前的日历效应能够捕捉这种供需错配——传统节日前（春节、开斋节）的需求激增与季节性低产重叠时，期现结构呈现强势BACK结构。该机制将日历周期假设延伸到进口依赖度高的油脂品种，比纯动量信号更能捕捉产地到港的时间差。",
+  "symbol_fit": "为何是p: 棕榈油是高度进口依赖的农产品，产地集中于东南亚，中国到港周期约15-30天。日历周期能有效映射产地季节性到国内价格预期，比波动率压缩更适合有强产季的农产品。",
+  "predicted_direction": "delivery_month_seasonal -> long_before_festival",
+  "kill_condition": "aligned dir_acc 低于 p 的 adaptive effective_min (约0.52) 即放弃，或日历信号与价格走势负相关",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)"
+}

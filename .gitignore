@@ -31,6 +31,8 @@ timesfm_cache/
 
 # Praxist 运行产物（太大，可从 praxist 重新生成）
 task_FM/experiments/
+# 但保留有价值提案资产（核心 + 次核心）
+!task_FM/assets/
 
 # Jev 预筛产物（运行时生成）
 results/

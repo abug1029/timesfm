@@ -1,0 +1,13 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "ss_vor_falsifier_g2",
+  "symbol": "ss",
+  "cov_override": "vor",
+  "covariate_family": "volatility",
+  "search_role": "falsifier",
+  "mechanism": "不锈钢(ss)作为工业金属，其波动率压缩信号(VOR)应能独立预测方向，无需库存信号配合。H_g2_02声称库存+波动率组合优于纯波动率，若ss_vor单独通过硬门，则证伪组合必要性。机制：VOR识别真实波幅相对历史的压缩状态，低波压缩后突破方向跟随。不锈钢产业链集中、投机度适中，波动率周期与镍矿进口、产能释放节奏相关。",
+  "symbol_fit": "为何是ss: 不锈钢是工业金属中尚未充分测试波动率信号的标的。相比螺纹钢的建筑需求属性，不锈钢更贴近制造业周期，产业链涉及镍矿-镍铁-不锈钢全流程。若VOR能在ss上独立生效，表明工业商品的波动率信号不依赖库存配合即可预测方向。",
+  "predicted_direction": "vor_compression_low -> breakout_direction_follows",
+  "kill_condition": "aligned dir_acc < 0.50 表明纯波动率信号在ss上失效，支持H_g2_02的组合必要性主张",
+  "promote_condition": "aligned gate_pass=True 且 dir_acc ≥ 0.52 表明纯波动率足以预测方向，证伪组合必要性"
+}

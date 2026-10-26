@@ -1,0 +1,13 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "m_rsi_state",
+  "symbol": "m",
+  "cov_override": "rsi_state",
+  "covariate_family": "momentum",
+  "mechanism": "豆粕压榨产业链库存周期驱动价格均值回归：榨利扩张时油厂开工率上升压制价格，榨利收缩时减产去库存推升价格。RSI超买超卖体制量化这一循环，极端读数后价格回归基本面均值。",
+  "symbol_fit": "为何是 m: 豆粕压榨利润与开工率形成清晰的库存周期，RSI体制在利润驱动的周期性波动中捕捉回归中枢的时机，比纯动量更适合基本面强周期品种。",
+  "predicted_direction": "rsi_overbought -> short, rsi_oversold -> long",
+  "kill_condition": "aligned dir_acc 低于该品种 adaptive effective_min 即放弃",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)",
+  "failure_delta": ""
+}

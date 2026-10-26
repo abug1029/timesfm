@@ -1,0 +1,12 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "cj_rsi_slope",
+  "symbol": "cj",
+  "cov_override": "rsi_slope",
+  "covariate_family": "momentum",
+  "mechanism": "红枣cj的RSI变化斜率捕捉动量转折：cj_momentum族25/31 gate_pass表现极佳，但多数通过为hard-gate-but-losing(过硬门未过FDR)。RSI斜率动量领先价格转折，能在cj的季节性供需拐点(产新季/消费旺季)提前捕捉趋势衰竭或启动信号，比价格动量更早识别超买超卖的加速/衰竭。",
+  "symbol_fit": "cj作为小品种农产品，价格受情绪驱动明显，RSI斜率能捕捉情绪动量的二阶变化。相比价格动量，RSI斜率在cj上能过滤假突破——当价格新高但RSI斜率放缓时，预示上涨动能衰竭，这与cj的季节性炒作后回调特征吻合。",
+  "predicted_direction": "rsi_slope_positive -> long",
+  "kill_condition": "aligned dir_acc 低于 cj 品种 adaptive effective_min(0.517) 即放弃",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)，超越 cj_momentum 族 hard-gate-but-losing 的局限"
+}

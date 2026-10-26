@@ -1,0 +1,13 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "sh_rsi6",
+  "symbol": "sh",
+  "cov_override": "rsi6",
+  "covariate_family": "momentum",
+  "mechanism": "SH(热卷)为黑色产业链中游加工品，日均成交活跃、投机资金密集。RSI(6)捕捉极端超买超卖后1-3日反转：超卖(<20)时杠杆多头止损爆仓殆尽、现货终端按需补库托底，超买(>80)时空头止损回补+终端畏高延迟采购形成阻力。6周期对热卷日内动量反转最灵敏，rsi14过于滞后错过1-2日极端反转窗口。热卷的产业链位置(上游铁矿/焦炭成本推动，下游基建/汽车需求拉动)使其价格对短期情绪极端值反应剧烈，RSI6恰好量化这种瞬时过度延伸。",
+  "symbol_fit": "SH(热卷)：黑色产业链中游，投机密集+日内波动大+现货定价锚定期货，RSI6极端值后的产业买卖盘反转效应最强。与sh_rsi6相邻品种rb已验证动量反转类信号有效。",
+  "predicted_direction": "rsi6_extreme_oversold -> long; rsi6_extreme_overbought -> short (mean-reversal)",
+  "kill_condition": "aligned dir_acc < 0.52 (hard gate) 或 endpoint_mape 未优于 baseline 即放弃",
+  "promote_condition": "aligned gate_pass=True 且 BH-FDR fdr_pass (DirAcc 口径)",
+  "failure_delta": null
+}

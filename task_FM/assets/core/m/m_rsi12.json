@@ -1,0 +1,13 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "m_rsi12",
+  "symbol": "m",
+  "cov_override": "rsi12",
+  "covariate_family": "momentum",
+  "mechanism": "RSI(12)中周期超买超卖，灵敏度介于rsi6与rsi_state之间。豆粕作为榨油副产品，受美豆进口到港与国内压榨利润双重驱动，供需切换存在滞后性。RSI12的中周期窗口恰好匹配压榨厂库存调整周期（1-2周），超买超卖信号能提前捕捉压榨利润驱动的供需反转。该机制与政策脉冲无关，是纯产业周期驱动。",
+  "symbol_fit": "为何是m: 豆粕库存周期明显（进口到港+压榨利润双驱动），RSI12的12周期窗口与压榨厂库存调整周期匹配，比短周期更稳定、比长周期更灵敏，适合捕捉产业供需切换。",
+  "predicted_direction": "rsi12 > 70 -> short mean reversion; rsi12 < 30 -> long mean reversion",
+  "kill_condition": "aligned dir_acc 低于 m adaptive effective_min (约0.515) 即放弃",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc 口径)",
+  "failure_delta": "对比m_momentum_f271f3458d87(DEAD): 前次失败为宽泛动量，本次聚焦中周期超买超卖，利用豆粕库存周期特性，而非通用动量"
+}

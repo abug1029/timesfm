@@ -1,0 +1,12 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "cj_basis_momentum",
+  "symbol": "cj",
+  "cov_override": "basis_momentum",
+  "covariate_family": "term_structure",
+  "mechanism": "红枣作为特色农产品，其期现基差反映新疆产区天气、冷链物流、交割标准变化等核心供需因素。基差动量捕捉期现收敛/发散的持续性趋势：当基差走强(现货升水扩大)时，反映产区供应紧张或消费端补库，该动量方向预示期货价格向现货靠拢。cj在term_structure族已有极强表现(8/9)，但basis_momentum这一核心期限结构指标尚未针对性测试。",
+  "symbol_fit": "为何是cj: 红枣是少有的单主产区(新疆)农产品，产区天气和物流瓶颈导致期现背离频繁且持续，基差动量比单纯期限结构更能捕捉这种地域性供需错配的修复过程，与cj的term_structure成功逻辑一致。",
+  "predicted_direction": "basis_momentum_positive -> long",
+  "kill_condition": "aligned dir_acc < 0.517 (cj品种effective_min) 即放弃",
+  "promote_condition": "aligned gate_pass 且 fdr_pass (DirAcc口径)，预期与cj现有term_structure最佳表现相当(8/9)"
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "fm.hypothesis_proposal.v1",
+  "proposal_id": "ss_crack_spread_zscore",
+  "symbol": "ss",
+  "cov_override": "crack_spread_zscore",
+  "covariate_family": "term_structure",
+  "mechanism": "不锈钢(ss)具有产业链结构(镍铬原料-冶炼-轧材)，但prompt显示其已有basis_momentum和crack_spread_slope处于'Locked this window'状态(hard-gate-but-losing)。crack_spread_zscore作为产业链利润极端偏离指标，若ss的产业链利润Z-score极端值不能预测反转，则证明ss的产业链结构过于复杂(多原料、多环节)，单一利润Z-score无法捕捉。该测试验证term_structure机制在多原料产业链中的适用边界。",
+  "symbol_fit": "为何是ss: ss是不锈钢，产业链涉及镍、铬、铁多原料，以及炼钢、热轧、冷轧多环节，比单一压榨产业链(豆粕-豆油-大豆)复杂得多。若crack_spread_zscore在ss上失效，证明该机制适用于简单产业链，在复杂多原料产业链中需要更精细的拆解指标。",
+  "predicted_direction": "zscore_extreme -> mean_reversion (预期复杂产业链中信号模糊)",
+  "kill_condition": "aligned gate_pass=True AND dir_acc > 0.54 (若复杂产业链过门，则机制普适性极强)",
+  "promote_condition": "aligned gate_pass=False (复杂多原料产业链中单一Z-score失效，验证机制边界)",
+  "search_role": "falsifier",
+  "search_parent_id": "H_g2_02",
+  "tree_id": "liquidity_stratified_term_structure"
+}
