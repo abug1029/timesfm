@@ -19,6 +19,11 @@ from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
 
+# ── 自定义异常：不支持的协变量 ──
+class UnsupportedCovariateError(ValueError):
+    """协变量未注册异常（fail-fast 机制）"""
+    pass
+
 # ── 全局极小值，防除零（quant-trading covariate 修复） ──
 EPSILON = 1e-8
 
@@ -1525,7 +1530,7 @@ def build_covariate_matrix(
 
     else:
         # 未知协变量显式报错 (此前静默降级为 CCL，会产出错误结果而不报警)
-        raise ValueError(
+        raise UnsupportedCovariateError(
             f"build_covariate_matrix 不支持 covariate_type='{covariate_type}'；"
             f"请在 features.py 注册分派，或在 covariate_pool.json 中归档。"
         )
