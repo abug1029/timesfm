@@ -123,6 +123,37 @@ tail -f data/cache/slow_loop.out
 
 kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max_points` 来自 goal `cadence.aligned_max_points`（**当前 600**）。
 
+### 队列清理（2026-10-27 新增）
+
+当队列中混入无效提案（族名/未注册协变量/无数据品种）时，可用清理脚本安全移除：
+
+```bash
+# 1. 停止慢环（避免并发写冲突）
+pkill -f aligned_slow_loop
+
+# 2. 运行清理脚本（自动备份 + 文件锁 + 原子替换）
+.venv/bin/python scripts/cleanup_invalid_queue.py
+
+# 3. 验证结果
+wc -l data/cache/aligned_pending.jsonl
+ls -lh data/cache/aligned_pending.jsonl.bak.*
+
+# 4. 重启慢环（如需要）
+.venv/bin/python scripts/aligned_slow_loop.py --batch-id <batch_id>
+```
+
+**清理逻辑**：
+- 族名（momentum, volatility 等）→ 移除
+- 未注册协变量（不在 `covariate_pool.json` 的 active 列表）→ 移除
+- 品种 `c`（玉米，无数据）→ 移除
+
+**安全措施**：文件锁（`fcntl.flock`）、备份原文件、原子替换（先写 `.tmp` 再 `rename`）。
+
+**相关脚本**：
+- `scripts/enqueue_reprocess.py`：入队时验证协变量（P0-A）
+- `scripts/cleanup_invalid_queue.py`：清理队列中的无效条目（P3）
+- `cascade/features.py::UnsupportedCovariateError`：fail-fast 异常（P0-B）
+
 监督环在 harvest 入队后立刻 `Popen aligned_slow_loop.py`（**不看 clock window**）。完成条件：pending 与 inprogress 皆空，且 `aligned_slow_loop.lock` 可抢。慢环崩溃时 `phase` 保持 `slow`，下一 tick 再拉起；`queue_recover` 仍由慢环自己做。429 等待期间若 `phase=slow`，慢环继续；抽干后若仍封禁则 `phase=wait_quota`。
 
 ---
