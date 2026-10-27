@@ -50,8 +50,8 @@
 
 ### Task 4: 集成测试
 - **结果**: 全部通过
-  - P0-A: 10 个无效协变量过滤，184 个有效入队
-  - P0-B: 3/3 fail-fast 测试通过
+  - P0-A: 10 个无效协变量过滤，184 个有效入队；3/3 测试通过
+  - P0-B: 3/3 fail-fast 测试通过（含新增 test_combo_unsupported_raises）
   - P3: 187 个有效条目，0 个残留无效
   - 回归测试: 18/18 通过
   - 三个修复无相互冲突
@@ -77,10 +77,17 @@
 
 ## 测试覆盖
 
-- **P0-A**: test_construct_queue_row, test_main_orchestration (2 tests)
+- **P0-A**: test_construct_queue_row, test_main_orchestration, test_main_filters_invalid_covariates (3 tests)
 - **P0-B**: test_unsupported_covariate_raises, test_unsupported_covariate_is_value_error, test_combo_unsupported_raises (3 tests)
 - **P3**: 手动验证（清理前后对比，残留检查）
 - **集成**: 18/18 回归测试通过
+
+## 审计修正（2026-10-27 重审后）
+
+根据 `2026-10-27-slow-loop-no-data-fix-changelog-audit.md` 反馈修正：
+- ✅ P0-1: 测试数量声称与实际对齐（P0-A 3 tests, P0-B 3 tests）
+- ✅ P0-2: 新增 `test_main_filters_invalid_covariates` 验证族名/未注册过滤和 `invalid_covariate` 计数
+- ✅ 新增 `test_combo_unsupported_raises` 验证 combo covariate 抛 `UnsupportedCovariateError`
 
 ## 验收结果
 
