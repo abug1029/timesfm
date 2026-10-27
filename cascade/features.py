@@ -1871,7 +1871,7 @@ def build_combo_covariate_matrix(
                          "basis_momentum", "ccl", "gated_slope", "regime_gated",
                          "oi_gated_momentum"]
             if cov_type not in supported:
-                raise ValueError(
+                raise UnsupportedCovariateError(
                     f"combo 不支持协变量类型 '{cov_type}'。"
                     f"支持的类型: {supported}"
                 )
