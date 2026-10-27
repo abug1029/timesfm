@@ -55,6 +55,22 @@ mechanism, proposal_id}.
 ## Proposal scope
 - symbol: {m, ss, sr, cj, jd, lh, eg, rb} + the evaluator's 2-star set
 - cov_override: ONLY ACTIVE covariates in the pool menu (never fabricated names)
+
+**FORBIDDEN as cov_override (these are FAMILY NAMES, not covariates):**
+momentum, volatility, inventory, calendar, term_structure, macro_sentiment
+Using a family name as cov_override will be REJECTED by the queue.
+
+**Exact active covariate names (31 total, copy exactly):**
+ao_accel, basis_momentum, bb_squeeze, calendar_cyclical, ccl,
+crack_spread_level, crack_spread_slope, crack_spread_zscore, gated_slope,
+ha_body, hourly_slope, hurst, nvi, oi, oi_gated_momentum, pca_momentum,
+qstick, regime_gated, reversal_shadow, reversal_shadow_gated_02,
+reversal_shadow_gated_03, reversal_shadow_gated_05,
+rsi6, rsi12, rsi24, rsi_slope, rsi_state, sar_dist, stddev, vor, vwap_deviation
+
+**Special values (allowed but rare):**
+slope_only, none, baseline
+
 - New indicator ideas: write `new_cov_<name>.json` with `cov_override: null` + a
   `new_covariate:{name, formula, mechanism, family}` object — these route to a host
   backlog, they are NOT backtested this cycle.
