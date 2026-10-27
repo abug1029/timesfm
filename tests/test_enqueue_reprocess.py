@@ -8,18 +8,18 @@ from scripts.enqueue_reprocess import construct_queue_row
 def test_construct_queue_row():
     proposal = ProposalInfo(
         symbol="ta",
-        cov_override="momentum",
-        variant_id="ta_momentum",
-        file_path=Path("/path/to/proposals/ta_momentum.json"),
+        cov_override="ao_accel",
+        variant_id="ta_ao_accel",
+        file_path=Path("/path/to/proposals/ta_ao_accel.json"),
         mtime=datetime(2026, 10, 26, 12, 0, 0),
         src_run="run_2026-10-24_06-23-48_primary_task_FM"
     )
     
     row = construct_queue_row(proposal, batch_id="reprocess_20261026")
     
-    assert row["variant_id"] == "ta_momentum"
+    assert row["variant_id"] == "ta_ao_accel"
     assert row["symbol"] == "ta"
-    assert row["cov_override"] == "momentum"
+    assert row["cov_override"] == "ao_accel"
     assert row["max_points"] == 600
     assert row["stage"] == "aligned"
     assert row["source"] == "reprocess_20261026"
@@ -33,20 +33,20 @@ def test_main_orchestration(tmp_path):
     exp_dir = tmp_path / "experiments"
     exp_dir.mkdir()
 
-    # run1: one proposal (ta_momentum, older)
+    # run1: one proposal (ta_ao_accel, older)
     run1 = exp_dir / "run_2026-10-01" / "results" / "gen_0" / "gen0_peer0" / "proposals"
     run1.mkdir(parents=True)
-    (run1 / "ta_momentum.json").write_text('{"symbol": "ta", "cov_override": "momentum"}')
+    (run1 / "ta_ao_accel.json").write_text('{"symbol": "ta", "cov_override": "ao_accel"}')
 
-    # run2: two proposals (ta_momentum duplicate newer + sh_basis new)
+    # run2: two proposals (ta_ao_accel duplicate newer + sh_basis_momentum new)
     run2 = exp_dir / "run_2026-10-20" / "results" / "gen_0" / "gen0_peer0" / "proposals"
     run2.mkdir(parents=True)
-    (run2 / "ta_momentum.json").write_text('{"symbol": "ta", "cov_override": "momentum"}')
-    (run2 / "sh_basis.json").write_text('{"symbol": "sh", "cov_override": "basis"}')
+    (run2 / "ta_ao_accel.json").write_text('{"symbol": "ta", "cov_override": "ao_accel"}')
+    (run2 / "sh_basis_momentum.json").write_text('{"symbol": "sh", "cov_override": "basis_momentum"}')
 
-    # ta_momentum already has a verdict
+    # ta_ao_accel already has a verdict
     verdict_file = tmp_path / "verdicts.jsonl"
-    verdict_file.write_text('{"variant_id": "ta_momentum", "status": "ok"}\n')
+    verdict_file.write_text('{"variant_id": "ta_ao_accel", "status": "ok"}\n')
 
     queue_file = tmp_path / "queue.jsonl"
 
@@ -64,6 +64,6 @@ def test_main_orchestration(tmp_path):
     lines = [l for l in queue_file.read_text().strip().split("\n") if l]
     assert len(lines) == 1
     row = json.loads(lines[0])
-    assert row["variant_id"] == "sh_basis"
+    assert row["variant_id"] == "sh_basis_momentum"
     assert row["symbol"] == "sh"
     assert row["source"] == "reprocess_20261026"
