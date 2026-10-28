@@ -32,7 +32,7 @@
 | **`data_dictionary.md`** | 品种集合 / 协变量族 / 数据表 / 防穿越 |
 | **`praxist.md`** | 架构概览：Praxist 本体 vs 三环；方案 A 合同；**监督环模块归属的唯一表** |
 | **`runbook_praxist_three_loop.md`** | **运维手册**：启停、429、队列/checkpoint、方案 A 收割、数据资产备份（同仓推 origin）、故障速查 |
-| **`system_design.md`** | 系统设计全景：架构、数据流、协变量、评估、Praxist 三环。预筛行为见 `praxist.md` |
+| **`system_design.md`** | 系统设计全景：架构/数据流/协变量/评估/Praxist 三环 + TypeSafe 预筛 |
 | **`run_artifacts.md`** | 运行产物分级 / 真相源隔离 / 清理流程 |
 | **`README.md`** | 文档索引（按 L0 手册 / L1 规范 / L2 证据分层） |
 | `family_boundary_rules.md` | 研究 family 边界规则（封账 / 成员上限 / T_max / p=1 范围） |

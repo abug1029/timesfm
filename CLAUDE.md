@@ -38,16 +38,18 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 - 密钥只进 `.env.praxist`，不要写进 `task_FM/task.yaml`
 - **无人值守运维（2026-10-08）**：维护窗口旗标（`data/cache/maintenance.flag`，7天过期）、熔断机制（`data/cache/heal_fail.count` ≥3 触发）、孤儿 run 回收（`data/cache/active_runs.json` + flock）、D5 禁用旗标（`data/cache/d5_disabled.flag`）。诊断入口：`scripts/diagnose_three_loop.sh`。详见 runbook "无人值守运维" 章节。
 
-## 协变量预筛（软建议）
+## TypeSafe Jev 协变量预筛（软建议模式，2026-09-22）
 
-监督环对 peer 提案做三问预筛，只改调度分，不阻断慢环。加减分、超时和传输的唯一说明在 `docs/praxist.md`。这里只记代码位置，避免和那里各写一套。
+Peer 提出协变量提案时，监督环用 **TypeSafe System One (Jev)** 做三问预筛（机制可信度 Noul / 新颖度 Choice / 预期效果 Score），但**只做软建议、绝不阻断慢环回测**：
 
-- 模块仍是 `cascade/typesafe_prescreen.py`。调度分在 `scripts/sup_harvest.py` 的 `_apply_prescreen_score()`。慢环把同一份 `.prescreen.json` 写入裁决的 metadata。
-- 没有 `TYPESAFE_API_KEY` 时直接降级，不发请求。有密钥时走 Laya 的 HTTP 接口，不是 TypeSafe SDK 的 `client.system_one()`。
-- 质量追踪脚本是 `scripts/track_prescreen_quality.py`。样本不足时不产出调度建议。
-- 触发是异步的，已有成功结果则跳过。2026-10-24 的超时分层已撤回，不要按已删除的 spec 恢复。
+- **调度降权**：`scripts/sup_harvest.py` 的 `_apply_prescreen_score()` 读 `.prescreen.json` 调整 `_proposal_priority_score`。invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5。**用 net scoring 而非硬阻断**，slow loop 永远跑、可审计。
+- **质量门禁（Phase 3）**：`scripts/track_prescreen_quality.py` 扫描带 `metadata.prescreen` 的 verdict，验证 Jev 判断与回测一致性。样本 < 50 不产出调度建议，避免小样本误校准。
+- **慢环注入**：`scripts/aligned_slow_loop.py` 把 `.prescreen.json` 读入 `verdict["metadata"]["prescreen"]`（status/skip_suggested/plausibility/novelty/effect_size/note）。
+- **幂等/异步**：supervisor 触发是 fire-and-forget（daemon 线程），已有 success 结果则跳过，不重复付费。
 
-最初的设计记录是 `docs/superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md`。传输更换记录是 `docs/superpowers/changelogs/2026-10-14-jev-to-laya-migration.md`。
+关键文件：`cascade/typesafe_prescreen.py`（核心模块，异常分类：超时→degraded、鉴权→error）。环境变量 `TYPESAFE_API_KEY` 在 `.env.praxist`。SDK v0.7.1 方法论：`client.system_one()`、答案字段 `.noul/.choice/.score`、模型名 `jev-latest`。
+
+设计权威：`docs/superpowers/specs/2026-09-22-jev-prescreen-peer-influence.md`；状态细节见记忆 `fm-typesafe-prescreen`。
 
 ## Stage 3 协变量可信度（2026-09-29 结案，commit `381f31e`）
 
@@ -350,10 +352,10 @@ python scripts/copilot.py --three-star
 - `scripts/drift_detector.py` — 退化检测 (滑动窗口 DirAcc)
 - `scripts/confidence_tracker.py` — 置信度追踪
 
-**协变量预筛：**
-- `scripts/validate_typesafe_prescreen.py` — 人工核对预筛判断。没有 `TYPESAFE_API_KEY` 时降级
-- `scripts/track_prescreen_quality.py` — 预筛判断与回测是否一致。样本不足时不产出调度建议
-- `cascade/typesafe_prescreen.py` — 预筛模块。行为见 `docs/praxist.md`
+**TypeSafe 预筛类：**
+- `scripts/validate_typesafe_prescreen.py` — 人工验证 Jev 判断与历史 proposal（需 TYPESAFE_API_KEY，无 key 优雅降级）
+- `scripts/track_prescreen_quality.py` — Jev 判断质量追踪（Phase 3，扫描带 metadata.prescreen 的 verdict，样本<50 不产出调度建议）
+- `cascade/typesafe_prescreen.py` — TypeSafe Jev 预筛核心模块（软建议模式）
 - `scripts/residual_analyzer.py` — 残差分析
 - `scripts/covariate_advisor.py` — 协变量建议
 

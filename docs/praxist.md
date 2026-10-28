@@ -107,9 +107,9 @@ Peer 第一件事：至少写 2 份假设到
 1. 用 `scripts/praxist_goal.yaml` 的 DSL 判定成功 / 预算
 2. 配额窗够才 `praxist start` / `resume`；429 则 stop。同提供商、同 model id 解封后 **resume 同一 run**；failover 且 model id 不同时允许新 `run_dir`
 3. run 结束后 `harvest_proposals`：校验（含 DEAD/HOLD、`failure_delta`）→ 去重 → 分层选座 → 入慢环队列
-4. **协变量预筛**（可选，软建议）：收割时 `_prescreen_async`（fire-and-forget）对提案做三问（机制可信度、新颖度、预期效果），写入 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做加减分（invalid 减 100、redundant 且弱减 30、低可信减 20、effect 为 0 且可信度落在 0.4 到 0.6 之间减 15；不建议跳过且高效果加 10、新颖且高可信加 5）。**不阻断慢环**。没有 `TYPESAFE_API_KEY` 时直接降级，不发请求。有密钥时请求发到 `LAYA_BASE_URL`（未设置则 `http://100.96.19.116:8000`）的 `/v1/systemone`，模型名 `jev-latest`。单次超时 5 秒，连续 3 次超时后短路 600 秒。模块文件名仍是 `cascade/typesafe_prescreen.py`。2026-10-24 的超时分层和队列退避已在 2026-10-25 的 `62dc675` 撤回，不要按那批已删除的 spec 恢复。降权因异步滞后一轮生效。这一节是加减分的唯一说明，其他文档只链接到这里。
+4. **TypeSafe Jev 预筛**（可选，软建议）：连 peer 提案同时 `_prescreen_async`（fire-and-forget）调 TypeSafe System One 三问（机制可信度/新颖度/预期效果），写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度分（invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5）。**永远不阻断慢环回测**；无 `TYPESAFE_API_KEY` 或降级时静默跳过。降权因异步滞后一轮生效。详见 `cascade/typesafe_prescreen.py` 与记忆 `fm-typesafe-prescreen`。
 5. 有货立刻拉慢环
-6. 物化 `known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose）与 `covariate_menu.inc.md`，喂给下一代。提示词先读证据，不要优先波动率族。
+5. 物化 `known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose）与 `covariate_menu.inc.md`，喂给下一代。提示词先读证据，不要优先波动率族。
 
 快环面板：`task_FM/task.yaml` 的 `cohort_size=2` 配任务侧 `panel_topology:fm_two_peer`（`peer_role_rotation = [exploit, falsifier]`）。bundled 默认要 4 个角色，两人 cohort 盖不住，议程会被拒。**不要改 `.venv` 里的 Praxist。** 改 topology 后重启监督环。
 
@@ -138,9 +138,10 @@ Stage 3 契约（2026-09-28/29 结案）：评估带 horizon 填充标记（`cas
 - 裁决：`task_FM/config/aligned_verdicts.jsonl`（按 `variant_id` 最新行）
 - 目标与预算：`scripts/praxist_goal.yaml`
 
-成功条件（goal.yaml 现行，2026-10-02 重写）：唯一成功条件是 `all_symbols_pass_phase1`。
-目标品种以 `scripts/praxist_goal.yaml` 的 `target_symbols` 为准（2026-10-08 去掉 `sc`、加入 `jm`，与候选准入门归一）。
-每个目标品种至少有一个经 family 封账的确认变体（`run_label == confirmed` 且 `fdr_pass is True`）。
+成功条件（goal.yaml 现行，**2026-10-02 重写**）：**唯一成功条件 `all_symbols_pass_phase1`**
+——24 个目标品种（`m/ss/sr/cj/jd/lh/eg/rb/i/p/y/cf/bu/fu/ta/ma/fg/ur/px/oi/sh/sp/ao/jm`；
+2026-10-08 删 `sc`、增 `jm`，与候选准入门 `ALLOWED_SYMBOLS` 归一）
+**每品种至少 1 个经 family 封账的确认变体**（`run_label == confirmed` 且 `fdr_pass is True`）。
 
 - **原三阶段门槛全部退役**：`n_gate_pass_variants >= 10`、`avg_dir_acc_gate_pass >= 0.51`
   （0.51 作为绝对水平低于 `detection_threshold_vs_random`，作为相对基线增量低于
@@ -152,15 +153,20 @@ Stage 3 契约（2026-09-28/29 结案）：评估带 horizon 填充标记（`cas
   且 `dm_status ∈ {ok, set_mismatch_ok}`。`migrated_pass` 与 `v2_pass` 已随v4 收口退役
 - 预算（**有界**）：`max_cycles` 2000 · `cpu_hours` 2000 · `token_budget_m` **null（不参与停机）**
   · `deadline` 2028-10-02
-- **预注册样本量已锁定**（监督环不改写）：见 `task_FM/config/preregistry.jsonl`。2026-10-02 锁定的首批是鸡蛋和白糖，具体样本量以该文件为准，不在这里抄第二份。
-- **搜索档位**只看 `scripts/praxist_goal.yaml` 的 `search_policy`（`off`、`shadow`、`enforce`）。该键每轮轮询热重载。不要凭旧笔记假定它是 `off`。
-- **基线漂移上界**是 `scripts/sup_evidence.py` 的 `_BASELINE_STALENESS_MAX_H`。2026-10-25 曾改成 336 小时，同日改回。以代码常量为准。
+- **预注册样本量已锁定**（监督环不改写）：jd 1,199 · sr 986，见 `task_FM/config/preregistry.jsonl`
 
-现场计数（阶段、圈数、裁决行数、进程号）不写在这里，去本节开头的三个文件里查。协议版本看 `PROTOCOL_FINGERPRINT_VERSION`。
+磁盘快照（**2026-10-03**；过期以 JSON 为准）：
 
-阶段 3 确认机制已接线（2026-10-02）：确认窗口、checkpoint 命名空间、family 封账、goal 重写、收割只看当前协议。2026-10-03 的未决清单有收口记录 `docs/superpowers/changelogs/2026-10-08-open-issues-closure-implementation.md`，不要把那份报告当成还开着的工单。
-
-历史经济示例见 [system_design.md](./system_design.md) 第 4.3 节。过硬门但亏钱，仍然不算已经解决。
+- `phase=fast`，`cycles_done=203`，`paused_429=false`
+- 裁决注册表 **232 行 = 188 条跨协议旧行（活跃视图外）+ 44 条 v4**；v4 明细：`gate_pass` 13/44 ·
+  `tier` S6/A6/B21/C11 · `run_mode` 全部 `exploration` · **确认级 `pass_variants` 0 条**
+- 监督环 **PID 416**（2026-10-02 20:27 经规范启动器重启，`setsid nohup` 脱离会话；前一进程 PID 418
+  于 10-02 19:05 干净退出 `exit_code 0` / uptime 114,957s）
+- 协议指纹 **v4 = `f02b2a43…`**；9 个 nocov 基线全部带 v4 指纹（2026-10-01/02 重生，fu 为入集后首个基线）
+- 阶段 3 确认机制已接线（2026-10-02，11 笔）：确认窗口透传、checkpoint 命名空间隔离、family 分派与封账、
+  goal 重写、首批 2 条预注册、收割/复测只看当前协议
+- 未决问题见 `docs/superpowers/reports/2026-10-03-fm-a-open-issues.md`
+- 历史经济示例（`ss_vor` / `i_oi` / `m_ccl` / `cj_oi` 的磁盘裁决表）见 [system_design.md §4.3](./system_design.md)；「过硬门但亏钱 **不是** already solved」的纪律不变
 
 重启（规范方式 = `scripts/start_supervisor.sh`，2026-09-21 起；PATH / `.env.praxist` / setsid 孤儿化由 launcher 处理并打印 PID）：
 
@@ -184,7 +190,7 @@ scripts/start_supervisor.sh
 5. 429：同提供商 resume 同一 run；model id 不同允许新 `run_dir`（Ark 主 / DashScope 备）
 6. TimesFM `ensure_compiled` 指纹跳过；生产 `DataStore` 连接关闭（compile-skip spec）
 
-预测链剩余性能债（Hurst 循环等）的 2026-09-08 审计已归档到 `docs/archive/superseded-2026-09/audit_system_efficiency_20260908.md`，与编排是两条线。
+预测链剩余性能债（Hurst 循环等）记在 [audit_system_efficiency_20260908.md](./audit_system_efficiency_20260908.md)，与编排是两条线。
 
 明确非目标：不改 Praxist 核心、不做 GPU/多机并行、监督环无出站通知（会话级监控随 Agent 会话消失）。
 

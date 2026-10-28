@@ -1,7 +1,5 @@
 # M5 Supervisor Split Spec 审核报告
 
-> **代码基线**: `94a320f`
-
 > **日期**: 2026-10-09
 > **被审对象**: `specs/2026-10-09-m5-supervisor-split-spec.md`（v1.0，Draft → 待实施）
 > **审核基线**: HEAD `1c7c7f5`（spec 提交）；实施前置链 `78f3187`(P1)→`89273e0`(P2)→`b07d501`(P1-P5 处置完成)

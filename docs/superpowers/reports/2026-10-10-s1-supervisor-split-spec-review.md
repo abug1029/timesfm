@@ -1,7 +1,5 @@
 # S1 Supervisor Split Spec 复审报告（v2.0）
 
-> **代码基线**: `c871f34`
-
 > **日期**: 2026-10-10
 > **被审对象**: `specs/2026-10-09-s1-supervisor-split-spec.md`（v2.0，commit `d11361c`）
 > **前审**: `reports/2026-10-09-m5-supervisor-split-spec-review.md`（v1.0，Reject as-is，13 项修正要求）

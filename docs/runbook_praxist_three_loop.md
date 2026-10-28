@@ -123,37 +123,6 @@ tail -f data/cache/slow_loop.out
 
 kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max_points` 来自 goal `cadence.aligned_max_points`（**当前 600**）。
 
-### 队列清理（2026-10-27 新增）
-
-当队列中混入无效提案（族名/未注册协变量/无数据品种）时，可用清理脚本安全移除：
-
-```bash
-# 1. 停止慢环（避免并发写冲突）
-pkill -f aligned_slow_loop
-
-# 2. 运行清理脚本（自动备份 + 文件锁 + 原子替换）
-.venv/bin/python scripts/cleanup_invalid_queue.py
-
-# 3. 验证结果
-wc -l data/cache/aligned_pending.jsonl
-ls -lh data/cache/aligned_pending.jsonl.bak.*
-
-# 4. 重启慢环（如需要）
-.venv/bin/python scripts/aligned_slow_loop.py --batch-id <batch_id>
-```
-
-**清理逻辑**：
-- 族名（momentum, volatility 等）→ 移除
-- 未注册协变量（不在 `covariate_pool.json` 的 active 列表）→ 移除
-- 品种 `c`（玉米，无数据）→ 移除
-
-**安全措施**：文件锁（`fcntl.flock`）、备份原文件、原子替换（先写 `.tmp` 再 `rename`）。
-
-**相关脚本**：
-- `scripts/enqueue_reprocess.py`：入队时验证协变量（P0-A）
-- `scripts/cleanup_invalid_queue.py`：清理队列中的无效条目（P3）
-- `cascade/features.py::UnsupportedCovariateError`：fail-fast 异常（P0-B）
-
 监督环在 harvest 入队后立刻 `Popen aligned_slow_loop.py`（**不看 clock window**）。完成条件：pending 与 inprogress 皆空，且 `aligned_slow_loop.lock` 可抢。慢环崩溃时 `phase` 保持 `slow`，下一 tick 再拉起；`queue_recover` 仍由慢环自己做。429 等待期间若 `phase=slow`，慢环继续；抽干后若仍封禁则 `phase=wait_quota`。
 
 ---
@@ -174,7 +143,7 @@ ls -lh data/cache/aligned_pending.jsonl.bak.*
 - 非 dry-run 每轮会 `scripts/sup_evidence.py` 的 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`（品种表不截断；Effective clues 从 snapshot 现场算过门族/近门/弱族；禁止再提案最多 80 条；`verdicts_truncated=<N>` 行标记被截断的裁决计数——2026-09-28 M4）。
 - `prompt_base.jinja2`：先读证据再写提案；`{% include 'known_verdicts.inc.md' ignore missing %}` 与 `covariate_menu.inc.md`。**不要**再写「优先波动率族」。
 - **红线：** 只有 `aligned_slow_loop.py` 可写 `aligned_verdicts.jsonl`。
-- **协变量预筛（可选）：** 收割时 `_prescreen_async` 异步写 `<proposal>.prescreen.json`，只改调度分，不阻断慢环。没有 `TYPESAFE_API_KEY`、超时或降级时跳过。传输和加减分见 `docs/praxist.md`。核对：`python scripts/validate_typesafe_prescreen.py`。质量追踪：`python scripts/track_prescreen_quality.py`。
+- **TypeSafe Jev 预筛（2026-09-22，可选增强）：** harvest 每个合格提案 `_prescreen_async`（fire-and-forget daemon 线程）调 TypeSafe 三问，原子写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度降权/奖励；**永远不阻断慢环回测**。缺 `TYPESAFE_API_KEY`、超时、降级时静默跳过（`skip_suggested=None`）。降权因异步滞后一轮收割生效。慢环读同一文件注入 `verdict.metadata.prescreen`。验证：`python scripts/validate_typesafe_prescreen.py`；质量门禁：`python scripts/track_prescreen_quality.py`。
 - materializer 三态已区分 `v2_pass` / `hard-gate-but-losing` / 变体级 `DEAD`。过硬门但未过 FDR **不是** already solved。`dir_acc` 略低于 0.52 仍 `gate_pass=True` 是品种自适应门槛，不是 bug。
 
 ### 当前 goal（以 `scripts/praxist_goal.yaml` 为准）

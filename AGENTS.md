@@ -151,7 +151,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 │   ├── vol_risk_filter.py      # 波动熔断 + ThrPolicy + R1 路径
 │   ├── neutral_ab_report.py    # Neutral A/B 唯一评分源
 │   ├── features.py / ccl_monitor.py / prediction_tracker.py
-│   ├── typesafe_prescreen.py   # 协变量预筛（软建议；有密钥时 HTTP 打 Laya）
+│   ├── typesafe_prescreen.py   # TypeSafe Jev 协变量预筛核心 (软建议模式)
 │   └── regime_*.py / walk_forward.py / ...
 ├── db/               # SQLite 每品种 futures_<sym>.db
 ├── docs/             # 运维与接入文档（人类）
@@ -163,8 +163,8 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 │   ├── train_vol_risk_sector.py
 │   ├── backtest_vol_gating_fullchain.py
 │   ├── variety_analysis.py     # 技术面+CCL+Copilot 融合分析
-│   ├── validate_typesafe_prescreen.py  # 人工核对预筛判断
-│   ├── track_prescreen_quality.py      # 预筛判断与回测一致性（样本不足则不给调度建议）
+│   ├── validate_typesafe_prescreen.py  # 人工验证 Jev 判断一致性
+│   ├── track_prescreen_quality.py      # Jev 判断质量追踪 (Phase 3, 50样本门禁)
 │   └── ...
 ├── reports/          # 预测报告 (按品种分类)
 │   ├── TEMPLATE.md             # 级联预测报告模版 (ASCII 表格样式)
@@ -209,7 +209,7 @@ source .venv/bin/activate
 # TqSdk 凭证在 .env（真实文件，勿把密钥写入可提交文件）
 ```
 
-**可选增强（协变量预筛）：** 在 `.env.praxist` 设置 `TYPESAFE_API_KEY` 后才会发请求，无密钥则降级，慢环不受影响。请求发往 Laya，不是 TypeSafe SDK。行为见 `docs/praxist.md`。
+**可选增强（TypeSafe Jev 协变量预筛）：** 设 `TYPESAFE_API_KEY`（写入 `.env.praxist`，勿提交）后启用。无 key 或降级时 `cascade/typesafe_prescreen.py` 返回 `status=degraded`（`skip_suggested=None`），慢环不受影响。模型名 `jev-latest`。
 
 **数据库位置：** 本仓 `db/futures_<symbol>.db`（真实目录，29 个品种 SQLite；不再是 /workspace symlink）
 

@@ -50,7 +50,6 @@ from cascade.hourly_model import HourlyModel
 from cascade.evaluation_metrics import metrics_from_backtest_points, calc_prediction_quality, fallback_n_eff, safe_path_corr
 from cascade.signal_contract import position_from_forecast
 from cascade.ablation import AblationMode
-from cascade.features import UnsupportedCovariateError
 
 
 def endpoint_dir_ok(pred_end: float, real_end: float, base: float, eps: float = 1e-8) -> bool:
@@ -601,15 +600,6 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 checkpoint_fp.flush()  # flush 立即落盘, kill 时不丢当前已写行
             if i < 3 or i % 50 == 0:
                 print(f" done")
-        except UnsupportedCovariateError as e:
-            # Fail-fast: 不支持的协变量立即返回，不跑满 588 个点
-            if i == 0:
-                print(f"  [FAIL-FAST] cov_override='{effective_single or effective_combo}' not supported: {e}")
-                return None  # 第一个点就失败，直接返回 None
-            # 后续点才遇到（理论上不应发生），记录错误但继续
-            points.append({"cutoff": cutoff, "error": f"UnsupportedCovariate: {e}"})
-            if i < 3 or i % 50 == 0:
-                print(f" ERROR (unsupported covariate): {e}")
         except Exception as e:
             points.append({"cutoff": cutoff, "error": str(e)})
             if checkpoint_fp is not None:
