@@ -1,5 +1,7 @@
 # S1 Supervisor Split Implementation Plan
 
+> **代码基线**: `3e8756e`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 `scripts/praxist_supervisor.py`（HEAD `9850af2`，4574 行）按 S1 SPEC v3.2 拆成 9 个 `scripts/sup_*.py` 加一个 ≤200 行的兼容入口，外部 `import praxist_supervisor as sup` 的调用保持可用。

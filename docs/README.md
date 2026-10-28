@@ -53,18 +53,24 @@
 | [supervisor_restart_backlog.md](./supervisor_restart_backlog.md) | 重启待办（3 项：1 已实施 / 2 登记 / **3 已完成**） | 在用 |
 | [superpowers/reports/2026-09-29-stage3-verification-record.md](./superpowers/reports/2026-09-29-stage3-verification-record.md) | §8.3 出口条件核验记录 | 在用 |
 | [superpowers/specs/2026-09-24-covariate-research-credibility-design.md](./superpowers/specs/2026-09-24-covariate-research-credibility-design.md) | 上游 spec **v15** | 在用 |
-| **2026-10-03 三环范式审计（未提交）** | | |
-| [superpowers/specs/2026-10-03-peer-memory-loop-closure-spec.md](./superpowers/specs/2026-10-03-peer-memory-loop-closure-spec.md) | **Peer 记忆回路闭合**：死亡族名单 + 协议指纹回流给 peer（D2/D3 本轮）；拒收摘要（D1）与 `decision=abandon`（D4）待做。只改可见性，不改门判据 | 实施中 |
+| **2026-10-03 三环范式审计** | | |
+| [superpowers/specs/2026-10-03-peer-memory-loop-closure-spec.md](./superpowers/specs/2026-10-03-peer-memory-loop-closure-spec.md) | Peer 记忆回路的设计记录。拒收摘要在 `scripts/aggregate_rejection_stats.py`，`decision=abandon` 在 `scripts/sup_harvest.py`。不要再按「待做」施工 | 已落地 |
 | [superpowers/reports/2026-10-03-three-loop-autoresearch-paradigm-audit.md](./superpowers/reports/2026-10-03-three-loop-autoresearch-paradigm-audit.md) | 四维定位代码级核实。**顶部有勘误节**：P0 三项经 spec 裁定后在飞计划禁止，已作废——读它之前先读勘误 | 在用（含勘误） |
 | **2026-10-05 Peer 学习机制分析** | | |
-| [superpowers/reports/2026-10-05-peer-learning-gap-analysis.md](./superpowers/reports/2026-10-05-peer-learning-gap-analysis.md) | **Peer 学习断裂**：225 cycle 结果未回传，peer 每次提案 = 盲猜。Cross-run feedback channel 未实现 | 在用 |
+| [superpowers/reports/2026-10-05-peer-learning-gap-analysis.md](./superpowers/reports/2026-10-05-peer-learning-gap-analysis.md) | 2026-10-05 的时点缺口。其后跨 run 反馈已写入 peer 提示。报告只解释当时断在哪里 | 时点证据 |
 | **2026-10-07 技术债与备份** | | |
 | [superpowers/plans/2026-10-07-tech-debt-closure-plan.md](./superpowers/plans/2026-10-07-tech-debt-closure-plan.md) | 技术债收口计划。§2.2 顶部是现行备份裁定；同节下文的异机方案是当日历史 | 在用 |
 | [superpowers/changelogs/2026-10-07-tech-debt-closure-plan-and-rulings.md](./superpowers/changelogs/2026-10-07-tech-debt-closure-plan-and-rulings.md) | 裁定与实施记录。备份于当晚改回同仓：推 `origin`，不再异机 tar / cron / rclone | 在用 |
 | [../BACKUP_SYNC_GUIDE.md](../BACKUP_SYNC_GUIDE.md) | 独立 backup remote 已停用。备份=本仓推 GitHub | 已停用 |
-| **2026-10-12 监督环拆分（本分支；宿主未切换）** | | |
+| **2026-10-12 监督环拆分（已在 master）** | | |
 | [praxist.md](./praxist.md) | 监督环模块归属的唯一表。入口仍是 `scripts/praxist_supervisor.py` | 在用 |
-| [superpowers/changelogs/2026-10-12-s1-supervisor-split.md](./superpowers/changelogs/2026-10-12-s1-supervisor-split.md) | 拆分记录。代码 `3e8756e`。宿主未重启 | 在用 |
+| [superpowers/changelogs/2026-10-12-s1-supervisor-split.md](./superpowers/changelogs/2026-10-12-s1-supervisor-split.md) | 拆分记录。进程有没有加载更晚的提交，用启动时间对照 `git log` | 证据 |
+| **2026-10-14 至 2026-10-27** | | |
+| [praxist.md](./praxist.md) | 预筛改为 Laya HTTP。加减分只在这一份里写 | 在用 |
+| [superpowers/changelogs/2026-10-14-jev-to-laya-migration.md](./superpowers/changelogs/2026-10-14-jev-to-laya-migration.md) | 传输更换记录。2026-10-24 的超时分层已撤回，不在库里 | 证据 |
+| [superpowers/changelogs/2026-10-27-slow-loop-no-data-fix-changelog.md](./superpowers/changelogs/2026-10-27-slow-loop-no-data-fix-changelog.md) | 未支持协变量快速失败，以及入队前的名字校验 | 证据 |
+| [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md) | 无效提案的队列清理步骤 | 在用 |
+| [archive/reports-2026-10-proposal-quality/](./archive/reports-2026-10-proposal-quality/) | 2026-10-25 至 26 的提案质量时点报告 | 已归档 |
 | **Praxist 三环合同** | | |
 | [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（提示词纪律以 2026-09-19 为准） | 在用 |
 | [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 | 在用 |
@@ -90,12 +96,14 @@
 | [archive/history/backtest_registry.md](./archive/history/backtest_registry.md) | 历史协变量实验目录 | 已归档 |
 | [archive/superseded-2026-09/](./archive/superseded-2026-09/) | **2026-09-29 归档**：27 份一次性调查/阶段核验/已执行计划 | 已归档 |
 | [archive/superpowers-plans/](./archive/superpowers-plans/) | 已执行的历史施工单 | 已归档 |
+| [archive/history/STATE-ledger-through-2026-10-12.md](./archive/history/STATE-ledger-through-2026-10-12.md) | 2026-10-12 及更早的状态流水。现行合同在仓库根 `STATE.md` | 已归档 |
+| [archive/reports-2026-10-proposal-quality/](./archive/reports-2026-10-proposal-quality/) | 2026-10-25 至 26 的提案质量时点报告 | 已归档 |
 | [archive/](./archive/README.md) | 归档总入口（含各子目录说明） | 已归档 |
 
 > **协变量规格仍是在用文档**：[2026-09-18-oi-gated-momentum-spec.md](./2026-09-18-oi-gated-momentum-spec.md)
 > ——它被 peer 提示词直接内嵌，改动会影响生产提案面。
 
-Goal / 运行口径：`scripts/praxist_goal.yaml`（2026-09-23 起目标=24 品种全部通过三阶段验证，成功条件见 [praxist.md](./praxist.md)）。
+Goal / 运行口径：`scripts/praxist_goal.yaml`。成功条件只有 `all_symbols_pass_phase1`。品种表以该文件为准（2026-10-08 起去掉 `sc`、加入 `jm`）。三阶段门槛已退役。说明见 [praxist.md](./praxist.md)。
 
 ### 2026-08-08 新口径 rebaseline（必读）
 

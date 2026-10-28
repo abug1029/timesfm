@@ -144,7 +144,7 @@ cd <FM_ROOT> && .venv/bin/python -m pytest tests/test_cov_family.py::test_root_p
 | 三环在跑吗？跑哪个阶段？ | `pgrep -f praxist_supervisor` · `data/cache/supervisor_state.json` |
 | 当前有哪些裁决？ | `wc -l task_FM/config/aligned_verdicts.jsonl` |
 | 哪些品种信用≥2★？ | `python -c "from config.prediction_scheme import list_by_stars; print(list_by_stars(2))"` |
-| 当前卡在什么门？ | `STATE.md` |
+| 现行合同，以及历史流水在哪？ | 仓库根 `STATE.md`。2026-10-12 及更早的流水在 `docs/archive/history/STATE-ledger-through-2026-10-12.md` |
 | 协议指纹是多少？ | `task_FM/evaluations/fm_eval/evaluator.py` 的 `PROTOCOL_FINGERPRINT_VERSION` 定义 + 基线行内字段 |
 
 > **状态类文档（`STATE.md`）与代码冲突时，以代码为准**——

@@ -173,3 +173,10 @@
 2026-09-19 归档。146 个 2026-09-07 至 2026-09-17 的 peer run 目录（），含 peer_workspaces/findings/gems/trajectory 等快环提案产物。128M。
 
 归档原因：v23 评估系统重构后，9-18 前的 peer 提案已无活跃引用（harvest 仅扫当前 experiments/ 下 run），保留原位增加目录噪音。9-18 起的 run 留在  供 harvest 正常扫描。
+
+## 2026-10-27 追加
+
+| 原位置 | 归档原因 | 现在看哪里 |
+|--------|----------|------------|
+| 仓库根 `STATE.md` 的 2026-10-12 及更早流水 | 文件把自己写成现行状态，但进程号、裁决条数和「当前阻塞」都停在 10 月上旬，和下文「不记录活数字」的规则冲突 | 仓库根新的 `STATE.md` |
+| `docs/proposal_quality_assessment_report.md` 等四份 | 2026-10-25 至 26 的时点评估，事后去重和清理已经进代码。放在 `docs/` 顶层会被当成现行合同 | `docs/archive/reports-2026-10-proposal-quality/` |

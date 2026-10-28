@@ -1,5 +1,7 @@
 # S1: praxist_supervisor.py 模块拆分 SPEC
 
+> **代码基线**: `9850af2`
+
 | 字段 | 值 |
 |------|-----|
 | **ID** | S1（新 S 系列：结构性重构；与已关闭的 **M5「n_eff 常数函数」** 完全不同——M5 已于 2026-10-07 溯源结案，见 `docs/superpowers/reports/2026-10-07-tech-debt-inventory.md:47`） |

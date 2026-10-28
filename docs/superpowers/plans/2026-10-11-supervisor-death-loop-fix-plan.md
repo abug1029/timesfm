@@ -1,5 +1,7 @@
 # Supervisor/看门狗死循环修复实施计划
 
+> **代码基线**: `d7c5bf2`
+
 > **关联报告**：`docs/superpowers/reports/2026-10-11-supervisor-watchdog-death-loop-audit.md`
 > **计划日期**：2026-10-11
 > **计划状态**：待审阅

@@ -34,7 +34,8 @@ set +a
 |------|------|
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | 若改用 OpenAI 兼容供应商 |
 | `TIMESFM_MODEL_PATH` | 与 `FM_TIMESFM_MODEL_PATH` 兼容别名 |
-| `TYPESAFE_API_KEY` | TypeSafe Jev 协变量预筛（`cascade/typesafe_prescreen.py`）；**仅** `.env.praxist`；无 key 自动降级为 degraded。模型名 `jev-latest` |
+| `TYPESAFE_API_KEY` | 预筛开关。写在 `.env.praxist`。没有它，`cascade/typesafe_prescreen.py` 直接降级，不发请求 |
+| `LAYA_BASE_URL` | 预筛请求的地址。未设置时用代码里的默认地址。行为见 `docs/praxist.md` |
 
 ## 隔离说明
 

@@ -1,5 +1,7 @@
 # Changelog: 基线重生循环修复
 
+> **代码基线**: `16c0ad4`
+
 **日期**：2026-10-13  
 **commit**：待提交  
 **关联计划**：`docs/superpowers/plans/2026-10-12-baseline-regen-loop-fix-plan.md`

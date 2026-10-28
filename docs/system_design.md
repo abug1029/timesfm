@@ -887,7 +887,7 @@ Praxist 是与领域无关的研究控制平面，本仓 `task_FM/` 提供科学
 | 符号失败惩罚加陡 | 8+ 失败 -50 分起，3-7 次 -8/次 |
 | DEAD 族拒绝 | 4+ ok 0 pass 族识别为 family_dead，harvest 先于 no_failure_delta |
 | DEAD/HOLD 过滤 | harvest 拒绝 DEAD/HOLD 品种入队（symbol_status.json 2026-09-28 起已清空，当前无品种被过滤） |
-| **TypeSafe Jev 预筛**（软建议） | harvest 时 fire-and-forget 调 TypeSafe 三问写 `<proposal>.prescreen.json`；`_apply_prescreen_score` 据此做 ± 调度分（invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5）。**不阻断慢环回测**；缺 `TYPESAFE_API_KEY` 或降级时静默跳过。详见 `cascade/typesafe_prescreen.py` |
+| **协变量预筛**（软建议） | 收割时异步三问，写 `<proposal>.prescreen.json`，只改调度分，不阻断慢环。传输和加减分见 [praxist.md](./praxist.md)。模块是 `cascade/typesafe_prescreen.py` |
 
 ### 11.3 关键文件
 
@@ -919,38 +919,20 @@ Stage 3（协变量可信度）2026-09-28/29 结案，在慢环/监督环侧新�
 | horizon 尾填充契约 | `cascade/horizon_fill.py` | `horizon_known` 四类受控词表（`known_ahead` / `persistence` / `self_referential` / `unknowable`），唯一家 `task_FM/config/covariate_pool.json`；非 `known_ahead` 的 horizon 段逐值填 context 末值并落 `horizon_fill` 标记（替代历史 zeros/decay 填充），配套修复 1-bar 前视 |
 | 实验指纹 | `cascade/experiment_fingerprint.py` | 单次实验身份 = `weight_fingerprint` + `target_snapshot_hash` + `context_config_hash`（48-bit 截断）；与 `research_target_hash`（研究问题身份，稳定）严格区分，不得混用 |
 | 研究 family | `cascade/research_family.py` | 多重比较纪律：一个品种 = 一个研究问题 = 一个 family（同一 protocol_fingerprint 下），批次 / 运行 / 代际不重置校正；family 90 天关闭、≤20 成员、单成员 180 天 T_max |
-| 基线协议指纹 | `scripts/sup_evidence.py` 的 `ensure_baselines` | 基线协议指纹不符（协议成分变更，**现 v4 = `f02b2a43…`**，v3 = `91ab913e…`，v2 = `bd851c9c…`）→ 整品种基线自动重生；2026-10-01/02 实测 9 个 nocov 基线全部带 v4 指纹落章（fu 为入集后首个基线），两次波均全量重生 |
+| 基线协议指纹 | `scripts/sup_evidence.py` 的 `ensure_baselines` | 指纹与 `compute_protocol_fingerprint()` 不符就整品种重生。版本常量是 `PROTOCOL_FINGERPRINT_VERSION`。哈希和「已经重生了哪些品种」以磁盘基线文件为准，不写在这里 |
 | 物化修复 K6/M4 | `scripts/sup_evidence.py` 的 `materialize_known_verdicts` | `known_verdicts.inc.md` 图例单条、`v2_pass` 已退役，K6 现表述为 `gate_pass` 且 `not fdr_pass`（K6）；品种表不截断 + `verdicts_truncated=<N>` 截断标记（M4）。`migrated_pass` 随v4 收口（计划 2.7）一并退役 |
 
 smoke 套件（`test_smoke_ss_end_to_end`）已于 2026-09-29 按用户裁定退役（连续两次同栈 pyarrow ImportError，`cascade/lgbm_features.py`）；回归以 `pytest tests/` 全量为准。
 
-### 11.5 当前运行状态（2026-10-03）
+### 11.5 现行合同（现场数字不写在这里）
 
-- 裁决注册表：**232 行 = 188 条跨协议旧行（活跃视图外）+ 44 条 v4**。v4 明细：`gate_pass` 13/44 ·
-  `tier` S6/A6/B21/C11 · `run_mode` **全部 `exploration`** · 确认级（`pass_variants`）**0 条**
-  （口径见 §7.3）
-- 监督环：**PID 416**（2026-10-02 20:27 经 `scripts/start_supervisor.sh` 重启，`setsid nohup` 脱离会话；
-  前一进程 PID 418 于 10-02 19:05 干净退出 `exit_code 0` / uptime 114,957s）。基线 v4 指纹端到端验证通过；
-  stdout 落 `data/cache/supervisor.out`（历史轮转为 `data/cache/supervisor_pre_restart_*.out`）
-- **阶段 3（确认机制）已接线**（2026-10-02，11 笔提交 `eee38fb..b745831`）：确认窗口透传、checkpoint 命名空间隔离
-  （`{vid}__prereg_{id[:8]}.jsonl`，防 resume 把探索点混进确认 DM）、family 分派与封账、underpowered 可封账、
-  goal 重写、首批 2 条预注册、**收割/复测只看当前协议**（`_active_protocol_snapshot`，修复了收割枯竭）
-- 未决问题（截至 2026-10-03，见 `docs/superpowers/reports/2026-10-03-fm-a-open-issues.md`）：
-  `_dead_families`（`scripts/sup_evidence.py`）把不可确认的描述性失败计入死亡阈值（`term_structure` 已误判死）；两处红测待转绿；
-  第一次 SIGTERM 会被忽略（睡眠未切片）；agri 板块 5/10 长期半退化
-- 运行计数以 `data/cache/supervisor_state.json` 为准（cycles_done 随调度递增，不在此写死）
-- 目标（`scripts/praxist_goal.yaml`，**2026-10-02 重写**）：**唯一成功条件 `all_symbols_pass_phase1`**——
-  每个目标品种（24 个）至少 1 个**经 family 封账的确认变体**（`run_label == confirmed` 且 `fdr_pass is True`）。
-  **原三阶段门槛全部退役**：`n_gate_pass_variants >= 10`、`avg_dir_acc_gate_pass >= 0.51`、
-  `n_tier_a_or_b >= 8`（0.51 作为绝对水平低于 `detection_threshold_vs_random`，作为相对基线增量
-  低于 `detection_threshold_vs_baseline`，两条路径都不达标）。
-  Phase 3 的 `multi_seed` / `decay` **仍未实现且不发明通过线**
-  （见 `docs/superpowers/specs/2026-10-02-phase3-multiseed-decay-todo.md`）。
-- 预算（2026-10-02 起有界）：`max_cycles` 2000 · `cpu_hours` 2000 · `token_budget_m` **null（不参与停机）**
-  · `deadline` 2028-10-02。cadence：`survivors_per_cycle` 3 · `aligned_max_points` 600 ·
-  quota 窗 5h · run 预算 1.5h
-- 预注册样本量（**已锁定，监督环不改写**）：jd 1,199 · sr 986（`task_FM/config/preregistry.jsonl`）。
-  Q7 备忘录要求按 live 密度修订日历、每季按实测 Var_LR 复核 Δ*=0.08——**那是宿主动作**
+运行计数、裁决行数和进程号去 `data/cache/supervisor_state.json` 与 `task_FM/config/aligned_verdicts.jsonl`。标准输出在 `data/cache/supervisor.out`。
+
+- 确认机制已接线（2026-10-02）：确认窗口、按预注册隔离的 checkpoint、family 封账、收割只看当前协议。
+- 成功条件只有 `all_symbols_pass_phase1`。三阶段门槛已退役。品种表、搜索档位和预算以 `scripts/praxist_goal.yaml` 为准。`multi_seed` 与 `decay` 仍未实现，不发明通过线（`docs/superpowers/specs/2026-10-02-phase3-multiseed-decay-todo.md`）。
+- 预注册记录在 `task_FM/config/preregistry.jsonl`，监督环不改写。
+- 2026-10-03 的未决清单不要当成还开着的工单。收口记录是 `docs/superpowers/changelogs/2026-10-08-open-issues-closure-implementation.md`。
+- 2026-10-14 之后的预筛传输、2026-10-27 的未支持协变量快速失败，见仓库根 `STATE.md`。
 
 ---
 
@@ -966,9 +948,8 @@ FM_a 系统的核心价值在于：
 6. **人机协作**：系统输出方向性建议，人类做最终决策
 
 **使用建议**：
-- 品种强弱看 `tier`（S/A/B/C，见 §7.4），**过门不等于成功**——成功还要过 W3.4 严格链（§7.3）；
-  当前协议下确认级变体为 0（确认通道自 2026-10-03 起累积，需 1.2–2.0 年）
-- 历史 2 星品种（SCHEMES，2026-09-20 口径）：SR/M/RB/EG/LH/CJ/JD；SS 2026-09-17 复测 dir_acc=0.502 未过门降级
+- 品种强弱看 `tier`（S/A/B/C，见第 7.4 节）。过门不等于成功，成功还要过第 7.3 节的严格链。确认级有没有出现，查裁决文件，不记在这里
+- 信用档以 `list_by_stars` 为准，不在这里抄清单
 - 看【可交易方向】（加权 1H）；【日线状态】只是副标签
 - 轻仓试探，根据实际表现调整仓位
 - 结合基本面和主观判断，不盲从模型
