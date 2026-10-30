@@ -287,7 +287,9 @@ def _get_laya_base_urls() -> list[str]:
     env_urls = os.environ.get("LAYA_BASE_URL", "")
     if env_urls:
         # 支持逗号分隔的多个 URL
-        return [url.strip() for url in env_urls.split(",") if url.strip()]
+        urls = [url.strip() for url in env_urls.split(",") if url.strip()]
+        if urls:  # 过滤后不为空才使用
+            return urls
     # 默认两个地址：Tailscale 网络 + 直连
     return ["http://100.96.19.116:8000", "http://10.1.1.67:8000"]
 
@@ -302,6 +304,65 @@ def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -
     """
     import requests
 
+    # 构建请求 payload（兼容 TypeSafe SDK 格式）- 循环不变量
+    payload = {
+        "model": "jev-latest",
+        "state": state,
+        "questions": {
+            "mechanism_plausibility": {
+                "type": "noul",
+                "instructions": (
+                    f"基于 {state['symbol']} 的品种特征（{state['sector']}板块，"
+                    f"{state['contract_details']}），该协变量提案的机制解释是否合理"
+                    f"且有经济逻辑支撑？"
+                ),
+            },
+            "novelty_vs_redundancy": {
+                "type": "choice",
+                "instructions": (
+                    f"该提案与 {state['symbol']} 已有协变量的关系"
+                    f"（见 covariate_menu 和 recent_verdicts_summary）"
+                ),
+                "criteria": {
+                    "novel": "全新机制，与现有协变量正交",
+                    "extension": "已知机制的新参数或新品种适配",
+                    "redundant": "与现有协变量高度重叠（机制或数值相关性>0.8）",
+                    "invalid": "机制不存在或逻辑错误",
+                },
+            },
+            "expected_effect_size": {
+                "type": "score",
+                "instructions": f"预期该协变量对 {state['symbol']} 预测质量的信息量贡献",
+                "criteria": [
+                    "无新增信息（纯噪声或已完全捕获）",
+                    "微弱新增信息（与现有协变量高度相关，边际贡献有限）",
+                    "中等新增信息（独立信号维度，可能有交互效应）",
+                    "强新增信息（正交维度，高预期独立贡献）",
+                ],
+            },
+        },
+    }
+
+    # Laya 不需要 API key，但保留 header 以兼容
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    # 将 Laya 响应转换为兼容 TypeSafe SDK 的对象 - 独立于循环
+    class MockAnswer:
+        def __init__(self, data):
+            self.noul = data.get("noul")
+            self.choice = data.get("choice")
+            self.score = data.get("score")
+            self.confidence = data.get("confidence")
+
+    class MockResult:
+        def __init__(self, data):
+            self.answers = {
+                qid: MockAnswer(ans_data)
+                for qid, ans_data in data.get("answers", {}).items()
+            }
+
     urls = _get_laya_base_urls()
     last_error = None
 
@@ -311,69 +372,10 @@ def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -
             if idx > 0:
                 logger.info(f"Laya 故障转移：尝试备用地址 {base_url}（第 {idx+1}/{len(urls)} 个）")
 
-            # 构建请求 payload（兼容 TypeSafe SDK 格式）
-            payload = {
-                "model": "jev-latest",
-                "state": state,
-                "questions": {
-                    "mechanism_plausibility": {
-                        "type": "noul",
-                        "instructions": (
-                            f"基于 {state['symbol']} 的品种特征（{state['sector']}板块，"
-                            f"{state['contract_details']}），该协变量提案的机制解释是否合理"
-                            f"且有经济逻辑支撑？"
-                        ),
-                    },
-                    "novelty_vs_redundancy": {
-                        "type": "choice",
-                        "instructions": (
-                            f"该提案与 {state['symbol']} 已有协变量的关系"
-                            f"（见 covariate_menu 和 recent_verdicts_summary）"
-                        ),
-                        "criteria": {
-                            "novel": "全新机制，与现有协变量正交",
-                            "extension": "已知机制的新参数或新品种适配",
-                            "redundant": "与现有协变量高度重叠（机制或数值相关性>0.8）",
-                            "invalid": "机制不存在或逻辑错误",
-                        },
-                    },
-                    "expected_effect_size": {
-                        "type": "score",
-                        "instructions": f"预期该协变量对 {state['symbol']} 预测质量的信息量贡献",
-                        "criteria": [
-                            "无新增信息（纯噪声或已完全捕获）",
-                            "微弱新增信息（与现有协变量高度相关，边际贡献有限）",
-                            "中等新增信息（独立信号维度，可能有交互效应）",
-                            "强新增信息（正交维度，高预期独立贡献）",
-                        ],
-                    },
-                },
-            }
-
-            # Laya 不需要 API key，但保留 header 以兼容
-            headers = {"Content-Type": "application/json"}
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-
             response = requests.post(url, json=payload, headers=headers, timeout=timeout)
             response.raise_for_status()
 
             result_data = response.json()
-
-            # 将 Laya 响应转换为兼容 TypeSafe SDK 的对象
-            class MockAnswer:
-                def __init__(self, data):
-                    self.noul = data.get("noul")
-                    self.choice = data.get("choice")
-                    self.score = data.get("score")
-                    self.confidence = data.get("confidence")
-
-            class MockResult:
-                def __init__(self, data):
-                    self.answers = {
-                        qid: MockAnswer(ans_data)
-                        for qid, ans_data in data.get("answers", {}).items()
-                    }
 
             if idx > 0:
                 logger.info(f"Laya 备用地址 {base_url} 成功")
