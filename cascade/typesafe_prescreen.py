@@ -32,6 +32,11 @@ except ImportError:
 FM_ROOT = Path(__file__).resolve().parent.parent
 
 
+# ── Laya 超时常量 ───────────────────────────────────
+LAYA_COLD_START_TIMEOUT: float = 180.0  # 冷启动超时（秒），覆盖 checkpoint 加载
+LAYA_WARM_TIMEOUT: float = 15.0         # 预热后超时（秒）
+
+
 # ── 类型别名 ────────────────────────────────────────
 PrescreenStatus = Literal["success", "degraded", "error"]
 NoveltyType = Literal["novel", "extension", "redundant", "invalid"]
@@ -294,11 +299,15 @@ def _get_laya_base_urls() -> list[str]:
     return ["http://100.96.19.116:8000", "http://10.1.1.67:8000"]
 
 
-def warmup_laya() -> bool:
-    """预热 Laya 服务，提前加载 checkpoint。
+def warmup_laya(max_retries: int = 3, backoff_seconds: float = 2.0) -> bool:
+    """预热 Laya 服务，提前加载 checkpoint（带指数退避重试）。
 
     冷启动时首次请求需要 28-122 秒加载 checkpoint，
     预热后请求仅需 5.7 秒。建议在系统启动时调用此函数。
+
+    Args:
+        max_retries: 最大重试次数（默认 3 次）
+        backoff_seconds: 退避因子（秒），第 n 次重试等待 backoff_seconds^n 秒
 
     Returns:
         True if warmup succeeded, False otherwise
@@ -312,26 +321,33 @@ def warmup_laya() -> bool:
         "questions": {}
     }
 
-    for base_url in urls:
-        url = f"{base_url}/v1/systemone"
-        try:
-            logger.info(f"Warming up Laya service at {base_url}...")
-            response = requests.post(
-                url,
-                json=warmup_payload,
-                headers={"Content-Type": "application/json"},
-                timeout=180.0  # 冷启动需要较长时间
-            )
-            if response.status_code == 200:
-                logger.info(f"✅ Laya warmup successful ({base_url})")
-                return True
-            else:
-                logger.warning(f"Laya warmup returned {response.status_code} from {base_url}")
-        except Exception as e:
-            logger.warning(f"Laya warmup failed for {base_url}: {e}")
-            continue
+    for attempt in range(max_retries):
+        # 指数退避：第 0 次不等待，第 1 次等 2s，第 2 次等 4s
+        if attempt > 0:
+            wait_time = backoff_seconds ** attempt
+            logger.info(f"Laya warmup retry {attempt}/{max_retries - 1}, waiting {wait_time:.1f}s...")
+            time.sleep(wait_time)
 
-    logger.error("❌ Laya warmup failed for all addresses")
+        for base_url in urls:
+            url = f"{base_url}/v1/systemone"
+            try:
+                logger.info(f"Warming up Laya service at {base_url} (attempt {attempt + 1}/{max_retries})...")
+                response = requests.post(
+                    url,
+                    json=warmup_payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=LAYA_COLD_START_TIMEOUT
+                )
+                if response.status_code == 200:
+                    logger.info(f"✅ Laya warmup successful ({base_url})")
+                    return True
+                else:
+                    logger.warning(f"Laya warmup returned {response.status_code} from {base_url}")
+            except Exception as e:
+                logger.warning(f"Laya warmup failed for {base_url}: {e}")
+                continue
+
+    logger.error("❌ Laya warmup failed for all addresses after %d retries", max_retries)
     return False
 
 
@@ -471,7 +487,7 @@ def _prescreen_impl(
     try:
         # 冷启动需要 28-122 秒加载 checkpoint，预热后仅需 5.7 秒
         # 使用 180 秒超时以覆盖冷启动场景
-        result = _call_typesafe(state, api_key, timeout=180.0)
+        result = _call_typesafe(state, api_key, timeout=LAYA_COLD_START_TIMEOUT)
     except (TimeoutError, TypeSafeTimeoutError) as e:
         _record_timeout()
         logger.warning("TypeSafe API 超时: %s", e)

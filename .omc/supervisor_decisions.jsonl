@@ -2636,3 +2636,10 @@
 {"ts": "2026-10-31T18:35:13.715467", "action": "batch_fdr_promote", "reason": "batch=batch_ddef52d0 promoted=2", "refs": []}
 {"ts": "2026-10-31T18:35:22.796903", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
 {"ts": "2026-10-31T18:35:42.013156", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-31T20:07:05.878674", "action": "proposal_scan", "reason": "seen=2874 rejected=2896 backlog=1 reasons={'quality_below_threshold': 351, 'dedup': 1759, 'symbol_not_allowed': 13, 'unparseable_json': 80, 'schema_mismatch': 677, 'backlog_dup': 4, 'missing_symbol_or_cov': 5, 'cov_not_in_active_pool': 7}", "refs": []}
+{"ts": "2026-10-31T20:07:05.880378", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 1904, 'search_tree_busy': 247}", "refs": []}
+{"ts": "2026-10-31T20:07:05.881192", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["cj_momentum_b53dd8f4e79c", "i_inventory_45cb47c3051e", "y_momentum_0fa8689d1d8f"]}
+{"ts": "2026-10-31T20:07:06.258232", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-10-31T20:37:57.122030", "action": "batch_fdr_promote", "reason": "batch=batch_a2fbb1f9 promoted=3", "refs": []}
+{"ts": "2026-10-31T20:38:06.073865", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-10-31T20:38:25.106276", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
