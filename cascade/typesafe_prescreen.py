@@ -294,6 +294,47 @@ def _get_laya_base_urls() -> list[str]:
     return ["http://100.96.19.116:8000", "http://10.1.1.67:8000"]
 
 
+def warmup_laya() -> bool:
+    """预热 Laya 服务，提前加载 checkpoint。
+
+    冷启动时首次请求需要 28-122 秒加载 checkpoint，
+    预热后请求仅需 5.7 秒。建议在系统启动时调用此函数。
+
+    Returns:
+        True if warmup succeeded, False otherwise
+    """
+    import requests
+
+    urls = _get_laya_base_urls()
+    warmup_payload = {
+        "model": "jev-latest",
+        "state": {"symbol": "m", "sector": "warmup"},
+        "questions": {}
+    }
+
+    for base_url in urls:
+        url = f"{base_url}/v1/systemone"
+        try:
+            logger.info(f"Warming up Laya service at {base_url}...")
+            response = requests.post(
+                url,
+                json=warmup_payload,
+                headers={"Content-Type": "application/json"},
+                timeout=180.0  # 冷启动需要较长时间
+            )
+            if response.status_code == 200:
+                logger.info(f"✅ Laya warmup successful ({base_url})")
+                return True
+            else:
+                logger.warning(f"Laya warmup returned {response.status_code} from {base_url}")
+        except Exception as e:
+            logger.warning(f"Laya warmup failed for {base_url}: {e}")
+            continue
+
+    logger.error("❌ Laya warmup failed for all addresses")
+    return False
+
+
 def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -> Any:
     """调用 Laya 服务（替代 TypeSafe SDK）。支持多地址故障转移。
 
@@ -412,8 +453,9 @@ def _prescreen_impl(
 ) -> dict[str, Any]:
     """预筛核心实现。异常分类：超时→degraded，鉴权→error，其他→error。"""
     api_key = _get_typesafe_api_key()
-    if not api_key:
-        return _fallback_result(proposal, symbol, note="TypeSafe 未启用")
+    # Laya 不需要 API key，但保留变量以兼容旧代码
+    # if not api_key:
+    #     return _fallback_result(proposal, symbol, note="TypeSafe 未启用")
 
     if _check_circuit():
         return _fallback_result(proposal, symbol, note="TypeSafe 短路降级中")
@@ -421,7 +463,9 @@ def _prescreen_impl(
     state = _build_state(proposal, symbol, verdict_history, covariate_menu)
 
     try:
-        result = _call_typesafe(state, api_key, timeout=15.0)
+        # 冷启动需要 28-122 秒加载 checkpoint，预热后仅需 5.7 秒
+        # 使用 180 秒超时以覆盖冷启动场景
+        result = _call_typesafe(state, api_key, timeout=180.0)
     except (TimeoutError, TypeSafeTimeoutError) as e:
         _record_timeout()
         logger.warning("TypeSafe API 超时: %s", e)
