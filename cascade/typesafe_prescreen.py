@@ -37,6 +37,9 @@ LAYA_COLD_START_TIMEOUT: float = 180.0  # 冷启动超时（秒），覆盖 chec
 LAYA_WARM_TIMEOUT: float = 15.0         # 预热后超时（秒）
 
 
+# ── 预热状态追踪 ────────────────────────────────────
+_is_warmed_up: bool = False
+
 # ── 类型别名 ────────────────────────────────────────
 PrescreenStatus = Literal["success", "degraded", "error"]
 NoveltyType = Literal["novel", "extension", "redundant", "invalid"]
@@ -312,6 +315,7 @@ def warmup_laya(max_retries: int = 3, backoff_seconds: float = 2.0) -> bool:
     Returns:
         True if warmup succeeded, False otherwise
     """
+    global _is_warmed_up
     import requests
 
     urls = _get_laya_base_urls()
@@ -340,6 +344,7 @@ def warmup_laya(max_retries: int = 3, backoff_seconds: float = 2.0) -> bool:
                 )
                 if response.status_code == 200:
                     logger.info(f"✅ Laya warmup successful ({base_url})")
+                    _is_warmed_up = True
                     return True
                 else:
                     logger.warning(f"Laya warmup returned {response.status_code} from {base_url}")
@@ -486,8 +491,9 @@ def _prescreen_impl(
 
     try:
         # 冷启动需要 28-122 秒加载 checkpoint，预热后仅需 5.7 秒
-        # 使用 180 秒超时以覆盖冷启动场景
-        result = _call_typesafe(state, api_key, timeout=LAYA_COLD_START_TIMEOUT)
+        # 根据预热状态选择超时：未预热使用 LAYA_COLD_START_TIMEOUT（180s），已预热使用 LAYA_WARM_TIMEOUT（15s）
+        timeout = LAYA_WARM_TIMEOUT if _is_warmed_up else LAYA_COLD_START_TIMEOUT
+        result = _call_typesafe(state, api_key, timeout=timeout)
     except (TimeoutError, TypeSafeTimeoutError) as e:
         _record_timeout()
         logger.warning("TypeSafe API 超时: %s", e)
