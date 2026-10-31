@@ -1081,6 +1081,18 @@ def _main_locked(args):
         sup_evidence.ensure_baselines(sup_state._goal_target_symbols(goal_for_baselines), args.root)
     except Exception as e:
         print(f"[ERROR] ensure_baselines pre-flight failed: {e}", file=sys.stderr)
+
+    # Warmup Laya service to avoid cold start delays (28-122s) on first prescreen call
+    try:
+        from cascade.typesafe_prescreen import warmup_laya
+        print("[INFO] Warming up Laya prescreen service...")
+        if warmup_laya():
+            print("[INFO] Laya warmup successful")
+        else:
+            print("[WARN] Laya warmup failed - first prescreen call may be slow")
+    except Exception as e:
+        print(f"[WARN] Laya warmup error: {e} - continuing without warmup")
+
     while True:
         sup_lifecycle._write_heartbeat()
         code = sup_lifecycle._shutdown_exit()

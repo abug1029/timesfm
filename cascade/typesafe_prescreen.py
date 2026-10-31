@@ -440,7 +440,13 @@ def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -
             continue
 
     # 所有地址都失败
-    raise last_error or RuntimeError("Laya 服务调用失败：无可用地址")
+    if last_error is not None:
+        # 将 requests.exceptions.Timeout 转换为 TimeoutError 以便上层统一处理
+        import requests
+        if isinstance(last_error, requests.exceptions.Timeout):
+            raise TimeoutError(f"Laya 服务超时: {last_error}") from last_error
+        raise last_error
+    raise RuntimeError("Laya 服务调用失败：无可用地址")
 
 
 # ── 主入口 ──────────────────────────────────────────
