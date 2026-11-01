@@ -99,7 +99,7 @@ SYMBOL_EXCHANGE_MAP = {
     "sp": "SHFE", "ss": "SHFE", "ao": "SHFE",
     # 大连商品交易所 (DCE)
     "i": "DCE", "jm": "DCE", "m": "DCE",
-    "p": "DCE", "y": "DCE", "eg": "DCE", "jd": "DCE", "lh": "DCE", "pp": "DCE", "eb": "DCE",
+    "p": "DCE", "y": "DCE", "eg": "DCE", "jd": "DCE", "lh": "DCE", "pp": "DCE", "bz": "DCE", "eb": "DCE",
     # 郑州商品交易所 (CZCE)
     "ma": "CZCE", "ta": "CZCE", "cf": "CZCE", "sr": "CZCE",
     "cj": "CZCE", "ur": "CZCE", "fg": "CZCE", "px": "CZCE", "oi": "CZCE", "sh": "CZCE",
@@ -114,7 +114,7 @@ SYMBOL_NAMES = {
     "p": "棕榈油", "y": "豆油", "eg": "乙二醇", "jd": "鸡蛋", "lh": "生猪", "pp": "聚丙烯",
     "ma": "甲醇", "ta": "PTA", "cf": "棉花", "sr": "白糖",
     "cj": "红枣", "ur": "尿素", "fg": "玻璃",
-    "px": "对二甲苯", "eb": "苯乙烯", "oi": "菜油", "sh": "烧碱",
+    "px": "对二甲苯", "bz": "纯苯", "eb": "苯乙烯", "oi": "菜油", "sh": "烧碱",
 }
 
 # 默认跟踪品种
@@ -125,7 +125,7 @@ DEFAULT_SYMBOLS = [
     # 上期所
     "rb", "fu", "bu", "ss", "sp", "ao",
     # 大商所
-    "i", "jm", "jd", "lh", "m", "p", "y", "eg", "pp", "eb",
+    "i", "jm", "jd", "lh", "m", "p", "y", "eg", "pp", "bz", "eb",
     # 能源中心 (INE)
 ]
 

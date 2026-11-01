@@ -1,162 +1,162 @@
 {
   "cj": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.497,
-    "endpoint_mape": 2.59,
+    "dir_acc": 0.509,
+    "endpoint_mape": 2.73,
     "n": 588,
     "n_eff": 73
   },
   "eg": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.373,
-    "endpoint_mape": 6.46,
+    "dir_acc": 0.382,
+    "endpoint_mape": 6.42,
     "n": 588,
     "n_eff": 73
   },
   "jd": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.474,
-    "endpoint_mape": 3.82,
+    "dir_acc": 0.463,
+    "endpoint_mape": 3.77,
     "n": 588,
     "n_eff": 73
   },
   "lh": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.46,
-    "endpoint_mape": 3.7,
+    "dir_acc": 0.469,
+    "endpoint_mape": 3.64,
     "n": 588,
     "n_eff": 73
   },
   "m": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.494,
-    "endpoint_mape": 1.91,
+    "dir_acc": 0.546,
+    "endpoint_mape": 1.78,
     "n": 588,
     "n_eff": 73
   },
   "rb": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.43,
-    "endpoint_mape": 1.0,
+    "dir_acc": 0.433,
+    "endpoint_mape": 1.02,
     "n": 588,
     "n_eff": 73
   },
   "sr": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.472,
-    "endpoint_mape": 1.13,
+    "dir_acc": 0.48,
+    "endpoint_mape": 1.11,
     "n": 588,
     "n_eff": 73
   },
   "ss": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.546,
-    "endpoint_mape": 1.51,
+    "dir_acc": 0.551,
+    "endpoint_mape": 1.48,
     "n": 588,
     "n_eff": 73
   },
   "fu": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.387,
-    "endpoint_mape": 9.07,
+    "dir_acc": 0.383,
+    "endpoint_mape": 8.47,
     "n": 588,
     "n_eff": 73
   },
   "i": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.483,
-    "endpoint_mape": 1.78,
+    "dir_acc": 0.503,
+    "endpoint_mape": 1.74,
     "n": 588,
     "n_eff": 73
   },
   "p": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.507,
-    "endpoint_mape": 2.04,
+    "dir_acc": 0.5,
+    "endpoint_mape": 2.06,
     "n": 588,
     "n_eff": 73
   },
   "y": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.497,
-    "endpoint_mape": 1.4,
+    "dir_acc": 0.48,
+    "endpoint_mape": 1.43,
     "n": 588,
     "n_eff": 73
   },
   "cf": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.499,
-    "endpoint_mape": 1.63,
+    "dir_acc": 0.518,
+    "endpoint_mape": 1.55,
     "n": 588,
     "n_eff": 73
   },
   "bu": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
     "dir_acc": 0.394,
-    "endpoint_mape": 5.33,
+    "endpoint_mape": 5.2,
     "n": 588,
     "n_eff": 73
   },
   "ta": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.565,
-    "endpoint_mape": 4.06,
+    "dir_acc": 0.551,
+    "endpoint_mape": 4.05,
     "n": 588,
     "n_eff": 73
   },
   "ma": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.445,
-    "endpoint_mape": 7.05,
+    "dir_acc": 0.435,
+    "endpoint_mape": 6.61,
     "n": 588,
     "n_eff": 73
   },
   "fg": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.444,
-    "endpoint_mape": 2.82,
+    "dir_acc": 0.476,
+    "endpoint_mape": 2.76,
     "n": 588,
     "n_eff": 73
   },
   "ur": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.595,
-    "endpoint_mape": 1.99,
+    "dir_acc": 0.607,
+    "endpoint_mape": 1.93,
     "n": 588,
     "n_eff": 73
   },
   "px": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.521,
-    "endpoint_mape": 4.98,
+    "dir_acc": 0.518,
+    "endpoint_mape": 4.9,
     "n": 588,
     "n_eff": 73
   },
   "oi": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.499,
-    "endpoint_mape": 1.64,
+    "dir_acc": 0.477,
+    "endpoint_mape": 1.74,
     "n": 588,
     "n_eff": 73
   },
   "sh": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.506,
-    "endpoint_mape": 3.45,
+    "dir_acc": 0.545,
+    "endpoint_mape": 3.03,
     "n": 588,
     "n_eff": 73
   },
   "sp": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.578,
-    "endpoint_mape": 1.44,
+    "dir_acc": 0.561,
+    "endpoint_mape": 1.42,
     "n": 588,
     "n_eff": 73
   },
   "ao": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.516,
-    "endpoint_mape": 1.84,
+    "dir_acc": 0.509,
+    "endpoint_mape": 1.89,
     "n": 588,
     "n_eff": 73
   },
@@ -169,8 +169,8 @@
   },
   "jm": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.517,
-    "endpoint_mape": 5.03,
+    "dir_acc": 0.503,
+    "endpoint_mape": 4.95,
     "n": 588,
     "n_eff": 73
   }
