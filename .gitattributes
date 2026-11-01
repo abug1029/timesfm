@@ -1,0 +1,14 @@
+# ── 受保护路径 (backup merge 防误删) ─────────────────────────
+# backup 机的 cleanup commit 曾两次误删 cascade/ scripts/ tests/ 的改进代码
+# (69f28f7 10-29, dbb68b5 11-01)。这些路径在 merge 时如果冲突，
+# 默认采用当前分支版本 (ours)，防止 backup 侧的 code rollback 污染 master。
+# 备份侧若真有改进，需走 PR review 显式接受，不能通过 backup merge 自动吸收。
+#
+# merge driver "protected-ours" 需在 .git/config 注册:
+#   [merge "protected-ours"]
+#       name = protected: keep current-branch version on conflict
+#       driver = true   # true = 退出码 0 但不修改工作树 → 保留 ours
+cascade/**              merge=protected-ours
+scripts/**              merge=protected-ours
+tests/**                merge=protected-ours
+docs/superpowers/**     merge=protected-ours
