@@ -2643,3 +2643,72 @@
 {"ts": "2026-10-31T20:37:57.122030", "action": "batch_fdr_promote", "reason": "batch=batch_a2fbb1f9 promoted=3", "refs": []}
 {"ts": "2026-10-31T20:38:06.073865", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
 {"ts": "2026-10-31T20:38:25.106276", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-10-31T22:09:45.559054", "action": "proposal_scan", "reason": "seen=2929 rejected=2959 backlog=0 reasons={'quality_below_threshold': 355, 'dedup': 1807, 'schema_mismatch': 687, 'backlog_dup': 5, 'symbol_not_allowed': 13, 'unparseable_json': 80, 'missing_symbol_or_cov': 5, 'cov_not_in_active_pool': 7}", "refs": []}
+{"ts": "2026-10-31T22:09:45.560688", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 1943, 'search_tree_busy': 253}", "refs": []}
+{"ts": "2026-10-31T22:09:45.561360", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["ss_momentum_fc9fbc27d6b7", "ss_inventory_dff06c216949", "ss_momentum_8c30065fd957"]}
+{"ts": "2026-10-31T22:09:46.366671", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-10-31T22:39:53.777995", "action": "batch_fdr_promote", "reason": "batch=batch_614e95cd promoted=3", "refs": []}
+{"ts": "2026-10-31T22:40:02.662472", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-10-31T22:40:21.043923", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-11-01T00:03:35.084785", "action": "proposal_scan", "reason": "seen=3008 rejected=3038 backlog=0 reasons={'quality_below_threshold': 359, 'dedup': 1877, 'schema_mismatch': 692, 'backlog_dup': 5, 'symbol_not_allowed': 13, 'unparseable_json': 80, 'missing_symbol_or_cov': 5, 'cov_not_in_active_pool': 7}", "refs": []}
+{"ts": "2026-11-01T00:03:35.086085", "action": "search_shadow", "reason": "would_reject={'search_tree_busy': 263, 'search_role_missing': 2004}", "refs": []}
+{"ts": "2026-11-01T00:03:35.086922", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["jm_momentum_a29bd5db649f", "y_inventory_d0770ba292e2", "jm_momentum_6ae1e4a7e566"]}
+{"ts": "2026-11-01T00:03:35.436413", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-11-01T00:33:43.689841", "action": "confirmation_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd_volatility_411fb7ff02a7"]}
+{"ts": "2026-11-01T00:33:43.692175", "action": "confirmation_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr_momentum_7362ff8dd862"]}
+{"ts": "2026-11-01T00:33:43.703100", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-11-01T00:39:42.986837", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "redispatch_throttle"]}
+{"ts": "2026-11-01T00:39:42.988807", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "redispatch_throttle"]}
+{"ts": "2026-11-01T00:39:43.593126", "action": "batch_fdr_promote", "reason": "batch=batch_2eec191a promoted=2", "refs": []}
+{"ts": "2026-11-01T00:39:52.382234", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-11-01T00:40:10.720309", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-11-01T02:03:36.822901", "action": "proposal_scan", "reason": "seen=3048 rejected=3091 backlog=0 reasons={'quality_below_threshold': 366, 'unparseable_json': 86, 'dedup': 1907, 'schema_mismatch': 702, 'backlog_dup': 5, 'symbol_not_allowed': 13, 'missing_symbol_or_cov': 5, 'cov_not_in_active_pool': 7}", "refs": []}
+{"ts": "2026-11-01T02:03:36.824486", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 2033, 'search_tree_busy': 264}", "refs": []}
+{"ts": "2026-11-01T02:03:36.825202", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["i_momentum_8a6af9d9707b", "px_inventory_e4ba12ae7f04", "i_momentum_24ae0926f6f0"]}
+{"ts": "2026-11-01T02:03:37.577647", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-11-01T02:33:57.246226", "action": "batch_fdr_promote", "reason": "batch=batch_89f42593 promoted=3", "refs": []}
+{"ts": "2026-11-01T02:34:06.024410", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-11-01T02:34:24.681477", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-11-01T03:57:54.633715", "action": "proposal_scan", "reason": "seen=3120 rejected=3166 backlog=0 reasons={'quality_below_threshold': 366, 'dedup': 1981, 'schema_mismatch': 703, 'unparseable_json': 86, 'backlog_dup': 5, 'symbol_not_allowed': 13, 'missing_symbol_or_cov': 5, 'cov_not_in_active_pool': 7}", "refs": []}
+{"ts": "2026-11-01T03:57:54.635948", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 2092, 'search_tree_busy': 275}", "refs": []}
+{"ts": "2026-11-01T03:57:54.636686", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["i_momentum_7823547a0a32", "lh_inventory_262c8cd9dea2", "i_momentum_737ac7c9707e"]}
+{"ts": "2026-11-01T03:57:54.999462", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-11-01T04:28:06.366713", "action": "batch_fdr_promote", "reason": "batch=batch_d360ee38 promoted=3", "refs": []}
+{"ts": "2026-11-01T04:28:15.209861", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-11-01T04:28:33.809281", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-11-01T05:57:34.180506", "action": "proposal_scan", "reason": "seen=3236 rejected=3282 backlog=2 reasons={'quality_below_threshold': 368, 'dedup': 2087, 'unparseable_json': 89, 'schema_mismatch': 708, 'backlog_dup': 5, 'symbol_not_allowed': 13, 'missing_symbol_or_cov': 5, 'cov_not_in_active_pool': 7}", "refs": []}
+{"ts": "2026-11-01T05:57:34.182506", "action": "search_shadow", "reason": "would_reject={'search_tree_busy': 299, 'search_role_missing': 2176}", "refs": []}
+{"ts": "2026-11-01T05:57:34.183114", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["cj_momentum_73b7dd4e9e3e", "y_momentum_16c0d88839e5", "y_momentum_006d0c1eb9fb"]}
+{"ts": "2026-11-01T05:57:34.931995", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-11-01T06:27:48.031307", "action": "batch_fdr_promote", "reason": "batch=batch_b58de729 promoted=3", "refs": []}
+{"ts": "2026-11-01T06:27:56.970871", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-11-01T06:28:15.784184", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-11-01T06:33:50.682235", "action": "confirmation_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd_volatility_411fb7ff02a7"]}
+{"ts": "2026-11-01T06:33:50.684487", "action": "confirmation_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr_momentum_7362ff8dd862"]}
+{"ts": "2026-11-01T06:33:50.696267", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-11-01T06:39:52.715626", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "redispatch_throttle"]}
+{"ts": "2026-11-01T06:39:52.717477", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "redispatch_throttle"]}
+{"ts": "2026-11-01T06:39:53.308272", "action": "batch_fdr_promote", "reason": "batch=batch_5a25aa7a promoted=2", "refs": []}
+{"ts": "2026-11-01T06:40:02.078794", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-11-01T07:51:52.054013", "action": "proposal_scan", "reason": "seen=3290 rejected=3344 backlog=0 reasons={'quality_below_threshold': 370, 'dedup': 2133, 'unparseable_json': 90, 'schema_mismatch': 719, 'backlog_dup': 7, 'symbol_not_allowed': 13, 'missing_symbol_or_cov': 5, 'cov_not_in_active_pool': 7}", "refs": []}
+{"ts": "2026-11-01T07:51:52.056149", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 2217, 'search_tree_busy': 301}", "refs": []}
+{"ts": "2026-11-01T07:51:52.056890", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["i_momentum_8cf62d262a1d", "i_momentum_d4b62407f455", "px_momentum_4dcd7c588bb4"]}
+{"ts": "2026-11-01T07:51:52.404008", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-11-01T08:23:19.798905", "action": "batch_fdr_promote", "reason": "batch=batch_e37f577a promoted=3", "refs": []}
+{"ts": "2026-11-01T08:23:29.455365", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-11-01T08:23:50.790065", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-11-01T09:21:08.625175", "action": "proposal_scan", "reason": "seen=3315 rejected=3368 backlog=0 reasons={'quality_below_threshold': 409, 'dedup': 2116, 'schema_mismatch': 720, 'unparseable_json': 90, 'backlog_dup': 7, 'no_success_delta': 1, 'symbol_not_allowed': 13, 'missing_symbol_or_cov': 5, 'cov_not_in_active_pool': 7}", "refs": []}
+{"ts": "2026-11-01T09:21:08.625545", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 2239, 'search_tree_busy': 303}", "refs": []}
+{"ts": "2026-11-01T09:21:08.626193", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["ta_inventory_b31a89f11bb1", "ta_momentum_c5c6bbf8664f", "sh_inventory_5554524c9b1c"]}
+{"ts": "2026-11-01T09:21:09.129577", "action": "confirmation_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd_volatility_411fb7ff02a7"]}
+{"ts": "2026-11-01T09:21:09.131425", "action": "confirmation_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr_momentum_55ad14e8e420"]}
+{"ts": "2026-11-01T09:21:09.141539", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}
+{"ts": "2026-11-01T09:27:34.376473", "action": "confirmation_not_enqueued", "reason": "6f944c74e2c94ca5a5b70e64676e518b", "refs": ["jd", "not_ready"]}
+{"ts": "2026-11-01T09:27:34.376985", "action": "confirmation_not_enqueued", "reason": "ef908a2214e141abaa2d480ca82b53bb", "refs": ["sr", "not_ready"]}
+{"ts": "2026-11-01T09:58:40.325777", "action": "batch_fdr_promote", "reason": "batch=batch_55d8683a promoted=5", "refs": []}
+{"ts": "2026-11-01T09:58:49.325213", "action": "slow_drain_complete", "reason": "queue empty, slow idle, cycle+1 phase=fast", "refs": []}
+{"ts": "2026-11-01T09:59:09.840597", "action": "run_started", "reason": "window ok, no active run", "refs": ["primary"]}
+{"ts": "2026-11-01T11:29:31.949791", "action": "proposal_scan", "reason": "seen=3405 rejected=3461 backlog=0 reasons={'quality_below_threshold': 410, 'dedup': 2204, 'schema_mismatch': 724, 'unparseable_json': 90, 'backlog_dup': 7, 'no_success_delta': 1, 'symbol_not_allowed': 13, 'missing_symbol_or_cov': 5, 'cov_not_in_active_pool': 7}", "refs": []}
+{"ts": "2026-11-01T11:29:31.951361", "action": "search_shadow", "reason": "would_reject={'search_role_missing': 2320, 'search_tree_busy': 308}", "refs": []}
+{"ts": "2026-11-01T11:29:31.952187", "action": "harvested_proposals", "reason": "enqueued 3", "refs": ["ta_momentum_478e5ab27e8b", "ss_inventory_def3f686f247", "cj_momentum_419eb9c71a85"]}
+{"ts": "2026-11-01T11:29:32.290095", "action": "slow_loop_started", "reason": "phase=slow, queue busy", "refs": []}

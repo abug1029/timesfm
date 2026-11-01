@@ -1,7 +1,7 @@
 {
   "cj": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.503,
+    "dir_acc": 0.497,
     "endpoint_mape": 2.59,
     "n": 588,
     "n_eff": 73
@@ -15,15 +15,15 @@
   },
   "jd": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.481,
-    "endpoint_mape": 3.8,
+    "dir_acc": 0.474,
+    "endpoint_mape": 3.82,
     "n": 588,
     "n_eff": 73
   },
   "lh": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.466,
-    "endpoint_mape": 3.72,
+    "dir_acc": 0.46,
+    "endpoint_mape": 3.7,
     "n": 588,
     "n_eff": 73
   },
