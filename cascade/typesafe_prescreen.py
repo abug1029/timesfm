@@ -32,14 +32,6 @@ except ImportError:
 FM_ROOT = Path(__file__).resolve().parent.parent
 
 
-# ── Laya 超时常量 ───────────────────────────────────
-LAYA_COLD_START_TIMEOUT: float = 180.0  # 冷启动超时（秒），覆盖 checkpoint 加载
-LAYA_WARM_TIMEOUT: float = 15.0         # 预热后超时（秒）
-
-
-# ── 预热状态追踪 ────────────────────────────────────
-_is_warmed_up: bool = False
-
 # ── 类型别名 ────────────────────────────────────────
 PrescreenStatus = Literal["success", "degraded", "error"]
 NoveltyType = Literal["novel", "extension", "redundant", "invalid"]
@@ -283,90 +275,19 @@ def _build_state(
     }
 
 
-def _get_laya_base_urls() -> list[str]:
-    """获取 Laya 服务 URL 列表。支持多地址故障转移。
-
-    环境变量格式：
-    - 单地址：LAYA_BASE_URL=http://100.96.19.116:8000
-    - 多地址：LAYA_BASE_URL=http://100.96.19.116:8000,http://10.1.1.67:8000
-
-    默认返回两个地址（Tailscale + 直连）。
-    """
-    env_urls = os.environ.get("LAYA_BASE_URL", "")
-    if env_urls:
-        # 支持逗号分隔的多个 URL
-        urls = [url.strip() for url in env_urls.split(",") if url.strip()]
-        if urls:  # 过滤后不为空才使用
-            return urls
-    # 默认两个地址：Tailscale 网络 + 直连
-    return ["http://100.96.19.116:8000", "http://10.1.1.67:8000"]
-
-
-def warmup_laya(max_retries: int = 3, backoff_seconds: float = 2.0) -> bool:
-    """预热 Laya 服务，提前加载 checkpoint（带指数退避重试）。
-
-    冷启动时首次请求需要 28-122 秒加载 checkpoint，
-    预热后请求仅需 5.7 秒。建议在系统启动时调用此函数。
-
-    Args:
-        max_retries: 最大重试次数（默认 3 次）
-        backoff_seconds: 退避因子（秒），第 n 次重试等待 backoff_seconds^n 秒
-
-    Returns:
-        True if warmup succeeded, False otherwise
-    """
-    global _is_warmed_up
-    import requests
-
-    urls = _get_laya_base_urls()
-    warmup_payload = {
-        "model": "jev-latest",
-        "state": {"symbol": "m", "sector": "warmup"},
-        "questions": {}
-    }
-
-    for attempt in range(max_retries):
-        # 指数退避：第 0 次不等待，第 1 次等 2s，第 2 次等 4s
-        if attempt > 0:
-            wait_time = backoff_seconds ** attempt
-            logger.info(f"Laya warmup retry {attempt}/{max_retries - 1}, waiting {wait_time:.1f}s...")
-            time.sleep(wait_time)
-
-        for base_url in urls:
-            url = f"{base_url}/v1/systemone"
-            try:
-                logger.info(f"Warming up Laya service at {base_url} (attempt {attempt + 1}/{max_retries})...")
-                response = requests.post(
-                    url,
-                    json=warmup_payload,
-                    headers={"Content-Type": "application/json"},
-                    timeout=LAYA_COLD_START_TIMEOUT
-                )
-                if response.status_code == 200:
-                    logger.info(f"✅ Laya warmup successful ({base_url})")
-                    _is_warmed_up = True
-                    return True
-                else:
-                    logger.warning(f"Laya warmup returned {response.status_code} from {base_url}")
-            except Exception as e:
-                logger.warning(f"Laya warmup failed for {base_url}: {e}")
-                continue
-
-    logger.error("❌ Laya warmup failed for all addresses after %d retries", max_retries)
-    return False
+def _get_laya_base_url() -> str:
+    """获取 Laya 服务 URL。优先使用环境变量，默认 Tailscale 地址。"""
+    return _env_nonempty("LAYA_BASE_URL") or "http://100.96.19.116:8000"
 
 
 def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -> Any:
-    """调用 Laya 服务（替代 TypeSafe SDK）。支持多地址故障转移。
-
-    尝试顺序：
-    1. 依次尝试 _get_laya_base_urls() 返回的所有地址
-    2. 遇到超时、503、连接错误时尝试下一个地址
-    3. 所有地址都失败时抛出异常
-    """
+    """调用 Laya 服务（替代 TypeSafe SDK）。Laya 使用相同的 /v1/systemone 协议。"""
     import requests
 
-    # 构建请求 payload（兼容 TypeSafe SDK 格式）- 循环不变量
+    base_url = _get_laya_base_url()
+    url = f"{base_url}/v1/systemone"
+
+    # 构建请求 payload（兼容 TypeSafe SDK 格式）
     payload = {
         "model": "jev-latest",
         "state": state,
@@ -410,7 +331,12 @@ def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    # 将 Laya 响应转换为兼容 TypeSafe SDK 的对象 - 独立于循环
+    response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+    response.raise_for_status()
+
+    result_data = response.json()
+
+    # 将 Laya 响应转换为兼容 TypeSafe SDK 的对象
     class MockAnswer:
         def __init__(self, data):
             self.noul = data.get("noul")
@@ -425,49 +351,7 @@ def _call_typesafe(state: dict[str, Any], api_key: str, timeout: float = 30.0) -
                 for qid, ans_data in data.get("answers", {}).items()
             }
 
-    urls = _get_laya_base_urls()
-    last_error = None
-
-    for idx, base_url in enumerate(urls):
-        url = f"{base_url}/v1/systemone"
-        try:
-            if idx > 0:
-                logger.info(f"Laya 故障转移：尝试备用地址 {base_url}（第 {idx+1}/{len(urls)} 个）")
-
-            response = requests.post(url, json=payload, headers=headers, timeout=timeout)
-            response.raise_for_status()
-
-            result_data = response.json()
-
-            if idx > 0:
-                logger.info(f"Laya 备用地址 {base_url} 成功")
-
-            return MockResult(result_data)
-
-        except (TimeoutError, requests.exceptions.Timeout) as e:
-            last_error = e
-            logger.warning(f"Laya 地址 {base_url} 超时（{timeout}s），尝试下一个...")
-            continue
-        except requests.exceptions.HTTPError as e:
-            last_error = e
-            if e.response.status_code in [503, 502, 504]:
-                logger.warning(f"Laya 地址 {base_url} 服务不可用（{e.response.status_code}），尝试下一个...")
-                continue
-            # 其他 HTTP 错误（如 401, 404）直接抛出
-            raise
-        except requests.exceptions.ConnectionError as e:
-            last_error = e
-            logger.warning(f"Laya 地址 {base_url} 连接失败，尝试下一个...")
-            continue
-
-    # 所有地址都失败
-    if last_error is not None:
-        # 将 requests.exceptions.Timeout 转换为 TimeoutError 以便上层统一处理
-        import requests
-        if isinstance(last_error, requests.exceptions.Timeout):
-            raise TimeoutError(f"Laya 服务超时: {last_error}") from last_error
-        raise last_error
-    raise RuntimeError("Laya 服务调用失败：无可用地址")
+    return MockResult(result_data)
 
 
 # ── 主入口 ──────────────────────────────────────────
@@ -480,9 +364,8 @@ def _prescreen_impl(
 ) -> dict[str, Any]:
     """预筛核心实现。异常分类：超时→degraded，鉴权→error，其他→error。"""
     api_key = _get_typesafe_api_key()
-    # Laya 不需要 API key，但保留变量以兼容旧代码
-    # if not api_key:
-    #     return _fallback_result(proposal, symbol, note="TypeSafe 未启用")
+    if not api_key:
+        return _fallback_result(proposal, symbol, note="TypeSafe 未启用")
 
     if _check_circuit():
         return _fallback_result(proposal, symbol, note="TypeSafe 短路降级中")
@@ -490,10 +373,7 @@ def _prescreen_impl(
     state = _build_state(proposal, symbol, verdict_history, covariate_menu)
 
     try:
-        # 冷启动需要 28-122 秒加载 checkpoint，预热后仅需 5.7 秒
-        # 根据预热状态选择超时：未预热使用 LAYA_COLD_START_TIMEOUT（180s），已预热使用 LAYA_WARM_TIMEOUT（15s）
-        timeout = LAYA_WARM_TIMEOUT if _is_warmed_up else LAYA_COLD_START_TIMEOUT
-        result = _call_typesafe(state, api_key, timeout=timeout)
+        result = _call_typesafe(state, api_key, timeout=5.0)
     except (TimeoutError, TypeSafeTimeoutError) as e:
         _record_timeout()
         logger.warning("TypeSafe API 超时: %s", e)

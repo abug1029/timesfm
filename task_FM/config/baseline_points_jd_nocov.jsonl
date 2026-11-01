@@ -1,3 +1,1 @@
-{"cutoff": "2026-10-21 10:00:00", "dir_ok": true, "delta_pred": 61.40160523071336, "delta_real": 42.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
-{"cutoff": "2026-10-21 12:00:00", "dir_ok": true, "delta_pred": 44.91329069241965, "delta_real": 31.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
-{"cutoff": "2026-10-21 15:00:00", "dir_ok": true, "delta_pred": 37.29519917234438, "delta_real": 86.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
+{"cutoff": "2026-10-08 10:00:00", "dir_ok": false, "delta_pred": 54.85254664371587, "delta_real": -300.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
