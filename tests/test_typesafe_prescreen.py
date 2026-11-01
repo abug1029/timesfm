@@ -246,11 +246,41 @@ class TestPrescreenProposalMock:
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["skip_suggested"] is True
 
-    def test_no_api_key_returns_degraded(self, monkeypatch):
+    def test_no_api_key_default_laya_mode_bypasses(self, monkeypatch):
+        """默认 LAYA_SKIP_AUTH=True：无 key 也走正常请求路径（Laya 不需要 key）。"""
         monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+        monkeypatch.delenv("LAYA_SKIP_AUTH", raising=False)
+        # mock _call_typesafe 验证它真的被调用（而不是 fallback）
+        called = {"n": 0}
+        def mock_call(*a, **k):
+            called["n"] += 1
+            return _make_mock_result(0.7, "novel", 3)
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe", mock_call)
+        result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
+        assert result["status"] == "success", "expected bypass, got " + repr(result["status"])
+        assert called["n"] == 1, "_call_typesafe 应被调用 1 次"
+
+    def test_no_api_key_typesafe_mode_returns_degraded(self, monkeypatch):
+        """LAYA_SKIP_AUTH=False（TypeSafe 模式）：无 key → degraded。"""
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+        # LAYA_SKIP_AUTH 是 import 时常量，monkeypatch env 不会重算；直接 setattr 模块属性
+        monkeypatch.setattr("cascade.typesafe_prescreen.LAYA_SKIP_AUTH", False)
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
         assert result["status"] == "degraded"
-        assert result["skip_suggested"] is None
+        assert "TYPESAFE_API_KEY" in result["note"]
+
+    def test_laya_skip_auth_explicit_true(self, monkeypatch):
+        """LAYA_SKIP_AUTH=True 显式开启：与默认行为一致，bypass key 检查。"""
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+        monkeypatch.setattr("cascade.typesafe_prescreen.LAYA_SKIP_AUTH", True)
+        called = {"n": 0}
+        def mock_call(*a, **k):
+            called["n"] += 1
+            return _make_mock_result(0.7, "novel", 3)
+        monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe", mock_call)
+        result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
+        assert result["status"] == "success"
+        assert called["n"] == 1
 
     def test_api_timeout_returns_degraded(self, monkeypatch):
         """超时 → degraded。mock 只抛异常，不手动调 _record_timeout()（避免双重计数）。"""
@@ -266,9 +296,11 @@ class TestPrescreenProposalMock:
     def test_auth_error_returns_error(self, monkeypatch):
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
         def raise_auth(*a, **k):
-            # 构造真实 SDK TypeSafeAuthenticationError (需 status/body/headers)
-            e = AuthenticationError(
-                401, {"error": "unauthorized"}, {}, message="401 Unauthorized")
+            # 构造 SDK TypeSafeAuthenticationError；兼容本地兜底类（无参数）和真实 SDK
+            try:
+                e = AuthenticationError(401, {"error": "unauthorized"}, {}, "401 Unauthorized")
+            except TypeError:
+                e = AuthenticationError("401 Unauthorized")
             raise e
         monkeypatch.setattr("cascade.typesafe_prescreen._call_typesafe", raise_auth)
         result = prescreen_proposal(SAMPLE_PROPOSAL, "JD")
