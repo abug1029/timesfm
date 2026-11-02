@@ -90,8 +90,12 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
         return None
     
     # 合并新旧点
-    all_points = result.get("points", [])
-    print(f"[INFO] {sym_upper} 生成 {len(all_points)} 个点（含 {len(resumed_points)} 个已有点）")
+    new_points = result.get("points", [])
+    # resumed_points: {(symbol, cutoff): rec_dict} —— backtest 内部用它跳过已算点，
+    # 但返回的 result["points"] 只含本轮新算的点，需手动合并
+    resumed_as_points = list(resumed_points.values()) if resumed_points else []
+    all_points = resumed_as_points + new_points
+    print(f"[INFO] {sym_upper} 合并: {len(resumed_as_points)} 旧点 + {len(new_points)} 新点 = {len(all_points)} 点")
     
     # 写入基线文件（覆盖）
     from task_FM.evaluations.fm_eval.evaluator import compute_protocol_fingerprint
@@ -100,18 +104,25 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
     jsonl_file = config_dir / f"baseline_points_{sym_lower}{cov_suffix}.jsonl"
     temp_file = config_dir / f".baseline_points_{sym_lower}{cov_suffix}.jsonl.tmp"
     
+    # 写入时按 cutoff 去重（resumed + new 可能 overlap 在边界）
+    seen_cutoffs = set()
     with open(temp_file, "w", encoding="utf-8") as fp:
         for pt in all_points:
             if "error" in pt:
                 continue
+            cutoff = pt["cutoff"]
+            if cutoff in seen_cutoffs:
+                continue
+            seen_cutoffs.add(cutoff)
             rec = {
-                "cutoff": pt["cutoff"],
+                "cutoff": cutoff,
                 "dir_ok": bool(pt["dir_ok"]),
                 "delta_pred": float(pt["delta_pred"]),
                 "delta_real": float(pt["delta_real"]),
                 "protocol_fingerprint": _proto,
             }
             fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    print(f"[INFO] {sym_upper} 写入 {len(seen_cutoffs)} 个唯一 cutoff 点")
     
     temp_file.rename(jsonl_file)
     
