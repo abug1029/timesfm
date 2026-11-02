@@ -1422,6 +1422,30 @@ def _guard_confirm_from_ts_after_regen(sym_lower, points_path, archive_path, roo
         print(f"[ERROR] ensure_baselines: {sym_lower} 守卫恢复失败: {e}", file=sys.stderr)
     return False
 
+def _incremental_or_regen(sym_lower, points_path, root):
+    """路径 ③ (reanchor) 专用：先尝试增量重生，失败时降级到全量。
+
+    增量：从现有基线末端继续（scripts/incremental_baseline.py），只计算新增点，
+    避免每次 reanchor 都全量重生 588+ 点。若增量失败（无现有基线 / 异常），
+    降级到 _regen_baseline_with_archive 全量重生（保底）。
+    两者都先归档旧档（_archive_baseline_before_regen），保证守卫可回滚。
+    """
+    archive = _archive_baseline_before_regen(points_path)
+    try:
+        from scripts import incremental_baseline as ib
+        new_cutoff = ib.incremental_generate(sym_lower, None, root)
+        if new_cutoff:
+            return new_cutoff
+        print(f"[INFO] ensure_baselines: {sym_lower} 增量重生返空，降级到全量",
+              file=__import__('sys').stderr)
+    except Exception as e:
+        print(f"[WARN] ensure_baselines: {sym_lower} 增量重生失败 ({e})，降级到全量",
+              file=__import__('sys').stderr)
+    # 降级：全量重生（注意：旧档已归档，_regen_baseline_with_archive 内部会再归档一次，
+    # 但因为文件已不在原位，_archive 是 no-op；不影响功能）
+    return _regen_baseline_with_archive(sym_lower, points_path, root)
+
+
 def _regen_baseline_with_archive(sym_lower, points_path, root):
     """步②统一重生入口：归档 → 重生 → 守卫断言（ensure_baselines 重生点共用）。
 
@@ -1561,10 +1585,10 @@ def ensure_baselines(symbols, root):
                     print(f"[INFO] ensure_baselines: {sym_lower} 跳过重生（上次重生基线末端未推进，数据未增长，等 daily_update）",
                           file=sys.stderr)
                     continue
-                print(f"[WARN] ensure_baselines: {sym_lower} {reanchor} → 重生",
+                print(f"[WARN] ensure_baselines: {sym_lower} {reanchor} → 重生（增量优先）",
                       file=sys.stderr)
                 prev_cutoff = last_cutoff
-                new_cutoff = _regen_baseline_with_archive(sym_lower, points_path, root)
+                new_cutoff = _incremental_or_regen(sym_lower, points_path, root)
                 # Circuit breaker: 检测推进幅度（< 7 天视为停滞），而不是是否推进
                 if (new_cutoff is not None
                     and prev_cutoff is not None

@@ -34,7 +34,9 @@ def load_existing_baselines(symbol: str, cov: str = None):
     return points, last_cutoff
 
 def incremental_generate(symbol: str, cov: str = None, root: str = "."):
-    """增量生成基线：从现有末端继续"""
+    """增量生成基线：从现有末端继续。
+    返回：新生成的基线末端 cutoff (str)，失败返回 None。
+    """
     from scripts import monthly_backtest as mb
     from cascade.daily_model import DailyModel
     from cascade.hourly_model import HourlyModel
@@ -85,7 +87,7 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
     
     if result is None:
         print(f"[ERROR] {sym_upper} 回测失败")
-        return False
+        return None
     
     # 合并新旧点
     all_points = result.get("points", [])
@@ -117,8 +119,18 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
     if checkpoint_path.exists():
         checkpoint_path.unlink()
     
-    print(f"[DONE] {sym_upper} 基线已更新: {jsonl_file.name}")
-    return True
+    # 读取新生成的基线末端 cutoff (供 ensure_baselines circuit breaker 用)
+    last_cutoff = None
+    try:
+        with open(jsonl_file, "r", encoding="utf-8") as _fp:
+            for _line in _fp:
+                if _line.strip():
+                    _rec = json.loads(_line)
+                    last_cutoff = _rec.get("cutoff") or last_cutoff
+    except Exception as _e:
+        print(f"[WARN] {sym_upper} 无法读取新基线末端: {_e}")
+    print(f"[DONE] {sym_upper} 基线已更新: {jsonl_file.name}, new_cutoff={last_cutoff}")
+    return last_cutoff
 
 if __name__ == "__main__":
     import argparse
