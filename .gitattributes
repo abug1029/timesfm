@@ -12,3 +12,11 @@ cascade/**              merge=protected-ours
 scripts/**              merge=protected-ours
 tests/**                merge=protected-ours
 docs/superpowers/**     merge=protected-ours
+#
+# ── 关键配置/数据（防止 backup cleanup 误删）─────────────────
+# backup cleanup 曾删 baseline_metrics.json / family_registry.jsonl / data/config.py
+# 这些文件被覆盖时 merge 冲突应保留本机版本，避免无声丢失
+data/*.py                    merge=protected-ours
+task_FM/config/family_registry.jsonl    merge=protected-ours
+task_FM/config/baseline_metrics.json    merge=protected-ours
+task_FM/config/covariate_pool.json      merge=protected-ours
