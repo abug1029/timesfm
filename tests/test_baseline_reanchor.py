@@ -1,16 +1,13 @@
-"""步② C：拉取日重锚 + confirm_from_ts 守卫断言测试（事项一五步之 2/5）。
+"""步② C：拉取日重锚 + 唯一收口后条件测试（事项一五步之 2/5）。
 
-裁定 C（2026-10-07，dm-status 报告附录 A.2）：
-- 基线快照版本化为前置（步① 已落地）；
-- 守卫断言 = 重锚不得删除 >= confirm_from_ts 的基线 cutoff（保 v9 修订②）；
-- unmatched 预期 ≈ 拉取滞后 1-3 点（非零），B 不因 C 省略。
-
-重锚条件（per symbol，任一触发重生）：
-(a) 确认窗覆盖缺口：存在预注册 confirm_from_ts ∈ (基线末端, 数据末端]；
-(b) 漂移上界：数据末端 - 基线末端 > _BASELINE_STALENESS_MAX_H（168h=7 天）。
-数据末端读不到 → None（fail-open，防误重生）。
+确认窗 cutoff 从网格消失是缺失报告；回滚目标必须通过当前网格后条件。
+`finalize_baseline_write` 是唯一换名或回滚的函数。
 """
-import json, os, sys
+import json
+import os
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 import sup_state
@@ -81,42 +78,75 @@ def test_reanchor_reason_prereg_of_other_symbol_ignored(tmp_path, monkeypatch):
     assert sup._baseline_reanchor_reason("jd", "2026-10-04 06:00:00", str(tmp_path)) is None
 
 
-# ── _guard_confirm_from_ts_after_regen ─────────────────────────────
+# ── finalize_baseline_write（唯一收口）──────────────────────────────
 
-def test_guard_noop_without_prereg(tmp_path):
+def _patch_grid(monkeypatch, cutoffs, fp="fp_test"):
+    monkeypatch.setattr("cascade.eval_grid.baseline_eval_cutoffs", lambda symbol: list(cutoffs))
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: fp)
+
+
+def _rising_grid(n=588):
+    t0 = datetime(2026, 1, 1, 10, 0, 0)
+    return [(t0 + timedelta(hours=2 * i)).strftime("%Y-%m-%d %H:%M:%S") for i in range(n)]
+
+
+def test_guard_noop_without_prereg(tmp_path, monkeypatch):
+    grid = _rising_grid()
+    _patch_grid(monkeypatch, grid)
     pts = tmp_path / "baseline_points_jd_nocov.jsonl"
-    _write_points(pts, ["2026-10-03 00:00:00"])
-    assert sup._guard_confirm_from_ts_after_regen("jd", str(pts), None, str(tmp_path)) is True
-
-
-def test_guard_passes_when_new_file_keeps_confirm_window(tmp_path):
-    _write_prereg(str(tmp_path), [{"prereg_id": "p1", "symbol": "jd",
-                                   "confirm_from_ts": "2026-10-03 00:00:00"}])
-    archive = tmp_path / "baseline_points_jd_nocov.archive_20260930T1400.jsonl"
-    _write_points(archive, ["2026-10-02 00:00:00", "2026-10-03 00:00:00",
-                            "2026-10-05 00:00:00"])
-    pts = tmp_path / "baseline_points_jd_nocov.jsonl"
-    _write_points(pts, ["2026-10-01 00:00:00", "2026-10-03 00:00:00",
-                        "2026-10-05 00:00:00", "2026-10-06 00:00:00"])
+    _write_points(pts, grid)
     before = pts.read_bytes()
-    assert sup._guard_confirm_from_ts_after_regen("jd", str(pts), str(archive), str(tmp_path)) is True
-    assert pts.read_bytes() == before   # 通过时不恢复
+    scar = tmp_path / "baseline_points_jd_nocov.archive_20261021T1500.jsonl"
+    _write_points(scar, ["2026-10-21 10:00:00"])
+    # 没有预注册。1 行归档不是恢复目标。活文件已经等于网格时收口为真，字节不变。
+    tmp = tmp_path / ".baseline_points_jd_nocov.jsonl.tmp"
+    tmp.write_bytes(before)
+    assert sup_evidence.finalize_baseline_write("jd", str(pts), str(tmp_path), str(scar)) is True
+    assert pts.read_bytes() == before
+    assert scar.read_bytes() != pts.read_bytes()
 
 
-def test_guard_restores_archive_when_cutoffs_deleted(tmp_path):
+def test_guard_passes_when_new_file_keeps_confirm_window(tmp_path, monkeypatch):
+    grid = _rising_grid()
+    _patch_grid(monkeypatch, grid)
     _write_prereg(str(tmp_path), [{"prereg_id": "p1", "symbol": "jd",
                                    "confirm_from_ts": "2026-10-03 00:00:00"}])
-    archive = tmp_path / "baseline_points_jd_nocov.archive_20260930T1400.jsonl"
-    _write_points(archive, ["2026-10-03 00:00:00", "2026-10-05 00:00:00"])
     pts = tmp_path / "baseline_points_jd_nocov.jsonl"
-    _write_points(pts, ["2026-10-01 00:00:00"])   # 重生丢掉了确认窗点
-    result = sup._guard_confirm_from_ts_after_regen("jd", str(pts), str(archive), str(tmp_path))
-    assert result is False
-    assert pts.read_bytes() == archive.read_bytes()   # 旧档已恢复
+    _write_points(pts, grid)
+    before = pts.read_bytes()
+    archive = tmp_path / "baseline_points_jd_nocov.archive_20261021T1500.jsonl"
+    _write_points(archive, ["2026-10-21 10:00:00", "2026-10-21 12:00:00",
+                            "2026-10-21 15:00:00"])
+    tmp = tmp_path / ".baseline_points_jd_nocov.jsonl.tmp"
+    tmp.write_bytes(before)
+    assert sup_evidence.finalize_baseline_write("jd", str(pts), str(tmp_path), str(archive)) is True
+    assert pts.read_bytes() == before
+    assert not tmp.exists()
 
 
-def test_guard_noop_when_archive_has_no_confirm_points(tmp_path):
-    """旧档本身不含 >= confirm_from_ts 的点（现状）→ 断言平凡通过。"""
+def test_guard_restores_archive_when_cutoffs_deleted(tmp_path, monkeypatch):
+    """网格外的 3 行归档不得盖回一份网格有效的文件。"""
+    grid = _rising_grid()
+    _patch_grid(monkeypatch, grid)
+    _write_prereg(str(tmp_path), [{"prereg_id": "p1", "symbol": "jd",
+                                   "confirm_from_ts": "2026-10-03 00:00:00"}])
+    pts = tmp_path / "baseline_points_jd_nocov.jsonl"
+    _write_points(pts, grid)
+    before = pts.read_bytes()
+    archive = tmp_path / "baseline_points_jd_nocov.archive_20261021T1500.jsonl"
+    _write_points(archive, ["2026-10-21 10:00:00", "2026-10-21 12:00:00",
+                            "2026-10-21 15:00:00"])
+    rejected = tmp_path / ".baseline_points_jd_nocov.jsonl.tmp"
+    _write_points(rejected, ["2026-10-21 10:00:00", "2026-10-21 12:00:00",
+                             "2026-10-21 15:00:00"])
+    assert sup_evidence.finalize_baseline_write("jd", str(pts), str(tmp_path), str(archive)) is False
+    assert pts.read_bytes() == before
+    assert not rejected.exists()
+
+
+def test_guard_noop_when_archive_has_no_confirm_points(tmp_path, monkeypatch):
+    grid = _rising_grid()
+    _patch_grid(monkeypatch, grid)
     _write_prereg(str(tmp_path), [{"prereg_id": "p1", "symbol": "jd",
                                    "confirm_from_ts": "2026-10-03 00:00:00"}])
     archive = tmp_path / "baseline_points_jd_nocov.archive_20260930T1400.jsonl"
@@ -124,8 +154,43 @@ def test_guard_noop_when_archive_has_no_confirm_points(tmp_path):
     pts = tmp_path / "baseline_points_jd_nocov.jsonl"
     _write_points(pts, ["2026-10-01 00:00:00"])
     before = pts.read_bytes()
-    assert sup._guard_confirm_from_ts_after_regen("jd", str(pts), str(archive), str(tmp_path)) is True
+    rejected = tmp_path / ".baseline_points_jd_nocov.jsonl.tmp"
+    _write_points(rejected, ["2026-10-01 00:00:00"])
+    assert sup_evidence.finalize_baseline_write("jd", str(pts), str(tmp_path), str(archive)) is False
     assert pts.read_bytes() == before
+    assert not rejected.exists()
+
+
+def test_prereg_and_no_prereg_keep_the_same_grid_file(tmp_path, monkeypatch):
+    grid = _rising_grid()
+    _patch_grid(monkeypatch, grid)
+    for symbol in ("sr", "bu"):
+        root = tmp_path / symbol
+        root.mkdir()
+        if symbol == "sr":
+            _write_prereg(str(root), [{"prereg_id": "p-sr", "symbol": "sr",
+                                       "confirm_from_ts": "2026-10-03 00:00:00",
+                                       "n_confirm_required": 986}])
+        pts = root / f"baseline_points_{symbol}_nocov.jsonl"
+        _write_points(pts, grid)
+        before = pts.read_bytes()
+        archive = root / f"baseline_points_{symbol}_nocov.archive_scar.jsonl"
+        _write_points(archive, ["2026-10-21 10:00:00", "2026-10-21 12:00:00",
+                                "2026-10-21 15:00:00"])
+        tmp = root / f".baseline_points_{symbol}_nocov.jsonl.tmp"
+        tmp.write_bytes(before)
+        assert sup_evidence.finalize_baseline_write(symbol, str(pts), str(root), str(archive)) is True
+        assert pts.read_bytes() == before
+
+    text = Path("scripts/sup_evidence.py").read_text(encoding="utf-8")
+    # Check that finalize_baseline_write doesn't have special-case logic for jd
+    func_start = text.find("def finalize_baseline_write")
+    func_end = text.find("\ndef ", func_start + 1)
+    if func_end == -1:
+        func_end = len(text)
+    func_body = text[func_start:func_end]
+    assert 'symbol == "jd"' not in func_body
+    assert "symbol == 'jd'" not in func_body
 
 
 # ── ensure_baselines 集成 ──────────────────────────────────────────

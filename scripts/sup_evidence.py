@@ -1375,6 +1375,114 @@ def _baseline_reanchor_reason(sym_lower, last_cutoff, root):
                 f"> {_BASELINE_STALENESS_MAX_H}h → 拉取日重锚")
     return None
 
+def finalize_baseline_write(symbol, points_path, root, archive_path):
+    """唯一收口：临时文件通过后换名，否则尝试合格归档回滚。
+
+    不调用 _guard_confirm_from_ts_after_regen。
+    """
+    import glob
+    import shutil
+    from cascade.eval_grid import baseline_eval_cutoffs, accept_baseline_file
+
+    sym_lower = str(symbol).lower()
+    try:
+        expected = baseline_eval_cutoffs(sym_lower)
+        fp = _current_protocol_fingerprint()
+    except Exception as exc:
+        print(f"[ERROR] finalize_baseline_write: {sym_lower} 读网格或指纹失败: {exc}",
+              file=sys.stderr)
+        return False
+    if not fp:
+        print(f"[ERROR] finalize_baseline_write: {sym_lower} 当前指纹为空",
+              file=sys.stderr)
+        return False
+
+    points_dir = os.path.dirname(points_path)
+    points_name = os.path.basename(points_path)
+    tmp_path = os.path.join(points_dir, "." + points_name + ".tmp")
+
+    if os.path.exists(tmp_path):
+        ok, reason = accept_baseline_file(tmp_path, expected, fp)
+        if ok:
+            try:
+                n_lines = sum(1 for line in open(tmp_path, encoding="utf-8") if line.strip())
+                os.replace(tmp_path, points_path)
+                first_cutoff = expected[0] if expected else "?"
+                last_cutoff = expected[-1] if expected else "?"
+                fp_prefix = fp[:16] if len(fp) >= 16 else fp
+                print(f"[INFO] finalize_baseline_write: {sym_lower} 收口通过 "
+                      f"({n_lines} 行, {first_cutoff} ~ {last_cutoff}, fp={fp_prefix}…)",
+                      file=sys.stderr)
+            except OSError as exc:
+                print(f"[ERROR] finalize_baseline_write: {sym_lower} 换名失败: {exc}",
+                      file=sys.stderr)
+                return False
+
+            confirm_set = _prereg_confirm_from_ts(sym_lower, root)
+            if confirm_set:
+                threshold = min(confirm_set)
+                expected_set = set(expected)
+                missing = []
+                try:
+                    with open(archive_path, encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                rec = json.loads(line)
+                                c = str(rec.get("cutoff", ""))
+                            except json.JSONDecodeError:
+                                continue
+                            if c >= threshold and c not in expected_set:
+                                missing.append(c)
+                except (OSError, TypeError):
+                    pass
+                if missing:
+                    shown = missing[:8]
+                    total = len(missing)
+                    suffix = f"（共 {total} 条）" if total > 8 else ""
+                    print(f"[WARN] finalize_baseline_write: {sym_lower} 确认样本缺失 "
+                          f"（边界 {threshold}, 缺失 {shown}{suffix}），不回滚探索基线",
+                          file=sys.stderr)
+            return True
+        else:
+            n_tmp = 0
+            try:
+                with open(tmp_path, encoding="utf-8") as f:
+                    n_tmp = sum(1 for line in f if line.strip())
+            except OSError:
+                pass
+            print(f"[WARN] finalize_baseline_write: {sym_lower} 临时文件未通过: {reason} "
+                  f"(临时文件 {n_tmp} 行)",
+                  file=sys.stderr)
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+            archive_pattern = os.path.join(
+                points_dir,
+                os.path.splitext(points_name)[0] + ".archive_*.jsonl"
+            )
+            archives = sorted(glob.glob(archive_pattern), key=os.path.getmtime, reverse=True)
+            for archive in archives:
+                archive_ok, _ = accept_baseline_file(archive, expected, fp)
+                if archive_ok:
+                    try:
+                        shutil.copy2(archive, points_path)
+                        print(f"[INFO] finalize_baseline_write: {sym_lower} 从归档恢复 "
+                              f"{os.path.basename(archive)}",
+                              file=sys.stderr)
+                    except OSError as exc:
+                        print(f"[ERROR] finalize_baseline_write: {sym_lower} 归档恢复失败: {exc}",
+                              file=sys.stderr)
+                    return False
+            return False
+    else:
+        live_ok, _ = accept_baseline_file(points_path, expected, fp)
+        return live_ok
+
 def _guard_confirm_from_ts_after_regen(sym_lower, points_path, archive_path, root):
     """步② C 守卫断言：重锚不得删除 >= confirm_from_ts 的基线 cutoff（保 v9 修订②）。
 

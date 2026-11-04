@@ -4,9 +4,12 @@
 - select_eval_indices: 按收盘时间选出评估下标，右边界 total - horizon - 1
 - filter_by_daily_sufficiency: 过滤日线数据不足的评估点
 - baseline_eval_cutoffs: 品种基线的评估 cutoff 序列（身份）
+- accept_baseline_file: 后条件——基线文件必须严格等于注入的网格
 
 不导入 torch。
 """
+
+import json
 
 import pandas as pd
 
@@ -91,3 +94,42 @@ def baseline_eval_cutoffs(symbol: str) -> list:
     if not indices:
         raise RuntimeError(f"{symbol} 评估网格为空，不能把空文件当成通过")
     return [_close_ts(_bar_dt(hourly["dt"], idx)) for idx in indices]
+
+
+def accept_baseline_file(path, expected_cutoffs, current_fingerprint):
+    """后条件：基线文件的 cutoff 序列必须严格等于注入的网格。
+
+    返回 (bool, str)：(通过, 原因)。不要求 endpoint_delta 或 position_sign。
+    """
+    if not current_fingerprint:
+        return False, "当前指纹为空"
+    expected = list(expected_cutoffs)
+    if not expected:
+        return False, "网格为空"
+    for prev, nxt in zip(expected, expected[1:]):
+        if not prev < nxt:
+            return False, "网格本身未严格递增"
+    cutoffs = []
+    required = ("cutoff", "dir_ok", "delta_pred", "delta_real", "protocol_fingerprint")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for lineno, line in enumerate(handle, 1):
+                if not line.strip():
+                    continue
+                rec = json.loads(line)
+                if not isinstance(rec, dict):
+                    return False, f"第 {lineno} 行不是对象"
+                for key in required:
+                    if key not in rec:
+                        return False, f"第 {lineno} 行缺 {key}"
+                if rec["protocol_fingerprint"] != current_fingerprint:
+                    return False, f"第 {lineno} 行指纹不符"
+                cutoffs.append(str(rec["cutoff"]))
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"无法读取: {exc}"
+    for prev, nxt in zip(cutoffs, cutoffs[1:]):
+        if not prev < nxt:
+            return False, "cutoff 未严格递增"
+    if cutoffs != expected:
+        return False, f"cutoff 序列与网格不等: 文件 {len(cutoffs)} 行, 网格 {len(expected)} 行"
+    return True, "ok"
