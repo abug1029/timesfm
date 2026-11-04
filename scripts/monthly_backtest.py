@@ -50,7 +50,7 @@ from cascade.hourly_model import HourlyModel
 from cascade.evaluation_metrics import metrics_from_backtest_points, calc_prediction_quality, fallback_n_eff, safe_path_corr
 from cascade.signal_contract import endpoint_dir_ok, position_from_forecast, assemble_direction
 from cascade.ablation import AblationMode
-
+from cascade import eval_grid
 
 
 
@@ -244,42 +244,23 @@ def _append_progress(path, line: str) -> None:
 
 
 def _bar_dt(dts, idx):
-    if hasattr(dts, "iloc"):
-        return dts.iloc[idx]
-    return dts[idx]
+    return eval_grid._bar_dt(dts, idx)
 
 
 def _close_ts(dt) -> str:
-    # 与评估循环同一公式：开盘 dt + 1h，字典序比较，不解析 eval_start_ts。
-    return (pd.Timestamp(dt) + pd.Timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    return eval_grid._close_ts(dt)
 
 
 def select_eval_indices(dts, *, eval_start_ts=None, max_points=None):
-    """按收盘时间选出评估下标。不碰模型。
-
-    eval_start_ts 为空时与旧公式逐点相同：左边界仍是
-    max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)。
-    有值时左边界改为「收盘时间 >= eval_start_ts 且 idx >= CONTEXT_BARS」的第一根，
-    不再用尾部窗口。右边界是 total - HORIZON - 1（保证最后一个 eval 点有完整 HORIZON 根 target）。然后才 [:max_points]。
-    """
-    total = len(dts)
-    right = total - HORIZON - 1
-    if eval_start_ts is None:
-        left = max(CONTEXT_BARS, total - EVAL_WINDOW_BARS)
-    else:
-        bound = (eval_start_ts if isinstance(eval_start_ts, str)
-                 else pd.Timestamp(eval_start_ts).strftime("%Y-%m-%d %H:%M:%S"))
-        left = None
-        for idx in range(CONTEXT_BARS, right + 1):
-            if _close_ts(_bar_dt(dts, idx)) >= bound:
-                left = idx
-                break
-        if left is None:
-            return []
-    indices = list(range(left, right + 1, STEP))
-    if max_points is not None:
-        indices = indices[:max_points]
-    return indices
+    return eval_grid.select_eval_indices(
+        dts,
+        eval_start_ts=eval_start_ts,
+        max_points=max_points,
+        context_bars=CONTEXT_BARS,
+        horizon=HORIZON,
+        step=STEP,
+        eval_window_bars=EVAL_WINDOW_BARS,
+    )
 
 
 def run_symbol_backtest(symbol, daily_model, hourly_model,
@@ -358,13 +339,7 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
     # 过滤: 只保留日线数据足够的评估点
     # 模型实际需要 horizon_days(22) 天预测, context 略少于 CONTEXT_DAYS 也可用
     min_daily_required = max(CONTEXT_DAYS - HORIZON_DAYS, 100)
-    if not daily_df.empty:
-        import bisect
-        daily_dates = sorted(daily_df["dt"].astype(str).str[:10].tolist())
-        eval_indices = [
-            idx for idx in eval_indices
-            if bisect.bisect_right(daily_dates, str(all_1h["dt"].iloc[idx])[:10]) >= min_daily_required
-        ]
+    eval_indices = eval_grid.filter_by_daily_sufficiency(eval_indices, all_1h["dt"], daily_df, min_daily_required)
 
     if not eval_indices:
         return None
