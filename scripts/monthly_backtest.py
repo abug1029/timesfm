@@ -48,21 +48,11 @@ from data.data_store import DataStore
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
 from cascade.evaluation_metrics import metrics_from_backtest_points, calc_prediction_quality, fallback_n_eff, safe_path_corr
-from cascade.signal_contract import position_from_forecast
+from cascade.signal_contract import endpoint_dir_ok, position_from_forecast
 from cascade.ablation import AblationMode
 
 
-def endpoint_dir_ok(pred_end: float, real_end: float, base: float, eps: float = 1e-8) -> bool:
-    """Determine direction correctness using endpoint price change.
 
-    Returns True if pred and real move in same direction from base.
-    Returns False if real move is near zero (|delta| < eps).
-    """
-    delta_pred = float(pred_end - base)
-    delta_real = float(real_end - base)
-    if abs(delta_real) < eps:
-        return False
-    return bool(np.sign(delta_pred) == np.sign(delta_real))
 
 from config.prediction_scheme import get_scheme
 from data.data_store import BacktestDataStore

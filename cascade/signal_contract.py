@@ -33,6 +33,20 @@ def _trade_label(pos: float) -> str:
     return "中性 →"
 
 
+
+def endpoint_dir_ok(pred_end: float, real_end: float, base: float, eps: float = 1e-8) -> bool:
+    """Determine direction correctness using endpoint price change.
+
+    Returns True if pred and real move in same direction from base.
+    Returns False if real move is near zero (|delta| < eps).
+    """
+    delta_pred = float(pred_end - base)
+    delta_real = float(real_end - base)
+    if abs(delta_real) < eps:
+        return False
+    return bool(np.sign(delta_pred) == np.sign(delta_real))
+
+
 def position_from_forecast(
     point_forecast: np.ndarray,
     base_price: float,

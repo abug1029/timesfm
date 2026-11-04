@@ -75,5 +75,12 @@ class TestSignalContract(unittest.TestCase):
         self.assertTrue(sig["regime_direction"].startswith("中性"), msg=sig["regime_direction"])
 
 
+    def test_endpoint_dir_ok_matches_endpoint_and_rejects_zero_move(self):
+        from cascade.signal_contract import endpoint_dir_ok
+        self.assertTrue(endpoint_dir_ok(101.0, 102.0, 100.0))
+        self.assertFalse(endpoint_dir_ok(99.0, 102.0, 100.0))
+        self.assertFalse(endpoint_dir_ok(101.0, 100.0, 100.0))
+
+
 if __name__ == "__main__":
     unittest.main()

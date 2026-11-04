@@ -251,3 +251,11 @@ def test_endpoint_mape_uses_base_floor():
     # Should not crash or produce inf/nan
     assert not (s["endpoint_mape"] != s["endpoint_mape"])  # not nan
     assert s["endpoint_mape"] > 0
+
+def test_monthly_backtest_reexports_endpoint_dir_ok():
+    from cascade.signal_contract import endpoint_dir_ok as owned
+    from monthly_backtest import endpoint_dir_ok as reexported
+    assert reexported is owned
+    assert reexported(101.0, 102.0, 100.0) is True
+    assert reexported(101.0, 100.0, 100.0) is False
+
