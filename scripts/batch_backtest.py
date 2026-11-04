@@ -18,6 +18,7 @@ print(
 )
 
 import numpy as np
+from cascade.signal_contract import endpoint_dir_ok
 import pandas as pd
 import torch
 import timesfm
@@ -59,7 +60,7 @@ def run_backtest(symbol, store, daily_model, hourly_model, context=480, horizon=
             # 指标
             delta_pred = pred[-1] - base
             delta_real = real[-1] - base
-            dir_ok = (np.sign(delta_pred) == np.sign(delta_real)) if delta_real != 0 else True
+            dir_ok = endpoint_dir_ok(float(pred[-1]), float(real[-1]), float(base))
             mae = np.mean(np.abs(pred - real))
             mape = np.mean(np.abs(pred - real) / np.where(real == 0, 1e-8, np.abs(real))) * 100
 

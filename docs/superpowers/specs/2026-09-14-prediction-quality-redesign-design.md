@@ -56,6 +56,8 @@
 | 指标 | 定义 | 状态 |
 |------|------|------|
 | `dir_ok` | `sign(delta_pred) == sign(delta_real)`，`delta_real` 极小（`< 1e-8`）时判 `False`（保守原则，见 §3.5） | 已有，保留 |
+
+勘误（2026-11-03）：基线 JSONL 的 `dir_ok` 由 `endpoint_dir_ok` 定义；同文件中的 `delta_pred` 是加权可交易增量，不是该等式里的端点差。等式的现行属主以 `docs/superpowers/specs/2026-11-03-baseline-point-contract-spec.md` 为准。
 | `dir12_ok` | T+12 方向准确率 | 已有，保留 |
 | `mae` | `mean(abs(pred_path - real_path))` | 已有，保留 |
 | `mape` | `mean(abs(pred_path - real_path) / max(abs(real_path), 1.0)) * 100`（v19 分母下限保护，见 §3.6） | 已有，保留 |

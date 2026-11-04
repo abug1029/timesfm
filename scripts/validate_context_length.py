@@ -16,6 +16,7 @@ from cascade.hourly_model import HourlyModel
 from data.data_store import BacktestDataStore
 from config.backtest_config import TICK_SIZES, SLIPPAGE_TICKS
 from config.prediction_scheme import get_scheme
+from cascade.signal_contract import endpoint_dir_ok
 
 # 验证品种: 覆盖 trend/stable/short_range/高衰减
 TEST_SYMBOLS = ['ss', 'i', 'p', 'fu']
@@ -78,7 +79,7 @@ def run_backtest(symbol, context_bars, daily_model, hourly_model):
 
             delta_pred = pred[-1] - base
             delta_real = real[-1] - base
-            dir_ok = bool(np.sign(delta_pred) == np.sign(delta_real)) if delta_real != 0 else True
+            dir_ok = endpoint_dir_ok(float(pred[-1]), float(real[-1]), float(base))
             mape = float(np.mean(np.abs(pred - real) / np.where(real == 0, 1e-8, np.abs(real))) * 100)
             position_sign = np.sign(delta_pred)
             pnl = float(position_sign * delta_real) if position_sign != 0 else 0.0

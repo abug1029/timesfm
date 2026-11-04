@@ -28,6 +28,7 @@ os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 import numpy as np
 import pandas as pd
 import torch
+from cascade.signal_contract import endpoint_dir_ok
 
 from config.backtest_config import (
     CONTEXT_BARS, CONTEXT_DAYS, HORIZON, HORIZON_DAYS, STEP,
@@ -105,7 +106,7 @@ def _point_from_pred(dt, base, real, pred, quant, vol_prob, veto, scheme=None) -
         delta_pred = 0.0
     if veto:
         delta_pred = 0.0  # Neutral override always flats economic position
-    dir_ok = bool(np.sign(delta_pred) == np.sign(delta_real)) if delta_real != 0 else True
+    dir_ok = endpoint_dir_ok(float(pred[-1]), float(real[-1]), float(base))
     half = HORIZON // 2
     d12_pred = float(pred[half - 1] - base)
     d12_real = float(real[half - 1] - base)
@@ -132,6 +133,7 @@ def _point_from_pred(dt, base, real, pred, quant, vol_prob, veto, scheme=None) -
         "real_end": float(real[-1]),
         "delta_pred": delta_pred,
         "delta_real": delta_real,
+        "position_sign": position_sign,
         "dir_ok": dir_ok,
         "dir12_ok": dir12_ok,
         "mae": mae,
