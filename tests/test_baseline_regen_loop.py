@@ -35,7 +35,7 @@ def _setup_healthy_baseline(root, n=150, fp="fp_test", last_cutoff="2026-09-16 1
         json.dump(metrics, f)
     _write_points(
         os.path.join(config_dir, "baseline_points_jd_nocov.jsonl"),
-        [last_cutoff] * n,
+        ["2026-09-16 15:00:00"],
         fp=fp,
     )
 
@@ -47,7 +47,7 @@ class _FakeGbp:
     def baseline_filename(self, sym, cov):
         return f"baseline_points_{sym}_nocov.jsonl"
 
-    def generate(self, sym, cov, root):
+    def generate(self, sym, cov, root, finalize=False):
         self.calls.append((sym, cov, root))
 
 
@@ -71,6 +71,10 @@ def _arm(monkeypatch, data_dt):
     monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: data_dt)
     monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_test")
     monkeypatch.setattr(sup_lifecycle, "_write_heartbeat", lambda: None)
+    monkeypatch.setattr("cascade.eval_grid.baseline_eval_cutoffs", lambda symbol: [
+        "2026-01-01 10:00:00", "2026-01-01 12:00:00", "2026-01-01 14:00:00", "2026-01-01 16:00:00",
+    ])
+    monkeypatch.setattr("scripts.incremental_baseline.incremental_generate", lambda *a, **k: None)
     fake = _FakeGbp()
     monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
     return fake
@@ -125,7 +129,6 @@ def test_timestamp_spelling_difference_does_not_clear_stall(tmp_path, monkeypatc
     _forget_process_memory()
     fake.calls.clear()
     # 重锚条件仍成立。若断路器把 ISO 写法当成新数据，这里会再次 generate。
-    monkeypatch.setattr(sup_evidence, "_baseline_reanchor_reason", lambda *a, **k: "仍需重锚")
     monkeypatch.setattr(
         sup_state, "_latest_data_dt", lambda s: "2026-10-09T14:00:00.000000000")
     sup_evidence.ensure_baselines(["JD"], str(tmp_path))
@@ -195,7 +198,7 @@ class _FakeGbp:
     def baseline_filename(self, sym, cov):
         return f"baseline_points_{sym}_nocov.jsonl"
 
-    def generate(self, sym, cov, root):
+    def generate(self, sym, cov, root, finalize=False):
         self.calls.append((sym, cov, root))
 
 def test_eval_indices_last_point_has_full_horizon():
@@ -223,28 +226,42 @@ def test_eval_indices_last_point_has_full_horizon():
 
 
 def test_regen_returns_cutoff(tmp_path, monkeypatch):
-    """_regen_baseline_with_archive 应返回重生后的 cutoff。"""
-    sup_evidence._RECENTLY_REGENED_NO_ADVANCE.clear()
+    grid = ["2026-01-02 10:00:00", "2026-01-02 12:00:00"]
     config_dir = os.path.join(str(tmp_path), "task_FM", "config")
     os.makedirs(config_dir, exist_ok=True)
-
-    # 写一个基线文件
     points_path = os.path.join(config_dir, "baseline_points_jd_nocov.jsonl")
     _write_points(points_path, ["2026-09-24 15:00:00"], fp="fp_test")
-    _write_prereg(str(tmp_path), [])
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_test")
+    monkeypatch.setattr("cascade.eval_grid.baseline_eval_cutoffs", lambda symbol: list(grid))
+    monkeypatch.setattr("scripts.incremental_baseline.incremental_generate", lambda *a, **k: None)
 
-    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-10-09 14:00:00")
-    monkeypatch.setattr(sup_lifecycle, "_write_heartbeat", lambda: None)
+    class _WriteGrid:
+        def generate(self, sym, cov, root, finalize=False):
+            tmp = os.path.join(config_dir, ".baseline_points_jd_nocov.jsonl.tmp")
+            _write_points(tmp, grid, fp="fp_test")
 
-    class FakeGbp2:
-        def baseline_filename(self, sym, cov):
-            return f"baseline_points_{sym}_nocov.jsonl"
+    monkeypatch.setitem(sys.modules, "generate_baseline_points", _WriteGrid())
+    result = sup_evidence._incremental_or_regen("jd", points_path, str(tmp_path), None)
+    assert result == grid[-1]
 
-        def generate(self, sym, cov, root):
-            # 模拟 generate 写了新文件，cutoff 推进到 09-25
-            _write_points(points_path, ["2026-09-25 15:00:00"], fp="fp_test")
+def test_short_generate_does_not_become_the_return_value(tmp_path, monkeypatch):
+    grid = ["2026-01-02 10:00:00", "2026-01-02 12:00:00", "2026-01-02 14:00:00"]
+    config_dir = os.path.join(str(tmp_path), "task_FM", "config")
+    os.makedirs(config_dir, exist_ok=True)
+    points_path = os.path.join(config_dir, "baseline_points_jd_nocov.jsonl")
+    _write_points(points_path, ["2026-09-24 15:00:00"], fp="fp_test")
+    before = open(points_path, "rb").read()
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_test")
+    monkeypatch.setattr("cascade.eval_grid.baseline_eval_cutoffs", lambda symbol: list(grid))
+    monkeypatch.setattr("scripts.incremental_baseline.incremental_generate", lambda *a, **k: None)
 
-    monkeypatch.setitem(sys.modules, "generate_baseline_points", FakeGbp2())
+    class _WriteShort:
+        def generate(self, sym, cov, root, finalize=False):
+            tmp = os.path.join(config_dir, ".baseline_points_jd_nocov.jsonl.tmp")
+            _write_points(tmp, ["2026-09-25 15:00:00"], fp="fp_test")
 
-    result = sup_evidence._regen_baseline_with_archive("jd", points_path, str(tmp_path))
-    assert result == "2026-09-25 15:00:00"
+    monkeypatch.setitem(sys.modules, "generate_baseline_points", _WriteShort())
+    result = sup_evidence._incremental_or_regen("jd", points_path, str(tmp_path), None)
+    assert result is None
+    assert open(points_path, "rb").read() == before
+    assert not os.path.exists(os.path.join(config_dir, ".baseline_points_jd_nocov.jsonl.tmp"))

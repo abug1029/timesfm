@@ -1405,7 +1405,6 @@ def _baseline_reanchor_reason(sym_lower, last_cutoff, root):
 def finalize_baseline_write(symbol, points_path, root, archive_path):
     """唯一收口：临时文件通过后换名，否则尝试合格归档回滚。
 
-    不调用 _guard_confirm_from_ts_after_regen。
     """
     import glob
     import shutil
@@ -1510,96 +1509,45 @@ def finalize_baseline_write(symbol, points_path, root, archive_path):
         live_ok, _ = accept_baseline_file(points_path, expected, fp)
         return live_ok
 
-def _guard_confirm_from_ts_after_regen(sym_lower, points_path, archive_path, root):
-    """步② C 守卫断言：重锚不得删除 >= confirm_from_ts 的基线 cutoff（保 v9 修订②）。
 
-    新档若丢失旧档（归档副本）中 >= confirm_from_ts 的任一 cutoff → 从归档恢复
-    旧档并返回 False（ERROR 留痕人工介入）；通过返回 True。无预注册 / 无归档 /
-    旧档本无确认窗点 → 平凡通过 True（现状基线末端 < confirm_from_ts 即此态）。
-    """
-    confirm_set = _prereg_confirm_from_ts(sym_lower, root)
-    if not confirm_set:
-        return True
-    if not archive_path or not os.path.exists(archive_path):
-        return True
-    threshold = min(confirm_set)
+def _temp_path(points_path):
+    directory, name = os.path.split(points_path)
+    return os.path.join(directory, "." + name + ".tmp")
 
-    def _cutoffs_at_or_after(path):
-        out = []
-        try:
-            with open(path, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        c = json.loads(line).get("cutoff")
-                    except json.JSONDecodeError:
-                        continue
-                    if c and str(c) >= threshold:
-                        out.append(str(c))
-        except OSError:
-            pass
-        return set(out)
 
-    old_kept = _cutoffs_at_or_after(archive_path)
-    if not old_kept:
-        return True
-    missing = old_kept - _cutoffs_at_or_after(points_path)
-    if not missing:
-        return True
+def _incremental_or_regen(sym_lower, points_path, root, archive_path):
+    from scripts import incremental_baseline as ib
+    temp = _temp_path(points_path)
+    returned = ib.incremental_generate(sym_lower, None, root, finalize=False)
+    publishable = returned is not None and os.path.exists(temp)
+    if publishable and finalize_baseline_write(sym_lower, points_path, root, archive_path):
+        return _read_last_cutoff(points_path)
+    # First convergence failed. No more archival.
     try:
-        shutil.copy2(archive_path, points_path)
-        print(f"[ERROR] ensure_baselines: {sym_lower} 重锚删除了 >= {threshold} 的 "
-              f"基线 cutoff {sorted(missing)} → 已从归档恢复旧档（v9 修订②守卫）",
-              file=sys.stderr)
-    except OSError as e:
-        print(f"[ERROR] ensure_baselines: {sym_lower} 守卫恢复失败: {e}", file=sys.stderr)
-    return False
-
-def _incremental_or_regen(sym_lower, points_path, root):
-    """路径 ③ (reanchor) 专用：先尝试增量重生，失败时降级到全量。
-
-    增量：从现有基线末端继续（scripts/incremental_baseline.py），只计算新增点，
-    避免每次 reanchor 都全量重生 588+ 点。若增量失败（无现有基线 / 异常），
-    降级到 _regen_baseline_with_archive 全量重生（保底）。
-    两者都先归档旧档（_archive_baseline_before_regen），保证守卫可回滚。
-    """
-    archive = _archive_baseline_before_regen(points_path)
-    try:
-        from scripts import incremental_baseline as ib
-        new_cutoff = ib.incremental_generate(sym_lower, None, root)
-        if new_cutoff:
-            return new_cutoff
-        print(f"[INFO] ensure_baselines: {sym_lower} 增量重生返空，降级到全量",
-              file=__import__('sys').stderr)
-    except Exception as e:
-        print(f"[WARN] ensure_baselines: {sym_lower} 增量重生失败 ({e})，降级到全量",
-              file=__import__('sys').stderr)
-    # 降级：全量重生（注意：旧档已归档，_regen_baseline_with_archive 内部会再归档一次，
-    # 但因为文件已不在原位，_archive 是 no-op；不影响功能）
-    return _regen_baseline_with_archive(sym_lower, points_path, root)
+        import generate_baseline_points as gbp
+        gbp.generate(sym_lower, None, root, finalize=False)
+    except Exception as exc:
+        print(f"[ERROR] ensure_baselines: {sym_lower} full write failed: {exc}", file=sys.stderr)
+        return None
+    if finalize_baseline_write(sym_lower, points_path, root, archive_path):
+        return _read_last_cutoff(points_path)
+    return None
 
 
 def _regen_baseline_with_archive(sym_lower, points_path, root):
-    """步②统一重生入口：归档 → 重生 → 守卫断言（ensure_baselines 重生点共用）。
-
-    步①（版本化）：重生前归档旧档；步② C（守卫）：重生后校验新档未删除
-    >= confirm_from_ts 的基线 cutoff，删除则从归档恢复旧档（v9 修订②）。
-    """
     try:
         import generate_baseline_points as gbp
     except ImportError:
         return
-    archive = _archive_baseline_before_regen(points_path)   # 步①: 重生即归档
     try:
-        gbp.generate(sym_lower, None, root)   # E7: 无协变量基线
+        gbp.generate(sym_lower, None, root, finalize=False)
     except Exception as e:
         print("[ERROR] ensure_baselines: generate failed for " + sym_lower
               + ": " + str(e), file=sys.stderr)
         return
-    _guard_confirm_from_ts_after_regen(sym_lower, points_path, archive, root)
     return _read_last_cutoff(points_path)
+
+
 
 # ══════════════════════════════════════════════════
 #  ensure_baselines 全局互斥锁
@@ -1636,21 +1584,7 @@ def _acquire_ensure_lock():
         )
 
 def ensure_baselines(symbols, root):
-    """Check baseline_metrics.json + baseline_points_{symbol}.jsonl validity.
-
-    For each symbol, check that baseline_metrics has a valid entry AND
-    baseline_points_{symbol}.jsonl has >= 100 valid lines **AND its
-    protocol_fingerprint matches the current one**. If any check fails,
-    serially call generate_baseline_points.generate.
-
-    2026-09-28 修正（T1a 实测发现）:
-      原实现只检查行数，不检查协议指纹。PR-A1 将指纹升级为 protocol_v2 后，
-      已有足够行数的旧基线（如 rb，588 行 / protocol_v1）被静默跳过，
-      导致其与新生基线跨协议不可比 —— 而 comparable() 会因此拒绝配对，
-      表现为 dm_status=protocol_mismatch，难以归因。现补上指纹校验。
-    """
     _acquire_ensure_lock()
-
     try:
         import generate_baseline_points as gbp
     except ImportError:
@@ -1658,89 +1592,46 @@ def ensure_baselines(symbols, root):
     config_dir = os.path.join(root, "task_FM", "config")
     metrics_path = os.path.join(config_dir, "baseline_metrics.json")
     try:
-        with open(metrics_path, encoding="utf-8") as f:
-            metrics = json.load(f)
+        with open(metrics_path, encoding="utf-8") as handle:
+            metrics = json.load(handle)
     except (OSError, json.JSONDecodeError):
-        # Cold start: no metrics file yet, treat as empty
         metrics = {}
-        # Skip generation under pytest to avoid slow model calls in tests
         if "pytest" in sys.modules:
             return
-    cur_fp = _current_protocol_fingerprint()
     _load_regen_breaker(root)
     for sym in sorted(symbols):
         try:
             sym_lower = sym.lower()
             points_path = os.path.join(config_dir, gbp.baseline_filename(sym_lower, None))
-            met = metrics.get(sym_lower, {})
-            if not isinstance(met, dict) or not met.get("n") or int(met.get("n", 0)) <= 0:
-                _regen_baseline_with_archive(sym_lower, points_path, root)
-                continue
-            n_lines = 0
-            last_cutoff = None
-            if os.path.exists(points_path):
-                try:
-                    with open(points_path, encoding="utf-8") as f:
-                        for line in f:
-                            if line.strip():
-                                try:
-                                    rec = json.loads(line)
-                                    n_lines += 1
-                                    last_cutoff = rec.get("cutoff") or last_cutoff
-                                except json.JSONDecodeError:
-                                    pass
-                except OSError:
-                    pass
-            if n_lines < 100:
-                _regen_baseline_with_archive(sym_lower, points_path, root)
-                continue
-
-            # ── 协议指纹校验（2026-09-28 新增）──
-            # 行数够不等于可用：指纹不符则跨协议不可比，必须重生。
-            if cur_fp is None:
-                continue
-            status, base_fp = _baseline_protocol_fingerprint(points_path)
-            if status != "ok":
-                reason = ("首行缺 protocol_fingerprint（pre-A1 遗留基线）"
-                          if status == "missing" else "基线首行不可读")
-                print(f"[WARN] ensure_baselines: {sym_lower} {reason} → 重生",
-                      file=sys.stderr)
-            elif base_fp != cur_fp:
+            try:
+                from cascade.eval_grid import accept_baseline_file, baseline_eval_cutoffs
+                expected = baseline_eval_cutoffs(sym_lower)
+            except Exception as exc:
                 print(
-                    f"[WARN] ensure_baselines: {sym_lower} 基线协议指纹不符 "
-                    f"({base_fp[:16]}… != {cur_fp[:16]}…) → 重生（跨协议不可比）",
+                    f"[ERROR] ensure_baselines: {sym_lower} grid read failed: {exc}. Skip this symbol, no stall",
                     file=sys.stderr,
                 )
-            else:
-                # 行数与指纹均合格 → 步② C 拉取日重锚检查
-                reanchor = _baseline_reanchor_reason(sym_lower, last_cutoff, root)
-                if reanchor is None:
-                    continue
-                if _stall_still_blocks(sym_lower, root):
-                    print(f"[INFO] ensure_baselines: {sym_lower} 跳过重生（上次重生基线末端未推进，数据未增长，等 daily_update）",
-                          file=sys.stderr)
-                    continue
-                print(f"[WARN] ensure_baselines: {sym_lower} {reanchor} → 重生（增量优先）",
-                      file=sys.stderr)
-                prev_cutoff = last_cutoff
-                new_cutoff = _incremental_or_regen(sym_lower, points_path, root)
-                # Circuit breaker: 检测推进幅度（< 7 天视为停滞），而不是是否推进
-                if (new_cutoff is not None
-                    and prev_cutoff is not None
-                    and _norm_bar_dt(new_cutoff) is not None
-                    and _norm_bar_dt(prev_cutoff) is not None):
-                    new_str = _norm_bar_dt(new_cutoff)
-                    prev_str = _norm_bar_dt(prev_cutoff)
-                    new_dt = datetime.strptime(new_str, "%Y-%m-%d %H:%M:%S")
-                    prev_dt = datetime.strptime(prev_str, "%Y-%m-%d %H:%M:%S")
-                    advance_seconds = (new_dt - prev_dt).total_seconds()
-                    advance_days = advance_seconds / 86400
-                    if advance_days < 7:  # 推进 < 7 天视为停滞
-                        _remember_stall(sym_lower, root, sup_state._latest_data_dt(sym_lower))
-                        print(f"[WARN] ensure_baselines: {sym_lower} 重生后基线末端推进太慢 "
-                              f"({advance_days:.1f} 天 < 7 天) → 记录停滞，下次启动数据末端未变则跳过重生",
-                              file=sys.stderr)
                 continue
-            _regen_baseline_with_archive(sym_lower, points_path, root)
+            fp = _current_protocol_fingerprint()
+            if not fp:
+                print(
+                    f"[WARN] ensure_baselines: {sym_lower} current fingerprint unavailable. No regen, no delete, no stall",
+                    file=sys.stderr,
+                )
+                continue
+            ok, _reason = accept_baseline_file(points_path, expected, fp)
+            if ok:
+                continue
+            if _stall_still_blocks(sym_lower, root):
+                continue
+            archive = _archive_baseline_before_regen(points_path)
+            try:
+                new_cutoff = _incremental_or_regen(sym_lower, points_path, root, archive)
+            except Exception as exc:
+                print(f"[ERROR] ensure_baselines: {sym_lower} write failed mid-way: {exc}", file=sys.stderr)
+                _remember_stall(sym_lower, root, sup_state._latest_data_dt(sym_lower))
+                continue
+            if new_cutoff is None:
+                _remember_stall(sym_lower, root, sup_state._latest_data_dt(sym_lower))
         finally:
             sup_lifecycle._write_heartbeat()

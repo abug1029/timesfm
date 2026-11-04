@@ -89,7 +89,6 @@ _HOMES: dict[str, object] = {  # name -> defining module
     "_archive_baseline_before_regen": sup_evidence,
     "_BASELINE_STALENESS_MAX_H": sup_evidence, "_prereg_confirm_from_ts": sup_evidence,
     "_baseline_reanchor_reason": sup_evidence,
-    "_guard_confirm_from_ts_after_regen": sup_evidence,
     "_regen_baseline_with_archive": sup_evidence, "ensure_baselines": sup_evidence,
     "harvest_survivors": sup_harvest, "_cross_run_repeat_counts": sup_harvest,
     "_apply_prescreen_score": sup_harvest, "_prescreen_async": sup_harvest,

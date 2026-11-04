@@ -202,43 +202,72 @@ class _FakeGbp:
     def baseline_filename(self, sym, cov):
         return f"baseline_points_{sym}_nocov.jsonl"
 
-    def generate(self, sym, cov, root):
-        self.calls.append((sym, cov, root))
+    def generate(self, sym, cov, root, finalize=False):
+        self.calls.append((sym, cov, finalize))
 
 
-def _setup_healthy_baseline(root, n=150, fp="fp_test", last_cutoff="2026-09-16 15:00:00"):
-    config_dir = os.path.join(root, "task_FM", "config")
-    os.makedirs(config_dir, exist_ok=True)
-    metrics = {"jd": {"n": 588, "dir_acc": 0.5, "endpoint_mape": 1.0, "n_eff": 73}}
-    with open(os.path.join(config_dir, "baseline_metrics.json"), "w", encoding="utf-8") as f:
-        json.dump(metrics, f)
-    _write_points(os.path.join(config_dir, "baseline_points_jd_nocov.jsonl"),
-                  [last_cutoff] * n, fp=fp)
+def _rising_grid(n=4):
+    from datetime import datetime, timedelta
+    t0 = datetime(2026, 1, 1, 10, 0, 0)
+    return [(t0 + timedelta(hours=2 * i)).strftime("%Y-%m-%d %H:%M:%S") for i in range(n)]
 
 
-def test_ensure_baselines_reanchors_on_stale_baseline(tmp_path, monkeypatch):
-    """指纹合格但基线落后数据 14 天 → 重锚重生（先归档）。"""
-    _setup_healthy_baseline(str(tmp_path))   # 末端 2026-09-16 15:00
-    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-09-30 14:00:00")
-    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_test")
-    fake = _FakeGbp()
-    monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
-
-    sup.ensure_baselines(["JD"], str(tmp_path))
-
-    assert len(fake.calls) == 1
-    archives = list((tmp_path / "task_FM" / "config").glob("baseline_points_jd_nocov.archive_*.jsonl"))
-    assert len(archives) == 1
+def _write_points(path, cutoffs, fp="fp_test"):
+    with open(path, "w", encoding="utf-8") as f:
+        for c in cutoffs:
+            f.write(json.dumps({"cutoff": c, "dir_ok": True, "delta_pred": 1.0,
+                                "delta_real": 1.0, "protocol_fingerprint": fp}) + "\n")
 
 
 def test_ensure_baselines_no_regen_when_fresh(tmp_path, monkeypatch):
-    """指纹合格且新鲜（落后 2h）→ 不重生。"""
-    _setup_healthy_baseline(str(tmp_path), last_cutoff="2026-10-01 08:00:00")
+    grid = _rising_grid(4)
+    config = tmp_path / "task_FM" / "config"
+    config.mkdir(parents=True)
+    (config / "baseline_metrics.json").write_text(json.dumps({"jd": {"n": 4}}), encoding="utf-8")
+    pts = config / "baseline_points_jd_nocov.jsonl"
+    _write_points(pts, grid)
     monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-10-01 10:00:00")
     monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_test")
+    monkeypatch.setattr("cascade.eval_grid.baseline_eval_cutoffs", lambda symbol: list(grid))
+    monkeypatch.setattr("scripts.incremental_baseline.incremental_generate", lambda *a, **k: None)
     fake = _FakeGbp()
+
+    def _generate(sym, cov, root, finalize=False):
+        fake.calls.append((sym, cov, root))
+
+    fake.generate = _generate
     monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
-
     sup.ensure_baselines(["JD"], str(tmp_path))
-
     assert fake.calls == []
+    assert list(config.glob("baseline_points_jd_nocov.archive_*.jsonl")) == []
+
+
+def test_ensure_baselines_reanchors_on_stale_baseline(tmp_path, monkeypatch):
+    config = tmp_path / "task_FM" / "config"
+    config.mkdir(parents=True)
+    (config / "baseline_metrics.json").write_text(json.dumps({"jd": {"n": 4}}), encoding="utf-8")
+    pts = config / "baseline_points_jd_nocov.jsonl"
+    _write_points(pts, ["2026-09-16 15:00:00"])
+    order = []
+    monkeypatch.setattr(sup_state, "_latest_data_dt", lambda s: "2026-09-30 14:00:00")
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_test")
+    monkeypatch.setattr("cascade.eval_grid.baseline_eval_cutoffs", lambda symbol: _rising_grid(4))
+
+    def _incremental(*a, **k):
+        order.append("incremental")
+        return None
+
+    monkeypatch.setattr("scripts.incremental_baseline.incremental_generate", _incremental)
+    fake = _FakeGbp()
+
+    def _generate(sym, cov, root, finalize=False):
+        order.append("generate")
+        fake.calls.append((sym, cov, root))
+
+    fake.generate = _generate
+    monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
+    sup.ensure_baselines(["JD"], str(tmp_path))
+    assert fake.calls == [("jd", None, str(tmp_path))]
+    archives = list(config.glob("baseline_points_jd_nocov.archive_*.jsonl"))
+    assert len(archives) == 1
+    assert order == ["incremental", "generate"]

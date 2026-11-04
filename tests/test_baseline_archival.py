@@ -71,26 +71,29 @@ class _FakeGbp:
     def baseline_filename(self, sym, cov):
         return f"baseline_points_{sym}_nocov.jsonl"
 
-    def generate(self, sym, cov, root):
+    def generate(self, sym, cov, root, finalize=False):
         self.calls.append((sym, cov, root))
 
 
 def test_ensure_baselines_archives_before_regen(tmp_path, monkeypatch):
-    """指纹不符触发重生时，旧档必须先被归档（三重生点共享同一插桩）。"""
     config_dir = tmp_path / "task_FM" / "config"
     config_dir.mkdir(parents=True)
-    metrics = {"jd": {"n": 588, "dir_acc": 0.5, "endpoint_mape": 1.0, "n_eff": 73}}
-    (config_dir / "baseline_metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
+    (config_dir / "baseline_metrics.json").write_text(
+        json.dumps({"jd": {"n": 4}}), encoding="utf-8")
     pts = config_dir / "baseline_points_jd_nocov.jsonl"
-    _write_points(pts, ["2025-09-30 14:00:00"] * 150, fp="fp_old")
-
+    _write_points(pts, ["2025-09-30 14:00:00"], fp="fp_old")
+    grid = [
+        "2026-01-01 10:00:00", "2026-01-01 12:00:00",
+        "2026-01-01 14:00:00", "2026-01-01 16:00:00",
+    ]
+    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_cur")
+    monkeypatch.setattr("cascade.eval_grid.baseline_eval_cutoffs", lambda symbol: list(grid))
+    monkeypatch.setattr("scripts.incremental_baseline.incremental_generate", lambda *a, **k: None)
+    monkeypatch.setattr("sup_state._latest_data_dt", lambda symbol: "2026-10-09 14:00:00")
     fake = _FakeGbp()
     monkeypatch.setitem(sys.modules, "generate_baseline_points", fake)
-    monkeypatch.setattr(sup_evidence, "_current_protocol_fingerprint", lambda: "fp_cur")
-
     sup.ensure_baselines(["JD"], str(tmp_path))
-
-    assert len(fake.calls) == 1  # 行数足、指纹不符 → 重生一次
+    assert fake.calls == [("jd", None, str(tmp_path))]
     archives = list(config_dir.glob("baseline_points_jd_nocov.archive_*.jsonl"))
     assert len(archives) == 1
     assert os.path.basename(archives[0]) == "baseline_points_jd_nocov.archive_20250930T1400.jsonl"
