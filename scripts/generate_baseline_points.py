@@ -40,7 +40,7 @@ from config.backtest_config import SYMBOL_NAMES, CONTEXT_BARS, HORIZON, STEP
 from cascade.evaluation_metrics import fallback_n_eff
 
 
-def generate(symbol: str, cov: str, root: str):
+def generate(symbol: str, cov: str, root: str, finalize: bool = True):
     """生成单品种基线点序列
 
     Args:
@@ -110,6 +110,17 @@ def generate(symbol: str, cov: str, root: str):
             print(f"[Error] 品种 {sym_upper} 数据不足，无法生成基线")
             return
 
+        points = result.get("points", [])
+        total = len(points)
+        print(f"[Info] 品种 {sym_upper} 共 {total} 个评估点")
+
+        # Task 8: 先扫描是否有任何错误点（在 summarize 之前）
+        error_points = [pt for pt in points if "error" in pt]
+        if error_points:
+            cutoffs = [pt.get("cutoff", "?") for pt in error_points[:5]]
+            print(f"[Error] 品种 {sym_upper} 有 {len(error_points)} 个错误点，cutoffs={cutoffs}")
+            return None
+
         # summarize 一次拿标量
         summary = mb.summarize(result)
         if summary is None:
@@ -125,20 +136,14 @@ def generate(symbol: str, cov: str, root: str):
         from task_FM.evaluations.fm_eval.evaluator import compute_protocol_fingerprint
         _proto = compute_protocol_fingerprint()
 
-        points = result.get("points", [])
-        total = len(points)
-        print(f"[Info] 品种 {sym_upper} 共 {total} 个评估点")
-
         # MEDIUM 3: 部分写入文件清理 - 写入临时文件，成功后 rename
         jsonl_file = config_dir / baseline_filename(sym_lower, cov)
         temp_file = config_dir / f".{baseline_filename(sym_lower, cov)}.tmp"
+
         try:
             with open(temp_file, "w", encoding="utf-8") as fp:
                 written = 0
                 for i, pt in enumerate(points):
-                    if "error" in pt:
-                        continue
-
                     # HIGH: cutoff 时间戳格式验证
                     cutoff_str = pt["cutoff"]
                     try:
@@ -156,7 +161,97 @@ def generate(symbol: str, cov: str, root: str):
                         print(f"[Progress] Baseline generation for {sym_upper}: {written}/{total} points done...")
                         _hb()
 
-            temp_file.rename(jsonl_file)
+            # Task 8: finalize 逻辑
+            if not finalize:
+                # finalize=False: 不归档、不收口、不换名
+                if written == 0:
+                    if temp_file.exists():
+                        temp_file.unlink()
+                    return None
+                # 读取临时文件最后一笔 cutoff（用于返回）
+                last_cutoff = None
+                with open(temp_file, "r", encoding="utf-8") as _fp:
+                    for _line in _fp:
+                        if _line.strip():
+                            _rec = json.loads(_line)
+                            last_cutoff = _rec.get("cutoff")
+                # 写 metrics 文件（即使 finalize=False 也要写）
+                # MEDIUM 1: metrics 文件并发更新保护 - 使用文件锁保护 metrics 更新
+                metrics_file = config_dir / "baseline_metrics.json"
+                metrics_lock = config_dir / ".metrics.lock"
+                with open(metrics_lock, "w") as m_lock_fp:
+                    fcntl.flock(m_lock_fp.fileno(), fcntl.LOCK_EX)
+                    try:
+                        # MEDIUM 2: 空 metrics 文件处理
+                        if metrics_file.exists() and metrics_file.stat().st_size > 0:
+                            metrics = json.loads(metrics_file.read_text(encoding="utf-8"))
+                        else:
+                            metrics = {}
+
+                        metrics[sym_lower] = {
+                            "vid": _proto,
+                            "dir_acc": summary["dir_acc"],
+                            "endpoint_mape": summary["endpoint_mape"],
+                            "n": summary["n"],
+                            "n_eff": summary["n_eff"],
+                        }
+
+                        metrics_file.write_text(
+                            json.dumps(metrics, ensure_ascii=False, indent=2),
+                            encoding="utf-8"
+                        )
+                    finally:
+                        fcntl.flock(m_lock_fp.fileno(), fcntl.LOCK_UN)
+                return last_cutoff
+            else:
+                # finalize=True: 归档活文件，然后收口
+                if jsonl_file.exists():
+                    from scripts.sup_evidence import _archive_baseline_before_regen
+                    _archive_baseline_before_regen(jsonl_file)
+
+                import scripts.sup_evidence
+                archive_path = jsonl_file.with_name(jsonl_file.stem + "_archive")
+                ok = scripts.sup_evidence.finalize_baseline_write(
+                    sym_lower, str(jsonl_file), root, str(archive_path)
+                )
+                if not ok:
+                    return None
+
+                # 读取活文件最后一笔 cutoff
+                last_cutoff = None
+                with open(jsonl_file, "r", encoding="utf-8") as _fp:
+                    for _line in _fp:
+                        if _line.strip():
+                            _rec = json.loads(_line)
+                            last_cutoff = _rec.get("cutoff")
+                # 写 metrics 文件
+                # MEDIUM 1: metrics 文件并发更新保护 - 使用文件锁保护 metrics 更新
+                metrics_file = config_dir / "baseline_metrics.json"
+                metrics_lock = config_dir / ".metrics.lock"
+                with open(metrics_lock, "w") as m_lock_fp:
+                    fcntl.flock(m_lock_fp.fileno(), fcntl.LOCK_EX)
+                    try:
+                        # MEDIUM 2: 空 metrics 文件处理
+                        if metrics_file.exists() and metrics_file.stat().st_size > 0:
+                            metrics = json.loads(metrics_file.read_text(encoding="utf-8"))
+                        else:
+                            metrics = {}
+
+                        metrics[sym_lower] = {
+                            "vid": _proto,
+                            "dir_acc": summary["dir_acc"],
+                            "endpoint_mape": summary["endpoint_mape"],
+                            "n": summary["n"],
+                            "n_eff": summary["n_eff"],
+                        }
+
+                        metrics_file.write_text(
+                            json.dumps(metrics, ensure_ascii=False, indent=2),
+                            encoding="utf-8"
+                        )
+                    finally:
+                        fcntl.flock(m_lock_fp.fileno(), fcntl.LOCK_UN)
+                return last_cutoff
         except Exception:
             if temp_file.exists():
                 temp_file.unlink()
@@ -164,34 +259,7 @@ def generate(symbol: str, cov: str, root: str):
 
         print(f"[Progress] Baseline generation for {sym_upper}: {written}/{total} points done...")
 
-        # MEDIUM 1: metrics 文件并发更新保护 - 使用文件锁保护 metrics 更新
-        metrics_file = config_dir / "baseline_metrics.json"
-        metrics_lock = config_dir / ".metrics.lock"
-        with open(metrics_lock, "w") as m_lock_fp:
-            fcntl.flock(m_lock_fp.fileno(), fcntl.LOCK_EX)
-            try:
-                # MEDIUM 2: 空 metrics 文件处理
-                if metrics_file.exists() and metrics_file.stat().st_size > 0:
-                    metrics = json.loads(metrics_file.read_text(encoding="utf-8"))
-                else:
-                    metrics = {}
-
-                metrics[sym_lower] = {
-                    "vid": _proto,
-                    "dir_acc": summary["dir_acc"],
-                    "endpoint_mape": summary["endpoint_mape"],
-                    "n": summary["n"],
-                    "n_eff": summary["n_eff"],
-                }
-
-                metrics_file.write_text(
-                    json.dumps(metrics, ensure_ascii=False, indent=2),
-                    encoding="utf-8"
-                )
-            finally:
-                fcntl.flock(m_lock_fp.fileno(), fcntl.LOCK_UN)
-
-        print(f"[Done] 品种 {sym_upper} 基线生成完成: n={summary['n']}, dir_acc={summary['dir_acc']:.3f}, endpoint_mape={summary['endpoint_mape']:.2f}")
+        # 注意：返回值和 metrics 已在上面的 finalize 逻辑中处理
 
     finally:
         fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)

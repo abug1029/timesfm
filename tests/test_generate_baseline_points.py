@@ -42,6 +42,8 @@ def test_generate_writes_jsonl_and_metrics(tmp_path, monkeypatch):
         },
     )
 
+    monkeypatch.setattr("scripts.sup_evidence.finalize_baseline_write", _accept_rename)
+
     # 运行生成
     gbp.generate("ss", cov="ccl", root=str(tmp_path))
 
@@ -174,3 +176,57 @@ def test_generate_writes_new_keys_when_present(tmp_path, monkeypatch):
         assert isinstance(rec["position_sign"], float)
         assert rec["endpoint_delta"] == 0.5
         assert rec["position_sign"] == 1.0
+
+def _accept_rename(symbol, points_path, root, archive_path):
+    live = Path(points_path)
+    tmp = live.with_name("." + live.name + ".tmp")
+    tmp.replace(live)
+    return True
+
+
+def test_finalize_false_leaves_temp_and_skips_accept(tmp_path, monkeypatch):
+    import scripts.generate_baseline_points as gbp
+    points = [{
+        "cutoff": "2026-02-01 10:00:00", "dir_ok": True,
+        "delta_pred": 1.0, "delta_real": 1.0,
+        "pred_end": 101.0, "real_end": 101.0, "base": 100.0,
+        "dir12_ok": True, "mae": 1.0, "mape": 1.0, "mae_h1": 1.0, "mae_h2": 1.0,
+        "coverage": 20, "real_range": 1.0,
+    }]
+    monkeypatch.setattr(gbp.mb, "run_symbol_backtest", lambda *a, **k: {
+        "points": points, "symbol": "SS", "name": "不锈钢", "contract": "x", "total_bars": 1,
+    })
+    called = {"n": 0}
+
+    def _no(symbol, points_path, root, archive_path):
+        called["n"] += 1
+        return True
+
+    monkeypatch.setattr("scripts.sup_evidence.finalize_baseline_write", _no)
+    got = gbp.generate("ss", cov="ccl", root=str(tmp_path), finalize=False)
+    live = tmp_path / "task_FM" / "config" / "baseline_points_ss.jsonl"
+    tmp = tmp_path / "task_FM" / "config" / ".baseline_points_ss.jsonl.tmp"
+    assert got == "2026-02-01 10:00:00"
+    assert tmp.exists()
+    assert not live.exists()
+    assert called["n"] == 0
+
+
+def test_error_point_is_not_a_publishable_file(tmp_path, monkeypatch):
+    import scripts.generate_baseline_points as gbp
+    points = [
+        {
+            "cutoff": "2026-02-01 10:00:00", "dir_ok": True,
+            "delta_pred": 1.0, "delta_real": 1.0,
+            "pred_end": 101.0, "real_end": 101.0, "base": 100.0,
+            "dir12_ok": True, "mae": 1.0, "mape": 1.0, "mae_h1": 1.0, "mae_h2": 1.0,
+            "coverage": 20, "real_range": 1.0,
+        },
+        {"cutoff": "2026-02-01 12:00:00", "error": "model failed"},
+    ]
+    monkeypatch.setattr(gbp.mb, "run_symbol_backtest", lambda *a, **k: {"points": points})
+    got = gbp.generate("ss", cov="ccl", root=str(tmp_path), finalize=False)
+    cfg = tmp_path / "task_FM" / "config"
+    assert got is None
+    assert not (cfg / ".baseline_points_ss.jsonl.tmp").exists()
+    assert not (cfg / "baseline_points_ss.jsonl").exists()

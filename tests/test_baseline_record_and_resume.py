@@ -86,7 +86,15 @@ def test_both_writers_call_record_and_incremental_does_not_rephase(tmp_path, mon
         "task_FM.evaluations.fm_eval.evaluator.compute_protocol_fingerprint",
         lambda: "fp",
     )
-    ib.incremental_generate("jd", None, str(tmp_path))
+    ib.incremental_generate("jd", None, str(tmp_path), finalize=False)
+    # 断言临时文件存在，活文件仍是夹具里的旧行
+    live = cfg / "baseline_points_jd_nocov.jsonl"
+    tmp = cfg / ".baseline_points_jd_nocov.jsonl.tmp"
+    assert tmp.exists(), "finalize=False 时应留下临时文件"
+    live_lines = [l for l in live.open(encoding="utf-8") if l.strip()]
+    assert len(live_lines) == 1, "活文件应仍是夹具里的旧行"
+    old_rec = json.loads(live_lines[0])
+    assert old_rec["cutoff"] == "2026-01-01 10:00:00"
     assert "eval_start_ts" not in captured
     assert "completed" not in captured
     assert captured["resumed_points"]

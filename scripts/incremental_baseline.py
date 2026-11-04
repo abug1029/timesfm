@@ -33,7 +33,7 @@ def load_existing_baselines(symbol: str, cov: str = None, root: str = "."):
     
     return points, last_cutoff
 
-def incremental_generate(symbol: str, cov: str = None, root: str = "."):
+def incremental_generate(symbol: str, cov: str = None, root: str = ".", finalize: bool = True):
     """增量生成基线：从现有末端继续。
     返回：新生成的基线末端 cutoff (str)，失败返回 None。
     """
@@ -94,6 +94,13 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
     all_points = result.get("points", [])
     print(f"[INFO] {sym_upper} 共 {len(all_points)} 点（含续跑合并）")
     
+    # Task 8: 先扫描是否有任何错误点
+    error_points = [pt for pt in all_points if "error" in pt]
+    if error_points:
+        cutoffs = [pt.get("cutoff", "?") for pt in error_points[:5]]
+        print(f"[ERROR] {sym_upper} 有 {len(error_points)} 个错误点，cutoffs={cutoffs}")
+        return None
+    
     # 写入基线文件（覆盖）
     
     jsonl_file = config_dir / f"baseline_points_{sym_lower}{cov_suffix}.jsonl"
@@ -104,8 +111,6 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
     seen_cutoffs = set()
     with open(temp_file, "w", encoding="utf-8") as fp:
         for pt in all_points:
-            if "error" in pt:
-                continue
             cutoff = pt["cutoff"]
             if cutoff in seen_cutoffs:
                 continue
@@ -114,37 +119,60 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
             fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
     print(f"[INFO] {sym_upper} 写入 {len(seen_cutoffs)} 个唯一 cutoff 点")
     
-    temp_file.rename(jsonl_file)
-    
-    # 清理 checkpoint
-    if checkpoint_path.exists():
-        checkpoint_path.unlink()
-    
-    # 读取新生成的基线末端 cutoff (供 ensure_baselines circuit breaker 用)
-    last_cutoff = None
-    try:
-        with open(jsonl_file, "r", encoding="utf-8") as _fp:
-            for _line in _fp:
-                if _line.strip():
-                    _rec = json.loads(_line)
-                    last_cutoff = _rec.get("cutoff") or last_cutoff
-    except Exception as _e:
-        print(f"[WARN] {sym_upper} 无法读取新基线末端: {_e}")
-    print(f"[DONE] {sym_upper} 基线已更新: {jsonl_file.name}, new_cutoff={last_cutoff}")
-    return last_cutoff
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="增量基线生成")
-    parser.add_argument("symbols", nargs="+", help="品种代码")
-    parser.add_argument("--cov", default=None, help="协变量类型")
-    parser.add_argument("--root", default=".", help="项目根目录")
-    args = parser.parse_args()
-    
-    for sym in args.symbols:
+    # Task 8: finalize 逻辑
+    if not finalize:
+        # finalize=False: 不归档、不收口、不换名
+        if len(seen_cutoffs) == 0:
+            if temp_file.exists():
+                temp_file.unlink()
+            # 清理 checkpoint
+            if checkpoint_path.exists():
+                checkpoint_path.unlink()
+            return None
+        # 清理 checkpoint
+        if checkpoint_path.exists():
+            checkpoint_path.unlink()
+        # 读取临时文件最后一笔 cutoff
+        last_cutoff = None
         try:
-            incremental_generate(sym, args.cov, args.root)
-        except Exception as e:
-            print(f"[ERROR] {sym} 失败: {e}")
-            import traceback
-            traceback.print_exc()
+            with open(temp_file, "r", encoding="utf-8") as _fp:
+                for _line in _fp:
+                    if _line.strip():
+                        _rec = json.loads(_line)
+                        last_cutoff = _rec.get("cutoff")
+        except Exception as _e:
+            print(f"[WARN] {sym_upper} 无法读取临时基线末端: {_e}")
+        print(f"[DONE] {sym_upper} 临时基线已写入: {temp_file.name}, new_cutoff={last_cutoff}")
+        return last_cutoff
+    else:
+        # finalize=True: 归档活文件，然后收口
+        if jsonl_file.exists():
+            from scripts.sup_evidence import _archive_baseline_before_regen
+            _archive_baseline_before_regen(jsonl_file)
+    
+        import scripts.sup_evidence
+        archive_path = jsonl_file.with_name(jsonl_file.stem + "_archive")
+        ok = scripts.sup_evidence.finalize_baseline_write(
+            sym_lower, str(jsonl_file), root, str(archive_path)
+        )
+    
+        # 清理 checkpoint
+        if checkpoint_path.exists():
+            checkpoint_path.unlink()
+    
+        if not ok:
+            print(f"[ERROR] {sym_upper} finalize_baseline_write 返回 False")
+            return None
+    
+        # 读取活文件最后一笔 cutoff
+        last_cutoff = None
+        try:
+            with open(jsonl_file, "r", encoding="utf-8") as _fp:
+                for _line in _fp:
+                    if _line.strip():
+                        _rec = json.loads(_line)
+                        last_cutoff = _rec.get("cutoff") or last_cutoff
+        except Exception as _e:
+            print(f"[WARN] {sym_upper} 无法读取新基线末端: {_e}")
+        print(f"[DONE] {sym_upper} 基线已更新: {jsonl_file.name}, new_cutoff={last_cutoff}")
+        return last_cutoff

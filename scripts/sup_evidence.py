@@ -14,14 +14,41 @@ if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 del _repo_root
 
-import registry_lib as rl
-import search_trees as st
-from cascade import experiment_fingerprint as ef
-from cascade.cov_family import ALLOWED_FAMILIES
+# Task 8: 使所有顶层导入可选，以便测试可以 monkeypatch 而不需要所有依赖
+try:
+    import registry_lib as rl
+except ImportError:
+    rl = None  # type: ignore
 
-import sup_paths
-import sup_state
-import sup_lifecycle
+try:
+    import search_trees as st
+except ImportError:
+    st = None  # type: ignore
+
+try:
+    from cascade import experiment_fingerprint as ef
+except ImportError:
+    ef = None  # type: ignore
+
+try:
+    from cascade.cov_family import ALLOWED_FAMILIES
+except ImportError:
+    ALLOWED_FAMILIES = None  # type: ignore
+
+try:
+    import sup_paths
+except ImportError:
+    sup_paths = None  # type: ignore
+
+try:
+    import sup_state
+except ImportError:
+    sup_state = None  # type: ignore
+
+try:
+    import sup_lifecycle
+except ImportError:
+    sup_lifecycle = None  # type: ignore
 
 # 批次 B：tier 值域守卫（Q2=b，N10 语义消歧）
 VALID_TIER_VALUES = frozenset({"S", "A", "B", "C", "D"})
