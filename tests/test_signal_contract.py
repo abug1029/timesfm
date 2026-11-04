@@ -84,3 +84,31 @@ class TestSignalContract(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAssembleDirection(unittest.TestCase):
+    def test_jd_assemble_direction_uses_endpoint_when_weighted_sign_opposes(self):
+        import numpy as np
+        from config.prediction_scheme import get_scheme
+        from cascade.signal_contract import assemble_direction
+        scheme = get_scheme('jd')
+        self.assertIsNotNone(scheme)
+        self.assertTrue(scheme.use_full_signal)
+        self.assertFalse(scheme.short_horizon_only)
+        self.assertEqual(scheme.decay, 1.42)
+        forecast = np.array([90.0] * 23 + [101.0])
+        out = assemble_direction(forecast, 100.0, 103.0, scheme)
+        self.assertLess(out['position_sign'], 0)
+        self.assertLess(out['delta_pred'], 0)
+        self.assertGreater(out['endpoint_delta'], 0)
+        self.assertIs(out['dir_ok'], True)
+
+    def test_diagnostic_source_does_not_assign_dir_ok_from_delta_pred(self):
+        from pathlib import Path
+        text = Path('scripts/short_variety_diagnostic.py').read_text(encoding='utf-8')
+        self.assertIn('assemble_direction', text)
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith('dir_ok'):
+                self.assertNotIn('delta_pred', stripped)
+                self.assertNotIn('else True', stripped)

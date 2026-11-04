@@ -294,12 +294,14 @@ def run_diagnostic_backtest(symbol, daily_model, hourly_model,
 
             from config.prediction_scheme import get_scheme
             _scheme = get_scheme(symbol)
-            _sig = __import__("cascade.signal_contract", fromlist=["position_from_forecast"]).position_from_forecast(
-                pred, base, scheme=_scheme,
+            _dir = __import__("cascade.signal_contract", fromlist=["assemble_direction"]).assemble_direction(
+                pred, base, float(real[-1]), _scheme,
                 daily_slope=getattr(daily_result, "horizon_slope", None),
             )
-            delta_pred = float(_sig["delta_pred"])
-            position_sign = float(_sig["position_sign"])
+            delta_pred = float(_dir["delta_pred"])
+            position_sign = float(_dir["position_sign"])
+            endpoint_delta = float(_dir["endpoint_delta"])
+            dir_ok = _dir["dir_ok"]
 
             # T+24 (standard)
             delta_real = float(real[-1] - base)
@@ -307,13 +309,12 @@ def run_diagnostic_backtest(symbol, daily_model, hourly_model,
             delta_real_12 = float(real[half - 1] - base)
 
             pnl = float(position_sign * delta_real) if position_sign != 0 else 0.0
-            dir_ok = bool(np.sign(delta_pred) == np.sign(delta_real)) if delta_real != 0 else True
 
             mae = float(np.mean(np.abs(pred - real)))
             safe_real = np.where(real == 0, 1e-8, np.abs(real))
             mape = float(np.mean(np.abs(pred - real) / safe_real) * 100)
 
-            if _sig.get("short_horizon_only"):
+            if _scheme and getattr(_scheme, "short_horizon_only", False):
                 d12_pred = float(np.mean(pred[:half]) - base)
             else:
                 d12_pred = pred[half - 1] - base
@@ -327,9 +328,10 @@ def run_diagnostic_backtest(symbol, daily_model, hourly_model,
                         cov += 1
 
             point = {
-                "cutoff": dt, "base": base,
+                "cutoff": cutoff, "cutoff_date": dt, "base": base,
                 "pred_end": float(pred[-1]), "real_end": float(real[-1]),
                 "delta_pred": delta_pred, "delta_real": delta_real,
+                "endpoint_delta": endpoint_delta, "position_sign": position_sign,
                 "delta_real_12": delta_real_12,  # P0-4
                 "dir_ok": dir_ok, "dir12_ok": dir12_ok,
                 "mae": mae, "mape": mape,
@@ -344,7 +346,11 @@ def run_diagnostic_backtest(symbol, daily_model, hourly_model,
             if checkpoint_fp is not None:
                 rec = {"symbol": sym_lower, "idx": int(idx)}
                 for k in _CHECKPOINT_POINT_KEYS:
-                    rec[k] = point.get(k, 0)
+                    if k in ("endpoint_delta", "position_sign"):
+                        if k in point and point[k] is not None:
+                            rec[k] = point[k]
+                    else:
+                        rec[k] = point.get(k, 0)
                 rec["delta_real_12"] = delta_real_12
                 rec["mae_pct"] = round(float(np.mean(np.abs(pred - real)) / base * 100), 4) if base else 0.0
                 checkpoint_fp.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")

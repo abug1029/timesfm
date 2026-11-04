@@ -48,7 +48,7 @@ from data.data_store import DataStore
 from cascade.daily_model import DailyModel
 from cascade.hourly_model import HourlyModel
 from cascade.evaluation_metrics import metrics_from_backtest_points, calc_prediction_quality, fallback_n_eff, safe_path_corr
-from cascade.signal_contract import endpoint_dir_ok, position_from_forecast
+from cascade.signal_contract import endpoint_dir_ok, position_from_forecast, assemble_direction
 from cascade.ablation import AblationMode
 
 
@@ -96,7 +96,7 @@ def roll_in_horizon(contract_codes) -> bool:
 # Checkpoint JSONL 必须含 summarize / metrics_from_backtest_points 所需字段
 _CHECKPOINT_POINT_KEYS = (
     "cutoff", "base", "pred_end", "real_end",
-    "delta_pred", "delta_real", "dir_ok", "dir12_ok",
+    "delta_pred", "delta_real", "endpoint_delta", "position_sign", "dir_ok", "dir12_ok",
     "mae", "mape", "mae_h1", "mae_h2", "coverage", "pnl", "real_range", "roll_in_horizon",
     "endpoint_mape", "endpoint_bias_pct", "path_corr",
     "covariates_used",
@@ -489,25 +489,24 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
             if signal_override:
                 import dataclasses
                 _scheme = dataclasses.replace(_scheme, **signal_override)
-            _sig = position_from_forecast(
-                pred, base, scheme=_scheme,
+            _dir = assemble_direction(
+                pred, base, float(real[-1]), _scheme,
                 daily_slope=getattr(daily_result, "horizon_slope", None),
             )
-            delta_pred = float(_sig["delta_pred"])
-            position_sign = float(_sig["position_sign"])
+            delta_pred = float(_dir["delta_pred"])
+            position_sign = float(_dir["position_sign"])
+            endpoint_delta = float(_dir["endpoint_delta"])
+            dir_ok = _dir["dir_ok"]
             delta_real_raw = real[-1] - base
             # Apply gap clipping for EV/PF stability (LH-style)
-            # NOTE: dir_ok uses raw moves; PF/EV use clipped delta_real (by design)
+            # NOTE: PF/EV use clipped delta_real (by design)
             if clip_gap is not None:
                 max_move = clip_gap * base
                 delta_real = float(np.clip(delta_real_raw, -max_move, max_move))
             else:
                 delta_real = delta_real_raw
-            # dir_ok uses endpoint (pred[-1]-base) — consistent with calc_prediction_quality
-            # weighted delta_pred still used for pnl / economic scale below
             _delta_pred_endpoint = float(pred[-1] - base)
             _delta_real_endpoint = float(real[-1] - base)
-            dir_ok = endpoint_dir_ok(pred[-1], real[-1], base)
             if i < 3:
                 print(f" dir_ok", end="", flush=True)
             mae = float(np.mean(np.abs(pred - real)))
@@ -554,6 +553,7 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 "context_hash": _ctx_hash,
                 "pred_end": float(pred[-1]), "real_end": float(real[-1]),
                 "delta_pred": float(delta_pred), "delta_real": float(delta_real),
+                "endpoint_delta": endpoint_delta, "position_sign": position_sign,
                 "dir_ok": dir_ok, "dir12_ok": dir12_ok,
                 "mae": mae, "mape": mape,
                 "mae_h1": mae_h1, "mae_h2": mae_h2,

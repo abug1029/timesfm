@@ -118,3 +118,18 @@ def position_from_forecast(
         "endpoint_delta": endpoint_delta,
         "used_scheme_weights": True,
     }
+
+
+def assemble_direction(point_forecast, base_price, real_end, scheme, daily_slope=None):
+    sig = position_from_forecast(
+        point_forecast, base_price, scheme=scheme, daily_slope=daily_slope,
+    )
+    endpoint_delta = float(sig['endpoint_delta'])
+    real_end_f = float(real_end)
+    base = float(base_price)
+    return {
+        'delta_pred': float(sig['delta_pred']),
+        'position_sign': float(sig['position_sign']),
+        'endpoint_delta': endpoint_delta,
+        'dir_ok': endpoint_dir_ok(base + endpoint_delta, real_end_f, base),
+    }

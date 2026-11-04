@@ -63,7 +63,7 @@ def test_summarize_none_when_all_errors():
 
 def test_checkpoint_keys_include_new_metrics():
     """_CHECKPOINT_POINT_KEYS must cover endpoint_mape, endpoint_bias_pct, path_corr."""
-    for k in ("endpoint_mape", "endpoint_bias_pct", "path_corr"):
+    for k in ("endpoint_mape", "endpoint_bias_pct", "path_corr", "endpoint_delta", "position_sign"):
         assert k in mb._CHECKPOINT_POINT_KEYS, f"{k} missing from _CHECKPOINT_POINT_KEYS"
 
 
