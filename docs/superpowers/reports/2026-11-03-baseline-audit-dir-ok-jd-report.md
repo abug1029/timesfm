@@ -542,3 +542,104 @@ else:
     print(f'FAIL: {total_incon} total inconsistent rows')
 "
 ```
+
+
+---
+
+## 10. 最终执行结果（2026-11-04）
+
+> 执行依据：§9.6 修订版方案 A（adversarial-reviewer opus 审核通过）
+
+### 10.1 代码修改
+
+**commit**：`d51a3bb fix: monthly_backtest.py:566 delta_pred 改用 endpoint 与 dir_ok 对齐`
+
+**diff**：
+```diff
+-                "delta_pred": float(delta_pred), "delta_real": float(delta_real),
++                "delta_pred": float(_delta_pred_endpoint), "delta_real": float(delta_real),
+```
+
+**实际修改量**：**1 个文件 1 行**（与 adversarial-reviewer 修订建议一致）
+
+### 10.2 重生执行
+
+**方式**：全量重生（调 `generate()`），非增量（增量无法修旧点的 delta_pred）
+
+**分批**：
+- 单品种验证：`p`（翻转率最高 12.93%）→ incon 76 → 0 ✅
+- 批量重生：19 品种串行（cf/cj/lh/sp/m/sh/ss/eg/fu/bu/jm/i/rb/ao/ta/fg/ma/ur/sr）→ 全部 PASS
+
+**单品种耗时**：~8-15 min（含模型加载 + 588 点回测）
+**总耗时**：~4 小时（含 p 单测）
+
+### 10.3 终验结果
+
+```
+24 品种全量终验：
+  总行数：13576
+  不一致行：0
+  protocol_fingerprint：f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5（不变）
+```
+
+**每品种明细**：
+
+| 品种 | 行数 | 不一致 | 状态 |
+|---|---|---|---|
+| ao/bu/cf/cj/eg/fg/fu/i/jm/lh/m/ma/p/rb/sh/sp/sr/ss/ta/ur | 588 | 0 | PASS |
+| oi | 637 | 0 | PASS |
+| px/y | 588 | 0 | PASS（原本就 0 不一致）|
+| jd | 3 | 0 | PASS（历史遗留，待处理）|
+
+### 10.4 Supervisor 重启
+
+- 新 PID：1009831（2026-11-03 22:30 启动）
+- 新 run：`run_2026-11-03_22-21-07_primary_task_FM`
+- Laya 后端启动初期 503（间歇性，与本次修复无关）
+- 慢环收割正常（`sup_harvest.py` 不读 delta_pred）
+
+### 10.5 未处理项
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| jd 重生死循环 | ⏸ 用户选择暂不处理 | 合约切换导致重生跨不过边界 + 守卫回滚 |
+| 历史 verdicts 可比性 | ⏸ 偏移属预期 | 详见 §9.7 |
+| 备份机 merge driver | ⏸ 需用户 SSH 手动注册 | 详见 `docs/BACKUP-MERGE-PROTOCOL.md` |
+| Laya 后端间歇 503 | ⏸ 后端自动恢复 | 根因未查（可能模型 unload/队列阻塞）|
+
+### 10.6 完整 commit 链（本次会话全部）
+
+```
+d51a3bb fix: monthly_backtest.py:566 delta_pred 改用 endpoint 与 dir_ok 对齐  ← 最终修复
+511bf8e docs: 基线数据完整性审核报告 (dir_ok 不一致 + jd 死循环)
+4c4d704 fix: incremental_baseline 合并 resumed_points 到写入文件
+faa9dba perf: ensure_baselines 路径 ③ (reanchor) 改增量重生
+bf3addc follow-up: extend protected-ours to data/config.py + update runbook
+b2c780c chore: add .gitattributes protected-ours driver + backup merge protocol
+cf2a149 harden: Laya prescreen SKIP_AUTH + time-driven warmup + health check (re-impl)
+54b06c5 revert: restore P0-B fail-fast + slow-loop warmup/docs (NOT typesafe_prescreen)
+6aadfe9 merge: accept backup data files (newer runtime data)  ← 事故 merge
+```
+
+### 10.7 本次会话总结
+
+**时长**：~20 小时（2026-11-02 08:00 ~ 2026-11-04 04:00）
+
+**参与 agent**：
+- opus analyst：dbd68b5 误删取证
+- sonnet code-reviewer：4 commit 修复审核
+- sonnet scientist：24 品种基线完整性审核
+- sonnet tracer：dir_ok 不一致根因追溯
+- sonnet analyst：下游影响评估
+- opus adversarial-reviewer：报告 + §9 计划审核
+
+**解决问题**：
+1. ✅ Laya 503 刷屏（备份 cleanup 误删 P1-P3 改进）
+2. ✅ 备份机 cleanup 复发风险（.gitattributes + 协议文档）
+3. ✅ 基线全量重生慢（ensure_baselines 路径 ③ 改增量）
+4. ✅ 增量重生后基线丢失（incremental_baseline.py 合并 bug）
+5. ✅ dir_ok 不一致 6.25%（monthly_backtest.py:566 一行修复）
+6. ⏸ jd 重生死循环（合约切换 + 守卫回滚，用户选择暂不处理）
+7. ⏸ Laya 后端间歇 503（自动恢复，根因未查）
+
+**测试**：43/43 prescreen + fail-fast 通过；24 品种 13576 行 0 不一致终验通过
