@@ -643,3 +643,152 @@ cf2a149 harden: Laya prescreen SKIP_AUTH + time-driven warmup + health check (re
 7. ⏸ Laya 后端间歇 503（自动恢复，根因未查）
 
 **测试**：43/43 prescreen + fail-fast 通过；24 品种 13576 行 0 不一致终验通过
+
+
+---
+
+## 11. Plan 执行结果（2026-11-05）
+
+> 执行依据：`/home/abug/timesfm/docs/superpowers/plans/2026-11-03-baseline-point-contract-plan.md`
+> 执行方式：subagent-driven-development（每个 Task 一个 sonnet executor，主 session 协调）
+
+### 11.1 执行总览
+
+| PR | Task | Commit | 测试通过 | 描述 |
+|---|---|---|---|---|
+| PR1 | 1 | `7a12008` | 7/7 | `endpoint_dir_ok` 搬到 `cascade/signal_contract.py` |
+| PR1 | 2 | `04d7d7e` | 9/9 | `assemble_direction` 新增 |
+| PR1 | 3 | `9b101bc` | 2/2 | `tradable_sign` 新增 |
+| PR1 | 4 | `3c7bb28` | 11/11 | `baseline_jsonl_record` 单一投影 |
+| PR1 | 5 | `339bd20` | 3/3 | 三脚本 `dir_ok` 改属主 + 2026-09-14 勘误 |
+| PR2 | 6 | `2c2c778` | 10/10 | `cascade/eval_grid.py` 抽出 |
+| PR2 | 7 | `c21bff0` | 13/13 | `accept_baseline_file` + `finalize_baseline_write` |
+| PR2 | 8 | `6e866b2` | 5/5 | `finalize=False` + 错误点不发布子集 |
+| PR2 | 9 | `beba66a` | 4/4 | 增量按网格复用 |
+| PR2 | 10 | `04a9cb6` | 49/49 | `ensure_baselines` 重写 + 删旧守卫 |
+| PR3 | 11 | `7f47e8e` | 11/11 | jd/sr 同一回归测试 + 运维说明 |
+
+**总 commits**：11（plan 执行）+ 2（revert + 报告）= 13 个 commit
+**总测试**：每个 task 独立通过，共 124+ 个测试
+**执行耗时**：~2 天（2026-11-03 ~ 2026-11-05）
+
+### 11.2 关键函数落地验证
+
+| 函数 | 文件 | 状态 |
+|---|---|---|
+| `endpoint_dir_ok` | `cascade/signal_contract.py` | ✅ 搬家完成 |
+| `assemble_direction` | `cascade/signal_contract.py` | ✅ 新增 |
+| `tradable_sign` | `cascade/evaluation_metrics.py` | ✅ 新增 |
+| `baseline_jsonl_record` | `cascade/baseline_paths.py` | ✅ 新增 |
+| `baseline_eval_cutoffs` | `cascade/eval_grid.py` | ✅ 新增 |
+| `accept_baseline_file` | `cascade/eval_grid.py` | ✅ 新增 |
+| `filter_by_daily_sufficiency` | `cascade/eval_grid.py` | ✅ 新增 |
+| `finalize_baseline_write` | `scripts/sup_evidence.py` | ✅ 新增 |
+| `ensure_baselines` 重写 | `scripts/sup_evidence.py` | ✅ 新逻辑（用 `accept_baseline_file` 作唯一后条件）|
+| 旧守卫 `_guard_confirm_from_ts_after_regen` | - | ✅ 已彻底清除 |
+| `baseline_jsonl_record` 单一投影 | `scripts/generate_baseline_points.py` + `incremental_baseline.py` | ✅ 调用统一 |
+| `endpoint_dir_ok` 再导出 | `scripts/monthly_backtest.py` | ✅ `from cascade.signal_contract import ...` |
+
+### 11.3 Plan 解决的核心问题
+
+对比 §3 原因分析汇总的 6 个问题：
+
+| 问题 | Plan 前 | Plan 后 |
+|---|---|---|
+| **dir_ok 不一致 6.25%** | `dir_ok` 用 endpoint、`delta_pred` 用加权，下游假设一致 | `assemble_direction` 显式分离；下游改读 `tradable_sign`（优先 `position_sign`，缺键退回）；**旧行保留，新行追加两字段，零回填** |
+| **PF/EV/MaxDD 语义错误** | 用 `sign(delta_pred)` 决定持仓方向（加权与端点不一致时错配） | 用 `position_sign`（明确的可交易方向）决定持仓，缺键回退 |
+| **基线写入分散** | 两个 writer 各自构造字面量，易漂移 | `baseline_jsonl_record` 单一投影，两 writer 都调用 |
+| **ensure_baselines 三条路径** | 行数/指纹/重锚三路触发，重复归档 + 死循环风险 | **单一后条件**：`accept_baseline_file`；通过 → continue；不通过 → 归档 + `_incremental_or_regen` |
+| **旧守卫把不合格归档拷回活文件** | `_guard_confirm_from_ts_after_regen` 用 confirm_from_ts 守卫，jd 死循环 | 已彻底删除；新 `finalize_baseline_write` 用 `accept_baseline_file` 判定 |
+| **增量复用旧点不筛网格** | `resumed_points` 收所有指纹匹配行，包括网格外的 | 调用 `baseline_eval_cutoffs(symbol)` 过滤：只复用 cutoff 在网格上 + 三键齐全 + 指纹匹配的行 |
+
+### 11.4 jd 死循环根治
+
+**Plan 前**：jd 重生 → 守卫用 `confirm_from_ts` 检查 → 认为新档丢失 10-03~10-08 cutoff → 从归档恢复 3 行 → 永远 3 行死循环。
+
+**Plan 后**：
+- 旧守卫已删除
+- `finalize_baseline_write` 用 `baseline_eval_cutoffs("jd")` 算出的网格作唯一判据
+- 新档 cutoff 序列 == 网格 → 接受
+- 新档 cutoff 序列 != 网格 → 拒绝，从合格归档恢复（不是 3 行疤痕）
+- `test_jd_and_sr_share_one_postcondition` 锁定 jd/sr 同一回归，断言源码不含 `jd`/`sr` 字面量分支
+- 运维说明 `docs/superpowers/reports/2026-11-03-jd-baseline-operator-note.md` 五步 Rollout
+
+### 11.5 当前基线数据状态
+
+Plan 完成后，基线数据状态：
+- **delta_pred 仍为加权**（plan 约束 #1：不采用方案 A）
+- **新行带 endpoint_delta + position_sign**
+- **旧行保留**（零回填，下游 `tradable_sign` 缺键退回 `sign(delta_pred)`）
+- **24 品种 13576 行**
+- **protocol_fingerprint 仍为 v4**（plan 约束：不引入第五版）
+
+**下一步运维动作**（按 `2026-11-03-jd-baseline-operator-note.md`）：
+1. 重启 supervisor（plan 约束是"在 plan 执行过程中不重启"，plan 完成后允许）
+2. 让 supervisor 自动触发 ensure_baselines：
+   - 23 个品种（除 jd）的当前基线已符合新后条件 → 验收通过，不写
+   - jd 当前 3 行不符合后条件 → 触发 `_incremental_or_regen`
+     - 第一次收口（增量）：按新网格复用旧行、计算新行；若网格失败（jd 当前活文件只有 3 行，网格要求 588 行）
+     - 第二次收口（全量 `generate(finalize=False)`）：加载 TimesFM 权重计算 jd 网格；若成功，`finalize_baseline_write` 换名
+3. 成功判据：`baseline_points_jd_nocov.jsonl` cutoff 序列等于 `baseline_eval_cutoffs("jd")`，指纹仍 v4
+
+### 11.6 完整 commit 链（本次会话全部）
+
+```
+7f47e8e lock jd and sr to one baseline post-condition and record the operator steps  ← Plan Task 11
+04a9cb6 accept or keep the live baseline with one post-condition                     ← Plan Task 10
+beba66a reuse only current-grid baseline rows when extending a file                  ← Plan Task 9
+6e866b2 keep a failed baseline publish off the live filename                         ← Plan Task 8
+c21bff0 accept a baseline only when its cutoffs equal the injected grid              ← Plan Task 7
+2c2c778 move the eval grid next to the backtest and keep its right bound             ← Plan Task 6
+339bd20 give every dir_ok field the endpoint owner                                   ← Plan Task 5
+3c7bb28 project baseline rows once and merge resume payloads on their own            ← Plan Task 4
+9b101bc score economic direction from position_sign when the point has it            ← Plan Task 3
+04d7d7e assemble endpoint dir_ok separately from the weighted position               ← Plan Task 2
+7a12008 move endpoint_dir_ok into signal_contract and re-export it                   ← Plan Task 1
+cbd4187 revert: monthly_backtest.py:566 + restore 21 weighted baselines              ← 回滚到 plan 执行前状态
+5528143 fix: monthly_backtest.py:566 delta_pred 改用 endpoint 与 dir_ok 对齐          ← 已废弃（方案 A，plan 拒绝）
+4c4d704 fix: incremental_baseline 合并 resumed_points 到写入文件                     ← 已废弃（增量合并 bug 修复）
+faa9dba perf: ensure_baselines 路径 ③ (reanchor) 改增量重生                          ← 已废弃（plan 重写 ensure_baselines）
+bf3addc follow-up: extend protected-ours to data/config.py + update runbook
+b2c780c chore: add .gitattributes protected-ours driver + backup merge protocol
+cf2a149 harden: Laya prescreen SKIP_AUTH + time-driven warmup + health check (re-impl)
+54b06c5 revert: restore P0-B fail-fast + slow-loop warmup/docs (NOT typesafe_prescreen)
+6aadfe9 merge: accept backup data files (newer runtime data)  ← 事故 merge
+```
+
+### 11.7 最终总结
+
+**本次会话总耗时**：~3 天（2026-11-02 08:00 ~ 2026-11-05）
+
+**参与的专家 agent**（按阶段）：
+- Opus analyst：dbd68b5 误删取证
+- Sonnet code-reviewer：修复审核（MAJOR commit message 误导）
+- Sonnet scientist：24 品种基线完整性审核（PASS_WITH_FOLLOWUP）
+- Sonnet tracer：dir_ok 不一致根因追溯（CONFIRMED 根因）
+- Sonnet analyst：下游影响评估（影响中等，6.25% 翻转）
+- Opus adversarial-reviewer：plan + §9 审核（PASS_WITH_FOLLOWUP，发现"实际只需改 1 行"）
+- Sonnet executor × 12：plan Task 1-11 执行（多次 429 resume）
+- 主 session 协调
+
+**解决的问题（按时间顺序）**：
+1. ✅ Laya 503 刷屏（备份 cleanup 误删 P1-P3 改进）
+2. ✅ 备份机 cleanup 复发风险（.gitattributes + 协议文档）
+3. ✅ 基线全量重生慢（路径 ③ 改增量 —— 后被 plan 重写）
+4. ✅ 增量重生后基线丢失（incremental_baseline.py 合并 bug —— 后被 plan 重写）
+5. ✅ dir_ok 不一致 6.25%（plan Task 1-5 通过 `assemble_direction` + `tradable_sign` 解决，**不改 delta_pred 语义**）
+6. ✅ jd 重生死循环（plan Task 10 + Task 11 通过 `finalize_baseline_write` + 网格后条件根治）
+7. ⏸ Laya 后端间歇 503（自动恢复，根因未查）
+8. ⏸ 备份机 merge driver（需用户 SSH 手动注册）
+
+**关键设计决策（Plan 约束）**：
+- **保留 delta_pred 加权语义**：不修改 PF/EV/MaxDD 历史趋势
+- **新增 endpoint_delta + position_sign 两字段**：新行显式分离端点方向与可交易方向
+- **零回填旧行**：下游 `tradable_sign` 缺键退回 `sign(delta_pred)`，向后兼容
+- **单一后条件 `accept_baseline_file`**：统一验收，杜绝超集/子集/疤痕回滚
+- **`baseline_jsonl_record` 单一投影**：杜绝两个 writer 实现漂移
+
+**报告路径**：
+- WSL：`/home/abug/timesfm/docs/superpowers/reports/2026-11-03-baseline-audit-dir-ok-jd-report.md`
+- Windows：`\\wsl.localhost\Ubuntu-22.04\home\abug\timesfm\docs\superpowers\reports\2026-11-03-baseline-audit-dir-ok-jd-report.md`
+- 章节：§1-§11（约 750 行）
