@@ -4,14 +4,15 @@
     python scripts/generate_baseline_points.py --symbol ss --cov ccl --root .
 
 输出:
-    task_FM/config/baseline_points_{symbol}.jsonl  每行 {cutoff, dir_ok, delta_pred, delta_real}
+    task_FM/config/baseline_points_{symbol}.jsonl  每行经 baseline_jsonl_record 投影
     task_FM/config/baseline_metrics.json          更新 {symbol: {dir_acc, endpoint_mape, n, n_eff}}
 
 约束:
     - 禁止从 evaluator / 慢环调用本脚本
     - 同品种 .lock 排他
     - 生成前 summarize 一次拿标量
-    - JSONL 只写 {cutoff, dir_ok, delta_pred, delta_real}
+    - JSONL 必写 cutoff/dir_ok/delta_pred/delta_real/protocol_fingerprint；
+      端点上有 endpoint_delta 或 position_sign 时一并写入
     - cutoff 必须是完整时间戳
 """
 
@@ -145,13 +146,8 @@ def generate(symbol: str, cov: str, root: str):
                     except ValueError:
                         raise ValueError(f"品种 {sym_upper} 的 cutoff 格式错误: {cutoff_str}")
 
-                    rec = {
-                        "cutoff": pt["cutoff"],
-                        "dir_ok": bool(pt["dir_ok"]),
-                        "delta_pred": float(pt["delta_pred"]),
-                        "delta_real": float(pt["delta_real"]),
-                        "protocol_fingerprint": _proto,
-                    }
+                    from cascade.baseline_paths import baseline_jsonl_record
+                    rec = baseline_jsonl_record(pt, _proto)
                     fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     written += 1
 

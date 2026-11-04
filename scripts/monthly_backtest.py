@@ -309,6 +309,8 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                    数据增长即漂移, 会把不同 run 的点错位复用 (recompute_dir_acc 实测)
         checkpoint_fp: 已打开的 JSONL 追加文件句柄 (mode="a"); None=不写 checkpoint
         resumed_points: dict (symbol, cutoff) -> full point dict; resume 时合并进 points
+                     并不再要求 completed 也含有该键。只在 completed 里、没有载荷的键
+                     仍跳过且不进入 points
         eval_end_ts: v4 2.1 绝对锚 ("YYYY-MM-DD HH:MM:SS")。None=以当前数据末端为锚
                      (向后兼容); 给定时把 all_1h 截断到 dt < 锚 —— 评估窗口成为锚的
                      纯函数, 数据增长不再平移窗口 (发现 B)
@@ -392,16 +394,16 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
         close_ts = bar_ts + pd.Timedelta(hours=1)  # bar 收盘时间
         dt = close_ts.strftime("%Y-%m-%d")  # 报告/cutoff 展示用日历日
         cutoff = close_ts.strftime("%Y-%m-%d %H:%M:%S")
-        # resume: 合并已完成点（完整 payload）后再跳过重算
-        if completed is not None and (sym_lower, cutoff) in completed:
-            if resumed_points is not None and (sym_lower, cutoff) in resumed_points:
-                pt = dict(resumed_points[(sym_lower, cutoff)])
-                pt.pop("symbol", None)
-                pt.pop("idx", None)
-                # v4: 身份键不进 point 载荷 (与新鲜计算点保持同构)
-                pt.pop("eval_end_ts", None)
-                pt.pop("protocol_fingerprint", None)
-                points.append(pt)
+        # resume: resumed_points 里有该 (symbol, cutoff) 就合并并跳过模型，
+        # 不再要求 completed 也含有它。只在 completed 里、没有载荷的键仍跳过。
+        key = (sym_lower, cutoff)
+        if resumed_points is not None and key in resumed_points:
+            pt = dict(resumed_points[key])
+            for extra in ("symbol", "idx", "eval_end_ts", "protocol_fingerprint"):
+                pt.pop(extra, None)
+            points.append(pt)
+            continue
+        if completed is not None and key in completed:
             continue
         base = float(all_1h["close_price"].iloc[idx])
         # spec W6.7 历史修订防护：context 窗口的**内容哈希**。在写入点算、

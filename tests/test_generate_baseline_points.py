@@ -51,11 +51,15 @@ def test_generate_writes_jsonl_and_metrics(tmp_path, monkeypatch):
     lines = [line for line in p.open(encoding="utf-8") if line.strip()]
     assert len(lines) == 120, f"应该有 120 行，实际 {len(lines)}"
 
-    # 验证每行只包含规定的 4 个字段
+    # 验证每行包含必写键，可选键按需出现
     for line in lines:
         rec = json.loads(line)
-        assert set(rec.keys()) == {"cutoff", "dir_ok", "delta_pred", "delta_real",
-                                    "protocol_fingerprint"}
+        required = {"cutoff", "dir_ok", "delta_pred", "delta_real",
+                    "protocol_fingerprint"}
+        assert required <= set(rec.keys())
+        assert set(rec.keys()) <= required | {"endpoint_delta", "position_sign"}
+        assert "endpoint_delta" not in rec
+        assert "position_sign" not in rec
         assert isinstance(rec["cutoff"], str)
         assert isinstance(rec["dir_ok"], bool)
         assert isinstance(rec["delta_pred"], float)
@@ -118,3 +122,55 @@ def test_generate_lock_exclusive(tmp_path, monkeypatch):
     # 清理
     fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
     lock_fp.close()
+
+
+def test_generate_writes_new_keys_when_present(tmp_path, monkeypatch):
+    """假点带 endpoint_delta 和 position_sign 时，JSONL 里也以 float 出现"""
+    import scripts.generate_baseline_points as gbp
+
+    points = [
+        {
+            "cutoff": "2024-06-15 09:00:00",
+            "dir_ok": True,
+            "delta_pred": 1.0,
+            "delta_real": 1.0,
+            "endpoint_delta": 0.5,
+            "position_sign": 1.0,
+            "pred_end": 101.0,
+            "real_end": 101.0,
+            "base": 100.0,
+            "dir12_ok": True,
+            "mae": 1.0,
+            "mape": 1.0,
+            "mae_h1": 1.0,
+            "mae_h2": 1.0,
+            "coverage": 20,
+            "real_range": 1.0,
+        }
+    ] * 10
+
+    monkeypatch.setattr(
+        gbp.mb,
+        "run_symbol_backtest",
+        lambda *a, **k: {
+            "symbol": "SS",
+            "name": "不锈钢",
+            "contract": "x",
+            "total_bars": 1,
+            "points": points,
+        },
+    )
+
+    gbp.generate("ss", cov="ccl", root=str(tmp_path))
+
+    p = tmp_path / "task_FM" / "config" / "baseline_points_ss.jsonl"
+    lines = [line for line in p.open(encoding="utf-8") if line.strip()]
+    assert len(lines) == 10
+    for line in lines:
+        rec = json.loads(line)
+        assert "endpoint_delta" in rec
+        assert "position_sign" in rec
+        assert isinstance(rec["endpoint_delta"], float)
+        assert isinstance(rec["position_sign"], float)
+        assert rec["endpoint_delta"] == 0.5
+        assert rec["position_sign"] == 1.0

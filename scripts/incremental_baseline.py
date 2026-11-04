@@ -4,13 +4,13 @@
 import sys
 import json
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-def load_existing_baselines(symbol: str, cov: str = None):
+def load_existing_baselines(symbol: str, cov: str = None, root: str = "."):
     """加载现有基线文件，返回已完成的点"""
-    config_dir = Path(__file__).resolve().parent.parent / "task_FM" / "config"
+    config_dir = Path(root) / "task_FM" / "config"
     
     cov_suffix = f"_{cov}" if cov and cov != "none" else "_nocov"
     filename = f"baseline_points_{symbol}{cov_suffix}.jsonl"
@@ -44,21 +44,23 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
     sym_lower = symbol.lower()
     sym_upper = symbol.upper()
     
-    # 加载已完成的点
-    resumed_points, last_cutoff = load_existing_baselines(sym_lower, cov)
-    
+    # 计算当前协议指纹（用于筛选续跑载荷）
+    from task_FM.evaluations.fm_eval.evaluator import compute_protocol_fingerprint
+    _proto = compute_protocol_fingerprint()
+
+    # 加载已完成的点（按指纹和必写键筛选）
+    raw_points, last_cutoff = load_existing_baselines(sym_lower, cov, root)
+    resumed_points = {}
+    for key, rec in raw_points.items():
+        if ("dir_ok" in rec and "delta_pred" in rec and "delta_real" in rec
+                and rec.get("protocol_fingerprint") == _proto):
+            resumed_points[key] = rec
+
     if last_cutoff:
-        print(f"[INFO] {sym_upper} 已有基线到 {last_cutoff}，共 {len(resumed_points)} 点")
-        # 计算下一个起点（last_cutoff + STEP hours）
-        last_dt = datetime.strptime(last_cutoff, "%Y-%m-%d %H:%M:%S")
-        # STEP is defined in monthly_backtest.py, typically 2 hours for 1H data
-        next_start = last_dt + timedelta(hours=2)
-        eval_start_ts = next_start.strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[INFO] 从 {eval_start_ts} 开始增量生成")
+        print(f"[INFO] {sym_upper} 已有基线到 {last_cutoff}，共 {len(resumed_points)} 点（指纹匹配）")
     else:
         print(f"[INFO] {sym_upper} 无现有基线，全量生成")
-        eval_start_ts = None
-    
+
     # 加载模型
     print("[INFO] 加载模型...")
     daily_m = DailyModel()
@@ -80,7 +82,6 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
             daily_model=daily_m,
             hourly_model=hourly_m,
             cov_override=effective_cov,
-            eval_start_ts=eval_start_ts,
             resumed_points=resumed_points,
             checkpoint_fp=checkpoint_fp,
         )
@@ -89,22 +90,17 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
         print(f"[ERROR] {sym_upper} 回测失败")
         return None
     
-    # 合并新旧点
-    new_points = result.get("points", [])
-    # resumed_points: {(symbol, cutoff): rec_dict} —— backtest 内部用它跳过已算点，
-    # 但返回的 result["points"] 只含本轮新算的点，需手动合并
-    resumed_as_points = list(resumed_points.values()) if resumed_points else []
-    all_points = resumed_as_points + new_points
-    print(f"[INFO] {sym_upper} 合并: {len(resumed_as_points)} 旧点 + {len(new_points)} 新点 = {len(all_points)} 点")
+    # backtest 内部已通过 resumed_points 合并旧点，result["points"] 即最终集合
+    all_points = result.get("points", [])
+    print(f"[INFO] {sym_upper} 共 {len(all_points)} 点（含续跑合并）")
     
     # 写入基线文件（覆盖）
-    from task_FM.evaluations.fm_eval.evaluator import compute_protocol_fingerprint
-    _proto = compute_protocol_fingerprint()
     
     jsonl_file = config_dir / f"baseline_points_{sym_lower}{cov_suffix}.jsonl"
     temp_file = config_dir / f".baseline_points_{sym_lower}{cov_suffix}.jsonl.tmp"
     
-    # 写入时按 cutoff 去重（resumed + new 可能 overlap 在边界）
+    # 写入时按 cutoff 去重
+    from cascade.baseline_paths import baseline_jsonl_record
     seen_cutoffs = set()
     with open(temp_file, "w", encoding="utf-8") as fp:
         for pt in all_points:
@@ -114,13 +110,7 @@ def incremental_generate(symbol: str, cov: str = None, root: str = "."):
             if cutoff in seen_cutoffs:
                 continue
             seen_cutoffs.add(cutoff)
-            rec = {
-                "cutoff": cutoff,
-                "dir_ok": bool(pt["dir_ok"]),
-                "delta_pred": float(pt["delta_pred"]),
-                "delta_real": float(pt["delta_real"]),
-                "protocol_fingerprint": _proto,
-            }
+            rec = baseline_jsonl_record(pt, _proto)
             fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
     print(f"[INFO] {sym_upper} 写入 {len(seen_cutoffs)} 个唯一 cutoff 点")
     
