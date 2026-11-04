@@ -185,6 +185,38 @@ def test_economic_metrics_still_present():
         assert key in s, f"{key} missing from summarize output"
 
 
+def test_tradable_sign_prefers_position_sign_and_falls_back_for_old_rows():
+    from cascade.evaluation_metrics import metrics_from_backtest_points, tradable_sign
+    from short_variety_diagnostic import compute_pf12
+
+    flipped = {
+        "delta_pred": -5.0,
+        "position_sign": 1.0,
+        "delta_real": 4.0,
+        "base": 100.0,
+    }
+    assert tradable_sign(flipped) == 1.0
+    gross = metrics_from_backtest_points([flipped], tick_size=1.0, slippage_ticks=0)
+    assert gross["EV_gross"] > 0
+
+    old = {"delta_pred": 3.0, "delta_real": 4.0, "base": 100.0}
+    assert tradable_sign(old) == 1.0
+    old_gross = metrics_from_backtest_points([old], tick_size=1.0, slippage_ticks=0)
+    assert old_gross["EV_gross"] > 0
+
+    pf = compute_pf12(
+        [{
+            "delta_pred": -5.0,
+            "position_sign": 1.0,
+            "delta_real_12": 4.0,
+            "base": 100.0,
+        }],
+        tick_size=1.0,
+        slippage_ticks=0,
+    )
+    assert pf["EV12_ratio"] > 0
+
+
 def test_dir_ok_uses_endpoint_not_weighted():
     """Critical fix: dir_ok uses endpoint (pred[-1]-base), not weighted delta_pred.
 

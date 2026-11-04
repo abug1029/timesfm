@@ -175,6 +175,17 @@ def calc_net_metrics(
     }
 
 
+def tradable_sign(point) -> float:
+    """Economic direction: prefer position_sign when present, else sign(delta_pred).
+
+    Spec 2026-11-03: new rows add position_sign, old rows need not backfill.
+    Economic metrics prefer position_sign, fallback to sign(delta_pred).
+    """
+    if "position_sign" in point and point["position_sign"] is not None:
+        return float(point["position_sign"])
+    return float(np.sign(point["delta_pred"]))
+
+
 def metrics_from_backtest_points(
     points: Sequence[Dict[str, Any]],
     tick_size: float,
@@ -189,7 +200,7 @@ def metrics_from_backtest_points(
     if not ok:
         return calc_net_metrics([], [], tick_size=tick_size, slippage_ticks=slippage_ticks)
 
-    dirs = np.array([np.sign(p["delta_pred"]) for p in ok], dtype=float)
+    dirs = np.array([tradable_sign(p) for p in ok], dtype=float)
     rets = np.array([p["delta_real"] for p in ok], dtype=float)
     bases = np.array([p.get("base", 1.0) for p in ok], dtype=float)
     return calc_net_metrics(

@@ -47,7 +47,7 @@ from config.prediction_scheme import SCHEMES, VarietyScheme
 from scripts.monthly_backtest import (
     run_symbol_backtest, summarize, _CHECKPOINT_POINT_KEYS,
 )
-from cascade.evaluation_metrics import metrics_from_backtest_points
+from cascade.evaluation_metrics import metrics_from_backtest_points, tradable_sign
 from scripts.phase4d_parse_results import verdict as v2_verdict
 from config.backtest_config import (
     CONTEXT_BARS, HORIZON, STEP, TICK_SIZES, SLIPPAGE_TICKS,
@@ -171,7 +171,7 @@ def compute_pf12(points, tick_size, slippage_ticks=2):
         p12["delta_real"] = p["delta_real_12"]
         # pnl12 = position_sign * delta_real_12
         # position_sign = sign(delta_pred)
-        sign = np.sign(p["delta_pred"])
+        sign = tradable_sign(p)
         p12["pnl"] = float(sign * p["delta_real_12"]) if sign != 0 else 0.0
         pts12.append(p12)
 
