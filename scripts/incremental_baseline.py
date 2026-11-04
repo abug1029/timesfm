@@ -48,11 +48,17 @@ def incremental_generate(symbol: str, cov: str = None, root: str = ".", finalize
     from task_FM.evaluations.fm_eval.evaluator import compute_protocol_fingerprint
     _proto = compute_protocol_fingerprint()
 
-    # 加载已完成的点（按指纹和必写键筛选）
+    # Task 9: 获取当前评估网格，只复用网格上的行
+    from cascade.eval_grid import baseline_eval_cutoffs
+    grid_cutoffs = set(baseline_eval_cutoffs(sym_lower))
+
+    # 加载已完成的点（按网格、指纹和必写键筛选）
     raw_points, last_cutoff = load_existing_baselines(sym_lower, cov, root)
     resumed_points = {}
     for key, rec in raw_points.items():
-        if ("dir_ok" in rec and "delta_pred" in rec and "delta_real" in rec
+        cutoff = key[1]  # key is (symbol, cutoff)
+        if (cutoff in grid_cutoffs
+                and "dir_ok" in rec and "delta_pred" in rec and "delta_real" in rec
                 and rec.get("protocol_fingerprint") == _proto):
             resumed_points[key] = rec
 

@@ -86,6 +86,10 @@ def test_both_writers_call_record_and_incremental_does_not_rephase(tmp_path, mon
         "task_FM.evaluations.fm_eval.evaluator.compute_protocol_fingerprint",
         lambda: "fp",
     )
+    monkeypatch.setattr(
+        "cascade.eval_grid.baseline_eval_cutoffs",
+        lambda symbol: ["2026-01-01 10:00:00"],
+    )
     ib.incremental_generate("jd", None, str(tmp_path), finalize=False)
     # 断言临时文件存在，活文件仍是夹具里的旧行
     live = cfg / "baseline_points_jd_nocov.jsonl"
@@ -151,3 +155,49 @@ def test_resumed_points_merge_without_completed(monkeypatch):
     )
     assert skipped is not None
     assert skipped["points"] == []
+
+
+def test_incremental_reuses_only_grid_rows(tmp_path, monkeypatch):
+    import json
+    import scripts.incremental_baseline as ib
+    import scripts.monthly_backtest as mb
+
+    class _Model:
+        def __init__(self, *a, **k):
+            self.model = None
+
+    monkeypatch.setattr("cascade.daily_model.DailyModel", _Model)
+    monkeypatch.setattr("cascade.hourly_model.HourlyModel", _Model)
+    monkeypatch.setattr(
+        "task_FM.evaluations.fm_eval.evaluator.compute_protocol_fingerprint",
+        lambda: "fp",
+    )
+    grid = ["2026-02-01 10:00:00", "2026-02-01 12:00:00"]
+    monkeypatch.setattr("cascade.eval_grid.baseline_eval_cutoffs", lambda symbol: list(grid))
+    captured = {}
+
+    def _bt(*a, **k):
+        captured.update(k)
+        return {"points": [
+            {"cutoff": c, "dir_ok": True, "delta_pred": 1.0, "delta_real": 1.0}
+            for c in grid
+        ]}
+
+    monkeypatch.setattr(mb, "run_symbol_backtest", _bt)
+    cfg = tmp_path / "task_FM" / "config"
+    cfg.mkdir(parents=True)
+    rows = [
+        {"cutoff": "2026-01-01 10:00:00", "dir_ok": True, "delta_pred": 1.0,
+         "delta_real": 1.0, "protocol_fingerprint": "fp"},
+        {"cutoff": "2026-02-01 10:00:00", "dir_ok": True, "delta_pred": 1.0,
+         "delta_real": 1.0, "protocol_fingerprint": "fp"},
+        {"cutoff": "2026-02-01 12:00:00", "dir_ok": True, "delta_pred": 1.0,
+         "delta_real": 1.0, "protocol_fingerprint": "old"},
+    ]
+    (cfg / "baseline_points_jd_nocov.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8",
+    )
+    ib.incremental_generate("jd", None, str(tmp_path), finalize=False)
+    assert "eval_start_ts" not in captured
+    keys = set(captured["resumed_points"])
+    assert keys == {("jd", "2026-02-01 10:00:00")}
