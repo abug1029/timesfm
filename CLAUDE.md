@@ -288,7 +288,7 @@ python -m unittest tests.test_future_bar_guard tests.test_vol_threshold_contract
 ## 信用档与新口径经济表 (2026-08-08)
 
 > **无真实 3 星。** 详见 `AGENTS.md` 同节与 `reports/research/20260808_g005e_results.md`。  
-> 可交易方向=加权1H（`docs/product_positioning.md`）。
+> 可交易方向=`tradable_sign()`（`cascade/evaluation_metrics.py`，优先 `position_sign`，旧行回退 `sign(delta_pred)`）。详见 `docs/product_positioning.md` 与 Baseline Point Contract spec `docs/superpowers/specs/2026-11-03-baseline-point-contract-spec.md`。
 
 > **口径声明**：本节 stars 与 PF 源自 2026-08 v2 月度回测口径，v23 复测进行中，裁决以 aligned verdicts（v23）为准。（更新 2026-09-17：ss_vor 复测未过门，ss 已降级 1★ 移出下列 ≥2★ 清单，见 9c7fc2a；本节 PF 值为 v2 历史口径，v23 裁决以 STATE.md verdicts 为准）
 

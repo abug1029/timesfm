@@ -121,7 +121,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 - 回测 P0 工程已修：`20260808_tech_strategy_debt_post_fix.md`  
 - 冲突债：`20260808_conflict_debt_register.md`（绝大多数 DONE）  
 - 新口径 **20/20** monthly：`20260808_g005e_results.md`  
-- 产品定位：`docs/product_positioning.md`（可交易方向=加权1H）  
+- 产品定位：`docs/product_positioning.md`（可交易方向=`tradable_sign()`，优先 `position_sign`）  
 - 可交易 alpha 健康度 **6.7/10**：`20260808_tradable_alpha_final_score.md`  
 
 ## 目录结构
@@ -326,7 +326,7 @@ python -m unittest tests.test_future_bar_guard tests.test_vol_threshold_contract
 ## 信用档与新口径经济表 (2026-08-08)
 
 > **无真实 3 星。** 2026-08-03 前 SP/SR 曾保留旧 3 星标签。2026-08-08 G005-E 全量 rebaseline 后，最高星级降为 2 星。  
-> **可交易方向** = 加权 1H（`cascade/signal_contract.py`），日线斜率仅为 regime 副标签。详见 `docs/product_positioning.md`。  
+> **可交易方向** = `tradable_sign()`（`cascade/evaluation_metrics.py`），优先读 `position_sign`（新行，基于端点 `endpoint_delta`），旧行回退 `sign(delta_pred)`（加权 1H）。日线斜率仅为 regime 副标签。详见 `docs/product_positioning.md` 与 Baseline Point Contract spec `docs/superpowers/specs/2026-11-03-baseline-point-contract-spec.md`。  
 > **全表**: `reports/research/20260808_g005e_results.md`（文件已不在仓内，历史指针）。Phase 11/12 后协变量已刷新。
 
 ### ⚠️ 信用档以代码为唯一事实源
