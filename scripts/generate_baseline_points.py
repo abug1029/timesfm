@@ -119,6 +119,11 @@ def generate(symbol: str, cov: str, root: str, finalize: bool = True):
         if error_points:
             cutoffs = [pt.get("cutoff", "?") for pt in error_points[:5]]
             print(f"[Error] 品种 {sym_upper} 有 {len(error_points)} 个错误点，cutoffs={cutoffs}")
+            temp_file = config_dir / f".{baseline_filename(sym_lower, cov)}.tmp"
+            try:
+                os.remove(temp_file)
+            except FileNotFoundError:
+                pass
             return None
 
         # summarize 一次拿标量

@@ -201,3 +201,102 @@ def test_incremental_reuses_only_grid_rows(tmp_path, monkeypatch):
     assert "eval_start_ts" not in captured
     keys = set(captured["resumed_points"])
     assert keys == {("jd", "2026-02-01 10:00:00")}
+
+
+def test_error_point_deletes_preexisting_incremental_temp(tmp_path, monkeypatch):
+    import scripts.incremental_baseline as ib
+    import scripts.monthly_backtest as mb
+
+    class _Model:
+        def __init__(self, *a, **k):
+            self.model = None
+
+    monkeypatch.setattr("cascade.daily_model.DailyModel", _Model)
+    monkeypatch.setattr("cascade.hourly_model.HourlyModel", _Model)
+    monkeypatch.setattr(
+        "task_FM.evaluations.fm_eval.evaluator.compute_protocol_fingerprint",
+        lambda: "fp",
+    )
+    monkeypatch.setattr(
+        "cascade.eval_grid.baseline_eval_cutoffs",
+        lambda symbol: ["2026-02-01 10:00:00"],
+    )
+    monkeypatch.setattr(mb, "run_symbol_backtest", lambda *a, **k: {
+        "points": [{"cutoff": "2026-02-01 10:00:00", "error": "fresh point failed"}],
+    })
+    cfg = tmp_path / "task_FM" / "config"
+    cfg.mkdir(parents=True)
+    live = cfg / "baseline_points_jd_nocov.jsonl"
+    tmp = cfg / ".baseline_points_jd_nocov.jsonl.tmp"
+    live_body = '{"cutoff": "2026-01-01 10:00:00", "dir_ok": true}' + chr(10)
+    live.write_text(live_body, encoding="utf-8")
+    tmp.write_text('{"cutoff": "2026-01-02 10:00:00", "dir_ok": true}' + chr(10), encoding="utf-8")
+    got = ib.incremental_generate("jd", None, str(tmp_path), finalize=False)
+    assert got is None
+    assert not tmp.exists()
+    assert live.read_text(encoding="utf-8") == live_body
+
+
+def test_fresh_eval_point_keeps_endpoint_fields_and_short_horizon_dir12(monkeypatch):
+    import dataclasses
+    import re
+
+    import scripts.monthly_backtest as mb
+    from cascade.eval_grid import filter_by_daily_sufficiency
+    from config.prediction_scheme import get_scheme
+    from tests.test_v4_window_anchor import _FakeStore, _daily_df, _hourly_df
+
+    h1 = _hourly_df(80)
+    monkeypatch.setattr(mb, "DataStore", lambda symbol: _FakeStore(h1, _daily_df()))
+    monkeypatch.setattr(mb, "BacktestDataStore", lambda *a, **k: object())
+    monkeypatch.setattr(mb, "CONTEXT_BARS", 20)
+    monkeypatch.setattr(mb, "CONTEXT_DAYS", 10)
+    monkeypatch.setattr(mb, "HORIZON", 4)
+    monkeypatch.setattr(mb, "HORIZON_DAYS", 2)
+    monkeypatch.setattr(mb, "STEP", 5)
+    monkeypatch.setattr(mb, "EVAL_WINDOW_BARS", 40)
+    scheme = dataclasses.replace(get_scheme("ss"), short_horizon_only=True)
+    monkeypatch.setattr(mb, "get_scheme", lambda symbol: scheme)
+
+    indices = mb.select_eval_indices(h1["dt"], max_points=1)
+    kept = filter_by_daily_sufficiency(
+        indices, h1["dt"], _daily_df(), max(mb.CONTEXT_DAYS - mb.HORIZON_DAYS, 100),
+    )
+    assert kept
+    idx = kept[0]
+    base = float(h1["close_price"].iloc[idx])
+    real = h1["close_price"].iloc[idx + 1:idx + 1 + mb.HORIZON].to_numpy()
+    pred = np.array([base + 30.0, base - 10.0, base, base + 1.0])
+
+    class _Daily:
+        def predict(self, *a, **k):
+            return type("DailyResult", (), {"horizon_slope": 0.0})()
+
+    class _Hourly:
+        def predict(self, *a, **k):
+            return type("HourlyResult", (), {
+                "point_forecast": pred,
+                "quantile_forecast": None,
+                "ablation_mode": "full",
+                "xreg_fallback": False,
+                "covariates": None,
+            })()
+
+    data = mb.run_symbol_backtest(
+        "ss", _Daily(), _Hourly(), cov_override="none", max_points=1,
+    )
+    assert data is not None
+    assert len(data["points"]) == 1
+    point = data["points"][0]
+    assert "error" not in point
+    assert "endpoint_delta" in point
+    assert "position_sign" in point
+    half = mb.HORIZON // 2
+    d12_pred = float(np.mean(pred[:half]) - base)
+    d12_real = float(real[half - 1] - base)
+    assert d12_real != 0
+    assert np.sign(pred[half - 1] - base) != np.sign(d12_pred)
+    assert point["dir12_ok"] is True
+    assert point["dir12_ok"] is bool(np.sign(d12_pred) == np.sign(d12_real))
+    src = Path("scripts/monthly_backtest.py").read_text(encoding="utf-8")
+    assert not re.search(r"(?<![A-Za-z0-9_])_sig(?![A-Za-z0-9_])", src)

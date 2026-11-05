@@ -163,6 +163,8 @@ def test_generate_writes_new_keys_when_present(tmp_path, monkeypatch):
         },
     )
 
+    # 10 个相同 cutoff 过不了 accept。这里只检查投影，收口换成换名。
+    monkeypatch.setattr("scripts.sup_evidence.finalize_baseline_write", _accept_rename)
     gbp.generate("ss", cov="ccl", root=str(tmp_path))
 
     p = tmp_path / "task_FM" / "config" / "baseline_points_ss.jsonl"
@@ -230,3 +232,28 @@ def test_error_point_is_not_a_publishable_file(tmp_path, monkeypatch):
     assert got is None
     assert not (cfg / ".baseline_points_ss.jsonl.tmp").exists()
     assert not (cfg / "baseline_points_ss.jsonl").exists()
+
+
+def test_error_point_deletes_preexisting_temp_and_keeps_live(tmp_path, monkeypatch):
+    import scripts.generate_baseline_points as gbp
+
+    class _Model:
+        def __init__(self, *a, **k):
+            self.model = None
+
+    monkeypatch.setattr("cascade.daily_model.DailyModel", _Model)
+    monkeypatch.setattr("cascade.hourly_model.HourlyModel", _Model)
+    monkeypatch.setattr(gbp.mb, "run_symbol_backtest", lambda *a, **k: {
+        "points": [{"cutoff": "2026-02-01 12:00:00", "error": "fresh point failed"}],
+    })
+    cfg = tmp_path / "task_FM" / "config"
+    cfg.mkdir(parents=True)
+    live = cfg / "baseline_points_ss.jsonl"
+    tmp = cfg / ".baseline_points_ss.jsonl.tmp"
+    live_body = '{"cutoff": "2026-01-01 10:00:00", "dir_ok": true}' + chr(10)
+    live.write_text(live_body, encoding="utf-8")
+    tmp.write_text('{"cutoff": "2026-01-02 10:00:00", "dir_ok": true}' + chr(10), encoding="utf-8")
+    got = gbp.generate("ss", cov="ccl", root=str(tmp_path), finalize=False)
+    assert got is None
+    assert not tmp.exists()
+    assert live.read_text(encoding="utf-8") == live_body

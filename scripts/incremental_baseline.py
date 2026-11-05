@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """增量基线生成：从现有基线末端继续生成新点"""
 
+import os
 import sys
 import json
 from pathlib import Path
@@ -105,6 +106,11 @@ def incremental_generate(symbol: str, cov: str = None, root: str = ".", finalize
     if error_points:
         cutoffs = [pt.get("cutoff", "?") for pt in error_points[:5]]
         print(f"[ERROR] {sym_upper} 有 {len(error_points)} 个错误点，cutoffs={cutoffs}")
+        temp_file = config_dir / f".baseline_points_{sym_lower}{cov_suffix}.jsonl.tmp"
+        try:
+            os.remove(temp_file)
+        except FileNotFoundError:
+            pass
         return None
     
     # 写入基线文件（覆盖）

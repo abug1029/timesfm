@@ -502,7 +502,7 @@ def run_symbol_backtest(symbol, daily_model, hourly_model,
                 print(f" mae_h", end="", flush=True)
 
             # T+12 direction: if short_horizon_only, align with weighted half-path
-            if _sig.get("short_horizon_only"):
+            if bool(getattr(_scheme, "short_horizon_only", False)):
                 d12_pred = float(np.mean(pred[:half]) - base)
             else:
                 d12_pred = pred[half-1] - base
