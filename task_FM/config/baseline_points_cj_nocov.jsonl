@@ -586,3 +586,9 @@
 {"cutoff": "2026-10-23 10:00:00", "dir_ok": true, "delta_pred": 7.99027506510447, "delta_real": -245.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
 {"cutoff": "2026-10-23 12:00:00", "dir_ok": true, "delta_pred": 10.25760904947947, "delta_real": -185.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
 {"cutoff": "2026-10-23 15:00:00", "dir_ok": true, "delta_pred": -61.52913411458303, "delta_real": -145.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
+{"cutoff": "2026-10-26 10:00:00", "dir_ok": true, "delta_pred": -0.8901774088544698, "delta_real": -80.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
+{"cutoff": "2026-10-26 12:00:00", "dir_ok": false, "delta_pred": -23.89664713541697, "delta_real": 65.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
+{"cutoff": "2026-10-26 15:00:00", "dir_ok": false, "delta_pred": 44.69291178385447, "delta_real": 190.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
+{"cutoff": "2026-10-27 11:00:00", "dir_ok": false, "delta_pred": 12.1099853515625, "delta_real": 120.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
+{"cutoff": "2026-10-27 14:00:00", "dir_ok": false, "delta_pred": -7.92399088541697, "delta_real": 55.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}
+{"cutoff": "2026-10-28 10:00:00", "dir_ok": false, "delta_pred": 31.171630859375, "delta_real": 5.0, "protocol_fingerprint": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5"}

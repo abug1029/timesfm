@@ -38,6 +38,8 @@ import argparse
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from cascade.signal_contract import assemble_direction
 os.environ["PYTHONIOENCODING"] = "utf-8"
 
 import numpy as np
@@ -294,7 +296,7 @@ def run_diagnostic_backtest(symbol, daily_model, hourly_model,
 
             from config.prediction_scheme import get_scheme
             _scheme = get_scheme(symbol)
-            _dir = __import__("cascade.signal_contract", fromlist=["assemble_direction"]).assemble_direction(
+            _dir = assemble_direction(
                 pred, base, float(real[-1]), _scheme,
                 daily_slope=getattr(daily_result, "horizon_slope", None),
             )
