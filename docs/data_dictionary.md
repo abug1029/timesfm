@@ -3,7 +3,7 @@
 > 品种、协变量、数据表、关键字段的**集中定义**。
 > 阈值类见 [evaluation.md](./evaluation.md)；术语速查见 [glossary.md](./glossary.md)。
 >
-> 最后核实：2026-10-05，commit `ee01b56`。**本文不钉活快照**——品种数以代码为准。
+> 最后核实：2026-11-06，commit `1f90081`。**本文不钉活快照**——品种数以代码为准。
 
 ---
 
@@ -14,7 +14,7 @@
 | 层 | 数量 | 权威 | 用途 |
 |----|-----:|------|------|
 | `DEFAULT_SYMBOLS` | **28** | `data/config.py` | 数据采集的全集 |
-| `SCHEMES` | **21** | `config/prediction_scheme.py` | 有生产预测方案的品种 |
+| `SCHEMES` | **21**（2026-10-14 移除 SC） | `config/prediction_scheme.py` | 有生产预测方案的品种 |
 | `target_symbols` | **24** | `scripts/praxist_goal.yaml` | 三环要攻坚的目标 —— **单一来源** |
 | `ALLOWED_SYMBOLS` | **24** | 从 `target_symbols` 派生 | 候选准入门（第一道硬检查） |
 
@@ -207,3 +207,15 @@
 [run_artifacts.md](./run_artifacts.md)。
 
 ⚠️ `cycle_NNN` 编号**跨运行段归 1**，不能用它判断快照缺口。
+| `task_FM/config/baseline_points_*.jsonl` | nocov 基线（每品种一个文件） | Baseline Point Contract 后产物 |
+| `task_FM/config/baseline_metrics.json` | 基线指标汇总 | 增量重生产物 |
+## 新增字段（Baseline Point Contract 后，2026-11-06）
+
+| 字段 | 类型 | 定义 | 位置 |
+|------|------|------|------|
+| `tradable_sign` | int | **可交易方向唯一真源**：优先 `position_sign`，回退 `sign(delta_pred)` | `cascade/evaluation_metrics.py:178` |
+| `position_sign` | int | 新行方向：基于端点 `endpoint_delta` 判定 | `cascade/signal_contract.py` |
+| `endpoint_delta` | float | 端点价格变化（目标 - 当前） | `cascade/signal_contract.py` |
+| `endpoint_dir_ok` | int | 端点方向是否正确（0/1），由 `endpoint_dir_ok()` 计算 | `cascade/signal_contract.py:37` |
+
+**`dir_ok` 所有权变更**：现在由 endpoint 拥有（`endpoint_dir_ok()`），不再依赖 weighted 方向。

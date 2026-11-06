@@ -9,7 +9,7 @@
 > 实现：[../task_FM/evaluations/fm_eval/evaluator.py](../task_FM/evaluations/fm_eval/evaluator.py)
 > 统计：[../cascade/statistical_tests.py](../cascade/statistical_tests.py)
 >
-> 最后核实：2026-10-05，commit `ee01b56`。**本文不钉活快照**——阈值以代码为准。
+> 最后核实：2026-11-06，commit `1f90081`。**本文不钉活快照**——阈值以代码为准。
 
 ---
 
@@ -192,3 +192,4 @@ run_mode == "confirmation"
 | 日期 | 内容 |
 |------|------|
 | 2026-10-05 | 初版。收拢 18 处散落的阈值口径。事实全部实测自 commit `ee01b56` |
+| 2026-11-06 | Baseline Point Contract 后口径更新：`tradable_sign()` 为可交易方向唯一真源（优先 `position_sign`，回退 `sign(delta_pred)`）；`endpoint_dir_ok()` 由 endpoint 拥有（`cascade/signal_contract.py:37`），不再依赖 weighted 方向；eval grid 独立于 backtest（`cascade/eval_grid.py`，commit `2c2c778`） |

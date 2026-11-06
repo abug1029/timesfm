@@ -148,3 +148,57 @@ python scripts/live_cov_health.py --json-out reports/live_cov_health/latest.json
 | `reports/data_ops/` | 采集/审计日志 |
 | `reports/phase1/` | Neutral / R1 回测 |
 | `models/` | vol / regime pkl + `operational_thr.json` |
+
+## 慢环队列管理（2026-11-06 补充）
+
+慢环 no_data 修复（commits `257fcf3` ~ `fb6a40a`）引入了运维相关变更：
+
+| 修复项 | 运维影响 |
+|--------|----------|
+| **P0-A 入队验证** | 入队失败会立即报错（不再静默积压），日志可见 `queue_enqueue_failed` |
+| **P0-B fail-fast** | 组合协变量也会抛 `UnsupportedCovariateError`，生成阶段即失败 |
+| **P3 队列清理** | 无效提案（缺失字段、空 symbol）会被清理脚本移除 |
+
+清理脚本：`scripts/cleanup_queue.py`（详见 [runbook_praxist_three_loop.md](./runbook_praxist_three_loop.md)）。
+
+## 基线运维（2026-11-06 补充）
+
+基线重生锁冲突修复（commit `3dea3d4`）：
+
+| 项 | 说明 |
+|----|------|
+| SQLite 超时 | `data/db.py` 已设为 30s（默认 5s 不足） |
+| 进程互斥锁 | `scripts/daily_update.py` 与 `scripts/generate_baseline_points.py` **不能并发** |
+| 增量重生 | `scripts/incremental_baseline.py` 是日常入口（从现有基线末端继续，不全量 wipe） |
+| 原子写入 | 基线文件先写 `.tmp`，成功后 rename 到目标路径 |
+| SC 品种移除 | 2026-10-14 裁定：SC（原油）不再维护基线，相关数据已清理 |
+
+**日常基线更新流程**：
+```bash
+# 1. 增量重生（推荐，从末端继续）
+python scripts/incremental_baseline.py
+
+# 2. 或全量重生（仅在必要时）
+python scripts/generate_baseline_points.py
+```
+
+## Laya 预筛运维（2026-11-06 补充）
+
+Laya 预筛替代 TypeSafe Jev（commits `512a13b` ~ `cf2a149`）：
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `LAYA_BASE_URL` | 逗号分隔多地址 | HTTP POST 端点，支持故障转移 |
+| `LAYA_COLD_START_TIMEOUT` | `180.0` | 冷启动超时（秒） |
+| `LAYA_WARM_TIMEOUT` | `15.0` | 已预热超时（秒） |
+| `LAYA_SKIP_AUTH` | `True` | 不需要 API key |
+
+预热检测：`warmup_laya()` 指数退避重试（3 次，0s → 2s → 4s）；`_is_warmed_up` 标志动态选择超时。
+
+故障处理：Laya 服务不可用、超时、降级时**静默跳过**（不阻断慢环回测）。
+
+## 变更记录
+
+| 日期 | 内容 |
+|------|------|
+| 2026-11-06 | 补充慢环队列管理 / 基线运维 / Laya 预筛运维 |

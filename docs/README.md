@@ -80,7 +80,7 @@
 | **产品与卡面** | | |
 | [copilot.md](./copilot.md) | 主观领航员用法与报告说明 | 在用 |
 | [paper_trading.md](./paper_trading.md) | 纸面闭环：Copilot → ledger → 回填 → 健康表 | 在用 |
-| [product_positioning.md](./product_positioning.md) | **产品定位**：可交易方向=加权1H；辅助非自动 | 在用 |
+| [product_positioning.md](./product_positioning.md) | **产品定位**：可交易方向=`tradable_sign()`；辅助非自动 | 在用 |
 | [module_freeze.md](./module_freeze.md) | 子策略冻结（Vol OFF / A2 关 / Regime 研究-only） | 在用 |
 | [param_hygiene.md](./param_hygiene.md) | 参数卫生裁决记录 | 在用 |
 | [research/slow_loop_evaluation_points_research.md](./research/slow_loop_evaluation_points_research.md) | 慢环评估点研究 | 在用 |

@@ -14,7 +14,7 @@
 > - **门判据阈值 → [evaluation.md](./evaluation.md)**（唯一权威）
 > - spec 级设计论证 → `superpowers/specs/`
 >
-> 监督环符号家核实于 2026-10-12，本分支 `3e8756e`。其余合同仍以 2026-10-05 `ee01b56` 的核实为底。**本文档不钉活快照**。模块表在 [praxist.md](./praxist.md)。
+> 监督环符号家核实于 2026-10-12，本分支 `3e8756e`。其余合同仍以 2026-10-05 `ee01b56` 的核实为底；2026-11-06 补充 tradable_sign 口径。**本文档不钉活快照**。模块表在 [praxist.md](./praxist.md)。
 
 ---
 
@@ -252,6 +252,20 @@ T7 追加：失败数 ≥ 板块 50% 但未全失败时打 WARN 预警（部分�
 历史 `aligned_verdicts.jsonl` 混着两种 vid 格式——旧行 `{symbol}_{cov}`，新行 `{symbol}_{family}_{fp12}`。**读历史行别假设格式统一。**
 
 ---
+
+
+### 可交易方向口径（2026-11-06 补充）
+
+Baseline Point Contract 后，可交易方向的唯一真源是 `tradable_sign()`
+（`cascade/evaluation_metrics.py:178`）：
+
+- **新行**（带 `position_sign` 字段）：直接读 `position_sign`，基于端点 `endpoint_delta` 判定
+- **旧行回退**：`sign(delta_pred)`（加权 1H 级联结果）
+- `dir_ok` 由 `endpoint_dir_ok()`（`cascade/signal_contract.py:37`）在 endpoint 处计算，
+  不再依赖 weighted 方向
+
+门判据中的方向准确率（`dir_acc`）现在基于 endpoint 方向判定。
+详见 [product_positioning.md](./product_positioning.md)。
 
 ## 10. 变更记录
 

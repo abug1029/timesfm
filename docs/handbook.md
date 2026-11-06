@@ -5,7 +5,7 @@
 
 > **路径口径**：本文用 `<FM_ROOT>` 表示仓库根（本机为 WSL 活仓；换机器/换用户后由脚本按自身位置推导，不要写死绝对路径）。
 
-最后核实：2026-10-05，commit `ee01b56`。
+最后核实：2026-11-06，commit `1f90081`。
 
 ---
 
@@ -18,7 +18,7 @@ FM（`timesfm`）是一个**中国商品期货的量化研究系统**，做两�
 
 两者共享数据层与评估口径。**生产上真正在跑的是三环**。
 
-> 产品定位：辅助判断，**非自动交易**。可交易方向 = 加权 1H 级联结果，日线斜率仅作 regime 副标签。
+> 产品定位：辅助判断，**非自动交易**。可交易方向唯一真源 = `tradable_sign()`（`cascade/evaluation_metrics.py:178`）：优先读 `position_sign`（新行，基于端点 `endpoint_delta`），旧行回退 `sign(delta_pred)`（加权 1H）。日线斜率仅作 regime 副标签。详见 [product_positioning.md](./product_positioning.md)。
 
 ---
 
@@ -39,6 +39,9 @@ python scripts/data_management.py --1h --daily
 
 # 三环（生产监督环）
 scripts/start_supervisor.sh
+
+# 增量基线重生（从现有基线末端继续）
+python scripts/incremental_baseline.py
 ```
 
 ⚠️ **必须在 WSL**。Windows 侧的副本已不存在（2026-09-29 核实）。
@@ -106,6 +109,7 @@ L2 证据层   superpowers/{specs,reports,changelogs,plans} · archive/
 | **不在文档里钉活快照** | PID / cycles_done / 裁决条数 / run 计数都会腐烂，一律指向代码或查询命令 |
 | **不硬编码品种清单** | 以 `list_by_stars(2)` 等代码为唯一事实源 |
 | **阈值只认 `evaluation.md`** | 其他地方只能链接，不能复述数字 |
+| **可交易方向唯一真源 = `tradable_sign()`** | 不得用 `sign(delta_pred)` 或其他口径替代；优先 `position_sign`，回退 `sign(delta_pred)` |
 | **peer 不加载 TimesFM、不跑评估** | 方案 A 的核心约束 |
 | **慢环是裁决唯一写入者** | 不要手改 `aligned_verdicts.jsonl` |
 | **不手改运行产物** | `known_verdicts.inc.md` / `covariate_menu.inc.md` 每轮重新物化 |
