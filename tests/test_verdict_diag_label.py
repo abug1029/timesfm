@@ -126,3 +126,99 @@ def test_nan_p_value_on_gate_sized_failure_adds_no_p_clause():
              gate_pass=False, p_value=float("nan")))
     assert text == "方向达到自适应门槛，但硬门未过。硬门还检查样本量与有效样本，不读 DM"
     assert math.isnan(float("nan"))
+
+
+def _picked(**kw):
+    row = {
+        "symbol": "jd",
+        "cov_override": "rsi_state",
+        "status": "ok",
+        "dm_status": "ok",
+        "gate_pass": False,
+        "dir_acc": 0.50,
+        "baseline_dir_acc": 0.40,
+        "effective_min": 0.52,
+        "variant_id": "jd_rsi",
+    }
+    row.update(kw)
+    return row
+
+
+def test_negative_prefers_same_symbol_ordinary_failure_over_cross():
+    near = _picked(variant_id="near", dir_acc=0.50)
+    low = _picked(variant_id="low", dir_acc=0.40)
+    other = _picked(symbol="rb", variant_id="rb_low", dir_acc=0.48)
+    got = sup_evidence.select_symbol_diag_pair([near, low], [other])
+    assert got["positive"] is near or got["positive"]["variant_id"] == "near"
+    assert got["negative"]["variant_id"] == "low"
+    assert got["cross_symbol"] is False
+    assert got["repeat_n"] == 0
+
+
+def test_only_near_miss_used_as_positive_still_crosses():
+    only = _picked(variant_id="only", dir_acc=0.51)
+    other = _picked(symbol="rb", variant_id="rb_hit", dir_acc=0.42)
+    got = sup_evidence.select_symbol_diag_pair([only], [other])
+    assert got["positive"] is only
+    assert got["negative"] is other
+    assert got["cross_symbol"] is True
+    assert got["repeat_n"] == 1
+    assert got["negative_empty"] is None
+
+
+def test_cross_symbol_picks_highest_and_counts_repeats():
+    pos = _picked(gate_pass=True, dir_acc=0.56, variant_id="pass")
+    low = _picked(symbol="rb", variant_id="rb_low", dir_acc=0.41)
+    high = _picked(symbol="m", variant_id="m_high", dir_acc=0.47)
+    got = sup_evidence.select_symbol_diag_pair([pos], [low, high])
+    assert got["negative"]["variant_id"] == "m_high"
+    assert got["repeat_n"] == 2
+    assert got["cross_symbol"] is True
+
+
+def test_blank_symbol_uses_fixed_empty_reasons():
+    got = sup_evidence.select_symbol_diag_pair([], [])
+    assert got["positive"] is None
+    assert got["negative"] is None
+    assert got["positive_empty"] == "本品种无通过、无近失"
+    assert got["negative_empty"] == "本品种尚无有效失败记录"
+
+
+def test_selector_does_not_mutate_rows():
+    only = _picked()
+    snapshot = dict(only)
+    sup_evidence.select_symbol_diag_pair([only], [])
+    assert only == snapshot
+
+
+def test_incomplete_higher_dir_acc_loses_to_complete_row():
+    broken = _picked(variant_id="broken", dir_acc=0.60, baseline_dir_acc=None,
+                     gate_pass=True)
+    whole = _picked(variant_id="whole", dir_acc=0.55, gate_pass=True)
+    got = sup_evidence.select_symbol_diag_pair([broken, whole], [])
+    assert got["positive"]["variant_id"] == "whole"
+
+
+def test_no_positive_single_cov_crosses_two_covs_do_not():
+    local = _picked(dm_status="no_baseline", dir_acc=0.40, variant_id="local",
+                    cov_override="rsi_state")
+    other = _picked(symbol="rb", variant_id="rb", dir_acc=0.43,
+                    cov_override="rsi_state")
+    got = sup_evidence.select_symbol_diag_pair([local], [other])
+    assert got["positive"] is None
+    assert got["negative"]["variant_id"] == "rb"
+    assert got["cross_symbol"] is True
+    second = _picked(dm_status="no_baseline", dir_acc=0.41, variant_id="local2",
+                     cov_override="vwap_deviation")
+    got2 = sup_evidence.select_symbol_diag_pair([local, second], [other])
+    assert got2["positive"] is None
+    assert got2["negative"] is None
+    assert got2["cross_symbol"] is False
+
+
+def test_equal_dir_acc_prefers_smaller_symbol_name():
+    pos = _picked(gate_pass=True, dir_acc=0.56, variant_id="pass")
+    rb = _picked(symbol="rb", variant_id="rb", dir_acc=0.44)
+    em = _picked(symbol="m", variant_id="m", dir_acc=0.44)
+    got = sup_evidence.select_symbol_diag_pair([pos], [rb, em])
+    assert got["negative"]["variant_id"] == "m"

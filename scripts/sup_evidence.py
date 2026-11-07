@@ -749,6 +749,87 @@ def format_verdict_diag_label(row):
         text += "。近失，距该品种门槛只差一截"
     return text
 
+def _diag_failure(row):
+    return (isinstance(row, dict)
+            and row.get("status", "ok") == "ok"
+            and _is_confirmable_failure(row))
+
+def _diag_dir(row):
+    """三个方向字段都是有限数才返回 dir_acc。缺一个就不当候选。"""
+    if not isinstance(row, dict):
+        return None
+    da = row.get("dir_acc")
+    base = row.get("baseline_dir_acc")
+    emin = row.get("effective_min")
+    if _diag_finite(da) and _diag_finite(base) and _diag_finite(emin):
+        return float(da)
+    return None
+
+def _diag_near_miss(row):
+    if not _diag_failure(row):
+        return False
+    da = _diag_dir(row)
+    emin = row.get("effective_min")
+    return da is not None and _diag_finite(emin) and 0.49 <= da < float(emin)
+
+def _diag_best(rows):
+    """dir_acc 高者优先。同分时品种名较小者优先，再比 variant_id。"""
+    ranked = []
+    for row in rows:
+        da = _diag_dir(row)
+        if da is None:
+            continue
+        ranked.append((
+            -da,
+            str(row.get("symbol") or ""),
+            str(row.get("variant_id") or ""),
+            row,
+        ))
+    if not ranked:
+        return None
+    ranked.sort(key=lambda item: item[:3])
+    return ranked[0][3]
+
+def select_symbol_diag_pair(symbol_rows, other_rows):
+    """挑一个品种的正面和反面。不改输入行。"""
+    symbol_rows = [r for r in (symbol_rows or []) if isinstance(r, dict)]
+    other_rows = [r for r in (other_rows or []) if isinstance(r, dict)]
+    passes = [r for r in symbol_rows if bool(r.get("gate_pass", False))]
+    positive = _diag_best(passes)
+    if positive is None:
+        positive = _diag_best([r for r in symbol_rows if _diag_near_miss(r)])
+    failures = [r for r in symbol_rows if _diag_failure(r) and r is not positive]
+    negative = _diag_best([r for r in failures if _diag_near_miss(r)])
+    if negative is None:
+        negative = _diag_best(failures)
+    cross = False
+    repeat_n = 0
+    if negative is None:
+        cov = None
+        if positive is not None:
+            cov = positive.get("cov_override")
+        else:
+            covs = {r.get("cov_override") for r in symbol_rows
+                    if r.get("cov_override")}
+            if len(covs) == 1:
+                cov = next(iter(covs))
+        if cov:
+            pool = [r for r in other_rows
+                    if r.get("cov_override") == cov and _diag_failure(r)]
+            repeat_n = len(pool)
+            negative = _diag_best(pool)
+            cross = negative is not None
+        if negative is None:
+            repeat_n = 0
+    return {
+        "positive": positive,
+        "negative": negative,
+        "positive_empty": None if positive is not None else "本品种无通过、无近失",
+        "negative_empty": None if negative is not None else "本品种尚无有效失败记录",
+        "cross_symbol": cross,
+        "repeat_n": repeat_n if cross else 0,
+    }
+
 def _is_confirmable_failure(v):
     """失败 = 未过门**且** DM 可确认。
 
