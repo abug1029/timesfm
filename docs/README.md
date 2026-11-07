@@ -65,6 +65,11 @@
 | **2026-10-12 监督环拆分（本分支；宿主未切换）** | | |
 | [praxist.md](./praxist.md) | 监督环模块归属的唯一表。入口仍是 `scripts/praxist_supervisor.py` | 在用 |
 | [superpowers/changelogs/2026-10-12-s1-supervisor-split.md](./superpowers/changelogs/2026-10-12-s1-supervisor-split.md) | 拆分记录。代码 `3e8756e`。宿主未重启 | 在用 |
+| **2026-11-07 裁决诊断标签** | | |
+| [superpowers/specs/2026-11-07-verdict-diag-label-spec.md](./superpowers/specs/2026-11-07-verdict-diag-label-spec.md) | 诊断样本的标签顺序与正反样本挑选。已实施 | 在用 |
+| [superpowers/plans/2026-11-07-verdict-diag-label.md](./superpowers/plans/2026-11-07-verdict-diag-label.md) | 施工单。四项任务已完成 | 在用 |
+| [superpowers/changelogs/2026-11-07-verdict-diag-label.md](./superpowers/changelogs/2026-11-07-verdict-diag-label.md) | 实施记录。代码 `5b02284`。监督环未重启 | 在用 |
+| [superpowers/reports/2026-11-07-cogalpha-three-loop-borrow-report.md](./superpowers/reports/2026-11-07-cogalpha-three-loop-borrow-report.md) | 只借过程纪律。第 4.1 节是这次标签的缘起 | 在用 |
 | **Praxist 三环合同** | | |
 | [spec_hypothesis_driven_fast_loop_20260908.md](./spec_hypothesis_driven_fast_loop_20260908.md) | 方案 A 设计：peer 机制化假设作者（提示词纪律以 2026-09-19 为准） | 在用 |
 | [2026-09-19-three-loop-followup-spec.md](./2026-09-19-three-loop-followup-spec.md) | 跟进合同：门控可观测、两人议程、DEAD/HOLD、去重 | 在用 |

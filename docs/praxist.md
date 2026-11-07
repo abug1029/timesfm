@@ -73,7 +73,7 @@ CLI：`praxist start|resume|stop|status|monitor|doctor|resolve`。本仓入口�
 | `scripts/sup_state.py` | `load_state` / `save_state`；确认数据缓存 `_CONFIRM_DATA_CACHE`、`_CONFIRM_DATA_TTL_S` |
 | `scripts/sup_lifecycle.py` | `_signal_handler`、`_sleep_interruptible`、停机标志 |
 | `scripts/sup_provider.py` | `_praxist_env`、`parse_429_reset`、`_failover_can_resume_same_run` |
-| `scripts/sup_evidence.py` | `build_snapshot`、`ensure_baselines`、`_dead_families`、`materialize_known_verdicts`、`is_valid_tier`；`CROSS_MATRIX_MAX_ROWS`、`OLD_PRIORS_MAX_ROWS`、`_CONFIRMATORY_DM` |
+| `scripts/sup_evidence.py` | `build_snapshot`、`ensure_baselines`、`_dead_families`、`materialize_known_verdicts`、`format_verdict_diag_label`、`select_symbol_diag_pair`、`is_valid_tier`；`CROSS_MATRIX_MAX_ROWS`、`OLD_PRIORS_MAX_ROWS`、`_CONFIRMATORY_DM` |
 | `scripts/sup_harvest.py` | `harvest_proposals`、`materialize_covariate_menu`、`_sector_filter_check`、`_apply_prescreen_score` |
 | `scripts/sup_family.py` | `fdr_pass_persistable`、`promote_batch_for_persistence`、`_maybe_enqueue_confirmations`；`_PERSISTABLE_DM` |
 | `scripts/sup_loops.py` | `main`、`decide_fast_loop`、`_retest_candidates`、监督环 flock |
@@ -109,7 +109,7 @@ Peer 第一件事：至少写 2 份假设到
 3. run 结束后 `harvest_proposals`：校验（含 DEAD/HOLD、`failure_delta`）→ 去重 → 分层选座 → 入慢环队列
 4. **Laya 预筛**（可选，软建议）：连 peer 提案同时 `_prescreen_async`（fire-and-forget）调 Laya System-1 三问（机制可信度/新颖度/预期效果），写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度分（invalid→-100、redundant+弱→-30、低可信→-20、effect==0且可信∈[0.4,0.6)→-15；skip=False+高效果→+10、新颖+高可信→+5）。**永远不阻断慢环回测**；Laya 服务不可用、超时、降级时静默跳过（`LAYA_SKIP_AUTH` 默认 True，不需要 API key；HTTP POST 到 `LAYA_BASE_URL` 支持多地址故障转移、指数退避重试、超时常量化、完整类型提示、预热检测 `warmup_laya()`）。降权因异步滞后一轮生效。详见 `cascade/typesafe_prescreen.py` 与记忆 `fm-typesafe-prescreen`。
 5. 有货立刻拉慢环
-5. 物化 `known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose）与 `covariate_menu.inc.md`，喂给下一代。提示词先读证据，不要优先波动率族。
+5. 物化 `known_verdicts.inc.md`（Symbol status / Effective clues / 诊断样本 / Do not re-propose）与 `covariate_menu.inc.md`，喂给下一代。诊断样本紧跟 Effective clues：每个目标品种一行正面、一行反面，句子由 `format_verdict_diag_label` 根据已落盘字段生成。它不写回裁决文件，不进入协议指纹，也不新开收割门。过硬门不是确认成功。提示词先读证据，不要优先波动率族。
 
 快环面板：`task_FM/task.yaml` 的 `cohort_size=2` 配任务侧 `panel_topology:fm_two_peer`（`peer_role_rotation = [exploit, falsifier]`）。bundled 默认要 4 个角色，两人 cohort 盖不住，议程会被拒。**不要改 `.venv` 里的 Praxist。** 改 topology 后重启监督环。
 

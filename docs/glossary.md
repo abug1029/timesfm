@@ -116,7 +116,7 @@
 | **gems / frontier / findings** | Praxist 内部的 session / 探索前沿状态 |
 | **shared_store.db** | Praxist 运行时 sqlite（**不是**面向 peer 的反馈通道） |
 | **`research_memory.jsonl`** | 设计为跨 run 反馈——**当前全部 0 字节，未实现** |
-| **`materialize_known_verdicts`** | `scripts/sup_evidence.py`。每轮把已知裁决物化成 `known_verdicts.inc.md` 供 peer 读 |
+| **`materialize_known_verdicts`** | `scripts/sup_evidence.py`。每轮把已知裁决物化成 `known_verdicts.inc.md` 供 peer 读。其中「诊断样本」由同文件的 `format_verdict_diag_label` 与 `select_symbol_diag_pair` 生成 |
 | **proposal 质量门** | 18 道，任一不满足即拒收 |
 
 ---

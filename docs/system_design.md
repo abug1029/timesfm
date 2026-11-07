@@ -921,6 +921,7 @@ Stage 3（协变量可信度）2026-09-28/29 结案，在慢环/监督环侧新�
 | 研究 family | `cascade/research_family.py` | 多重比较纪律：一个品种 = 一个研究问题 = 一个 family（同一 protocol_fingerprint 下），批次 / 运行 / 代际不重置校正；family 90 天关闭、≤20 成员、单成员 180 天 T_max |
 | 基线协议指纹 | `scripts/sup_evidence.py` 的 `ensure_baselines` | 基线协议指纹不符（协议成分变更，**现 v4 = `f02b2a43…`**，v3 = `91ab913e…`，v2 = `bd851c9c…`）→ 整品种基线自动重生；2026-10-01/02 实测 9 个 nocov 基线全部带 v4 指纹落章（fu 为入集后首个基线），两次波均全量重生 |
 | 物化修复 K6/M4 | `scripts/sup_evidence.py` 的 `materialize_known_verdicts` | `known_verdicts.inc.md` 图例单条、`v2_pass` 已退役，K6 现表述为 `gate_pass` 且 `not fdr_pass`（K6）；品种表不截断 + `verdicts_truncated=<N>` 截断标记（M4）。`migrated_pass` 随v4 收口（计划 2.7）一并退役 |
+| 诊断样本 | `scripts/sup_evidence.py` 的 `format_verdict_diag_label`、`select_symbol_diag_pair` | `known_verdicts.inc.md` 在 Effective clues 之后为每个目标品种写一行正面、一行反面。标签不写回裁决，不进协议指纹，不改硬门和收割。记录见 `docs/superpowers/changelogs/2026-11-07-verdict-diag-label.md` |
 
 smoke 套件（`test_smoke_ss_end_to_end`）已于 2026-09-29 按用户裁定退役（连续两次同栈 pyarrow ImportError，`cascade/lgbm_features.py`）；回归以 `pytest tests/` 全量为准。
 

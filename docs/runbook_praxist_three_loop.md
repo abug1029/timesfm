@@ -17,7 +17,7 @@
 | 监督状态 | `data/cache/supervisor_state.json` |
 | 监督锁 | `data/cache/supervisor.lock` |
 | 决策日志 | `.omc/supervisor_decisions.jsonl` |
-| Known verdicts | `task_FM/known_verdicts.inc.md`（Symbol status / Effective clues / Do not re-propose；`prompt_base.jinja2` `{% include %}`） |
+| Known verdicts | `task_FM/known_verdicts.inc.md`（Symbol status / Effective clues / 诊断样本 / Do not re-propose；`prompt_base.jinja2` `{% include %}`） |
 | 品种探索状态 | `task_FM/config/symbol_status.json`（2026-09-28 清空 `symbols={}`，当前无 DEAD/HOLD；人手改 JSON，代码不自动复活） |
 | 面板 topology | `task_FM/.praxist/plugins/panel_topologies/fm_two_peer/`（`cohort_size=2` → exploit+falsifier） |
 | Verdict 注册表 | `task_FM/config/aligned_verdicts.jsonl`（仅慢环可写；新行含 `baseline_dir_acc`/`effective_min`） |
@@ -141,6 +141,7 @@ kill 慢环后重启即可续跑。`variant_id = {symbol}_{cov_override}`；`max
 - 每 tick（无论 phase）还跑 `_maybe_enqueue_retests`：对「硬门仅差 n」的近失误裁决（实现是 `scripts/sup_loops.py` 的 `_retest_candidates`；触发判据见 [runtime_contract.md](./runtime_contract.md)「复测触发判据（2026-10-08 裁定 C+a）」），当本地库有效点长到 ≥350 且比上次裁决多 ≥`retest_min_new_points` 点时，**旁路 dead 去重**补队（`source:"sample_retest"`），checkpoint resume 只算新点。dry-run 中以 `sample_retest_plan` 行展示。
 - 菜单 `covariate_menu.inc.md` 每轮由协变量池 + **品种样本天花板表**（每品种当前可对齐有效点，`BELOW GATE`/`gate-reachable`，`_valid_n_for_symbol` 复刻月度回测有效点计数，fail-open）物化生成。
 - 非 dry-run 每轮会 `scripts/sup_evidence.py` 的 `materialize_known_verdicts` → 覆盖写 `task_FM/known_verdicts.inc.md`（品种表不截断；Effective clues 从 snapshot 现场算过门族/近门/弱族；禁止再提案最多 80 条；`verdicts_truncated=<N>` 行标记被截断的裁决计数——2026-09-28 M4）。
+- Effective clues 之后有「诊断样本」：每个目标品种各一行正面和一行反面。标签只解释当前协议里已经落盘的字段，不写回 `aligned_verdicts.jsonl`，也不进入协议指纹。正在运行的监督环要等下一次物化才会写出这一节。标签顺序见 `docs/superpowers/specs/2026-11-07-verdict-diag-label-spec.md`。
 - `prompt_base.jinja2`：先读证据再写提案；`{% include 'known_verdicts.inc.md' ignore missing %}` 与 `covariate_menu.inc.md`。**不要**再写「优先波动率族」。
 - **红线：** 只有 `aligned_slow_loop.py` 可写 `aligned_verdicts.jsonl`。
 - **Laya System-1 预筛（2026-10-17 迁移，2026-11-01 P1-P3 改进）：** harvest 每个合格提案 `_prescreen_async`（fire-and-forget daemon 线程）调 Laya 三问，原子写 `<proposal>.prescreen.json`。`_proposal_priority_score` 读它做 ± 调度降权/奖励；**永远不阻断慢环回测**。Laya 服务不可用、超时、降级时静默跳过（`skip_suggested=None`）。**Laya 不需要 API key**（已迁移至 HTTP POST，模型 `laya-rl-agent`）。多地址故障转移（`LAYA_BASE_URL` 环境变量，默认 Tailscale + 直连）。预热机制：`warmup_laya()` 在 supervisor 启动时慢环入口调用（时间驱动，总窗口 180s，10s 间隔，~18 次尝试；覆盖冷启动 122s 实测 + 50% 余量）。每轮先 GET `/v1/systemone` 健康检查（1s 超时，405 = 服务活），仅服务活时才 POST 触发 checkpoint 加载。环境变量：`LAYA_SKIP_AUTH`（默认 true=Laya 模式，bypass API key 检查；设为 false 恢复 TypeSafe 鉴权模式）。降权因异步滞后一轮收割生效。慢环读同一文件注入 `verdict.metadata.prescreen`。验证：`python scripts/validate_typesafe_prescreen.py`；质量门禁：`python scripts/track_prescreen_quality.py`。

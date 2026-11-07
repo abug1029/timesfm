@@ -86,7 +86,7 @@ FM_a 的 Praxist 任务包：把「找更好的协变量」这件事写成一份
 
 ### peer 选题顺序（`prompt_base.jinja2` 的纪律）
 
-1. 先读 `known_verdicts.inc.md`（Symbol status / Effective clues / **Do not re-propose**）
+1. 先读 `known_verdicts.inc.md`（Symbol status / Effective clues / 诊断样本 / **Do not re-propose**）。诊断样本是事后标签，不是新的拒收门，也不能当成确认成功。
 2. **禁止优先波动率族**
 3. 顺序：Passing families 迁品种 → Near-miss 精炼 → Weak families（**仅带 failure_delta**）
 
