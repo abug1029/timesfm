@@ -230,3 +230,59 @@ def test_equal_dir_acc_ignores_symbol_case():
     lower = _picked(symbol="m", variant_id="a", dir_acc=0.44)
     got = sup_evidence.select_symbol_diag_pair([pos], [upper, lower])
     assert got["negative"]["variant_id"] == "a"
+
+
+def test_materialize_inserts_diag_section_without_mutating_rows(tmp_path, monkeypatch):
+    import sup_state
+    monkeypatch.setattr(sup_state, "GOAL_SYMBOLS_SET", {"jd"})
+    only = {
+        "schema": "fm.aligned_verdict.v2",
+        "variant_id": "jd_only",
+        "symbol": "jd",
+        "cov_override": "rsi_state",
+        "cov_family": "momentum",
+        "status": "ok",
+        "gate_pass": False,
+        "dir_acc": 0.51,
+        "baseline_dir_acc": 0.40,
+        "effective_min": 0.52,
+        "p_value": 0.20,
+        "dm_status": "ok",
+        "protocol_fingerprint": "f" * 64,
+        "run_mode": "exploration",
+        "decided_at": "2026-11-01T00:00:00",
+        "fdr_pass": False,
+        "n": 400,
+        "ev": 0.0,
+    }
+    other = dict(only)
+    other.update({"variant_id": "rb_only", "symbol": "rb", "dir_acc": 0.44})
+    before = (dict(only), dict(other))
+    dest = tmp_path / "known_verdicts.inc.md"
+    sup_evidence.materialize_known_verdicts(
+        {"jd_only": only, "rb_only": other}, str(dest),
+        proposed_ids=set(), status_map={}, queue_ids=set())
+    text = dest.read_text(encoding="utf-8")
+    assert text.index("## Effective clues") < text.index("## 诊断样本")
+    assert "jd 正面：" in text
+    assert "jd 反面（跨品种 rb）：" in text
+    assert "同协变量可确认失败 n=1" not in text
+    assert "mechanism" not in text.split("## 诊断样本", 1)[1].split("\n## ", 1)[0]
+    assert only == before[0]
+    assert other == before[1]
+
+
+def test_repeat_count_is_written_only_when_at_least_two():
+    import sup_state
+    # 不跑 materialize。渲染函数直接吃 select 的结果。
+    pos = _picked(gate_pass=True, dir_acc=0.56, variant_id="pass",
+                  decided_at="2026-11-01T00:00:00")
+    a = _picked(symbol="rb", variant_id="a", dir_acc=0.42,
+                decided_at="2026-11-02T00:00:00")
+    b = _picked(symbol="m", variant_id="b", dir_acc=0.46,
+                decided_at="2026-11-03T00:00:00")
+    picked = sup_evidence.select_symbol_diag_pair([pos], [a, b])
+    line = sup_evidence._format_diag_bullet("jd", "反面", picked)
+    assert "反面（跨品种 m）" in line
+    assert "同协变量可确认失败 n=2" in line
+    assert "decided_at=2026-11-03T00:00:00" in line

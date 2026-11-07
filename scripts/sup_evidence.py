@@ -371,6 +371,7 @@ def materialize_known_verdicts(snapshot, dest_path, *, proposed_ids=None,
     if clue_lines and clue_lines[0].startswith("## Effective clues"):
         clue_lines.insert(1, _protocol_section_line(_primary_fp))
     lines.extend(clue_lines)
+    lines.extend(_diag_sample_lines(items, _primary_fp))
     lines.extend(st.render_open_trees(
         st.load_tree_index(commitments_path or sup_paths.SEARCH_COMMITMENTS_PATH),
         snapshot if isinstance(snapshot, dict) else {}))
@@ -829,6 +830,47 @@ def select_symbol_diag_pair(symbol_rows, other_rows):
         "cross_symbol": cross,
         "repeat_n": repeat_n if cross else 0,
     }
+
+def _format_diag_bullet(symbol, side, picked):
+    row = picked["positive"] if side == "正面" else picked["negative"]
+    empty = picked["positive_empty"] if side == "正面" else picked["negative_empty"]
+    if row is None:
+        return "- %s %s：%s" % (symbol, side, empty)
+    label = format_verdict_diag_label(row)
+    da = row.get("dir_acc")
+    da_s = ("%.3f" % da) if _diag_finite(da) else "n/a"
+    head = "- %s %s" % (symbol, side)
+    if side == "反面" and picked.get("cross_symbol"):
+        head = "- %s 反面（跨品种 %s）" % (
+            symbol, str(row.get("symbol") or "").lower())
+    line = "%s：%s | variant_id=%s dir_acc=%s cov=%s" % (
+        head, label, row.get("variant_id"), da_s, row.get("cov_override"))
+    if row.get("decided_at"):
+        line += " decided_at=%s" % row.get("decided_at")
+    if side == "反面" and picked.get("cross_symbol") and picked.get("repeat_n", 0) >= 2:
+        line += " 同协变量可确认失败 n=%d" % picked["repeat_n"]
+    return line
+
+
+def _diag_sample_lines(items, primary_fp):
+    rows = []
+    if isinstance(primary_fp, str) and primary_fp:
+        rows = [v for v in (items or [])
+                if isinstance(v, dict)
+                and v.get("protocol_fingerprint") == primary_fp]
+    by_sym = {}
+    for row in rows:
+        by_sym.setdefault(str(row.get("symbol") or "").lower(), []).append(row)
+    lines = ["## 诊断样本", _protocol_section_line(primary_fp)]
+    for sym in sorted(sup_state.GOAL_SYMBOLS_SET):
+        mine = by_sym.get(sym, [])
+        others = [row for name, group in sorted(by_sym.items()) if name != sym
+                  for row in group]
+        picked = select_symbol_diag_pair(mine, others)
+        lines.append(_format_diag_bullet(sym, "正面", picked))
+        lines.append(_format_diag_bullet(sym, "反面", picked))
+    lines.append("")
+    return lines
 
 def _is_confirmable_failure(v):
     """失败 = 未过门**且** DM 可确认。
