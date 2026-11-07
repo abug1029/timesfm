@@ -222,3 +222,11 @@ def test_equal_dir_acc_prefers_smaller_symbol_name():
     em = _picked(symbol="m", variant_id="m", dir_acc=0.44)
     got = sup_evidence.select_symbol_diag_pair([pos], [rb, em])
     assert got["negative"]["variant_id"] == "m"
+
+
+def test_equal_dir_acc_ignores_symbol_case():
+    pos = _picked(gate_pass=True, dir_acc=0.56, variant_id="pass")
+    upper = _picked(symbol="M", variant_id="z", dir_acc=0.44)
+    lower = _picked(symbol="m", variant_id="a", dir_acc=0.44)
+    got = sup_evidence.select_symbol_diag_pair([pos], [upper, lower])
+    assert got["negative"]["variant_id"] == "a"

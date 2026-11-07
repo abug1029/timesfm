@@ -781,7 +781,7 @@ def _diag_best(rows):
             continue
         ranked.append((
             -da,
-            str(row.get("symbol") or ""),
+            str(row.get("symbol") or "").casefold(),
             str(row.get("variant_id") or ""),
             row,
         ))
