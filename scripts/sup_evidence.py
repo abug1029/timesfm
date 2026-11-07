@@ -1,6 +1,7 @@
 import glob
 import json
 import logging
+import math
 import os
 import shutil
 import sys
@@ -700,6 +701,53 @@ _ev_mod_for_goal = _load_evaluator()
 del _ev_mod_for_goal
 
 _CONFIRMATORY_DM = frozenset({"ok", "set_mismatch_ok"})
+
+def _diag_finite(value):
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value))
+
+
+def format_verdict_diag_label(row):
+    """给线索文件用的互斥标签。不读盘，不改 row。"""
+    if not isinstance(row, dict):
+        return "不足以归因"
+    gate = bool(row.get("gate_pass", False))
+    status = row.get("status", "ok")
+    confirmable = row.get("dm_status") in _CONFIRMATORY_DM
+    if not gate and status != "ok":
+        return "本行不是有效裁决，不写成机制失败"
+    if not gate and not confirmable:
+        return "DM 不可确认。不计作机制失败。这种 DM 状态不计入家族死亡"
+    dir_acc = row.get("dir_acc")
+    base = row.get("baseline_dir_acc")
+    emin = row.get("effective_min")
+    if not (_diag_finite(dir_acc) and _diag_finite(base) and _diag_finite(emin)):
+        return "不足以归因"
+    p_val = row.get("p_value")
+    p_sig = confirmable and _diag_finite(p_val) and p_val <= 0.05
+    if gate and not confirmable:
+        return "过硬门。DM 不可确认，不能写成统计成功，也不能写成机制失败"
+    if gate and p_sig:
+        return "过硬门。本行 DM p ≤ 0.05。硬门本身不读 DM，这也不是确认成功"
+    if gate:
+        return "过硬门。本行 DM 未显示 p ≤ 0.05。硬门本身不读 DM，这也不是确认成功"
+    if dir_acc < base:
+        text = "方向低于无协变量基线"
+    elif dir_acc < emin:
+        if p_sig:
+            text = "DM 显著改善，但方向准确率未达自适应门槛"
+        else:
+            text = "方向不低于基线，未过自适应门槛，DM 未显示稳定优势"
+    else:
+        text = "方向达到自适应门槛，但硬门未过。硬门还检查样本量与有效样本，不读 DM"
+        if p_sig:
+            text += "。本行 DM p ≤ 0.05，硬门仍未过"
+        elif _diag_finite(p_val):
+            text += "。本行 DM 亦未显示 p ≤ 0.05"
+        return text
+    if 0.49 <= dir_acc < emin:
+        text += "。近失，距该品种门槛只差一截"
+    return text
 
 def _is_confirmable_failure(v):
     """失败 = 未过门**且** DM 可确认。
