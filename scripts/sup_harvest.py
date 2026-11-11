@@ -21,6 +21,54 @@ import sup_lifecycle
 import sup_paths
 
 
+
+def _load_evaluated_or_queued(verdict_path: str, pending_path: str, fingerprint: str) -> set:
+    """Load set of (symbol, cov, mode) evaluated or queued under current fingerprint.
+
+    spec §4.2: enqueue-layer dedup prevents re-enqueue of already-evaluated or
+    already-queued (symbol, covariate, mode) combinations. Only records matching
+    the current protocol fingerprint are considered; old-fp records are ignored
+    so they never block fresh evaluation under a new fingerprint.
+    """
+    evaluated = set()
+
+    # 1. Verdicts: only current fingerprint
+    if os.path.exists(verdict_path):
+        with open(verdict_path, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    v = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if v.get("protocol_fingerprint") != fingerprint:
+                    continue
+                status = v.get("status")
+                is_complete = (status == "ok" and rl.effective_n(v) >= 350)
+                is_terminal = (status in rl.TERMINAL_STATUSES)
+                if is_complete or is_terminal:
+                    key = (v.get("symbol"), rl.canonical_cov(v), rl.canonical_mode(v))
+                    evaluated.add(key)
+
+    # 2. Pending: only current fingerprint
+    if os.path.exists(pending_path):
+        with open(pending_path, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    p = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if p.get("protocol_fingerprint") != fingerprint:
+                    continue
+                key = (p.get("symbol"), rl.canonical_cov(p), rl.canonical_mode(p))
+                evaluated.add(key)
+
+    return evaluated
+
+
 def harvest_survivors(root, snapshot, dead, existing, top_k, aligned_max_points=600):
     """Pick up to top_k diagnostic survivors, preferring symbol×cov diversity.
 
@@ -568,6 +616,9 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
         stats["reject_reasons"][reason] = stats["reject_reasons"].get(reason, 0) + 1
 
     candidates = []
+    # spec 4.2: enqueue-layer dedup against verdicts + pending (current fp only)
+    _evaluated = _load_evaluated_or_queued(
+        sup_paths.REGISTRY, sup_paths.QUEUE, rl.CURRENT_PROTOCOL_FINGERPRINT)
     seen_vids = set()
     run_dirs = sorted(glob.glob(os.path.join(root, "task_FM", "experiments", "run_*")),
                       key=os.path.getmtime, reverse=True)
@@ -670,6 +721,10 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
             if vid in dead or vid in existing or vid in passing_ids or vid in seen_vids:
                 _reject("dedup"); continue
             seen_vids.add(vid)
+            # spec 4.2: (symbol, cov, mode) dedup - current fp verdicts/pending
+            _key = (symbol, cov, rl.canonical_mode(p))
+            if _key in _evaluated:
+                _reject("dedup_evaluated"); continue
 
             # ── PR-B6 提案质量门 (在 dedup 之后，保证既有 reject 归因不变) ──
             _snap = snapshot or {}
@@ -729,6 +784,7 @@ def harvest_proposals(root, snapshot, dead, existing, pool, top_k,
                 # off/shadow 不带（S1：off 下行形状与今日相同）
                 _cand.update(search_info)
             candidates.append(_cand)
+            _evaluated.add((symbol, cov, rl.canonical_mode(p)))  # in-batch dedup
             # ── TypeSafe 预筛触发 (fire-and-forget, 不阻塞 harvest) ──
             _prescreen_async(p, sp, symbol)
 
