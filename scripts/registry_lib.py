@@ -1,6 +1,30 @@
 """verdict 注册表与 aligned 队列的共享库 (三环文件总线)"""
 import json, os, sys, contextlib, fcntl, time, pathlib
 
+# Shared constants and helpers (SSOT — imported by all modules and tests)
+TERMINAL_STATUSES = frozenset({"insufficient_data", "error", "fatal_error"})
+CURRENT_PROTOCOL_FINGERPRINT = "f02b2a43"
+
+
+def canonical_cov(record: dict) -> str:
+    """Canonical covariate identifier. cov_override > covariate > UNKNOWN."""
+    return record.get("cov_override") or record.get("covariate") or "UNKNOWN"
+
+
+def canonical_mode(record: dict) -> str:
+    """Canonical run mode. run_mode > mode > confirmatory."""
+    return record.get("run_mode") or record.get("mode") or "confirmatory"
+
+
+def effective_n(record: dict) -> int:
+    """Safe integer extraction of effective sample count. n_eff > n > 0."""
+    raw = record.get("n_eff", record.get("n", 0))
+    try:
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 # §1.4 双运行模式：唯一机器枚举字段。成功判定读 run_mode，不读 run_label。
 RUN_MODES = frozenset({"exploration", "confirmation"})
 RUN_LABEL_EXPLORATION = "exploratory_unconfirmed"
