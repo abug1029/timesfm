@@ -153,11 +153,12 @@ def _v2_complete(vid="v1", bid="b1", **kw):
     return base
 
 
-def test_append_verdict_path_dedup(tmp_path):
+def test_append_verdict_path_no_dedup(tmp_path):
+    """Phase 3: Write-layer dedup removed. Append-only allows overwrites."""
     p = str(tmp_path / "v.jsonl")
     append_verdict(p, _v2_complete("v1", "b1"))
     append_verdict(p, _v2_complete("v1", "b1"))
-    assert len(read_verdicts(p)) == 1
+    assert len(read_verdicts(p)) == 2  # Both writes succeed (append-only)
 
 
 def test_update_batch_verdicts_metrics_sync(tmp_path):

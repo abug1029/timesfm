@@ -346,7 +346,7 @@ def _is_duplicate_unlocked(path, verdict):
 def append_verdict_path(registry, verdict):
     """Append verdict to path (str|Path) with exclusive lock + fsync.
 
-    True append mode - reads only for dedup check, never rewrites the file.
+    Write-layer dedup removed (Phase 3). Primary dedup at enqueue layer. Append-only, never rewrites the file.
     Validates schema before writing.
     """
     p = str(registry)
@@ -364,10 +364,6 @@ def append_verdict_path(registry, verdict):
     try:
         fcntl.flock(lock_f, fcntl.LOCK_EX)
         try:
-            # Dedup check under lock
-            if _is_duplicate_unlocked(p, verdict):
-                return  # first-write-wins
-
             # True append + fsync
             with open(p, "a", encoding="utf-8") as f:
                 f.write(json.dumps(verdict, ensure_ascii=False) + "\n")
