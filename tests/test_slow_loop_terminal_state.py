@@ -120,7 +120,7 @@ def test_n0_writes_error(tmp_path):
     registry = str(tmp_path / "verdicts.jsonl")
     Path(registry).touch()
     v = _make_verdict(n=0, status="no_data")
-    should_write = _should_write_verdict(v, registry)
+    should_write = _should_write_verdict(v)
     assert should_write is True
     assert v["status"] == "error"
 
@@ -131,7 +131,7 @@ def test_n_lt_350_first_no_write(tmp_path):
     registry = str(tmp_path / "verdicts.jsonl")
     Path(registry).touch()
     v = _make_verdict(n=200)
-    should_write = _should_write_verdict(v, registry)
+    should_write = _should_write_verdict(v)
     assert should_write is False
 
 
@@ -141,9 +141,9 @@ def test_n_lt_350_second_writes_insufficient_data(tmp_path):
     registry = str(tmp_path / "verdicts.jsonl")
     Path(registry).touch()
     v1 = _make_verdict(n=200)
-    _should_write_verdict(v1, registry)  # first attempt, not written
+    _should_write_verdict(v1)  # first attempt, not written
     v2 = _make_verdict(n=200)
-    should_write = _should_write_verdict(v2, registry)
+    should_write = _should_write_verdict(v2)
     assert should_write is True
     assert v2["status"] == "insufficient_data"
 
