@@ -21,6 +21,43 @@ import math
 from typing import Any
 
 
+
+# Ordinal mapping for tier capping (lower rank = better tier)
+TIER_RANK = {"S": 0, "A": 1, "B": 2, "C": 3, "D": 4}
+RANK_TO_TIER = {v: k for k, v in TIER_RANK.items()}
+
+
+def _as_bool(value) -> bool:
+    """Safe boolean conversion. Handles bool, string, int, None."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    return bool(value)
+
+
+def _as_float(value, default: float = 0.0) -> float:
+    """Safe float conversion. Handles None, string, invalid values."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def cap_tier(tier: str, max_tier: str) -> str:
+    """Cap tier at max_tier. Normalizes input (strip + upper).
+    
+    Example: cap_tier("A", "C") → "C" (A is better than C, so capped to C)
+             cap_tier("D", "C") → "D" (D is worse than C, so stays D)
+    """
+    tier = tier.strip().upper() if tier else "D"
+    tier_rank = TIER_RANK.get(tier, 4)  # unknown → worst (D)
+    max_rank = TIER_RANK.get(max_tier.strip().upper(), 4)
+    return RANK_TO_TIER[max(tier_rank, max_rank)]
+
+
 def _score_dir_acc(v: float | None) -> int:
     if v is None:
         return 0
@@ -134,6 +171,19 @@ def compute_tier_score(verdict: dict[str, Any]) -> dict[str, Any]:
     }
     total = sum(breakdown.values())
     tier, label = _tier_from_score(total)
+    
+    # Normalize tier
+    tier = tier.strip().upper() if tier else "D"
+    
+    # Hard gate 1: gate_pass=False → max tier C
+    if not _as_bool(verdict.get("gate_pass")):
+        tier = cap_tier(tier, "C")
+    
+    # Hard gate 2: S-tier requires dir_acc >= 0.54
+    dir_acc = _as_float(verdict.get("dir_acc"))
+    if tier == "S" and dir_acc < 0.54:
+        tier = "A"
+    
     return {
         "tier": tier,
         "tier_score": total,

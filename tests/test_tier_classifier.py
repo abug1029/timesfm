@@ -16,12 +16,13 @@ from cascade.tier_classifier import compute_tier_score, _score_decay
 
 
 def test_s_tier():
-    """S 级: dir_acc=0.617, decay=1.43, mape=0.88, n_eff=73, 无 prescreen → score=85, tier=S"""
+    """S 级: dir_acc=0.617, decay=1.43, mape=0.88, n_eff=73, gate_pass=True → score=85, tier=S"""
     verdict = {
         "dir_acc": 0.617,
         "decay": 1.43,
         "mape": 0.88,
         "n_eff": 73,
+        "gate_pass": True,
     }
     result = compute_tier_score(verdict)
     assert result["tier_score"] == 85
@@ -35,12 +36,13 @@ def test_s_tier():
 
 
 def test_a_tier():
-    """A 级: dir_acc=0.529, decay=0.97, mape=4.45, n_eff=73, prescreen pl=0.65 → score=73, tier=A"""
+    """A 级: dir_acc=0.529, decay=0.97, mape=4.45, n_eff=73, gate_pass=True, prescreen pl=0.65 → score=73, tier=A"""
     verdict = {
         "dir_acc": 0.529,
         "decay": 0.97,
         "mape": 4.45,
         "n_eff": 73,
+        "gate_pass": True,
         "metadata": {
             "prescreen": {
                 "plausibility": 0.65,
@@ -59,12 +61,13 @@ def test_a_tier():
 
 
 def test_b_tier():
-    """B 级: dir_acc=0.500, decay=1.38, mape=2.04, n_eff=73 → score=50, tier=B"""
+    """B 级: dir_acc=0.500, decay=1.38, mape=2.04, n_eff=73, gate_pass=True → score=50, tier=B"""
     verdict = {
         "dir_acc": 0.500,
         "decay": 1.38,
         "mape": 2.04,
         "n_eff": 73,
+        "gate_pass": True,
     }
     result = compute_tier_score(verdict)
     assert result["tier_score"] == 50
