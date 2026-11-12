@@ -885,24 +885,47 @@ def _is_confirmable_failure(v):
 def _family_confirmatory_counts(rows):
     """与 _dead_families 同一套行。返回 (fam_ok, fam_pass)。
 
-    步③ B（2026-10-07 裁定 A.3）：只计有 admissibility_rule 的行（旧行过滤）。
+    Phase 6 fix (2026-11-07): count unique covariates per family, not rows.
+    Unified effective-row filter:
+    - status == "ok"
+    - current protocol_fingerprint
+    - n >= 350 (via effective_n)
+    - dm_status in _CONFIRMATORY_DM
+    - admissibility_rule present
+    - covariate not empty/UNKNOWN
     """
-    fam_ok = {}
-    fam_pass = {}
+    from scripts.registry_lib import (
+        CURRENT_PROTOCOL_FINGERPRINT, canonical_cov, effective_n,
+    )
+    fam_ok = {}     # family -> set of unique covariates
+    fam_pass = {}   # family -> count of gate_pass rows
     for v in rows or []:
         if not isinstance(v, dict) or v.get("status", "ok") != "ok":
+            continue
+        # Phase 6: filter by current protocol fingerprint
+        if v.get("protocol_fingerprint") != CURRENT_PROTOCOL_FINGERPRINT:
+            continue
+        # Phase 6: filter by n >= 350
+        if effective_n(v) < 350:
             continue
         if v.get("dm_status") not in _CONFIRMATORY_DM:
             continue
         if v.get("admissibility_rule") is None:
-            continue   # 步③ B: 旧行缺字段不计入
+            continue
         fam = str(v.get("cov_family") or "").strip()
         if not fam:
             continue
-        fam_ok[fam] = fam_ok.get(fam, 0) + 1
+        # Phase 6: use unique covariates, exclude UNKNOWN
+        cov = canonical_cov(v)
+        if not cov or cov == "UNKNOWN":
+            continue
+        if fam not in fam_ok:
+            fam_ok[fam] = set()
+        fam_ok[fam].add(cov)
         if v.get("gate_pass"):
             fam_pass[fam] = fam_pass.get(fam, 0) + 1
-    return fam_ok, fam_pass
+    # Convert sets to counts for backward compatibility
+    return {fam: len(covs) for fam, covs in fam_ok.items()}, fam_pass
 
 def _dead_families(snapshot, min_ok=4):
     """一族至少 min_ok 条可确认 DM 的 ok 裁决且 0 条过门，才算死亡。
