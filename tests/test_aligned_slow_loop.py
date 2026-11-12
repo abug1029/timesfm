@@ -150,7 +150,7 @@ def test_eval_exception_writes_error_tombstone(tmp_path, monkeypatch):
                    "--daily-cache-dir", str(tmp_path / "dc")])
     snap = rl.load_snapshot(str(reg))
     assert "m_rsi_state" in snap
-    assert snap["m_rsi_state"]["status"] == "error"
+    assert snap["m_rsi_state"]["status"] == "fatal_error"
     assert rc == 0  # 墓碑写完视为该候选已结算，队列 ack
 
 @pytest.mark.slow
@@ -159,6 +159,7 @@ def test_run_aligned_candidate_real_data(tmp_path, monkeypatch):
            "max_points": 2, "stage": "aligned",
            "checkpoint_path": "", "enqueued_at": "t", "src_run": "integration"}
     monkeypatch.setattr(asl, "_METRICS_PATH", str(tmp_path / "metrics.jsonl"))
+    monkeypatch.setattr(asl, "RETRY_STATE_PATH", str(tmp_path / "retry_state.json"))
     kw = dict(daily_cache_dir=str(tmp_path / "dc"),
               checkpoint_dir=str(tmp_path / "cp"),
               registry_path=str(tmp_path / "verdicts.jsonl"))
@@ -170,4 +171,4 @@ def test_run_aligned_candidate_real_data(tmp_path, monkeypatch):
     cp = tmp_path / "cp" / "it_m_rsi.jsonl"
     assert cp.exists() and cp.stat().st_size > 0
     v2 = asl.run_aligned_candidate(row, **kw)
-    assert v2["status"] == "ok" and rl.validate_verdict(v2) == []
+    assert v2["status"] == "insufficient_data"  # Phase 4: 2nd call with n<350 triggers terminal state

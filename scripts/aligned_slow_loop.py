@@ -5,6 +5,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "4")
 os.environ.setdefault("MKL_NUM_THREADS", "4")
 
 import argparse, fcntl, json, logging, sys, time
+from pathlib import Path
 HERE = os.path.dirname(os.path.abspath(__file__))
 FM_ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
@@ -55,6 +56,140 @@ def _record_elapsed(variant_id, elapsed_s):
     with open(_METRICS_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps({"variant_id": variant_id, "elapsed_s": elapsed_s,
                             "ts": _now()}, ensure_ascii=False) + "\n")
+
+
+# -- Phase 4: Terminal state machine + persistent retry (spec S4.4) ----
+RETRY_STATE_PATH = os.path.join(FM_ROOT, "task_FM", "config", ".slow_loop_retry_state.json")
+
+_N_THRESHOLD = 350
+
+
+def _load_retry_state() -> dict:
+    if not os.path.exists(RETRY_STATE_PATH):
+        return {}
+    try:
+        return json.loads(Path(RETRY_STATE_PATH).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_retry_state(state: dict):
+    os.makedirs(os.path.dirname(RETRY_STATE_PATH), exist_ok=True)
+    tmp = RETRY_STATE_PATH + ".tmp"
+    Path(tmp).write_text(json.dumps(state, indent=2), encoding="utf-8")
+    os.replace(tmp, RETRY_STATE_PATH)
+
+
+def _retry_key(symbol: str, cov: str, mode: str, fingerprint: str) -> str:
+    return f"{fingerprint}::{symbol}::{cov}::{mode}"
+
+
+def _increment_retry(symbol: str, cov: str, mode: str, fingerprint: str) -> int:
+    import datetime
+    key = _retry_key(symbol, cov, mode, fingerprint)
+    state = _load_retry_state()
+    entry = state.get(key, {"count": 0})
+    entry["count"] += 1
+    entry["last_attempt"] = datetime.datetime.now().isoformat()
+    state[key] = entry
+    _save_retry_state(state)
+    return entry["count"]
+
+
+def _clear_retry(symbol: str, cov: str, mode: str, fingerprint: str):
+    key = _retry_key(symbol, cov, mode, fingerprint)
+    state = _load_retry_state()
+    state.pop(key, None)
+    _save_retry_state(state)
+
+
+def _should_write_verdict(v: dict, registry_path: str) -> bool:
+    from scripts.registry_lib import canonical_cov, canonical_mode, CURRENT_PROTOCOL_FINGERPRINT
+    n = v.get("n") or 0
+    symbol = v.get("symbol", "")
+    cov = canonical_cov(v)
+    mode = canonical_mode(v)
+    fp = CURRENT_PROTOCOL_FINGERPRINT
+    if n == 0:
+        v["status"] = "error"
+        return True
+    elif n < _N_THRESHOLD:
+        new_count = _increment_retry(symbol, cov, mode, fp)
+        if new_count >= 2:
+            v["status"] = "insufficient_data"
+            return True
+        return False
+    else:
+        _clear_retry(symbol, cov, mode, fp)
+        return True
+
+
+
+# -- Phase 4: Terminal state machine + persistent retry (spec S4.4) ----
+RETRY_STATE_PATH = os.path.join(FM_ROOT, "task_FM", "config", ".slow_loop_retry_state.json")
+
+_N_THRESHOLD = 350
+
+
+def _load_retry_state() -> dict:
+    if not os.path.exists(RETRY_STATE_PATH):
+        return {}
+    try:
+        return json.loads(Path(RETRY_STATE_PATH).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_retry_state(state: dict):
+    os.makedirs(os.path.dirname(RETRY_STATE_PATH), exist_ok=True)
+    tmp = RETRY_STATE_PATH + ".tmp"
+    Path(tmp).write_text(json.dumps(state, indent=2), encoding="utf-8")
+    os.replace(tmp, RETRY_STATE_PATH)
+
+
+def _retry_key(symbol: str, cov: str, mode: str, fingerprint: str) -> str:
+    return f"{fingerprint}::{symbol}::{cov}::{mode}"
+
+
+def _increment_retry(symbol: str, cov: str, mode: str, fingerprint: str) -> int:
+    import datetime
+    key = _retry_key(symbol, cov, mode, fingerprint)
+    state = _load_retry_state()
+    entry = state.get(key, {"count": 0})
+    entry["count"] += 1
+    entry["last_attempt"] = datetime.datetime.now().isoformat()
+    state[key] = entry
+    _save_retry_state(state)
+    return entry["count"]
+
+
+def _clear_retry(symbol: str, cov: str, mode: str, fingerprint: str):
+    key = _retry_key(symbol, cov, mode, fingerprint)
+    state = _load_retry_state()
+    state.pop(key, None)
+    _save_retry_state(state)
+
+
+def _should_write_verdict(v: dict, registry_path: str) -> bool:
+    from scripts.registry_lib import canonical_cov, canonical_mode, CURRENT_PROTOCOL_FINGERPRINT
+    n = v.get("n") or 0
+    symbol = v.get("symbol", "")
+    cov = canonical_cov(v)
+    mode = canonical_mode(v)
+    fp = CURRENT_PROTOCOL_FINGERPRINT
+    if n == 0:
+        v["status"] = "error"
+        return True
+    elif n < _N_THRESHOLD:
+        new_count = _increment_retry(symbol, cov, mode, fp)
+        if new_count >= 2:
+            v["status"] = "insufficient_data"
+            return True
+        return False
+    else:
+        _clear_retry(symbol, cov, mode, fp)
+        return True
+
 
 def _load_checkpoint_state(cp, fp_now):
     """读 checkpoint → (completed, resumed, anchor, legacy_lines)。
@@ -374,6 +509,8 @@ def run_aligned_candidate(row, daily_cache_dir, checkpoint_dir, registry_path, b
         # 确认行的 error 墓碑必须带 prereg_id/run_mode —— 否则快照
         # last-wins 会把确认身份冲掉，去重与审计都看不见它。
         # E1 语义下墓碑不占坑，重派由 6h 节流兜底。
+        tombstone["status"] = "fatal_error"
+        tombstone["status"] = "fatal_error"
         tombstone["run_mode"] = row.get("run_mode")
         tombstone["prereg_id"] = row.get("prereg_id")
         tombstone["confirm_from_ts"] = row.get("confirm_from_ts")
@@ -555,7 +692,8 @@ def _run_inner(row, daily_cache_dir, checkpoint_dir, registry_path, bid):
     v["tier_score"] = tier_info["tier_score"]
     v["tier_label"] = tier_info["tier_label"]
     v["tier_breakdown"] = tier_info["tier_breakdown"]
-    rl.append_verdict(registry_path, v)
+    if _should_write_verdict(v, registry_path):
+        rl.append_verdict(registry_path, v)
     _record_elapsed(row["variant_id"], elapsed_s)
     return v
 
