@@ -155,6 +155,7 @@ def _v(vid, **kw):
             "dir_acc": 0.55, "gate_pass": True, "ic": 0.1, "decided_at": "t",
             "checkpoint_path": "cp", "slow_loop_pid": 1, "git_rev": "-",
             "schema": "fm.aligned_verdict.v1", "status": "ok",
+            "protocol_fingerprint": "f02b2a433fd572eab341c7e4",
             "admissibility_rule": "edge_continuous_block_30d"}   # 步③ B
     base.update(kw); return base
 
@@ -1449,22 +1450,22 @@ def test_materialize_dead_family_pass_saves_and_missing_protocol(tmp_path):
     for i, dm in enumerate(["ok", "ok", "ok", "set_mismatch_ok"]):
         vid = "t%d" % i
         snap[vid] = _v(
-            vid, symbol="m", cov_family="term_structure", gate_pass=False,
-            dm_status=dm, protocol_fingerprint=fp, run_mode="exploration",
-            dir_acc=0.40)
+            vid, symbol="m", cov_family="term_structure", cov_override="ts_cov_%d" % i,
+            gate_pass=False, dm_status=dm, protocol_fingerprint=fp,
+            run_mode="exploration", dir_acc=0.40)
     snap["desc_pass"] = _v(
-        "desc_pass", symbol="m", cov_family="term_structure", gate_pass=True,
-        dm_status="set_mismatch_descriptive", protocol_fingerprint=fp,
+        "desc_pass", symbol="m", cov_family="term_structure", cov_override="ts_desc",
+        gate_pass=True, dm_status="set_mismatch_descriptive", protocol_fingerprint=fp,
         run_mode="exploration", dir_acc=0.70)
     for i in range(3):
         vid = "s%d" % i
         snap[vid] = _v(
-            vid, symbol="eg", cov_family="spread", gate_pass=False,
-            dm_status="ok", protocol_fingerprint=fp, run_mode="exploration",
-            dir_acc=0.40)
+            vid, symbol="eg", cov_family="spread", cov_override="sp_cov_%d" % i,
+            gate_pass=False, dm_status="ok", protocol_fingerprint=fp,
+            run_mode="exploration", dir_acc=0.40)
     snap["s_pass"] = _v(
-        "s_pass", symbol="eg", cov_family="spread", gate_pass=True,
-        dm_status="set_mismatch_ok", protocol_fingerprint=fp,
+        "s_pass", symbol="eg", cov_family="spread", cov_override="sp_pass",
+        gate_pass=True, dm_status="set_mismatch_ok", protocol_fingerprint=fp,
         run_mode="exploration", dir_acc=0.61)
     sup.materialize_known_verdicts(
         snap, str(dest), proposed_ids=set(), status_map={}, queue_ids=set())
@@ -1479,8 +1480,9 @@ def test_materialize_dead_family_pass_saves_and_missing_protocol(tmp_path):
     for i in range(4):
         vid = "b%d" % i
         bare_snap[vid] = _v(
-            vid, symbol="rb", cov_family="basis", gate_pass=False,
-            dm_status="ok", dir_acc=0.40)
+            vid, symbol="rb", cov_family="basis", cov_override="basis_%d" % i,
+            gate_pass=False, dm_status="ok", dir_acc=0.40,
+            protocol_fingerprint=None)
     sup.materialize_known_verdicts(
         bare_snap, str(bare), proposed_ids=set(), status_map={}, queue_ids=set())
     bare_text = bare.read_text(encoding="utf-8")
@@ -1489,8 +1491,51 @@ def test_materialize_dead_family_pass_saves_and_missing_protocol(tmp_path):
         chunk = bare_text.split(header, 1)[1].split("\n## ", 1)[0]
         assert "protocol (none)" in chunk, header
     bare_dead = bare_text.split("## Dead families", 1)[1].split("\n## ", 1)[0]
-    assert "basis: n_ok=4, n_gate_pass=0, min_ok=4" in bare_dead
+    # Phase 6: rows without protocol fingerprint are not counted for dead families
+    # Check that no family-level statistics appear (only "- (none)" as placeholder)
+    assert "- (none)" in bare_dead, "Dead families section should contain '- (none)' placeholder"
+    assert not any("n_ok=" in line for line in bare_dead.splitlines()), "No family statistics should appear when protocol_fingerprint is missing"
     assert "[b0]" not in bare_text
+
+
+def test_n_350_boundary():
+    """Verify that n=350 is included while n=349 is excluded from fam_ok counts.
+
+    Construct two rows in the same family:
+      - v1: n=350 (should count toward fam_ok)
+      - v2: n=349 (should NOT count toward fam_ok)
+    Assert that only v1 contributes to the family's confirmatory count.
+    """
+    import scripts.sup_evidence as sup
+    from scripts.registry_lib import CURRENT_PROTOCOL_FINGERPRINT, effective_n
+
+    # Use the actual current fingerprint
+    fp = CURRENT_PROTOCOL_FINGERPRINT
+    snap = {}
+
+    # Row with n=350 should be included
+    snap["v350"] = _v(
+        "v350", symbol="m", cov_family="test_family", cov_override="test_cov_350",
+        gate_pass=False, dm_status="ok", protocol_fingerprint=fp,
+        run_mode="exploration", dir_acc=0.40, n=350)
+
+    # Row with n=349 should be excluded
+    snap["v349"] = _v(
+        "v349", symbol="m", cov_family="test_family", cov_override="test_cov_349",
+        gate_pass=False, dm_status="ok", protocol_fingerprint=fp,
+        run_mode="exploration", dir_acc=0.40, n=349)
+
+    # Verify effective_n returns the correct values
+    assert effective_n(snap["v350"]) == 350
+    assert effective_n(snap["v349"]) == 349
+
+    # Call the internal counting function to verify filtering
+    fam_ok, fam_pass = sup._family_confirmatory_counts(list(snap.values()))
+
+    # Only v350 should count (v349 is filtered out by the n >= 350 check)
+    # The family should have exactly 1 unique covariate count (v350), not 2
+    assert fam_ok.get("test_family", 0) == 1, f"Expected 1 unique covariate (n=350), got {fam_ok.get('test_family', 0)}"
+    assert fam_pass.get("test_family", 0) == 0, f"Expected 0 gate_pass rows, got {fam_pass.get('test_family', 0)}"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1675,22 +1720,28 @@ def test_proposal_score_cross_run_repeat():
 
 def test_dead_families_identified():
     """Families with 4+ ok and 0 pass should be DEAD."""
+    fp = "f02b2a433fd572eab341c7e4"
     snap = {
-        "m_ccl": {"variant_id": "m_ccl", "symbol": "m", "cov_override": "ccl",
+        "m_ccl": {"variant_id": "m_ccl", "symbol": "m", "cov_override": "ccl_1",
                   "cov_family": "ccl", "status": "ok", "gate_pass": False,
-                  "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
-        "ss_ccl": {"variant_id": "ss_ccl", "symbol": "ss", "cov_override": "ccl",
+                  "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
+                  "run_mode": "exploration", "protocol_fingerprint": fp, "n": 500},
+        "ss_ccl": {"variant_id": "ss_ccl", "symbol": "ss", "cov_override": "ccl_2",
                    "cov_family": "ccl", "status": "ok", "gate_pass": False,
-                   "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
-        "rb_ccl": {"variant_id": "rb_ccl", "symbol": "rb", "cov_override": "ccl",
+                   "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
+                   "run_mode": "exploration", "protocol_fingerprint": fp, "n": 500},
+        "rb_ccl": {"variant_id": "rb_ccl", "symbol": "rb", "cov_override": "ccl_3",
                    "cov_family": "ccl", "status": "ok", "gate_pass": False,
-                   "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
-        "jd_ccl": {"variant_id": "jd_ccl", "symbol": "jd", "cov_override": "ccl",
+                   "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
+                   "run_mode": "exploration", "protocol_fingerprint": fp, "n": 500},
+        "jd_ccl": {"variant_id": "jd_ccl", "symbol": "jd", "cov_override": "ccl_4",
                    "cov_family": "ccl", "status": "ok", "gate_pass": False,
-                   "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d", "run_mode": "exploration"},
-        "m_oi": {"variant_id": "m_oi", "symbol": "m", "cov_override": "oi",
+                   "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
+                   "run_mode": "exploration", "protocol_fingerprint": fp, "n": 500},
+        "m_oi": {"variant_id": "m_oi", "symbol": "m", "cov_override": "oi_1",
                  "cov_family": "oi", "status": "ok", "gate_pass": True,
-                 "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d"},
+                 "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
+                 "protocol_fingerprint": fp, "n": 500},
     }
     dead = sup._dead_families(snap)
     assert "ccl" in dead, "ccl should be DEAD (4 ok, 0 pass)"
@@ -1698,6 +1749,7 @@ def test_dead_families_identified():
 
 
 def test_descriptive_failures_do_not_kill_a_family():
+    fp = "f02b2a433fd572eab341c7e4"
     rows = {}
     for i, status in enumerate(
         ["set_mismatch_descriptive", "set_mismatch_descriptive",
@@ -1705,24 +1757,27 @@ def test_descriptive_failures_do_not_kill_a_family():
     ):
         rows["r%s" % i] = {
             "variant_id": "r%s" % i, "symbol": "m", "cov_family": "term_structure",
-            "status": "ok", "gate_pass": False, "dm_status": status,
-            "run_mode": "exploration",
+            "cov_override": "cov_%d" % i, "status": "ok", "gate_pass": False,
+            "dm_status": status, "run_mode": "exploration",
+            "protocol_fingerprint": fp, "n": 500,
         }
     assert "term_structure" not in sup._dead_families(rows)
     confirmatory = {
         "r%s" % i: {
             "variant_id": "r%s" % i, "symbol": "m", "cov_family": "term_structure",
-            "status": "ok", "gate_pass": False, "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
-            "run_mode": "exploration",
+            "cov_override": "cov_%d" % i, "status": "ok", "gate_pass": False,
+            "dm_status": "ok", "admissibility_rule": "edge_continuous_block_30d",
+            "run_mode": "exploration", "protocol_fingerprint": fp, "n": 500,
         }
         for i in range(3)
     }
     assert "term_structure" not in sup._dead_families(confirmatory)
     confirmatory["r3"] = {
         "variant_id": "r3", "symbol": "ss", "cov_family": "term_structure",
-        "status": "ok", "gate_pass": False, "dm_status": "set_mismatch_ok",
+        "cov_override": "cov_3", "status": "ok", "gate_pass": False,
+        "dm_status": "set_mismatch_ok",
         "admissibility_rule": "edge_continuous_block_30d",   # 步③ B
-        "run_mode": "exploration",
+        "run_mode": "exploration", "protocol_fingerprint": fp, "n": 500,
     }
     assert "term_structure" in sup._dead_families(confirmatory)
 

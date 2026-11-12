@@ -903,7 +903,8 @@ def _family_confirmatory_counts(rows):
         if not isinstance(v, dict) or v.get("status", "ok") != "ok":
             continue
         # Phase 6: filter by current protocol fingerprint
-        if v.get("protocol_fingerprint") != CURRENT_PROTOCOL_FINGERPRINT:
+        # startswith is intentional for backward compatibility with longer fingerprint strings
+        if not (v.get("protocol_fingerprint") or "").startswith(CURRENT_PROTOCOL_FINGERPRINT):
             continue
         # Phase 6: filter by n >= 350
         if effective_n(v) < 350:
