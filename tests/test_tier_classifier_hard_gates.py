@@ -43,23 +43,47 @@ def test_gate_pass_string_false():
 
 def test_s_tier_dir_acc_above_054():
     """S-tier with dir_acc=0.55 → stays S."""
-    # This is tested through the full classify function or the gate logic
-    pass  # Implementation depends on how the gate is structured
+    from cascade.tier_classifier import compute_tier_score
+    verdict = {"dir_acc": 0.55, "decay": 1.5, "mape": 0.01, "n_eff": 80,
+               "gate_pass": True, "prescreen": {"plausibility": 0.8}}
+    result = compute_tier_score(verdict)
+    assert result["tier"] == "S"
 
 
 def test_s_tier_dir_acc_at_boundary():
     """S-tier with dir_acc=0.54 → stays S (boundary inclusive)."""
-    pass
+    from cascade.tier_classifier import compute_tier_score
+    verdict = {"dir_acc": 0.54, "decay": 1.5, "mape": 0.01, "n_eff": 80,
+               "gate_pass": True, "prescreen": {"plausibility": 0.8}}
+    result = compute_tier_score(verdict)
+    assert result["tier"] == "S"
 
 
 def test_s_tier_dir_acc_below_boundary():
     """S-tier with dir_acc=0.539 → demoted to A."""
-    pass
+    from cascade.tier_classifier import compute_tier_score
+    verdict = {"dir_acc": 0.539, "decay": 1.5, "mape": 0.01, "n_eff": 80,
+               "gate_pass": True, "prescreen": {"plausibility": 0.8}}
+    result = compute_tier_score(verdict)
+    assert result["tier"] == "A"
 
 
 def test_s_tier_dir_acc_0513_demotes():
     """S-tier with dir_acc=0.513 → demoted to A."""
-    pass
+    from cascade.tier_classifier import compute_tier_score
+    verdict = {"dir_acc": 0.513, "decay": 1.5, "mape": 0.01, "n_eff": 80,
+               "gate_pass": True, "prescreen": {"plausibility": 0.8}}
+    result = compute_tier_score(verdict)
+    assert result["tier"] == "A"
+
+
+def test_gate_pass_false_caps_at_c_integration():
+    """gate_pass=False with S-tier score → capped to C via compute_tier_score."""
+    from cascade.tier_classifier import compute_tier_score
+    verdict = {"dir_acc": 0.6, "decay": 1.5, "mape": 0.01, "n_eff": 80,
+               "gate_pass": False, "prescreen": {"plausibility": 0.8}}
+    result = compute_tier_score(verdict)
+    assert result["tier"] in ("B", "C")  # capped at C max
 
 
 def test_none_dir_acc_no_crash():
