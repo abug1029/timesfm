@@ -1,7 +1,7 @@
 # 死代码清理 Spec（v2 修订稿）
 > **代码基线**: `01ff643`（文中行号引用以该 commit 为准）（2026-10-08 D1 补记）
 
-> 日期: 2026-09-30。v1 → v2：吸收专家审核报告（`reports/2026-09-30-dead-code-spec-review.md`，P0×6 / P1×6）+ 宿主裁定 (d)(e) + 审核方自勘误（oi_gated_momentum 实为活代码）。
+> 日期: 2026-09-30。v1 → v2：吸收专家审核报告（`docs/archive/superseded-2026-09/2026-09-30-dead-code-spec-review.md`（2026-11-19 归档），P0×6 / P1×6）+ 宿主裁定 (d)(e) + 审核方自勘误（oi_gated_momentum 实为活代码）。
 > 上游审计: `D:\FlyBuddy\fma-audit\2026-09-30-fma-overengineering-audit.md`（仅按 §1.2 勘误后引用）。
 > 状态: **已批准执行**（裁定记录见 §0）。
 > 不改三环行为、不改评估口径、不改 `.venv`；协议 v4 升级不在本 spec（属 v4 收口实施计划阶段 2）。
@@ -75,7 +75,7 @@ v1 口径「脚本名在 scripts/cascade/tests/docs 中均不出现」被自家�
 
 #### D2 一次性调查（22 文件 / 5,691 行；结论均已写入报告/changelog）
 
-diagnose_regime_supervised 667、train_regime_supervised 612、validate_vol_gating_hypothesis 585、validate_regime_clusters 376、fm_collect_analyze 352、si_quality_benchmark 316、strategy_changelog 260、analyze_backtest_performance 250、phase10_jd_i_p_verdict 243、backtest_tracker 237、validate_regime_classifier 226、verify_all_baselines 221、three_star_verify_runner 210、test_tqsdk_1h_depth 186、t2_ablation_report 181（结论在 `reports/2026-09-28-t2-ablation-table.md`）、a3_lasso_diagnostic 174、regime_detector 170、three_star_verify_critic 120、t1b_hand_calc_verification 99（结论在 `reports/2026-09-28-t1b-hand-calc-report.md`）、rebuild_universe_neutral_report 97、shadow_replay_30 88、audit_indicator_alignment 21。
+diagnose_regime_supervised 667、train_regime_supervised 612、validate_vol_gating_hypothesis 585、validate_regime_clusters 376、fm_collect_analyze 352、si_quality_benchmark 316、strategy_changelog 260、analyze_backtest_performance 250、phase10_jd_i_p_verdict 243、backtest_tracker 237、validate_regime_classifier 226、verify_all_baselines 221、three_star_verify_runner 210、test_tqsdk_1h_depth 186、t2_ablation_report 181（结论在 `docs/archive/superseded-2026-09/2026-09-28-t2-ablation-table.md`）、a3_lasso_diagnostic 174、regime_detector 170、three_star_verify_critic 120、t1b_hand_calc_verification 99（结论在 `docs/archive/superseded-2026-09/2026-09-28-t1b-hand-calc-report.md`）、rebuild_universe_neutral_report 97、shadow_replay_30 88、audit_indicator_alignment 21。
 
 #### D3 纯残留（5 文件 / 590 行；(f) 勘误后）
 
