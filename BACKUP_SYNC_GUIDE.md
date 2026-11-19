@@ -79,3 +79,15 @@ cd <FM_ROOT> && ./pull_and_compare.sh
 6. 给出操作建议（merge/pull/push）
 
 **触发短语**：当用户说"拉取目标机仓库"时，执行此脚本。
+
+## 同步状态
+
+| 日期 | 操作 | 同步点 |
+|------|------|--------|
+| 2026-10-07 | 初始配置 | `dfd1f43` |
+| 2026-11-19 | Rebase 同步（backup 领先 1 commit `b660239`，本地领先 44 commits；冲突 1 处：runbook TypeSafe→Laya 描述，保留本地） | `df09a2b` |
+
+**推送后必执行**（备份机非 bare 仓库，工作区需手动对齐）：
+```bash
+ssh chong@100.96.19.116 "wsl -d Ubuntu-24.04 -- bash -c 'cd /root/timesfm && git restore --source=HEAD --staged --worktree .'"
+```

@@ -73,7 +73,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 
 ## 数据资产与清理禁令（2026-10-07）
 
-- **备份就是本仓库。** 推 `origin`（GitHub）。不设异机 tar、不设 cron、不设 rclone、不设第二份 git remote。
+- **备份策略（2026-11-19 更新）：** 主备份推 `origin`（GitHub）；辅助备份推 `backup` remote（`chong@100.96.19.116:/root/timesfm`，WSL Ubuntu-24.04，SSH ed25519 认证）。不设异机 tar、不设 cron、不设 rclone。详见 `BACKUP_SYNC_GUIDE.md`。
 - 入库：`task_FM/config/aligned_verdicts.jsonl`、`baseline_points_*.jsonl`、`baseline_metrics.json`、`.omc/supervisor_decisions.jsonl`。活仓上若尚未提交，在活仓 `git add` 这些路径后推 `origin`。不要用别的机器上的旧快照覆盖活文件。
 - 不入库：`.env` / `.env.*`（密钥）、`data/cache/`（检查点与运行状态）、`logs/`。
 - **裸 `git clean -xdf` 一律禁止**——仍会删掉未入库的 `data/cache/`、`.env`、`logs/`、`.omc/` 里除决策留痕以外的文件。
@@ -151,7 +151,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 │   ├── vol_risk_filter.py      # 波动熔断 + ThrPolicy + R1 路径
 │   ├── neutral_ab_report.py    # Neutral A/B 唯一评分源
 │   ├── features.py / ccl_monitor.py / prediction_tracker.py
-│   ├── typesafe_prescreen.py   # TypeSafe Jev 协变量预筛核心 (软建议模式)
+│   ├── typesafe_prescreen.py   # Laya System-1 协变量预筛核心 (软建议模式，文件名保留历史原因)
 │   └── regime_*.py / walk_forward.py / ...
 ├── db/               # SQLite 每品种 futures_<sym>.db
 ├── docs/             # 运维与接入文档（人类）
@@ -163,7 +163,7 @@ Praxist 0.5.0 是与领域无关的研究控制平面；本仓任务包 `task_FM
 │   ├── train_vol_risk_sector.py
 │   ├── backtest_vol_gating_fullchain.py
 │   ├── variety_analysis.py     # 技术面+CCL+Copilot 融合分析
-│   ├── validate_typesafe_prescreen.py  # 人工验证 Jev 判断一致性
+│   ├── validate_typesafe_prescreen.py  # 人工验证 Laya 预筛判断一致性
 │   ├── track_prescreen_quality.py      # Jev 判断质量追踪 (Phase 3, 50样本门禁)
 │   └── ...
 ├── reports/          # 预测报告 (按品种分类)
@@ -209,7 +209,7 @@ source .venv/bin/activate
 # TqSdk 凭证在 .env（真实文件，勿把密钥写入可提交文件）
 ```
 
-**可选增强（TypeSafe Jev 协变量预筛）：** 设 `TYPESAFE_API_KEY`（写入 `.env.praxist`，勿提交）后启用。无 key 或降级时 `cascade/typesafe_prescreen.py` 返回 `status=degraded`（`skip_suggested=None`），慢环不受影响。模型名 `jev-latest`。
+**Laya System-1 协变量预筛（2026-10-17 迁移）：** 默认启用，无需 API key。`cascade/typesafe_prescreen.py`（文件名保留历史原因）通过 HTTP POST 调用 Laya 服务（`LAYA_BASE_URL`，默认 `http://10.1.1.67:8000`）。服务不可用或超时时返回 `status=degraded`（`skip_suggested=None`），慢环不受影响。模型 `laya-rl-agent`。
 
 **数据库位置：** 本仓 `db/futures_<symbol>.db`（真实目录，29 个品种 SQLite；不再是 /workspace symlink）
 
