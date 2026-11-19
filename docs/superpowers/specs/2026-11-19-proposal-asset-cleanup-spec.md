@@ -1,506 +1,451 @@
-# 提案资产清洗规范（Proposal Asset Cleanup Spec）
+# 提案资产清洗规范 v4（执行基线）
 
-> **状态**：v3（定稿执行版）  
+> **状态**：v4 — 执行基线（代码修正 + 硬门禁 + 增量 manifest + NUL 安全路径）  
 > **创建日期**：2026-11-19  
-> **v2 修订**：2026-11-19（空间测算、三环耦合、P2/P3 矛盾、工程脚本）  
-> **v3 修订**：2026-11-19（代码可执行性、P0/P1 验收修正、前置核实补全、运维语义对齐）  
+> **v4 修订**：2026-11-19（P2/P3 代码修复、P1 NUL 安全 + pending 保护、P0 完整判据、动态 SESSION_ID、增量 manifest、单份原始备份、核实硬门禁、进程分类检查、TIMEOUT_NO_EVAL 统计隔离、测试扩展至 25 项）  
 > **审计基线**：commit `7a5877d`  
-> **配套报告**：`docs/superpowers/reports/2026-11-19-proposal-asset-management-audit.md`
+> **配套报告**：`docs/superpowers/reports/2026-11-19-proposal-asset-management-audit.md`  
+> **实施计划**：`docs/superpowers/plans/2026-11-19-proposal-asset-cleanup-plan.md`
 
 ---
 
 ## 一、问题陈述
 
-`task_FM/experiments/` 目录累积 **683 个 run、11,952 个提案文件、4.9 GB 磁盘**，无自动清理机制。同时裁决注册表存在 22 条 `MISSING protocol_fingerprint` 和 75 条无 prescreen metadata 的卫生问题。
+`task_FM/experiments/` 累积 683 run / 11,952 提案 / 4.9 GB，无清理机制。裁决注册表 22 条 MISSING fingerprint + 75 条无 prescreen metadata。
 
-**目标**：在不影响收割/慢环/监督环功能的前提下，将 experiments 磁盘占用从 4.9 GB 降至 **250 MB 以内**，并修复注册表卫生问题。
-
----
-
-## 二、清洗范围与优先级
-
-| Phase | 目标 | 预估释放 | 风险 |
-|-------|------|---------|------|
-| **P0** | 归档已收割的旧 run（保留最近 10 个 + 受保护豁免 run） | ~4.7 GB（experiments 目录） | LOW→MEDIUM |
-| **P1** | 清理剩余活跃 run 中 error/degraded 状态的 `.prescreen.json` | < 1 MB（P0 后仅剩数十个） | LOW |
-| **P2** | 修复 22 条 MISSING fingerprint 裁决 | 0（卫生） | MEDIUM |
-| **P3** | 补充 75 条无 prescreen metadata 裁决的标记 | 0（卫生） | LOW |
-| **P4** | 建立长期清理策略（独立幂等脚本） | 持续 | LOW |
-
-> **v3 说明**：P0 归档后 98.5% 的 prescreen 文件已随旧 run 移除，P1 仅处理剩余活跃 run 中的无效缓存，空间释放可忽略。P1 本质是卫生清理。
-
-### 关于 WSL 虚拟磁盘膨胀
-
-归档到 `task_FM/archive/` 仅改变目录分布，不释放 WSL2 `ext4.vhdx` 宿主空间。若需缓解虚拟磁盘膨胀，见 §八外部归档方案。
+**目标**：experiments 降至 ≤250 MB（软目标，受保护豁免 run 可突破），注册表卫生归零。
 
 ---
 
-## 三、前置核实（§3.0，v3 扩展）
+## 二、核心设计原则（v4 新增）
 
-**在执行任何 Phase 之前，必须先完成以下全部核实并记录结果。任何一项未通过则暂停执行。**
-
-### 核实 1：`harvest_proposals` 的去重状态持久化边界
-
-```bash
-grep -n 'dedup\|existing\|aligned_verdicts' scripts/sup_harvest.py
-```
-
-- 若去重依赖 `aligned_verdicts.jsonl`（持久化注册表）：归档旧 run 不影响去重
-- 若去重依赖 `experiments/` 目录扫描：归档会导致历史被拒提案的去重记忆丢失，必须修正验收条件并导出已拒 variant_id 到持久化清单
-
-### 核实 2：慢环 pending 队列的存储位置与路径引用
-
-```bash
-grep -n 'proposal_path\|run_dir\|experiment' scripts/aligned_slow_loop.py
-```
-
-- 若队列存储 proposal 文件的绝对路径：归档引用路径的 run 会导致 `FileNotFoundError`
-- 若队列存储 proposal 内容（已序列化）：归档不影响
-
-### 核实 3：`supervisor_state` 字段结构（v3 新增）
-
-```bash
-python3 -c "
-import json
-d = json.load(open('data/cache/supervisor_state.json'))
-# 确认 last_harvested_run_id 存在且格式可比较
-print('last_harvested_run_id:', d.get('last_harvested_run_id', 'MISSING'))
-print('last_run_id:', d.get('last_run_id', 'MISSING'))
-"
-```
-
-- 确认 `last_harvested_run_id` 字段存在
-- 确认 run_id 格式支持时序比较（当前格式 `run_YYYY-MM-DD_HH-MM-SS_...` 可用 ISO 排序）
-
-### 核实 4：注册表时间字段名与格式（v3 新增）
-
-```bash
-python3 -c "
-import json
-with open('task_FM/config/aligned_verdicts.jsonl') as f:
-    d = json.loads(f.readline())
-    # 检查时间戳字段名和格式
-    for key in ['timestamp', 'evaluated_at', 'created_at', 'dt']:
-        if key in d:
-            print(f'{key}: {d[key]}')
-"
-```
-
-- 确认时间字段名（`timestamp`? `evaluated_at`? 其他？）
-- 确认格式是否带时区后缀（`Z`/`+08:00`/naive）
-- 此结果直接影响 P3 的归因逻辑
-
-### 核实 5：`TIMEOUT_NO_EVAL` 指纹下游兼容性（v3 新增）
-
-```bash
-# 静态排查所有消费 protocol_fingerprint 的代码
-grep -rn 'protocol_fingerprint' scripts/ cascade/ --include='*.py' | grep -v '.pyc'
-```
-
-- 逐一检查消费方是否仅做 `if d.get("protocol_fingerprint"):` 非空判断
-- 若是：`TIMEOUT_NO_EVAL` 会被当作有效指纹混入统计，必须在消费方增加显式排除
-- 若消费方做精确匹配/哈希比较：`TIMEOUT_NO_EVAL` 不影响
-
-> **核实 1 结果**：（待填写）  
-> **核实 2 结果**：（待填写）  
-> **核实 3 结果**：（待填写）  
-> **核实 4 结果**：（待填写）  
-> **核实 5 结果**：（待填写）
+1. **单一脚本**：所有 Phase 逻辑统一在 `scripts/cleanup_proposal_assets.py`，禁止手工 Shell 执行核心逻辑
+2. **硬门禁**：5 项前置核实必须在脚本内通过 assert，未通过则拒绝执行
+3. **增量 manifest**：会话开始时创建，每处理一个对象立即追加，支持部分失败后回滚
+4. **单份原始备份**：会话开始时一次性备份 `aligned_verdicts.jsonl` → `before-cleanup.jsonl`，P2/P3 均基于此恢复
+5. **NUL 安全路径**：所有文件列表使用 `\0` 分隔，禁止换行分隔
+6. **动态 SESSION_ID**：所有阶段通过 `--session` 参数传入，禁止硬编码目录
+7. **TIMEOUT_NO_EVAL 隔离**：占位指纹不得参与任何统计/去重/比较逻辑
 
 ---
 
-## 四、各 Phase 详细规范
+## 三、前置核实（硬门禁）
 
-### P0：旧 Run 归档
+**脚本启动时自动执行，任何一项未通过则 exit(1) 并输出原因。**
 
-**判据**：满足以下**全部**条件的 run 目录可归档：
+| # | 核实项 | 通过条件 | 失败处理 |
+|---|--------|---------|---------|
+| 1 | `harvest_proposals` 去重边界 | 确认去重依赖 `aligned_verdicts.jsonl` 还是 `experiments/` 目录扫描 | 若依赖目录扫描：导出已拒 variant_id 到持久化清单后再归档 |
+| 2 | 慢环 pending 队列存储方式 | 确认队列是否持有 run 目录路径引用 | 若持有路径引用：提取引用集合，加入 P0/P1 保护列表 |
+| 3 | `supervisor_state` 字段 | `last_harvested_run_id` 和 `last_run_id` 存在且格式可比较 | 打印字段结构，要求人工确认 |
+| 4 | 注册表时间字段 | 确认时间字段名 + 格式 + 时区 | 若 naive：需人工确认源时区（UTC vs UTC+8），确认后写入配置 |
+| 5 | `protocol_fingerprint` 下游消费方 | 列出所有消费文件 + 是否需排除 TIMEOUT_NO_EVAL | 若有消费方未排除：脚本自动在消费方添加 `!= "TIMEOUT_NO_EVAL"` 守卫 |
 
-1. `run_id` 不在最近 10 个 run 之列（按 mtime 排序）
-2. run 不是当前活跃 run（`supervisor_state.last_run_id`）
-3. run 目录中无 `inprogress` 慢环 checkpoint
-4. 慢环 pending 队列不引用该 run 下的任何提案路径
-5. run 已完成收割（`last_harvested_run_id` 时序在该 run 之后）
+**脚本内置核实结果存储**：
 
-> **v3 说明**：条件 3-5 可能保护超过 10 个 run（如第 12 近的 run 仍有 pending 提案）。此时保留目录数 = 10 + K（K = 受保护豁免 run 数量），出口条件相应放宽。
+```python
+class VerificationResults:
+    dedup_boundary: str  # "registry" or "directory_scan"
+    pending_queue_refs: set[str]  # 被 pending 队列引用的 run_id 集合
+    state_schema_ok: bool
+    time_field: str  # 实际时间字段名
+    time_zone: str  # "UTC" or "UTC+8" or "naive_assumed_utc8"
+    fingerprint_consumers: list[str]  # 消费 protocol_fingerprint 的文件列表
+    fingerprint_exclusions_added: list[str]  # 已添加排除守卫的文件
+```
 
-**归档目录结构（v3 统一会话 ID）**：
+核实结果写入 `manifest.json` 的 `verification` 字段，作为审计线索。
+
+---
+
+## 四、会话目录与 manifest
+
+### 4.1 会话 ID 生成
+
+```bash
+SESSION_ID=$(date +%Y-%m-%dT%H-%M-%S)
+```
+
+所有阶段通过 `--session "$SESSION_ID"` 传入，脚本内部不再硬编码任何日期。
+
+### 4.2 会话目录结构
 
 ```
 task_FM/archive/
-├── .gitignore               # 忽略所有内容（防止 Git 污染）
-└── 2026-11-19T17-00-00/     # 会话 ID 目录
-    ├── manifest.json         # 原始路径映射
-    ├── run_2026-09-15_*.tar.gz
-    ├── run_2026-09-16_*.tar.gz
-    ├── ...
-    ├── aligned_verdicts.bak  # P2/P3 注册表备份
-    └── prescreen_files.tar.gz # P1 prescreen 备份
+├── .gitignore                          # 忽略全部内容
+└── <session_id>/
+    ├── manifest.json                   # 增量更新
+    ├── before-cleanup.jsonl            # 注册表原始备份（唯一一份）
+    ├── runs/
+    │   ├── run_2026-09-15_*.tar.gz
+    │   └── ...
+    ├── prescreen/
+    │   └── prescreen_error_degraded.tar.gz
+    └── cleanup.log                     # 操作日志
 ```
 
-**`manifest.json` 格式**：
+### 4.3 manifest.json（增量更新）
 
 ```json
 {
   "session_id": "2026-11-19T17-00-00",
+  "status": "in_progress",
   "created_at": "2026-11-19T17:00:00+08:00",
-  "phases_executed": ["P0", "P1", "P2", "P3"],
-  "files_archived": [
-    {"original": "task_FM/experiments/run_2026-09-15_08-00-00_...", "archive": "run_2026-09-15_*.tar.gz"},
-    ...
-  ],
-  "registry_backup": "aligned_verdicts.bak",
-  "pre_cleanup_experiments_size": "4.9G",
-  "pre_cleanup_run_count": 683
+  "verification": { ... },
+  "pre_cleanup": {
+    "experiments_size": "4.9G",
+    "run_count": 683,
+    "verdict_count": 251,
+    "prescreen_count": 2979
+  },
+  "phases": {
+    "P0": {
+      "status": "completed",
+      "archived_runs": ["run_2026-09-15_...", "..."],
+      "protected_runs": ["run_2026-11-18_..."],
+      "errors": []
+    },
+    "P1": {
+      "status": "completed",
+      "deleted_count": 42,
+      "preserved_count": 3,
+      "errors": []
+    },
+    "P2": {
+      "status": "completed",
+      "patched_count": 22,
+      "errors": []
+    },
+    "P3": {
+      "status": "completed",
+      "a_count": 30,
+      "b_count": 45,
+      "unknown_count": 0,
+      "errors": []
+    }
+  }
 }
 ```
 
-**原子打包（v3 修正 Shell 语法 + 空值保护）**：
+**增量更新逻辑**：每归档一个 run / 每删除一个 prescreen / 每修复一条裁决后立即 `json.dump` 到 manifest。部分失败时回滚脚本可读 manifest 恢复。
 
-```bash
-#!/bin/bash
-set -euo pipefail
+---
 
-SESSION_ID="2026-11-19T17-00-00"
-ARCHIVE_DIR="task_FM/archive/$SESSION_ID"
-mkdir -p "$ARCHIVE_DIR"
+## 五、各 Phase 规范
 
-# 用数组避免引号陷阱（v3 修正）
-mapfile -t RUN_LIST < <(find task_FM/experiments/ -maxdepth 1 -type d -name 'run_*' | sort | head -n -10)
-# 或按判据过滤：此处简化为排除最近 10 个
+### P0：旧 Run 归档
 
-for run_dir in "${RUN_LIST[@]}"; do
-    run_id=$(basename "$run_dir")
-    archive_path="$ARCHIVE_DIR/${run_id}.tar.gz"
-    
-    tar czf "$archive_path" -C "task_FM/experiments" "$run_id"
-    
-    # 校验打包成功且非空
-    if [ ! -s "$archive_path" ]; then
-        echo "FATAL: archive failed for $run_id" >&2
-        exit 1
-    fi
-    
-    rm -rf "$run_dir"
-    echo "Archived: $run_id"
-done
-```
-
-> **v3 修正**：用 `mapfile` + 数组 `"${RUN_LIST[@]}"` 替代 `"$RUN_LIST"` 双引号变量（后者会将全部路径合并为单个字符串）。
-
-**`.gitignore` 核查**：
-
-```bash
-grep -q 'task_FM/archive' .gitignore || echo 'task_FM/archive/' >> .gitignore
-```
-
-### P1：Prescreen 文件清理（v3 修正策略）
-
-**策略变更**：P0 已归档 98.5% 的 prescreen 文件。P1 仅处理剩余活跃 run 中的 **error/degraded 状态** prescreen 文件（v3 修正：不再全删，保护有效缓存）。
-
-```bash
-# 仅删除 error/degraded 状态的 prescreen 文件
-# 先统计
-find task_FM/experiments/ -name '*.prescreen.json' -exec \
-    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('status') in ('error','degraded') else 1)" {} \; -print | wc -l
-
-# 打包备份（v3 空值保护：先检查是否有匹配文件）
-PRESCREEN_LIST=$(mktemp)
-find task_FM/experiments/ -name '*.prescreen.json' -exec \
-    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('status') in ('error','degraded') else 1)" {} \; -print > "$PRESCREEN_LIST"
-
-if [ -s "$PRESCREEN_LIST" ]; then
-    tar --null -czf "$ARCHIVE_DIR/prescreen_files.tar.gz" --files-from "$PRESCREEN_LIST"
-    cat "$PRESCREEN_LIST" | xargs rm -f
-    echo "Cleaned $(wc -l < "$PRESCREEN_LIST") prescreen files"
-else
-    echo "No error/degraded prescreen files found (idempotent)"
-fi
-rm -f "$PRESCREEN_LIST"
-```
-
-> **v3 修正**：① 仅删除 error/degraded 状态文件，保留有效 prescreen 缓存；② 打包前检查文件列表非空（避免 GNU tar 空包报错）；③ 与 P4 活跃保护规则一致。
-
-**验收（v3 修正空间预期）**：
-- 剩余有效 prescreen 文件数量 ≥ 0（不再要求 0 残留）
-- error/degraded 状态文件 = 0
-- `du -sh task_FM/experiments/` 不再做差值验收（P0 后 P1 空间变化 < 1 MB）
-
-### P2：修复 MISSING fingerprint 裁决（v3 原子写入）
+**完整判据**（所有条件均由 Python 脚本计算，禁止 Shell 简化）：
 
 ```python
-#!/usr/bin/env python3
-"""P2: 修复 22 条 MISSING protocol_fingerprint 裁决"""
-import json
-import shutil
-import os
-import tempfile
-
-ARCHIVED_FP = "TIMEOUT_NO_EVAL"
-ARCHIVED_AT = "2026-11-19"
-REGISTRY = "task_FM/config/aligned_verdicts.jsonl"
-SESSION_DIR = "task_FM/archive/2026-11-19T17-00-00"
-
-# 1. 备份到会话目录（v3：不在 config/ 下生成备份文件）
-backup_path = os.path.join(SESSION_DIR, "aligned_verdicts.bak_p2")
-shutil.copy2(REGISTRY, backup_path)
-
-# 2. 读取并修改
-rows = []
-fp_added = 0
-with open(REGISTRY) as f:
-    for line in f:
-        d = json.loads(line)
-        if not d.get("protocol_fingerprint"):
-            d["protocol_fingerprint"] = ARCHIVED_FP
-            d["archived_reason"] = "timeout_no_fingerprint"
-            d["archived_at"] = ARCHIVED_AT
-            fp_added += 1
-        rows.append(d)
-
-# 3. 原子写入（v3：临时文件 + fsync + rename）
-fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(REGISTRY), suffix=".tmp")
-try:
-    with os.fdopen(fd, "w") as f:
-        for r in rows:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp_path, REGISTRY)
-except:
-    os.unlink(tmp_path)
-    raise
-
-print(f"P2 complete: {fp_added} fingerprints patched")
+def compute_archive_set(experiments_dir, state, pending_refs, keep_n=10):
+    """返回 (archive_set, protected_set)"""
+    all_runs = sorted(Path(experiments_dir).glob("run_*"), key=lambda p: p.stat().st_mtime)
+    
+    # 最近 N 个（按 mtime）
+    recent = set(all_runs[-keep_n:])
+    
+    # 按 run_id 解析时间排序的最近 N 个（与 mtime 取并集）
+    by_id = sorted(all_runs, key=lambda p: parse_run_id_ts(p.name))
+    recent_by_id = set(by_id[-keep_n:])
+    recent = recent | recent_by_id  # v4：取并集
+    
+    protected = set()
+    archive_candidates = set(all_runs) - recent
+    
+    for run in archive_candidates:
+        run_id = run.name
+        
+        # 条件 2：当前活跃 run
+        if run_id == state.get("last_run_id"):
+            protected.add(run); continue
+        
+        # 条件 3：inprogress checkpoint
+        if has_inprogress_checkpoint(run):
+            protected.add(run); continue
+        
+        # 条件 4：pending 队列引用
+        if run_id in pending_refs:
+            protected.add(run); continue
+        
+        # 条件 5：收割未完成
+        if not is_harvested(run_id, state.get("last_harvested_run_id")):
+            protected.add(run); continue
+    
+    return archive_candidates - protected, protected
 ```
 
-> **v3 修正**：① `import shutil` 已补齐；② 备份写入 `SESSION_DIR` 而非 `config/`；③ 原子写入（tempfile + fsync + os.replace），中途异常不损坏注册表。
+**排序统一规则（v4）**：保留集合 = mtime 最近 N 个 **∪** run_id 时间最近 N 个。两者不一致时取并集，不静默选择。
+
+**出口条件（v4 修正）**：
+- experiments 体积 ≤ 250 MB（**软目标**）
+- 若受保护豁免 run 导致超 250 MB：记录豁免列表 + 总大小 + 原因到 manifest，标记 `size_target_overflow: true`
+- 归档后体积较基线下降 ≥ 90%（**硬目标**）
+- 所有满足判据的 run 均已归档
+
+### P1：Prescreen 文件清理
+
+**删除条件（v4 四个必须同时满足）**：
+
+1. 文件状态为 `error` 或 `degraded`
+2. 不属于当前活跃 run
+3. 不被慢环 pending 队列引用
+4. 文件不在最近保护时间窗口内（默认 24h，可配置）
+
+**NUL 安全实现（v4 修正）**：
+
+```bash
+# 由 Python 脚本生成 NUL 分隔的待删文件列表
+python3 scripts/cleanup_proposal_assets.py --session "$SID" --p1-list-only > /tmp/p1_delete_list.0
+
+# 打包备份
+if [ -s /tmp/p1_delete_list.0 ]; then
+    tar --null -czf "$ARCHIVE_DIR/prescreen/prescreen_error_degraded.tar.gz" \
+        --null -T /tmp/p1_delete_list.0
+    # NUL 安全删除
+    xargs -0 -r rm -f < /tmp/p1_delete_list.0
+else
+    echo "No error/degraded prescreen files to clean (idempotent)"
+fi
+rm -f /tmp/p1_delete_list.0
+```
+
+### P2：修复 MISSING fingerprint
+
+**方案（v4 统一）**：写入占位指纹 `TIMEOUT_NO_EVAL` + 归档标记。
+
+```python
+import json, os, tempfile, shutil
+
+def execute_p2(registry_path, session_dir):
+    # 单份原始备份在会话开始时已完成，此处不重复备份
+    
+    rows = []
+    patched = 0
+    with open(registry_path) as f:
+        for line in f:
+            d = json.loads(line)
+            if not d.get("protocol_fingerprint"):
+                d["protocol_fingerprint"] = "TIMEOUT_NO_EVAL"
+                d["archived_reason"] = "timeout_no_fingerprint"
+                d["archived_at"] = SESSION_ID
+                patched += 1
+            rows.append(d)
+    
+    atomic_write_jsonl(registry_path, rows)
+    return patched
+```
+
+**TIMEOUT_NO_EVAL 统计隔离（v4 强制）**：
+
+脚本在核实 5 阶段自动扫描所有消费 `protocol_fingerprint` 的代码，并在以下文件中添加排除守卫：
+
+```python
+# 自动添加的守卫模式：
+if d.get("protocol_fingerprint") and d["protocol_fingerprint"] != "TIMEOUT_NO_EVAL":
+    # 纳入统计
+```
 
 **验收**：
-- `protocol_fingerprint` 缺失条目 = 0
-- `TIMEOUT_NO_EVAL` 条目 = 22
-- 核实 5 确认的下游消费方已兼容（或已修正排除 `TIMEOUT_NO_EVAL`）
+- MISSING fingerprint = 0
+- TIMEOUT_NO_EVAL = 22
+- 含 TIMEOUT_NO_EVAL 的统计测试确认 v4 指纹数量仍为 229
+- 所有消费方已添加排除守卫
 
-### P3：补充 prescreen metadata 标记（v3 时区安全）
+### P3：补充 prescreen metadata
 
 ```python
-#!/usr/bin/env python3
-"""P3: 补充 75 条无 prescreen metadata 裁决的标记"""
-import json
-import os
-import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
-# 核实 4 结果：假设时间字段名为 timestamp（执行前必须确认）
-TIME_FIELD = "timestamp"  # ← 核实 4 确认后填入实际字段名
-MIGRATION_CUTOFF = datetime(2026, 10, 17, tzinfo=timezone.utc)
+def execute_p3(registry_path, time_field, assumed_tz_offset_hours=8):
+    """
+    time_field: 从核实 4 获取的实际时间字段名
+    assumed_tz_offset_hours: naive 时间戳假设的时区偏移（默认 +8）
+    """
+    MIGRATION_CUTOFF = datetime(2026, 10, 17, tzinfo=timezone.utc)
+    assumed_tz = timezone(timedelta(hours=assumed_tz_offset_hours))
+    
+    rows = []
+    a_count = b_count = unknown_count = 0
+    
+    with open(registry_path) as f:
+        for line in f:
+            d = json.loads(line)
+            meta = d.setdefault("metadata", {})
+            if "prescreen" not in meta:
+                ts_raw = d.get(time_field, "")
+                eval_dt = parse_ts_safe(ts_raw, assumed_tz)
+                
+                if eval_dt is None:
+                    unknown_count += 1
+                    meta["prescreen"] = {
+                        "status": "unavailable",
+                        "note": "timestamp_unparseable"
+                    }
+                elif eval_dt < MIGRATION_CUTOFF:
+                    a_count += 1
+                    meta["prescreen"] = {
+                        "status": "unavailable",
+                        "note": "pre_laya_migration_no_prescreen"
+                    }
+                else:
+                    b_count += 1
+                    meta["prescreen"] = {
+                        "status": "unavailable",
+                        "note": "prescreen_service_down_at_evaluation_time"
+                    }
+            rows.append(d)
+    
+    # 硬门禁：unknown 必须为 0，否则中止
+    assert unknown_count == 0, (
+        f"P3 found {unknown_count} records with unparseable timestamps. "
+        f"Check time_field='{time_field}' and timezone assumption. "
+        f"Fix data or adjust config before retrying."
+    )
+    assert a_count + b_count == 75, f"Expected 75, got {a_count + b_count}"
+    
+    atomic_write_jsonl(registry_path, rows)
+    return a_count, b_count
 
-REGISTRY = "task_FM/config/aligned_verdicts.jsonl"
-SESSION_DIR = "task_FM/archive/2026-11-19T17-00-00"
-
-# 备份
-import shutil
-shutil.copy2(REGISTRY, os.path.join(SESSION_DIR, "aligned_verdicts.bak_p3"))
-
-def parse_ts(ts_str):
-    """安全解析时间戳，处理 naive/aware/各种格式（v3 修正）"""
+def parse_ts_safe(ts_str, assumed_tz):
+    """安全解析，返回 aware datetime 或 None"""
     if not ts_str or not isinstance(ts_str, str):
         return None
     try:
-        # 尝试直接解析
         dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-        # 若 naive，按系统时区（UTC+8）补齐
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone(timedelta(hours=8)))
+            dt = dt.replace(tzinfo=assumed_tz)
         return dt
     except (ValueError, TypeError):
         return None
-
-rows = []
-a_count = 0  # pre_laya_migration
-b_count = 0  # service_down
-with open(REGISTRY) as f:
-    for line in f:
-        d = json.loads(line)
-        meta = d.setdefault("metadata", {})
-        if "prescreen" not in meta:
-            ts_raw = d.get(TIME_FIELD, "")
-            eval_dt = parse_ts(ts_raw)
-            
-            if eval_dt is not None and eval_dt < MIGRATION_CUTOFF:
-                meta["prescreen"] = {
-                    "status": "unavailable",
-                    "note": "pre_laya_migration_no_prescreen"
-                }
-                a_count += 1
-            else:
-                meta["prescreen"] = {
-                    "status": "unavailable",
-                    "note": "prescreen_service_down_at_evaluation_time"
-                }
-                b_count += 1
-        rows.append(d)
-
-# 原子写入
-fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(REGISTRY), suffix=".tmp")
-try:
-    with os.fdopen(fd, "w") as f:
-        for r in rows:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp_path, REGISTRY)
-except:
-    os.unlink(tmp_path)
-    raise
-
-print(f"P3 complete: A(pre-migration)={a_count}, B(service-down)={b_count}, total={a_count+b_count}")
-assert a_count + b_count == 75, f"Expected 75, got {a_count + b_count}"
 ```
-
-> **v3 修正**：① `parse_ts()` 独立处理 naive datetime（按 UTC+8 补齐），不再被 `except TypeError` 静默吞没；② 时间字段名从核实 4 获取（执行前填入）；③ 备份写入 `SESSION_DIR`；④ 原子写入；⑤ `assert` 校验总数 = 75。
-
-### P4：长期清理策略（v3 独立脚本）
-
-创建 `scripts/cleanup_proposal_assets.py`，统一 P0-P3 逻辑：
-
-```
-用法：
-    python scripts/cleanup_proposal_assets.py --dry-run
-    python scripts/cleanup_proposal_assets.py --session 2026-11-19T17-00-00 --archive-runs --keep 10
-    python scripts/cleanup_proposal_assets.py --session 2026-11-19T17-00-00 --clean-prescreen
-    python scripts/cleanup_proposal_assets.py --session 2026-11-19T17-00-00 --fix-registry
-    python scripts/cleanup_proposal_assets.py --rollback 2026-11-19T17-00-00
-```
-
-**不修改 `praxist_supervisor.py`**。长期清理由宿主定期手动执行。
-
-**安全约束**：
-- 不清理仍在活跃 run 中的 prescreen 文件
-- 不清理 error/degraded 以外的 prescreen 文件
-- 每次执行前确认三环全进程已停止
-- 所有操作记录到 `task_FM/archive/<session_id>/cleanup.log`
 
 ---
 
-## 五、执行顺序（v3 修正）
+## 六、执行顺序
 
 ```
-1. 停止三环全部进程
+1. 停止三环全进程（分类检查）
    a. kill -TERM <supervisor_pid>
-   b. 轮询等待进程消失：
-      while kill -0 <supervisor_pid> 2>/dev/null; do sleep 2; done
-      # v3 修正：不依赖 exit code，用 kill -0 轮询
-   c. 检查监督环日志末尾确认正常退出：
-      tail -5 data/cache/supervisor.out | grep -i 'exit\|shutdown\|signal'
-   d. 确认无残留进程：
-      pgrep -af 'praxist_supervisor|praxist|aligned_slow_loop' || echo "all clear"
-      # 若有残留：逐个 kill -TERM，等待；仍残留则 kill -KILL
-   e. 确认慢环 flock 释放：
-      flock -n data/cache/aligned_slow_loop.lock echo "lock free"
+   b. 轮询：while kill -0 <pid> 2>/dev/null; do sleep 2; done
+   c. 分类检查残留（v4 修正）：
+      check_stopped() {
+          if pgrep -f -- "$1" | grep -v "grep\|check_stopped" > /dev/null; then
+              echo "FATAL: residual process: $1" >&2
+              return 1
+          fi
+      }
+      check_stopped 'python.*praxist_supervisor\.py'
+      check_stopped 'praxist( |$)'
+      check_stopped 'python.*aligned_slow_loop\.py'
+   d. 确认 flock 释放
 
-2. 完成 §3.0 全部 5 项前置核实
-
-3. 创建会话目录
+2. 启动清洗脚本
    SESSION_ID=$(date +%Y-%m-%dT%H-%M-%S)
-   mkdir -p task_FM/archive/$SESSION_ID
+   python3 scripts/cleanup_proposal_assets.py \
+       --session "$SESSION_ID" \
+       --phases P0 P1 P2 P3 \
+       --dry-run     # 先 dry-run
 
-4. P0：归档旧 run
+3. 确认 dry-run 输出无误后，去掉 --dry-run 执行
 
-5. P1：清理 error/degraded prescreen 文件
+4. 静态资产验收（重启前）
 
-6. P2：修复 MISSING fingerprint
+5. 重启三环
+   bash scripts/start_supervisor.sh
 
-7. P3：补充 prescreen metadata
-
-8. 静态资产验收（重启前）
-   - experiments 体积 ≤ 250 MB
-   - run 目录数 ≤ 10 + K（K = 受保护豁免 run 数）
-   - error/degraded prescreen = 0
-   - MISSING fingerprint = 0
-   - 缺失 prescreen metadata = 0
-
-9. 重启三环
-   a. bash scripts/start_supervisor.sh
-   b. 等待 30 秒
-   c. 运行态验收：
-      pgrep -af praxist_supervisor  # 确认 supervisor 存活
-      tail -20 data/cache/supervisor.out  # 检查首 cycle 日志
-
-10. 写入 manifest.json
+6. 运行态验收
 ```
 
-> **v3 修正**：① Step 1b 用 `kill -0` 轮询替代 `wait`（后台进程不可 wait）；② Step 8 仅含静态验收，运行态验收拆到 Step 9c；③ 出口条件中 run 目录数 = 10 + K。
+---
+
+## 七、出口条件
+
+| 条件 | 类型 | 验收方式 |
+|------|------|---------|
+| 归档后体积下降 ≥ 90% | **硬** | `du -sh task_FM/experiments/` |
+| experiments ≤ 250 MB | 软 | 受保护 run 可突破，记录到 manifest |
+| error/degraded prescreen = 0 | **硬** | `find ... -name '*.prescreen.json'` + status 过滤 |
+| MISSING fingerprint = 0 | **硬** | Python 脚本检查 |
+| 缺失 prescreen metadata = 0 | **硬** | Python 脚本检查 |
+| TIMEOUT_NO_EVAL 不参与统计 | **硬** | 测试 `test_timeout_placeholder_excluded_from_statistics` |
+| 无残留目标进程 | **硬** | `check_stopped` 分类检查 |
+| supervisor 正常重启 | **硬** | `pgrep -af praxist_supervisor` |
+| manifest status = "completed" | **硬** | `python3 -c 'import json; ...'` |
 
 ---
 
-## 六、出口条件（v3 修正）
-
-| 条件 | 验收命令 |
-|------|---------|
-| experiments ≤ 250 MB | `du -sh task_FM/experiments/` |
-| run 目录 ≤ 10 + K | `ls -d task_FM/experiments/run_*/ \| wc -l`（K = 核实 2 中受保护 run 数） |
-| error/degraded prescreen = 0 | `find task_FM/experiments/ -name '*.prescreen.json' -exec python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('status') in ('error','degraded') else 1)" {} \\; -print \| wc -l` |
-| MISSING fingerprint = 0 | `python3 -c 'import json; n=sum(1 for l in open("task_FM/config/aligned_verdicts.jsonl") if not json.loads(l).get("protocol_fingerprint")); print(n)'` |
-| 缺失 prescreen metadata = 0 | `python3 -c 'import json; n=sum(1 for l in open("task_FM/config/aligned_verdicts.jsonl") if "prescreen" not in json.loads(l).get("metadata",{})); print(n)'` |
-| harvest 功能正常 | supervisor 首 cycle 日志无异常 |
-| supervisor 正常重启 | `pgrep -af praxist_supervisor` |
-
----
-
-## 七、安全约束（v3 修正）
-
-1. **所有删除操作先 dry-run**：`scripts/cleanup_proposal_assets.py --dry-run`
-2. **safe_clean.sh 白名单保护**：`.omc/`、`data/cache/`、`.env*` 不可触碰。**`task_FM/config/` 除 P2/P3 对 `aligned_verdicts.jsonl` 执行受控原子更新外，其余文件严禁修改**（v3 修正：消除原文矛盾）
-3. **归档而非删除**：所有归档到 `task_FM/archive/<session_id>/`（已加入 `.gitignore`）
-4. **原子操作**：tar 校验后 rm；注册表用 tempfile + fsync + os.replace
-5. **停机后执行**：全进程组停止后操作
-6. **回滚**：`scripts/cleanup_proposal_assets.py --rollback <session_id>`，从 `task_FM/archive/<session_id>/manifest.json` 恢复
-7. **不将 `task_FM/archive/` 提交到 Git**（`.gitignore` 保护）
-8. **备份文件统一写入会话目录**，不在 `config/` 下生成 `.bak` 文件
-
----
-
-## 八、外部归档方案（可选）
-
-若需真正释放 WSL 虚拟磁盘空间：
+## 八、回滚
 
 ```bash
-# 方案 A：归档到宿主机挂载盘
-EXTERNAL="/mnt/d/FlyBuddy/shared/timesfm-archive"
-mkdir -p "$EXTERNAL"
-# P0 打包时直接写入外部路径
-# 或打包后 mv 过去
+python3 scripts/cleanup_proposal_assets.py --rollback <session_id>
+```
 
-# 方案 B：WSL 虚拟磁盘压缩（宿主 Windows PowerShell 管理员）
-# Optimize-VHD -Path "C:\...\ext4.vhdx" -Mode Full
+**回滚逻辑**：
+1. 读 manifest，检查 `status`
+2. 若 `completed`：完整回滚（解压所有 tar + 恢复 `before-cleanup.jsonl`）
+3. 若 `in_progress`：部分回滚（只恢复已记录的 archived_runs + 恢复注册表）
+4. 回滚后标记 manifest `status: "rolled_back"`
+
+---
+
+## 九、测试（25 项）
+
+```text
+# 保护条件
+test_dry_run_no_changes
+test_preserves_active_run
+test_preserves_recent_runs
+test_preserves_inprogress
+test_preserves_pending_queue_refs           # P0 + P1 共用
+test_protected_runs_may_exceed_ten           # v4 新增
+test_size_target_reports_protected_run_overflow  # v4 新增
+
+# P0
+test_harvest_unchanged
+test_p0_uses_run_id_and_mtime_union
+test_rollback_after_partial_p0              # v4 新增
+
+# P1
+test_p1_preserves_valid_prescreen
+test_p1_uses_null_delimited_paths           # v4 新增
+test_p1_preserves_pending_queue_refs        # v4 新增
+
+# P2
+test_p2_fingerprint_placeholder
+test_timeout_placeholder_excluded_from_statistics  # v4 新增
+
+# P3
+test_p3_attribution_split
+test_p3_rejects_unknown_timestamp           # v4 新增
+test_p3_handles_naive_timestamp_with_declared_timezone  # v4 新增
+test_p3_fails_when_time_field_config_is_invalid  # v4 新增
+
+# 会话管理
+test_session_id_is_used_by_all_phases       # v4 新增
+test_manifest_is_written_incrementally      # v4 新增
+test_rollback_restores_original_registry    # v4 新增
+
+# 原子性
+test_atomic_write_no_corruption
+
+# 进程
+test_no_residual_target_processes           # v4 新增
+
+# Git
+test_gitignore_archive
 ```
 
 ---
 
-## 九、跟进项（清洗之外的技术债）
+## 十、安全约束
 
-| # | 跟进项 | 关联 |
-|---|--------|------|
-| 1 | 慢环超时异常处理兜底写入 `protocol_fingerprint` | P2 根因修复 |
-| 2 | jd/sr 的 `aligned_max_points` 提升（600 → 800-1000）或品种独立上限 | R4 根因修复 |
-| 3 | Laya 服务不可达时的可观测性告警 | R5 |
-| 4 | 核实 5 中发现的下游消费方修正（若需要排除 TIMEOUT_NO_EVAL） | P2 配套 |
-
----
-
-## 十、测试
-
-`scripts/cleanup_proposal_assets.py` 需包含：
-
-1. `test_dry_run_no_changes`：dry-run 模式不修改任何文件
-2. `test_preserves_active_run`：当前活跃 run 不被归档
-3. `test_preserves_recent_runs`：最近 10 个 run 不被归档
-4. `test_preserves_inprogress`：有 inprogress checkpoint 的 run 不被归档
-5. `test_preserves_pending_queue_refs`：慢环 pending 队列引用的 run 不被归档
-6. `test_harvest_unchanged`：清洗后 harvest 对未归档 run 的增量输出一致
-7. `test_rollback`：从 manifest.json 恢复后状态与清洗前一致
-8. `test_p2_fingerprint_placeholder`：P2 后 0 MISSING + 22 TIMEOUT_NO_EVAL
-9. `test_p3_attribution_split`：P3 后 A 类 + B 类归因正确且总数 = 75
-10. `test_gitignore_archive`：`task_FM/archive/` 在 `.gitignore` 中
-11. `test_p1_preserves_valid_prescreen`：P1 仅删 error/degraded，保留有效缓存（v3 新增）
-12. `test_atomic_write_no_corruption`：写入中断后注册表不损坏（v3 新增）
+1. **单一脚本入口**：所有操作通过 `cleanup_proposal_assets.py`，禁止手工 Shell
+2. **硬门禁**：5 项核实 + P3 unknown_count=0 + TIMEOUT_NO_EVAL 排除测试
+3. **原子写入**：tempfile + fsync + os.replace
+4. **NUL 安全路径**：所有文件列表用 `\0` 分隔
+5. **增量 manifest**：每操作一个对象立即持久化
+6. **单份原始备份**：`before-cleanup.jsonl`，P2/P3 共享
+7. **`.gitignore` 保护**：`task_FM/archive/` 不入 Git
+8. **不修改核心调度代码**：`praxist_supervisor.py` 不动（TIMEOUT_NO_EVAL 排除守卫仅加在统计/比较入口）
+9. **停机后执行**：分类检查全进程组停止
