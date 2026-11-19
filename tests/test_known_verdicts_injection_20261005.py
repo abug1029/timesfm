@@ -1,6 +1,6 @@
 """T1 (2026-10-05) known_verdicts 注入通道硬化 — 计划 v2 T1 验收测试。
 
-依据 docs/superpowers/plans/2026-10-05-peer-learning-feedback-hardening.md:
+依据 docs/archive/superpowers-plans/2026-10-05-peer-learning-feedback-hardening.md:
 1. 族计数一律 pass/n（Passing/Weak 同记法），样本 <10 追加 low-n，全文无裸比率
 2. 头部含 generated_at / protocol_fp8 / 源 registry mtime
 3. 品种×族交叉矩阵只列非空格，行数预算内截断注明
