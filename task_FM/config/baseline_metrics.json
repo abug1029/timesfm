@@ -36,8 +36,8 @@
   },
   "rb": {
     "vid": "f02b2a433fd572eab341c7e4ad2f394168f5a02ddb6d5739dcebbdce49db4ae5",
-    "dir_acc": 0.44,
-    "endpoint_mape": 0.99,
+    "dir_acc": 0.438,
+    "endpoint_mape": 1.01,
     "n": 588,
     "n_eff": 73
   },
